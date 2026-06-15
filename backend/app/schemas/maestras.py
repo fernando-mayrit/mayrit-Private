@@ -66,9 +66,7 @@ class MercadoBase(BaseModel):
     codigo: str | None = None
     id_tipo: int | None = None
     tipo_mercado: str | None = None
-    mercado: str | None = None
     toba: bool = False
-    risk: str | None = None
     fecha: dt.date | None = None
     notas: str | None = None
     sp_old_id: int | None = None
@@ -83,9 +81,7 @@ class MercadoUpdate(BaseModel):
     codigo: str | None = None
     id_tipo: int | None = None
     tipo_mercado: str | None = None
-    mercado: str | None = None
     toba: bool | None = None
-    risk: str | None = None
     fecha: dt.date | None = None
     notas: str | None = None
 

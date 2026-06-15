@@ -95,8 +95,8 @@ td.acciones { text-align: right; white-space: nowrap; }
 
 /* Selector de opción en forma de botones (componente OptionButtons) */
 .optbtns { display: flex; flex-wrap: wrap; gap: 8px; }
-.optbtns.vertical { flex-direction: column; gap: 6px; }
-.optbtns.vertical .optbtn { width: 100%; text-align: left; }
+.optbtns.vertical { flex-direction: column; align-items: flex-start; gap: 6px; }
+.optbtns.vertical .optbtn { width: 50%; text-align: left; }
 .optbtn {
   padding: 8px 12px; border: 1px solid var(--borde); border-radius: 8px;
   background: #fff; color: var(--gris); font-size: 14px; cursor: pointer;

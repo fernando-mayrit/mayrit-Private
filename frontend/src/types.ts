@@ -6,9 +6,7 @@ export interface Mercado {
   codigo: string | null;
   id_tipo: number | null;
   tipo_mercado: string | null;
-  mercado: string | null;
   toba: boolean;
-  risk: string | null;
   fecha: string | null; // ISO date
   notas: string | null;
   sp_old_id: number | null;
@@ -21,9 +19,7 @@ export interface MercadoWrite {
   nombre: string;
   codigo?: string | null;
   tipo_mercado?: string | null;
-  mercado?: string | null;
   toba?: boolean;
-  risk?: string | null;
   fecha?: string | null;
   notas?: string | null;
 }

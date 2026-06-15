@@ -62,9 +62,7 @@ class Mercado(Base):
     nombre: Mapped[str] = mapped_column(String(255), index=True)         # NombreMercado
     id_tipo: Mapped[int | None] = mapped_column(Integer)                 # IdTipo
     tipo_mercado: Mapped[str | None] = mapped_column(String(120))        # TipoMercado
-    mercado: Mapped[str | None] = mapped_column(String(255))             # Mercado (agrupador)
     toba: Mapped[bool] = mapped_column(Boolean, default=False)           # TOBA
-    risk: Mapped[str | None] = mapped_column(String(120))                # Risk
     fecha: Mapped[dt.date | None] = mapped_column(Date)                  # Fecha
     notas: Mapped[str | None] = mapped_column(Text)
 
