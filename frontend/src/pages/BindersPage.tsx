@@ -13,7 +13,7 @@ const MONEDAS = ["EUR", "GBP", "USD"];
 const PREFIJO_UMR = "B1634";
 
 type LineaForm = { mercado_id: string; participacion: string };
-type SeccionForm = { ramo: string; mercados: LineaForm[] };
+type SeccionForm = { ramo: string; comision: string; limite_primas: string; mercados: LineaForm[] };
 type FormState = {
   id?: number;
   agreement_number: string;
@@ -24,13 +24,16 @@ type FormState = {
   yoa: string;
   estado: string;
   moneda: string;
-  comision: string;
-  limite_primas: string;
   notas: string;
   secciones: SeccionForm[];
 };
 
-const SECCION_VACIA: SeccionForm = { ramo: "", mercados: [{ mercado_id: "", participacion: "" }] };
+const SECCION_VACIA: SeccionForm = {
+  ramo: "",
+  comision: "",
+  limite_primas: "",
+  mercados: [{ mercado_id: "", participacion: "" }],
+};
 
 const VACIO: FormState = {
   agreement_number: "",
@@ -39,10 +42,8 @@ const VACIO: FormState = {
   fecha_efecto: "",
   fecha_vencimiento: "",
   yoa: "",
-  estado: "",
-  moneda: "",
-  comision: "",
-  limite_primas: "",
+  estado: "Activo",
+  moneda: "EUR",
   notas: "",
   secciones: [JSON.parse(JSON.stringify(SECCION_VACIA))],
 };
@@ -58,15 +59,28 @@ function umrDe(agreement: string): string {
   return agreement.trim() ? PREFIJO_UMR + agreement.trim() : "";
 }
 
-function masDias(iso: string, dias: number): string {
-  if (!iso) return "";
-  const d = new Date(iso + "T00:00:00");
-  if (isNaN(d.getTime())) return "";
-  d.setDate(d.getDate() + dias);
+function fmt(d: Date): string {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
+}
+
+// Vencimiento = efecto + 1 año − 1 día (el día anterior al aniversario).
+function vencimientoDe(iso: string): string {
+  if (!iso) return "";
+  const d = new Date(iso + "T00:00:00");
+  if (isNaN(d.getTime())) return "";
+  d.setFullYear(d.getFullYear() + 1);
+  d.setDate(d.getDate() - 1);
+  return fmt(d);
+}
+
+// YOA = año de la fecha de efecto.
+function yoaDe(iso: string): string {
+  if (!iso) return "";
+  const d = new Date(iso + "T00:00:00");
+  return isNaN(d.getTime()) ? "" : String(d.getFullYear());
 }
 
 export default function BindersPage() {
@@ -134,13 +148,13 @@ export default function BindersPage() {
       yoa: b.yoa ?? "",
       estado: b.estado ?? "",
       moneda: b.moneda ?? "",
-      comision: b.comision != null ? String(b.comision) : "",
-      limite_primas: b.limite_primas != null ? String(b.limite_primas) : "",
       notas: b.notas ?? "",
       secciones:
         b.secciones.length > 0
           ? b.secciones.map((s) => ({
               ramo: s.ramo ?? "",
+              comision: s.comision != null ? String(s.comision) : "",
+              limite_primas: s.limite_primas != null ? String(s.limite_primas) : "",
               mercados:
                 s.mercados.length > 0
                   ? s.mercados.map((m) => ({
@@ -165,6 +179,9 @@ export default function BindersPage() {
   }
   function setRamo(i: number, ramo: string) {
     if (form) setSecciones(form.secciones.map((s, idx) => (idx === i ? { ...s, ramo } : s)));
+  }
+  function setSeccionCampo(i: number, campo: "comision" | "limite_primas", valor: string) {
+    if (form) setSecciones(form.secciones.map((s, idx) => (idx === i ? { ...s, [campo]: valor } : s)));
   }
   function addMercado(i: number) {
     if (form)
@@ -217,11 +234,11 @@ export default function BindersPage() {
       yoa: form.yoa.trim() || null,
       estado: form.estado || null,
       moneda: form.moneda || null,
-      comision: num(form.comision),
-      limite_primas: num(form.limite_primas),
       notas: form.notas.trim() || null,
       secciones: form.secciones.map((s) => ({
         ramo: s.ramo.trim() || null,
+        comision: num(s.comision),
+        limite_primas: num(s.limite_primas),
         mercados: s.mercados
           .filter((m) => m.mercado_id)
           .map((m) => ({ mercado_id: Number(m.mercado_id), participacion: num(m.participacion) })),
@@ -361,13 +378,15 @@ export default function BindersPage() {
                     type="date"
                     className="inp-fecha"
                     value={form.fecha_efecto}
-                    onChange={(e) =>
+                    onChange={(e) => {
+                      const ef = e.target.value;
                       setForm({
                         ...form,
-                        fecha_efecto: e.target.value,
-                        fecha_vencimiento: e.target.value ? masDias(e.target.value, 365) : form.fecha_vencimiento,
-                      })
-                    }
+                        fecha_efecto: ef,
+                        fecha_vencimiento: ef ? vencimientoDe(ef) : form.fecha_vencimiento,
+                        yoa: ef ? yoaDe(ef) : form.yoa,
+                      });
+                    }}
                   />
                 </div>
                 <div className="vig-campo">
@@ -401,19 +420,6 @@ export default function BindersPage() {
             <OptionButtons value={form.moneda} options={MONEDAS} onChange={(v) => setForm({ ...form, moneda: v })} />
           </div>
 
-          <div className="field">
-            <label>Comisión (%)</label>
-            <input type="text" value={form.comision} onChange={(e) => setForm({ ...form, comision: e.target.value })} />
-          </div>
-          <div className="field">
-            <label>Límite de primas</label>
-            <input
-              type="text"
-              value={form.limite_primas}
-              onChange={(e) => setForm({ ...form, limite_primas: e.target.value })}
-            />
-          </div>
-
           {/* Secciones */}
           <h3 style={{ marginBottom: 8 }}>Secciones</h3>
           {form.secciones.map((s, i) => (
@@ -431,6 +437,22 @@ export default function BindersPage() {
                   Ramo <span className="required">*</span>
                 </label>
                 <input type="text" value={s.ramo} onChange={(e) => setRamo(i, e.target.value)} />
+              </div>
+              <div className="field">
+                <label>Comisión (%)</label>
+                <input
+                  type="text"
+                  value={s.comision}
+                  onChange={(e) => setSeccionCampo(i, "comision", e.target.value)}
+                />
+              </div>
+              <div className="field">
+                <label>Límite de primas</label>
+                <input
+                  type="text"
+                  value={s.limite_primas}
+                  onChange={(e) => setSeccionCampo(i, "limite_primas", e.target.value)}
+                />
               </div>
 
               <label className="mini-label">Mercados y participación</label>

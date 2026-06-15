@@ -25,8 +25,6 @@ def _serializar(b: Binder) -> dict:
         "fecha_vencimiento": b.fecha_vencimiento,
         "estado": b.estado,
         "moneda": b.moneda,
-        "comision": b.comision,
-        "limite_primas": b.limite_primas,
         "yoa": b.yoa,
         "notas": b.notas,
         "created_at": b.created_at,
@@ -35,6 +33,8 @@ def _serializar(b: Binder) -> dict:
             {
                 "id": s.id,
                 "ramo": s.ramo,
+                "comision": s.comision,
+                "limite_primas": s.limite_primas,
                 "mercados": [
                     {
                         "mercado_id": m.mercado_id,
@@ -52,7 +52,7 @@ def _serializar(b: Binder) -> dict:
 def _aplicar_secciones(b: Binder, secciones: list[sch.BinderSeccionIn]) -> None:
     b.secciones.clear()
     for s in secciones:
-        seccion = BinderSeccion(ramo=s.ramo)
+        seccion = BinderSeccion(ramo=s.ramo, comision=s.comision, limite_primas=s.limite_primas)
         for m in s.mercados:
             seccion.mercados.append(
                 SeccionMercado(mercado_id=m.mercado_id, participacion=m.participacion)

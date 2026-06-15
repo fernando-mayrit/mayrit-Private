@@ -51,6 +51,8 @@ export interface SeccionMercadoLinea {
 export interface BinderSeccion {
   id?: number;
   ramo: string | null;
+  comision: number | null;
+  limite_primas: number | null;
   mercados: SeccionMercadoLinea[];
 }
 export interface Binder {
@@ -63,8 +65,6 @@ export interface Binder {
   fecha_vencimiento: string | null;
   estado: string | null;
   moneda: string | null;
-  comision: number | null;
-  limite_primas: number | null;
   yoa: string | null;
   notas: string | null;
   secciones: BinderSeccion[];
@@ -79,11 +79,14 @@ export interface BinderWrite {
   fecha_vencimiento?: string | null;
   estado?: string | null;
   moneda?: string | null;
-  comision?: number | null;
-  limite_primas?: number | null;
   yoa?: string | null;
   notas?: string | null;
-  secciones: { ramo: string | null; mercados: { mercado_id: number; participacion: number | null }[] }[];
+  secciones: {
+    ramo: string | null;
+    comision: number | null;
+    limite_primas: number | null;
+    mercados: { mercado_id: number; participacion: number | null }[];
+  }[];
 }
 
 export interface Tomador {

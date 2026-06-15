@@ -139,12 +139,16 @@ class SeccionMercadoOut(BaseModel):
 
 class BinderSeccionIn(BaseModel):
     ramo: str | None = None
+    comision: Decimal | None = None
+    limite_primas: Decimal | None = None
     mercados: list[SeccionMercadoIn] = []
 
 
 class BinderSeccionOut(BaseModel):
     id: int
     ramo: str | None = None
+    comision: Decimal | None = None
+    limite_primas: Decimal | None = None
     mercados: list[SeccionMercadoOut] = []
 
 
@@ -156,8 +160,6 @@ class BinderBase(BaseModel):
     fecha_vencimiento: dt.date | None = None
     estado: str | None = None
     moneda: str | None = None
-    comision: Decimal | None = None
-    limite_primas: Decimal | None = None
     yoa: str | None = None
     notas: str | None = None
 

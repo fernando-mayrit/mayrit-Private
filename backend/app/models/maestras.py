@@ -111,9 +111,7 @@ class Binder(Base):
     fecha_vencimiento: Mapped[dt.date | None] = mapped_column(Date)
     estado: Mapped[str | None] = mapped_column(String(60))
     moneda: Mapped[str | None] = mapped_column(String(10))
-    comision: Mapped[Decimal | None] = mapped_column(Numeric(7, 4))      # % comisión del binder
-    limite_primas: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
-    yoa: Mapped[str | None] = mapped_column(String(20))                  # Year of Account
+    yoa: Mapped[str | None] = mapped_column(String(20))                  # Year of Account (año del efecto)
     notas: Mapped[str | None] = mapped_column(Text)
 
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -135,6 +133,8 @@ class BinderSeccion(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     binder_id: Mapped[int] = mapped_column(ForeignKey("binders.id", ondelete="CASCADE"), index=True)
     ramo: Mapped[str | None] = mapped_column(String(120))
+    comision: Mapped[Decimal | None] = mapped_column(Numeric(7, 4))      # % comisión de la sección
+    limite_primas: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
 
     binder: Mapped["Binder"] = relationship(back_populates="secciones")
     mercados: Mapped[list["SeccionMercado"]] = relationship(
