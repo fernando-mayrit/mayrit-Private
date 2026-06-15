@@ -2,8 +2,11 @@ import { useEffect, useState } from "react";
 import { crud } from "../api";
 import type { Mercado, MercadoWrite } from "../types";
 import FormPanel from "../components/FormPanel";
+import OptionButtons from "../components/OptionButtons";
 
 const api = crud<Mercado, MercadoWrite>("/mercados");
+
+const TIPOS_MERCADO = ["Lloyds", "Compañía", "Agencia de Suscripción", "Otros"];
 
 type FormState = MercadoWrite & { id?: number };
 
@@ -200,10 +203,10 @@ export default function MercadosPage() {
           </div>
           <div className="field">
             <label>Tipo de mercado</label>
-            <input
-              type="text"
+            <OptionButtons
               value={form.tipo_mercado ?? ""}
-              onChange={(e) => setForm({ ...form, tipo_mercado: e.target.value })}
+              options={TIPOS_MERCADO}
+              onChange={(v) => setForm({ ...form, tipo_mercado: v })}
             />
           </div>
           <div className="field">
