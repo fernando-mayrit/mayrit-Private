@@ -1,20 +1,5 @@
-/* ─── Tipografía corporativa Mayrit (Aller) ───
-   En la carpeta de marca solo existen Aller Display (logotipo) y Aller Italic.
-   Aller Display se usa para títulos; el cuerpo usa una sans neutra que combina. */
-@font-face {
-  font-family: "Aller Display";
-  src: url("./assets/fonts/AllerDisplay.ttf") format("truetype");
-  font-weight: 400;
-  font-display: swap;
-}
-@font-face {
-  font-family: "Aller";
-  src: url("./assets/fonts/Aller_It.ttf") format("truetype");
-  font-style: italic;
-  font-weight: 400;
-  font-display: swap;
-}
-
+/* Tipografía de la app: convencional (sans del sistema). El logo conserva su propia
+   tipografía porque es una imagen; el texto de la interfaz usa una sans neutra y legible. */
 :root {
   /* Colores corporativos (PDF de marca) */
   --naranja: #da5833;       /* PANTONE 7579 C */
@@ -25,8 +10,8 @@
   --borde: #e5e7eb;
   --rojo: #b42318;
 
-  --fuente-titulo: "Aller Display", system-ui, "Segoe UI", sans-serif;
   --fuente-texto: system-ui, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --fuente-titulo: var(--fuente-texto);
 
   font-family: var(--fuente-texto);
   color: var(--gris);
@@ -35,7 +20,7 @@
 * { box-sizing: border-box; }
 body { margin: 0; background: #fafbfc; }
 
-h1, h2, h3 { font-family: var(--fuente-titulo); font-weight: 400; color: var(--gris); }
+h1, h2, h3 { font-family: var(--fuente-titulo); font-weight: 600; color: var(--gris); }
 
 /* Cabecera: fondo blanco con el logo y una línea naranja de acento */
 .app-header {
