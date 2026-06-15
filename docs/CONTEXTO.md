@@ -14,10 +14,12 @@ los BDX que cuelgan de ellos + liquidaciones de primas**. Accesorio: compliance,
 (a veces compartidas con la agencia). Lo habitual: % sobre las primas de los BDX.
 
 **Las 4 fuentes de negocio (menú lateral "Negocio"):**
-1. **Binders**.
-2. **Pólizas** — el negocio de *Open Market* (OM).
-3. **Consultoría** — los *fees*.
-4. **Comisiones** — negocio del que se generan comisiones pero que no es binder ni póliza.
+1. **Binders** — HECHO (alta/edición). Estructura de 3 niveles: Binder → **Secciones** (cada
+   una con un ramo) → **Mercados con participación %**. Coverholder = un Productor de tipo
+   "Agencia de Suscripción" (FK). Tablas: `binders`, `binder_secciones`, `seccion_mercados`.
+2. **Pólizas** — el negocio de *Open Market* (OM). [pendiente]
+3. **Consultoría** — los *fees*. [pendiente]
+4. **Comisiones** — negocio del que se generan comisiones pero que no es binder ni póliza. [pendiente]
 
 ## Stack
 - Backend: **FastAPI + PostgreSQL** (Azure, mismo servidor que Alea, base `mayrit` aparte).
