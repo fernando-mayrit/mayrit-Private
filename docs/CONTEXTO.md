@@ -133,6 +133,9 @@ al final".
 ## Convenciones de UI (aplicar en todas las pantallas)
 - **Paneles de alta/edición:** usar `frontend/src/components/FormPanel.tsx`. Clic fuera NO cierra;
   solo cierran con Cancelar/✕/Esc; si hay cambios sin guardar, avisa y pide confirmación.
+- **Fechas:** los campos de fecha van **centrados** en su caja (regla global en `styles.css`:
+  `input[type="date"] { text-align: center }`).
+- **Selectores en botones:** componente `OptionButtons` (horizontal a partes iguales, o `vertical`).
 - **Imagen de marca:** ver sección anterior (logo, naranja UI `#e07a5a`, gris, fondo gris,
   texto en fuente del sistema).
 
