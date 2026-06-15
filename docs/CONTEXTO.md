@@ -93,9 +93,13 @@ credenciales en `~/.mayrit/.env`).
   edición en panel lateral, borrado). Probada de extremo a extremo contra la base real.
 - **Identidad visual** aplicada (ver sección Imagen de marca).
 
-Pantallas hechas: **Mercados** y **Productores** (CRUD completo), con **menú de navegación**
-por pestañas (Productores / Mercados / Binders). Productores: tipo Corredor/Agencia de
-Suscripción + Coverholder Sí/No, con la mayoría de campos obligatorios.
+Pantallas hechas: **Mercados**, **Productores** y **Tomadores** (CRUD completo), con **menú de
+navegación** por pestañas (Productores / Mercados / Tomadores / Binders).
+- Productores: tipo Corredor/Agencia de Suscripción + Coverholder Sí/No.
+- Tomadores (antes "Clientes", renombrado): tipo Persona física/jurídica, alias opcional,
+  dirección completa obligatoria.
+
+Orden de maestras (corregido): Productores · Mercados · **Tomadores** · Binders.
 
 **Pendiente de Fase 1:** pantalla de **Binders** (ahora un placeholder). Luego, cuando estén
 listas, el cutover de cada maestra (volcado real + apagar Access), según "app primero, volcado
