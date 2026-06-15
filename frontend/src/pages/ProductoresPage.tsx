@@ -314,12 +314,7 @@ export default function ProductoresPage() {
             <label>
               Tipo <span className="required">*</span>
             </label>
-            <OptionButtons
-              value={form.tipo}
-              options={TIPOS}
-              onChange={(v) => setForm({ ...form, tipo: v })}
-              vertical
-            />
+            <OptionButtons value={form.tipo} options={TIPOS} onChange={(v) => setForm({ ...form, tipo: v })} />
           </div>
 
           <div className="field">
