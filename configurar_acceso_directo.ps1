@@ -18,18 +18,32 @@ if (-not (Test-Path $ico)) { Write-Host "No se encuentra $ico"; exit 1 }
 if (-not (Test-Path $vbs)) { Write-Host "No se encuentra $vbs"; exit 1 }
 
 $sh      = New-Object -ComObject WScript.Shell
-$desktop = [Environment]::GetFolderPath('Desktop')
-$lnk     = Join-Path $desktop 'Mayrit.lnk'
 
-$sc = $sh.CreateShortcut($lnk)
-$sc.TargetPath       = $wscript
-$sc.Arguments        = '"' + $vbs + '"'
-$sc.WorkingDirectory = $base
-$sc.IconLocation     = "$ico,0"
-$sc.WindowStyle      = 1
-$sc.Description       = 'Mayrit - gestion de Agencias de Suscripcion'
-$sc.Save()
+function New-MayritShortcut($ruta) {
+    $sc = $sh.CreateShortcut($ruta)
+    $sc.TargetPath       = $wscript
+    $sc.Arguments        = '"' + $vbs + '"'
+    $sc.WorkingDirectory = $base
+    $sc.IconLocation     = "$ico,0"
+    $sc.WindowStyle      = 1
+    $sc.Description       = 'Mayrit - gestion de Agencias de Suscripcion'
+    $sc.Save()
+}
+
+# 1) Escritorio
+$desktop = [Environment]::GetFolderPath('Desktop')
+$lnkDesktop = Join-Path $desktop 'Mayrit.lnk'
+New-MayritShortcut $lnkDesktop
+
+# 2) Menú Inicio (desde aquí Windows 11 SÍ deja anclar a la barra de tareas y buscar "Mayrit")
+$startMenu = Join-Path ([Environment]::GetFolderPath('ApplicationData')) 'Microsoft\Windows\Start Menu\Programs'
+$lnkStart = Join-Path $startMenu 'Mayrit.lnk'
+New-MayritShortcut $lnkStart
 
 & ie4uinit.exe -show 2>$null
-Write-Host "Acceso directo creado en el Escritorio: $lnk"
-Write-Host "Para anclarlo a la barra de tareas: clic derecho sobre el -> 'Anclar a la barra de tareas'."
+Write-Host "Acceso directo creado en:"
+Write-Host "  - Escritorio:   $lnkDesktop"
+Write-Host "  - Menu Inicio:  $lnkStart"
+Write-Host ""
+Write-Host "Para anclarlo a la barra de tareas (Windows 11):"
+Write-Host "  Abre Inicio, escribe 'Mayrit', clic derecho sobre el resultado -> 'Anclar a la barra de tareas'."
