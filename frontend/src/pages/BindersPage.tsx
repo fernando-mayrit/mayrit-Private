@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 import { crud } from "../api";
-import type { Binder, BinderWrite, Mercado, Productor } from "../types";
+import type { Binder, BinderWrite, Mercado, Productor, Ramo } from "../types";
 import FormPanel from "../components/FormPanel";
 import OptionButtons from "../components/OptionButtons";
 
 const api = crud<Binder, BinderWrite>("/binders");
 const apiProductores = crud<Productor, unknown>("/productores");
 const apiMercados = crud<Mercado, unknown>("/mercados");
+const apiRamos = crud<Ramo, { nombre: string }>("/ramos");
 
 const ESTADOS = ["Activo", "Vencido", "Cancelado"];
 const MONEDAS = ["EUR", "GBP", "USD"];
@@ -87,6 +88,7 @@ export default function BindersPage() {
   const [items, setItems] = useState<Binder[]>([]);
   const [agencias, setAgencias] = useState<Productor[]>([]);
   const [mercados, setMercados] = useState<Mercado[]>([]);
+  const [ramos, setRamos] = useState<string[]>([]);
   const [q, setQ] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -111,11 +113,30 @@ export default function BindersPage() {
 
   async function cargarRefs() {
     try {
-      const [prod, merc] = await Promise.all([apiProductores.list(), apiMercados.list()]);
+      const [prod, merc, ram] = await Promise.all([
+        apiProductores.list(),
+        apiMercados.list(),
+        apiRamos.list(),
+      ]);
       setAgencias((prod as Productor[]).filter((p) => p.tipo === "Agencia de Suscripción"));
       setMercados(merc as Mercado[]);
+      setRamos((ram as Ramo[]).map((r) => r.nombre));
     } catch {
       /* si fallan, los selectores quedan vacíos */
+    }
+  }
+
+  async function nuevoRamo(i: number) {
+    const nombre = window.prompt("Nuevo ramo:");
+    if (!nombre || !nombre.trim()) return;
+    const n = nombre.trim();
+    try {
+      await apiRamos.create({ nombre: n });
+      const ram = (await apiRamos.list()) as Ramo[];
+      setRamos(ram.map((r) => r.nombre));
+      setRamo(i, n);
+    } catch (e) {
+      setError((e as Error).message);
     }
   }
 
@@ -440,7 +461,18 @@ export default function BindersPage() {
                 <label>
                   Ramo <span className="required">*</span>
                 </label>
-                <input type="text" value={s.ramo} onChange={(e) => setRamo(i, e.target.value)} />
+                <select
+                  value={s.ramo}
+                  onChange={(e) => (e.target.value === "__nuevo__" ? nuevoRamo(i) : setRamo(i, e.target.value))}
+                >
+                  <option value="">— Elige ramo —</option>
+                  {[...new Set([...(s.ramo ? [s.ramo] : []), ...ramos])].map((r) => (
+                    <option key={r} value={r}>
+                      {r}
+                    </option>
+                  ))}
+                  <option value="__nuevo__">➕ Añadir ramo…</option>
+                </select>
               </div>
               <div className="field">
                 <label>Comisión (%)</label>

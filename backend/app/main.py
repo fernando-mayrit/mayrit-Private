@@ -24,5 +24,6 @@ def health():
 app.include_router(maestras.productores_router)
 app.include_router(maestras.mercados_router)
 app.include_router(maestras.tomadores_router)
+app.include_router(maestras.ramos_router)
 app.include_router(binders.router)
 app.include_router(codigos_postales.router)

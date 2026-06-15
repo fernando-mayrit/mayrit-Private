@@ -4,8 +4,17 @@ from .maestras import (
     BinderSeccion,
     Mercado,
     Productor,
+    Ramo,
     SeccionMercado,
     Tomador,
 )
 
-__all__ = ["Productor", "Mercado", "Tomador", "Binder", "BinderSeccion", "SeccionMercado"]
+__all__ = [
+    "Productor",
+    "Mercado",
+    "Tomador",
+    "Ramo",
+    "Binder",
+    "BinderSeccion",
+    "SeccionMercado",
+]

@@ -124,6 +124,24 @@ class TomadorRead(TomadorBase):
     updated_at: dt.datetime
 
 
+# ────────────────────────────────── Ramo ─────────────────────────────────
+class RamoBase(BaseModel):
+    nombre: str
+
+
+class RamoCreate(RamoBase):
+    pass
+
+
+class RamoUpdate(BaseModel):
+    nombre: str | None = None
+
+
+class RamoRead(RamoBase):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+
+
 # ───────────────────────────────── Binder ────────────────────────────────
 # Estructura: Binder → Secciones → (Mercado + participación)
 class SeccionMercadoIn(BaseModel):

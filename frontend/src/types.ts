@@ -42,6 +42,11 @@ export interface Productor {
   updated_at: string;
 }
 
+export interface Ramo {
+  id: number;
+  nombre: string;
+}
+
 // ── Binders (Negocio) ── estructura: Binder → Secciones → (Mercado + participación)
 export interface SeccionMercadoLinea {
   mercado_id: number;

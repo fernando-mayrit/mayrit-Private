@@ -93,6 +93,15 @@ class Tomador(Base):
     )
 
 
+class Ramo(Base):
+    """Catálogo de ramos (líneas de negocio). Gestionable: se pueden añadir nuevos."""
+
+    __tablename__ = "ramos"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    nombre: Mapped[str] = mapped_column(String(120), unique=True, index=True)
+
+
 class Binder(Base):
     """Binder (binding authority): conecta una agencia (coverholder) con uno o varios mercados."""
 
