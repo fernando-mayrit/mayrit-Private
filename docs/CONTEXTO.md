@@ -14,12 +14,23 @@ los BDX que cuelgan de ellos + liquidaciones de primas**. Accesorio: compliance,
 (a veces compartidas con la agencia). Lo habitual: % sobre las primas de los BDX.
 
 **Las 4 fuentes de negocio (menú lateral "Negocio"):**
-1. **Binders** — HECHO (alta/edición). Estructura de 3 niveles: Binder → **Secciones** (cada
-   una con un ramo) → **Mercados con participación %**. Coverholder = un Productor de tipo
-   "Agencia de Suscripción" (FK). Tablas: `binders`, `binder_secciones`, `seccion_mercados`.
+1. **Binders** — HECHO (alta/edición/borrado). Estructura de 3 niveles:
+   Binder → **Secciones** → **Mercados con participación %**.
+   - Cabecera: **Agreement Number** (obligatorio, mayúsculas) → **UMR** automático = `B1634`+Agreement
+     (solo lectura); **Coverholder** = Productor de tipo "Agencia de Suscripción" (FK); **Vigencia**
+     (efecto · YOA=año del efecto · vencimiento = efecto+1año−1día, editable); **Estado** (desplegable,
+     por defecto "En Vigor" y bloqueado en el alta; estados: En Vigor/Cancelado/Renovado/No
+     Renovado/Cerrado); **Moneda** = EUR automática (no se pregunta; columna en tablas).
+   - Cada **Sección**: **Ramo** (del catálogo) · **Risk Codes** (varios, de los del ramo) ·
+     **Comisión %** · **Límite de primas** · **Mercados** (varios, con participación %).
+   - Tablas: `binders`, `binder_secciones`, `seccion_mercados`, `seccion_risk_codes`. Router propio.
 2. **Pólizas** — el negocio de *Open Market* (OM). [pendiente]
 3. **Consultoría** — los *fees*. [pendiente]
 4. **Comisiones** — negocio del que se generan comisiones pero que no es binder ni póliza. [pendiente]
+
+**Catálogos (Configuración):** **Ramos** — pantalla de gestión (alta/edición/borrado). Cada ramo
+tiene varios **Risk Codes** (código único: un risk code pertenece a un solo ramo). Tablas `ramos`
+(11 sembrados) y `risk_codes`. Se usan en las secciones de binder (y luego en pólizas).
 
 ## Stack
 - Backend: **FastAPI + PostgreSQL** (Azure, mismo servidor que Alea, base `mayrit` aparte).
