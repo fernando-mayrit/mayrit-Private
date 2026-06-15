@@ -6,7 +6,15 @@ import TomadoresPage from "./pages/TomadoresPage";
 import BindersPage from "./pages/BindersPage";
 import RamosPage from "./pages/RamosPage";
 import EnConstruccion from "./components/EnConstruccion";
-import Icono from "./components/Icono";
+
+// Iconos estilo Alea: emoji por opción.
+const EMOJI: Record<string, string> = {
+  binders: "📑",
+  polizas: "📄",
+  consultoria: "💼",
+  comisiones: "💶",
+  ramos: "🏷️",
+};
 
 type Page =
   | "productores"
@@ -69,7 +77,7 @@ export default function App() {
                   className={"nav-item" + (page === it.id ? " active" : "")}
                   onClick={() => setPage(it.id)}
                 >
-                  <Icono name={it.id} />
+                  <span className="nav-emoji">{EMOJI[it.id]}</span>
                   {it.label}
                 </button>
               ))}
@@ -84,7 +92,7 @@ export default function App() {
                   className={"nav-item" + (page === it.id ? " active" : "")}
                   onClick={() => setPage(it.id)}
                 >
-                  <Icono name={it.id} />
+                  <span className="nav-emoji">{EMOJI[it.id]}</span>
                   {it.label}
                 </button>
               ))}

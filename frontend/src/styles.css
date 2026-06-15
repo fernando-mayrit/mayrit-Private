@@ -69,7 +69,7 @@ h1, h2, h3 { font-family: var(--fuente-titulo); font-weight: 600; color: var(--g
   background: none; border: none; cursor: pointer; padding: 9px 12px; border-radius: 8px;
   font-size: 16px; color: var(--gris); font-family: var(--fuente-titulo);
 }
-.nav-item svg { flex-shrink: 0; }
+.nav-emoji { width: 20px; text-align: center; font-size: 16px; line-height: 1; flex-shrink: 0; }
 .nav-item:hover { background: var(--gris-claro); }
 .nav-item.active { background: #f8e2d8; color: var(--naranja-osc); font-weight: 600; }
 .content { flex: 1; min-width: 0; }
