@@ -171,3 +171,8 @@ input[type="date"] { text-align: center; }
 .linea-mercado select { flex: 1; padding: 7px 9px; border: 1px solid var(--borde); border-radius: 8px; font-size: 14px; font-family: inherit; background: #fff; }
 .linea-mercado .part { width: 70px; padding: 7px 9px; border: 1px solid var(--borde); border-radius: 8px; font-size: 14px; font-family: inherit; }
 .btn-sm { padding: 5px 10px; font-size: 13px; }
+
+/* Risk codes de una sección (casillas) */
+.rc-checks { display: flex; flex-direction: column; gap: 6px; }
+.rc-check { display: flex; align-items: center; gap: 8px; font-size: 14px; cursor: pointer; }
+.hint { font-size: 13px; color: var(--gris-medio); }

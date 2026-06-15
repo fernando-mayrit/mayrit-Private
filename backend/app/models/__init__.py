@@ -7,6 +7,7 @@ from .maestras import (
     Ramo,
     RiskCode,
     SeccionMercado,
+    SeccionRiskCode,
     Tomador,
 )
 
@@ -19,4 +20,5 @@ __all__ = [
     "Binder",
     "BinderSeccion",
     "SeccionMercado",
+    "SeccionRiskCode",
 ]

@@ -159,13 +159,15 @@ class BinderSeccion(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     binder_id: Mapped[int] = mapped_column(ForeignKey("binders.id", ondelete="CASCADE"), index=True)
     ramo: Mapped[str | None] = mapped_column(String(120))
-    risk_code: Mapped[str | None] = mapped_column(String(20))            # risk code (del ramo elegido)
     comision: Mapped[Decimal | None] = mapped_column(Numeric(7, 4))      # % comisión de la sección
     limite_primas: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
 
     binder: Mapped["Binder"] = relationship(back_populates="secciones")
     mercados: Mapped[list["SeccionMercado"]] = relationship(
         back_populates="seccion", cascade="all, delete-orphan", order_by="SeccionMercado.id"
+    )
+    risk_codes: Mapped[list["SeccionRiskCode"]] = relationship(
+        back_populates="seccion", cascade="all, delete-orphan", order_by="SeccionRiskCode.id"
     )
 
 
@@ -181,3 +183,15 @@ class SeccionMercado(Base):
 
     seccion: Mapped["BinderSeccion"] = relationship(back_populates="mercados")
     mercado: Mapped["Mercado"] = relationship()
+
+
+class SeccionRiskCode(Base):
+    """Risk code elegido en una sección (de los del ramo de esa sección). Una sección, varios."""
+
+    __tablename__ = "seccion_risk_codes"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    seccion_id: Mapped[int] = mapped_column(ForeignKey("binder_secciones.id", ondelete="CASCADE"), index=True)
+    codigo: Mapped[str] = mapped_column(String(20))
+
+    seccion: Mapped["BinderSeccion"] = relationship(back_populates="risk_codes")

@@ -14,7 +14,7 @@ const PREFIJO_UMR = "B1634";
 type LineaForm = { mercado_id: string; participacion: string };
 type SeccionForm = {
   ramo: string;
-  risk_code: string;
+  risk_codes: string[];
   comision: string;
   limite_primas: string;
   mercados: LineaForm[];
@@ -35,7 +35,7 @@ type FormState = {
 
 const SECCION_VACIA: SeccionForm = {
   ramo: "",
-  risk_code: "",
+  risk_codes: [],
   comision: "",
   limite_primas: "",
   mercados: [{ mercado_id: "", participacion: "" }],
@@ -178,7 +178,7 @@ export default function BindersPage() {
         b.secciones.length > 0
           ? b.secciones.map((s) => ({
               ramo: s.ramo ?? "",
-              risk_code: s.risk_code ?? "",
+              risk_codes: s.risk_codes ?? [],
               comision: s.comision != null ? String(s.comision) : "",
               limite_primas: s.limite_primas != null ? String(s.limite_primas) : "",
               mercados:
@@ -204,11 +204,21 @@ export default function BindersPage() {
     if (form) setSecciones(form.secciones.filter((_, idx) => idx !== i));
   }
   function setRamo(i: number, ramo: string) {
-    // al cambiar de ramo se resetea el risk code (depende del ramo)
-    if (form) setSecciones(form.secciones.map((s, idx) => (idx === i ? { ...s, ramo, risk_code: "" } : s)));
+    // al cambiar de ramo se resetean los risk codes (dependen del ramo)
+    if (form) setSecciones(form.secciones.map((s, idx) => (idx === i ? { ...s, ramo, risk_codes: [] } : s)));
   }
-  function setSeccionCampo(i: number, campo: "comision" | "limite_primas" | "risk_code", valor: string) {
+  function setSeccionCampo(i: number, campo: "comision" | "limite_primas", valor: string) {
     if (form) setSecciones(form.secciones.map((s, idx) => (idx === i ? { ...s, [campo]: valor } : s)));
+  }
+  function toggleRiskCode(i: number, codigo: string) {
+    if (!form) return;
+    setSecciones(
+      form.secciones.map((s, idx) => {
+        if (idx !== i) return s;
+        const has = s.risk_codes.includes(codigo);
+        return { ...s, risk_codes: has ? s.risk_codes.filter((c) => c !== codigo) : [...s.risk_codes, codigo] };
+      })
+    );
   }
   function addMercado(i: number) {
     if (form)
@@ -247,7 +257,8 @@ export default function BindersPage() {
       const s = form.secciones[i];
       if (!s.ramo.trim()) return setError(`La sección ${i + 1} necesita un ramo.`);
       const codes = ramos.find((r) => r.nombre === s.ramo)?.risk_codes ?? [];
-      if (codes.length && !s.risk_code) return setError(`La sección ${i + 1} necesita un risk code.`);
+      if (codes.length && s.risk_codes.length === 0)
+        return setError(`La sección ${i + 1} necesita al menos un risk code.`);
       if (s.mercados.filter((m) => m.mercado_id).length === 0)
         return setError(`La sección ${i + 1} necesita al menos un mercado.`);
     }
@@ -266,7 +277,7 @@ export default function BindersPage() {
       notas: form.notas.trim() || null,
       secciones: form.secciones.map((s) => ({
         ramo: s.ramo.trim() || null,
-        risk_code: s.risk_code || null,
+        risk_codes: s.risk_codes,
         comision: num(s.comision),
         limite_primas: num(s.limite_primas),
         mercados: s.mercados
@@ -495,33 +506,25 @@ export default function BindersPage() {
                 const codes = ramos.find((r) => r.nombre === s.ramo)?.risk_codes ?? [];
                 return (
                   <div className="field">
-                    <label>Risk Code</label>
-                    <select
-                      value={s.risk_code}
-                      disabled={!s.ramo}
-                      onChange={(e) => setSeccionCampo(i, "risk_code", e.target.value)}
-                    >
-                      <option value="">
-                        {!s.ramo
-                          ? "— Elige antes el ramo —"
-                          : codes.length
-                          ? "— Elige risk code —"
-                          : "(ese ramo no tiene risk codes)"}
-                      </option>
-                      {[
-                        ...new Set([
-                          ...(s.risk_code ? [s.risk_code] : []),
-                          ...codes.map((c) => c.codigo),
-                        ]),
-                      ].map((c) => {
-                        const desc = codes.find((x) => x.codigo === c)?.descripcion;
-                        return (
-                          <option key={c} value={c}>
-                            {desc ? `${c} — ${desc}` : c}
-                          </option>
-                        );
-                      })}
-                    </select>
+                    <label>Risk Codes</label>
+                    {!s.ramo ? (
+                      <span className="hint">Elige antes el ramo</span>
+                    ) : codes.length === 0 ? (
+                      <span className="hint">(ese ramo no tiene risk codes)</span>
+                    ) : (
+                      <div className="rc-checks">
+                        {codes.map((c) => (
+                          <label key={c.codigo} className="rc-check">
+                            <input
+                              type="checkbox"
+                              checked={s.risk_codes.includes(c.codigo)}
+                              onChange={() => toggleRiskCode(i, c.codigo)}
+                            />
+                            {c.descripcion ? `${c.codigo} — ${c.descripcion}` : c.codigo}
+                          </label>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 );
               })()}
