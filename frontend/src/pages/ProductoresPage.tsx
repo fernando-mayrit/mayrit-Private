@@ -12,7 +12,6 @@ type FormState = {
   id?: number;
   nombre: string;
   codigo: string;
-  numero: string;
   tipo: string;
   es_coverholder: boolean | null;
   cif: string;
@@ -21,15 +20,12 @@ type FormState = {
   localidad: string;
   provincia: string;
   pais: string;
-  contacto: string;
-  telefono: string;
   notas: string;
 };
 
 const VACIO: FormState = {
   nombre: "",
   codigo: "",
-  numero: "",
   tipo: "",
   es_coverholder: null,
   cif: "",
@@ -38,8 +34,6 @@ const VACIO: FormState = {
   localidad: "",
   provincia: "",
   pais: "",
-  contacto: "",
-  telefono: "",
   notas: "",
 };
 
@@ -92,7 +86,6 @@ export default function ProductoresPage() {
       id: p.id,
       nombre: p.nombre,
       codigo: p.codigo ?? "",
-      numero: p.numero != null ? String(p.numero) : "",
       tipo: p.tipo ?? "",
       es_coverholder: p.es_coverholder,
       cif: p.cif ?? "",
@@ -101,8 +94,6 @@ export default function ProductoresPage() {
       localidad: p.localidad ?? "",
       provincia: p.provincia ?? "",
       pais: p.pais ?? "",
-      contacto: p.contacto ?? "",
-      telefono: p.telefono ?? "",
       notas: p.notas ?? "",
     });
   }
@@ -136,7 +127,6 @@ export default function ProductoresPage() {
     const payload: ProductorWrite = {
       nombre: form.nombre.trim(),
       codigo: form.codigo.trim(),
-      numero: form.numero.trim() ? Number(form.numero) : null,
       tipo: form.tipo,
       es_coverholder: form.es_coverholder,
       cif: form.cif.trim(),
@@ -145,8 +135,6 @@ export default function ProductoresPage() {
       localidad: form.localidad.trim(),
       provincia: form.provincia.trim(),
       pais: form.pais.trim(),
-      contacto: form.contacto.trim() || null,
-      telefono: form.telefono.trim() || null,
       notas: form.notas.trim() || null,
     };
     try {
@@ -286,9 +274,6 @@ export default function ProductoresPage() {
           {campo("Localidad", "localidad", true)}
           {campo("Provincia", "provincia", true)}
           {campo("País", "pais", true)}
-          {campo("Contacto", "contacto")}
-          {campo("Teléfono", "telefono")}
-          {campo("Número", "numero")}
 
           <div className="field">
             <label>Notas</label>

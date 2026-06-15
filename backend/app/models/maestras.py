@@ -29,7 +29,6 @@ class Productor(Base):
     sp_old_id: Mapped[int | None] = mapped_column(Integer, index=True)
 
     codigo: Mapped[str | None] = mapped_column(String(50), index=True)   # IdCorredor
-    numero: Mapped[int | None] = mapped_column(Integer)                  # NumeroCorredor
     nombre: Mapped[str] = mapped_column(String(255), index=True)         # NombreCorredor
     tipo: Mapped[str | None] = mapped_column(String(40))                 # Corredor / Agencia de Suscripción
     es_coverholder: Mapped[bool] = mapped_column(Boolean, default=False)  # Coverholder (agencia)
@@ -40,8 +39,6 @@ class Productor(Base):
     localidad: Mapped[str | None] = mapped_column(String(120))
     provincia: Mapped[str | None] = mapped_column(String(120))
     pais: Mapped[str | None] = mapped_column(String(120))
-    contacto: Mapped[str | None] = mapped_column(String(255))
-    telefono: Mapped[str | None] = mapped_column(String(60))
     notas: Mapped[str | None] = mapped_column(Text)
 
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

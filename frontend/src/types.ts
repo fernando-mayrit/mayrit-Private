@@ -28,7 +28,6 @@ export interface Productor {
   id: number;
   nombre: string;
   codigo: string | null;
-  numero: number | null;
   tipo: string | null;
   es_coverholder: boolean;
   cif: string | null;
@@ -37,8 +36,6 @@ export interface Productor {
   localidad: string | null;
   provincia: string | null;
   pais: string | null;
-  contacto: string | null;
-  telefono: string | null;
   notas: string | null;
   sp_old_id: number | null;
   created_at: string;
@@ -49,7 +46,6 @@ export interface Productor {
 export interface ProductorWrite {
   nombre: string;
   codigo?: string | null;
-  numero?: number | null;
   tipo?: string | null;
   es_coverholder?: boolean;
   cif?: string | null;
@@ -58,7 +54,5 @@ export interface ProductorWrite {
   localidad?: string | null;
   provincia?: string | null;
   pais?: string | null;
-  contacto?: string | null;
-  telefono?: string | null;
   notas?: string | null;
 }

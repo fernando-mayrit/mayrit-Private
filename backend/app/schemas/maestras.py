@@ -17,7 +17,6 @@ from pydantic import BaseModel, ConfigDict
 class ProductorBase(BaseModel):
     nombre: str
     codigo: str | None = None
-    numero: int | None = None
     tipo: str | None = None
     es_coverholder: bool = False
     cif: str | None = None
@@ -26,8 +25,6 @@ class ProductorBase(BaseModel):
     localidad: str | None = None
     provincia: str | None = None
     pais: str | None = None
-    contacto: str | None = None
-    telefono: str | None = None
     notas: str | None = None
     sp_old_id: int | None = None
 
@@ -39,7 +36,6 @@ class ProductorCreate(ProductorBase):
 class ProductorUpdate(BaseModel):
     nombre: str | None = None
     codigo: str | None = None
-    numero: int | None = None
     tipo: str | None = None
     es_coverholder: bool | None = None
     cif: str | None = None
@@ -48,8 +44,6 @@ class ProductorUpdate(BaseModel):
     localidad: str | None = None
     provincia: str | None = None
     pais: str | None = None
-    contacto: str | None = None
-    telefono: str | None = None
     notas: str | None = None
 
 
