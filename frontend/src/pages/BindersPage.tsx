@@ -9,7 +9,7 @@ const apiProductores = crud<Productor, unknown>("/productores");
 const apiMercados = crud<Mercado, unknown>("/mercados");
 const apiRamos = crud<Ramo, { nombre: string }>("/ramos");
 
-const ESTADOS = ["Activo", "Vencido", "Cancelado"];
+const ESTADOS = ["En Vigor", "Cancelado", "Renovado", "No Renovado", "Cerrado"];
 const MONEDAS = ["EUR", "GBP", "USD"];
 const PREFIJO_UMR = "B1634";
 
@@ -43,7 +43,7 @@ const VACIO: FormState = {
   fecha_efecto: "",
   fecha_vencimiento: "",
   yoa: "",
-  estado: "Activo",
+  estado: "En Vigor",
   moneda: "EUR",
   notas: "",
   secciones: [JSON.parse(JSON.stringify(SECCION_VACIA))],
