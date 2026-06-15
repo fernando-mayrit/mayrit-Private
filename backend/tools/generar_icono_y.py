@@ -16,9 +16,12 @@ NARANJA = (218, 88, 51, 255)  # #da5833
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 FONT = os.path.join(ROOT, "frontend", "src", "assets", "fonts", "AllerDisplay.ttf")
+PUBLIC = os.path.join(ROOT, "frontend", "public")
 ICO_ROOT = os.path.join(ROOT, "mayrit-Y.ico")
-FAVICON = os.path.join(ROOT, "frontend", "public", "favicon.ico")
+FAVICON = os.path.join(PUBLIC, "favicon.ico")
 PREVIEW = os.path.join(ROOT, "backend", "tools", "_preview_icono.png")
+PNG_192 = os.path.join(PUBLIC, "icon-192.png")
+PNG_512 = os.path.join(PUBLIC, "icon-512.png")
 
 SIZES = [(16, 16), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)]
 
@@ -37,15 +40,16 @@ def render(canvas: int = 256) -> Image.Image:
 
 
 def main():
-    base = render(256)
-    os.makedirs(os.path.dirname(FAVICON), exist_ok=True)
+    base = render(512)
+    os.makedirs(PUBLIC, exist_ok=True)
     base.save(ICO_ROOT, format="ICO", sizes=SIZES)
     base.save(FAVICON, format="ICO", sizes=SIZES)
-    base.save(PREVIEW, format="PNG")
+    base.resize((512, 512)).save(PNG_512, format="PNG")
+    base.resize((192, 192)).save(PNG_192, format="PNG")
+    base.resize((256, 256)).save(PREVIEW, format="PNG")
     print("Generado:")
-    print("  -", ICO_ROOT)
-    print("  -", FAVICON)
-    print("  -", PREVIEW, "(vista previa)")
+    for p in (ICO_ROOT, FAVICON, PNG_192, PNG_512, PREVIEW):
+        print("  -", p)
 
 
 if __name__ == "__main__":
