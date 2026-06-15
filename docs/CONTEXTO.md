@@ -105,8 +105,16 @@ de cada maestra (volcado real + apagar Access), según "app primero, volcado al 
   Aller normales). Fuentes en `frontend/src/assets/fonts/`.
 - Implementado en `frontend/src/styles.css` y `App.tsx`.
 
-## Cómo arrancar la app (desarrollo)
-Dos terminales (requiere venv del backend y `npm install` en el frontend hechos):
+## Cómo arrancar la app
+**Uso normal (un clic):** acceso directo **"Mayrit"** en el Escritorio (icono Y naranja). Arranca
+backend+frontend ocultos y abre la app en Edge modo app. En cada equipo nuevo, crearlo una vez con
+`powershell -ExecutionPolicy Bypass -File configurar_acceso_directo.ps1`. Para anclarlo a la barra
+de tareas: clic derecho → "Anclar a la barra de tareas".
+- Lanzador silencioso: `arrancar_mayrit.vbs` · visible (diagnóstico): `arrancar_mayrit_visible.bat`.
+- Icono de marca: `mayrit-Y.ico` (regenerable con `backend/tools/generar_icono_y.py`); favicon en
+  `frontend/public/favicon.ico`.
+
+**Desarrollo (dos terminales):** requiere venv del backend y `npm install` en el frontend hechos:
 - Backend:  `cd backend` · `.venv\Scripts\uvicorn app.main:app --reload`  → http://localhost:8000
 - Frontend: `cd frontend` · `npm run dev`  → http://localhost:5173
 

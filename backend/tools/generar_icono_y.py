@@ -1,0 +1,52 @@
+"""
+Genera el icono de marca de Mayrit: la 'Y' naranja sobre fondo transparente,
+usando la tipografía corporativa Aller Display. Produce:
+  - mayrit-Y.ico            (raíz del repo, para el acceso directo)
+  - frontend/public/favicon.ico  (pestaña del navegador)
+  - backend/tools/_preview_icono.png (vista previa para revisar)
+
+Uso:  python backend/tools/generar_icono_y.py
+Requiere: Pillow  (pip install pillow)
+"""
+import os
+
+from PIL import Image, ImageDraw, ImageFont
+
+NARANJA = (218, 88, 51, 255)  # #da5833
+
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+FONT = os.path.join(ROOT, "frontend", "src", "assets", "fonts", "AllerDisplay.ttf")
+ICO_ROOT = os.path.join(ROOT, "mayrit-Y.ico")
+FAVICON = os.path.join(ROOT, "frontend", "public", "favicon.ico")
+PREVIEW = os.path.join(ROOT, "backend", "tools", "_preview_icono.png")
+
+SIZES = [(16, 16), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)]
+
+
+def render(canvas: int = 256) -> Image.Image:
+    img = Image.new("RGBA", (canvas, canvas), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    # Tamaño de fuente grande; se ajusta para que la Y ocupe ~78% del lienzo.
+    font = ImageFont.truetype(FONT, int(canvas * 0.95))
+    bbox = draw.textbbox((0, 0), "Y", font=font)
+    w, h = bbox[2] - bbox[0], bbox[3] - bbox[1]
+    x = (canvas - w) / 2 - bbox[0]
+    y = (canvas - h) / 2 - bbox[1]
+    draw.text((x, y), "Y", font=font, fill=NARANJA)
+    return img
+
+
+def main():
+    base = render(256)
+    os.makedirs(os.path.dirname(FAVICON), exist_ok=True)
+    base.save(ICO_ROOT, format="ICO", sizes=SIZES)
+    base.save(FAVICON, format="ICO", sizes=SIZES)
+    base.save(PREVIEW, format="PNG")
+    print("Generado:")
+    print("  -", ICO_ROOT)
+    print("  -", FAVICON)
+    print("  -", PREVIEW, "(vista previa)")
+
+
+if __name__ == "__main__":
+    main()
