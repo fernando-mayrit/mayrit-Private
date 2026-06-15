@@ -70,7 +70,18 @@ Credenciales locales en `~/.mayrit/.env` (fuera de Git).
   `bdx_lineas`; ~36 listas `Mayrit - Claims…` (siniestros por binder) → `siniestros`.
 - **Accesorio (fuera del núcleo)**: ~20 listas `Contabilidad - *` (movimientos bancarios).
 
+## Fase 1 — Maestras: MODELADA (2026-06-15)
+Base de datos `mayrit` creada en el servidor Azure (PostgreSQL 16, usuario `mayrit_app`,
+credenciales en `~/.mayrit/.env`). Backend con SQLAlchemy + Alembic:
+- `backend/app/db.py` — engine, sesión y `Base`.
+- `backend/app/models/maestras.py` — `Productor` (de `TCorredores`), `Mercado` (de
+  `TMercados`), `Binder` (de `TBinders`). Cada fila lleva `sp_old_id` para casar con
+  Access/SharePoint durante la convivencia.
+- `backend/alembic/` — migraciones; la inicial ya está **aplicada** (tablas creadas).
+Comandos: `alembic revision --autogenerate -m "..."` y `alembic upgrade head` (desde `backend/`).
+
 ## Pendiente inmediato
-Modelar **Fase 1 — Maestras** en PostgreSQL sobre los campos reales de `esquema_sharepoint.txt`:
-`productores` (de `TCorredores`, con `tipo` y `es_cliente`/`Coverholder`), `mercados`
-(de `TMercados`), `binders` (de `TBinders`). Antes: montar conexión a Postgres + Alembic.
+**Cargar datos** de las maestras leyendo de SharePoint (puente de solo lectura) hacia las
+tablas nuevas, o exponer CRUD/endpoints. Decisión abierta: hay `TLiquidaciones` y
+`TLiquidaciones1` (cuál es la buena) — relevante en la Fase 3, no ahora.
+Orden de migración: Maestras → BDX → Liquidaciones+LPAN → Siniestros+UCR → Recibos.
