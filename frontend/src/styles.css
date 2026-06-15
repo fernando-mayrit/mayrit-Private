@@ -25,31 +25,30 @@ body { margin: 0; background: var(--fondo); }
 h1, h2, h3 { font-family: var(--fuente-titulo); font-weight: 600; color: var(--gris); }
 
 /* Cabecera: fondo blanco con el logo y una línea naranja de acento */
-.app-header {
-  background: #fff;
-  border-bottom: 1px solid var(--borde);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
-  padding: 16px 28px;
-  display: flex;
-  align-items: center;
-  gap: 20px;
+/* Disposición con barra lateral (Maestras / Negocio) */
+.layout { display: flex; min-height: 100vh; align-items: stretch; }
+.sidebar {
+  width: 232px; flex-shrink: 0; background: #fff;
+  border-right: 1px solid var(--borde); display: flex; flex-direction: column;
 }
-.app-header::after { content: none; }
-.app-header img.logo { height: 50px; display: block; }
-.app-header .sep { width: 1px; height: 38px; background: var(--borde); }
-.app-header .subtitulo { color: var(--gris-medio); font-size: 22px; font-family: var(--fuente-titulo); }
-
-/* Pestañas de navegación entre maestras */
-.tabs { display: flex; gap: 6px; }
-.tab {
-  background: none; border: none; cursor: pointer;
-  font-size: 18px; color: var(--gris-medio);
-  padding: 8px 16px; border-radius: 8px; font-family: var(--fuente-titulo);
-}
-.tab:hover { background: var(--gris-claro); color: var(--gris); }
-.tab.active { color: var(--naranja-osc); background: #f8e2d8; font-weight: 600; }
-/* Línea de acento: degradado del naranja de marca al gris del fondo (se funde a la derecha). */
+.sidebar-logo { padding: 18px 20px 12px; }
+.sidebar-logo img { height: 44px; display: block; }
+/* Línea de acento: degradado del naranja de marca al gris del fondo. */
 .acento-naranja { height: 3px; background: linear-gradient(to right, #da5833, var(--fondo)); }
+.sidebar-nav { padding: 14px 10px; }
+.nav-group { margin-bottom: 16px; }
+.nav-group-title {
+  font-size: 12px; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--gris-medio); padding: 6px 12px; font-weight: 600;
+}
+.nav-item {
+  display: block; width: 100%; text-align: left; background: none; border: none;
+  cursor: pointer; padding: 9px 12px; border-radius: 8px; font-size: 16px;
+  color: var(--gris); font-family: var(--fuente-titulo);
+}
+.nav-item:hover { background: var(--gris-claro); }
+.nav-item.active { background: #f8e2d8; color: var(--naranja-osc); font-weight: 600; }
+.content { flex: 1; min-width: 0; }
 
 .container { max-width: 1100px; margin: 0 auto; padding: 24px; }
 
