@@ -13,6 +13,12 @@ los BDX que cuelgan de ellos + liquidaciones de primas**. Accesorio: compliance,
 **Facturación (4 modelos):** comisión de binder · comisión de póliza · fees · otras comisiones
 (a veces compartidas con la agencia). Lo habitual: % sobre las primas de los BDX.
 
+**Las 4 fuentes de negocio (menú lateral "Negocio"):**
+1. **Binders**.
+2. **Pólizas** — el negocio de *Open Market* (OM).
+3. **Consultoría** — los *fees*.
+4. **Comisiones** — negocio del que se generan comisiones pero que no es binder ni póliza.
+
 ## Stack
 - Backend: **FastAPI + PostgreSQL** (Azure, mismo servidor que Alea, base `mayrit` aparte).
 - Frontend: **React + TypeScript** (Vite).

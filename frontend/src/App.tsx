@@ -3,9 +3,16 @@ import logo from "./assets/mayrit-logo.png";
 import MercadosPage from "./pages/MercadosPage";
 import ProductoresPage from "./pages/ProductoresPage";
 import TomadoresPage from "./pages/TomadoresPage";
-import BindersPage from "./pages/BindersPage";
+import EnConstruccion from "./components/EnConstruccion";
 
-type Page = "productores" | "mercados" | "tomadores" | "binders";
+type Page =
+  | "productores"
+  | "mercados"
+  | "tomadores"
+  | "binders"
+  | "polizas"
+  | "consultoria"
+  | "comisiones";
 
 // Barra superior: las Maestras (las partes).
 const MAESTRAS: { id: Page; label: string }[] = [
@@ -14,8 +21,13 @@ const MAESTRAS: { id: Page; label: string }[] = [
   { id: "tomadores", label: "Tomadores" },
 ];
 
-// Menú lateral: el Negocio (núcleo; de aquí colgarán BDX, Liquidaciones, etc.).
-const NEGOCIO: { id: Page; label: string }[] = [{ id: "binders", label: "Binders" }];
+// Menú lateral: el Negocio (las 4 fuentes principales).
+const NEGOCIO: { id: Page; label: string }[] = [
+  { id: "binders", label: "Binders" },
+  { id: "polizas", label: "Pólizas (OM)" },
+  { id: "consultoria", label: "Consultoría" },
+  { id: "comisiones", label: "Comisiones" },
+];
 
 export default function App() {
   const [page, setPage] = useState<Page>("productores");
@@ -61,7 +73,10 @@ export default function App() {
           {page === "productores" && <ProductoresPage />}
           {page === "mercados" && <MercadosPage />}
           {page === "tomadores" && <TomadoresPage />}
-          {page === "binders" && <BindersPage />}
+          {page === "binders" && <EnConstruccion titulo="Binders" />}
+          {page === "polizas" && <EnConstruccion titulo="Pólizas (Open Market)" />}
+          {page === "consultoria" && <EnConstruccion titulo="Consultoría (Fees)" />}
+          {page === "comisiones" && <EnConstruccion titulo="Comisiones" />}
         </main>
       </div>
     </div>
