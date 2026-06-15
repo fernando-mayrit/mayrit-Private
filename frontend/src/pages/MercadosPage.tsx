@@ -15,7 +15,6 @@ const VACIO: FormState = {
   codigo: "",
   tipo_mercado: "",
   mercado: "",
-  risk: "",
   toba: false,
   fecha: "",
   notas: "",
@@ -73,7 +72,6 @@ export default function MercadosPage() {
       codigo: m.codigo ?? "",
       tipo_mercado: m.tipo_mercado ?? "",
       mercado: m.mercado ?? "",
-      risk: m.risk ?? "",
       toba: m.toba,
       fecha: m.fecha ?? "",
       notas: m.notas ?? "",
@@ -93,9 +91,8 @@ export default function MercadosPage() {
       codigo: form.codigo?.trim() || null,
       tipo_mercado: form.tipo_mercado?.trim() || null,
       mercado: form.mercado?.trim() || null,
-      risk: form.risk?.trim() || null,
       toba: !!form.toba,
-      fecha: form.fecha || null,
+      fecha: form.toba ? form.fecha || null : null,
       notas: form.notas?.trim() || null,
     };
     try {
@@ -151,7 +148,6 @@ export default function MercadosPage() {
               <th>Nombre</th>
               <th>Código</th>
               <th>Tipo</th>
-              <th>Risk</th>
               <th>TOBA</th>
               <th></th>
             </tr>
@@ -162,7 +158,6 @@ export default function MercadosPage() {
                 <td>{m.nombre}</td>
                 <td>{m.codigo ?? "—"}</td>
                 <td>{m.tipo_mercado ?? "—"}</td>
-                <td>{m.risk ?? "—"}</td>
                 <td>{m.toba ? <span className="badge si">Sí</span> : <span className="badge">No</span>}</td>
                 <td className="acciones">
                   <button className="btn-link" onClick={() => abrirEdicion(m)}>
@@ -207,6 +202,7 @@ export default function MercadosPage() {
               value={form.tipo_mercado ?? ""}
               options={TIPOS_MERCADO}
               onChange={(v) => setForm({ ...form, tipo_mercado: v })}
+              vertical
             />
           </div>
           <div className="field">
@@ -214,21 +210,29 @@ export default function MercadosPage() {
             <input type="text" value={form.mercado ?? ""} onChange={(e) => setForm({ ...form, mercado: e.target.value })} />
           </div>
           <div className="field">
-            <label>Risk</label>
-            <input type="text" value={form.risk ?? ""} onChange={(e) => setForm({ ...form, risk: e.target.value })} />
-          </div>
-          <div className="field check">
-            <input
-              type="checkbox"
-              id="toba"
-              checked={!!form.toba}
-              onChange={(e) => setForm({ ...form, toba: e.target.checked })}
-            />
-            <label htmlFor="toba">TOBA</label>
-          </div>
-          <div className="field">
-            <label>Fecha</label>
-            <input type="date" value={form.fecha ?? ""} onChange={(e) => setForm({ ...form, fecha: e.target.value })} />
+            <div className="toba-row">
+              <label className="check-inline">
+                <input
+                  type="checkbox"
+                  checked={!!form.toba}
+                  onChange={(e) =>
+                    setForm({ ...form, toba: e.target.checked, fecha: e.target.checked ? form.fecha : "" })
+                  }
+                />
+                TOBA
+              </label>
+              {form.toba && (
+                <div className="fecha-inline">
+                  <label htmlFor="toba-fecha">Fecha</label>
+                  <input
+                    id="toba-fecha"
+                    type="date"
+                    value={form.fecha ?? ""}
+                    onChange={(e) => setForm({ ...form, fecha: e.target.value })}
+                  />
+                </div>
+              )}
+            </div>
           </div>
           <div className="field">
             <label>Notas</label>

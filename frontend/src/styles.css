@@ -95,11 +95,20 @@ td.acciones { text-align: right; white-space: nowrap; }
 
 /* Selector de opción en forma de botones (componente OptionButtons) */
 .optbtns { display: flex; flex-wrap: wrap; gap: 8px; }
+.optbtns.vertical { flex-direction: column; gap: 6px; }
+.optbtns.vertical .optbtn { width: 100%; text-align: left; }
 .optbtn {
-  padding: 7px 12px; border: 1px solid var(--borde); border-radius: 8px;
+  padding: 8px 12px; border: 1px solid var(--borde); border-radius: 8px;
   background: #fff; color: var(--gris); font-size: 14px; cursor: pointer;
 }
 .optbtn:hover:not(.sel) { background: var(--gris-claro); }
-.optbtn.sel { background: var(--naranja); color: #fff; border-color: var(--naranja); }
+/* Seleccionado: tono tenue que se distingue sin estridencia */
+.optbtn.sel { background: #f8e2d8; color: var(--naranja-osc); border-color: var(--naranja); font-weight: 600; }
+
+/* Fila TOBA + Fecha (la fecha aparece solo si TOBA está activo) */
+.toba-row { display: flex; align-items: center; gap: 20px; }
+.toba-row .check-inline { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.toba-row .fecha-inline { display: flex; align-items: center; gap: 8px; }
+.toba-row .fecha-inline label { font-size: 13px; color: var(--gris); }
 .panel-actions { display: flex; gap: 10px; margin-top: 20px; }
 .required { color: var(--naranja); }

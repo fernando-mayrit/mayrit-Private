@@ -6,11 +6,12 @@ type Props = {
   value: string | null | undefined;
   options: string[];
   onChange: (v: string) => void;
+  vertical?: boolean;
 };
 
-export default function OptionButtons({ value, options, onChange }: Props) {
+export default function OptionButtons({ value, options, onChange, vertical = false }: Props) {
   return (
-    <div className="optbtns" role="radiogroup">
+    <div className={"optbtns" + (vertical ? " vertical" : "")} role="radiogroup">
       {options.map((o) => (
         <button
           type="button"
