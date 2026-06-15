@@ -53,7 +53,24 @@ El dominio (binders/BDX/UMR/UCR/liquidaciones) solapa mucho con la app de Alea, 
 **agregador/intermediario**. Reutilizable: arquitectura, utillaje de SharePoint (`sharepoint.py`),
 generación de Word, patrón Postgres-en-Azure.
 
+## Inspección de SharePoint — HECHA (2026-06-15)
+Esquema real volcado en `docs/esquema_sharepoint.txt` (138 listas, solo esquema, sin datos).
+Setup reutilizado de Alea: misma app `Alea-SharePoint` + mismo certificado; se concedió
+`Sites.Selected` (Read) sobre `Mayrit-Negocio` con `backend/tools/conceder_permiso_sharepoint.ps1`.
+Credenciales locales en `~/.mayrit/.env` (fuera de Git).
+
+### Lo que confirma el esquema
+- **Maestras** (tablas `T*`): `TBinders` (53), `TCorredores` (70), `TClientes` (283),
+  `TMercados` (35), `TPolizas` (115), `TCotizaciones` (382), `TBordereaux` (810),
+  `TLPAN` (3078), `TLiquidaciones` (4330) y `TLiquidaciones1` (4018, parece versión con
+  más campos: `Id`, `Mercado`, `CuentaOrigen/Destino`), `TRecibos` (1063), `TUCR` (86).
+- **Catálogos**: `Mayrit - Producto` (32), `Mayrit - Ramo` (11), `TProvincias` (52),
+  `TRegiones` (8), `TTasasHIO` (9), `CodigosPostales` (11040), `NCB` (11).
+- **Anti-patrón a colapsar**: ~52 listas `Mayrit - B1634…` (líneas de BDX por binder) →
+  `bdx_lineas`; ~36 listas `Mayrit - Claims…` (siniestros por binder) → `siniestros`.
+- **Accesorio (fuera del núcleo)**: ~20 listas `Contabilidad - *` (movimientos bancarios).
+
 ## Pendiente inmediato
-Inspeccionar la estructura real de campos de las listas de SharePoint de Mayrit para modelar sobre
-datos. Requiere: tener el `.pfx` del certificado en el equipo + conceder a la app `Alea-SharePoint`
-permiso de lectura (`Sites.Selected`) sobre el sitio `Mayrit-Negocio`.
+Modelar **Fase 1 — Maestras** en PostgreSQL sobre los campos reales de `esquema_sharepoint.txt`:
+`productores` (de `TCorredores`, con `tipo` y `es_cliente`/`Coverholder`), `mercados`
+(de `TMercados`), `binders` (de `TBinders`). Antes: montar conexión a Postgres + Alembic.
