@@ -105,6 +105,12 @@ de cada maestra (volcado real + apagar Access), según "app primero, volcado al 
   Aller normales). Fuentes en `frontend/src/assets/fonts/`.
 - Implementado en `frontend/src/styles.css` y `App.tsx`.
 
+## Convenciones de UI (aplicar en todas las pantallas)
+- **Paneles de alta/edición:** usar `frontend/src/components/FormPanel.tsx`. Clic fuera NO cierra;
+  solo cierran con Cancelar/✕/Esc; si hay cambios sin guardar, avisa y pide confirmación.
+- **Imagen de marca:** ver sección anterior (logo, naranja UI `#e07a5a`, gris, fondo gris,
+  texto en fuente del sistema).
+
 ## Cómo arrancar la app
 **Uso normal (un clic):** acceso directo **"Mayrit"** en el Escritorio (icono Y naranja). Arranca
 backend+frontend ocultos y abre la app en Edge modo app. En cada equipo nuevo, crearlo una vez con
