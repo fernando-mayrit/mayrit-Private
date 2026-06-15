@@ -2,8 +2,8 @@
    tipografía porque es una imagen; el texto de la interfaz usa una sans neutra y legible. */
 :root {
   /* Colores corporativos (PDF de marca) */
-  --naranja: #da5833;       /* PANTONE 7579 C */
-  --naranja-osc: #c14a28;   /* variante para hover */
+  --naranja: #e07a5a;       /* terracota suave (UI); el logo/icono usan el #da5833 original */
+  --naranja-osc: #d06848;   /* variante para hover */
   --gris: #4b4b4b;          /* PANTONE 446 C */
   --gris-medio: #6b7280;
   --gris-claro: #f3f4f6;
@@ -18,7 +18,8 @@
 }
 
 * { box-sizing: border-box; }
-body { margin: 0; background: #fafbfc; }
+/* Fondo gris claro: la app se distingue de una web normal y el contenido (en blanco) resalta. */
+body { margin: 0; background: #e7e9ec; }
 
 h1, h2, h3 { font-family: var(--fuente-titulo); font-weight: 600; color: var(--gris); }
 
@@ -45,7 +46,7 @@ h1, h2, h3 { font-family: var(--fuente-titulo); font-weight: 600; color: var(--g
   flex: 1; padding: 9px 12px; border: 1px solid var(--borde);
   border-radius: 8px; font-size: 14px; font-family: inherit;
 }
-.toolbar input[type="search"]:focus { outline: none; border-color: var(--naranja); box-shadow: 0 0 0 3px rgba(218, 88, 51, 0.15); }
+.toolbar input[type="search"]:focus { outline: none; border-color: var(--naranja); box-shadow: 0 0 0 3px rgba(224, 122, 90, 0.25); }
 
 button {
   font-size: 14px; padding: 8px 14px; border-radius: 8px;
@@ -72,7 +73,7 @@ td.acciones { text-align: right; white-space: nowrap; }
 .error { color: var(--rojo); }
 
 .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; background: var(--gris-claro); color: var(--gris); }
-.badge.si { background: #fbe4dc; color: var(--naranja-osc); }
+.badge.si { background: #fbede8; color: var(--naranja-osc); }
 
 /* Formulario en panel lateral */
 .overlay { position: fixed; inset: 0; background: rgba(0,0,0,.3); display: flex; justify-content: flex-end; }
@@ -83,7 +84,7 @@ td.acciones { text-align: right; white-space: nowrap; }
 .field input[type="text"], .field input[type="date"], .field textarea {
   padding: 8px 10px; border: 1px solid var(--borde); border-radius: 8px; font-size: 14px; font-family: inherit;
 }
-.field input:focus, .field textarea:focus { outline: none; border-color: var(--naranja); box-shadow: 0 0 0 3px rgba(218, 88, 51, 0.15); }
+.field input:focus, .field textarea:focus { outline: none; border-color: var(--naranja); box-shadow: 0 0 0 3px rgba(224, 122, 90, 0.25); }
 .field.check { flex-direction: row; align-items: center; gap: 8px; }
 .panel-actions { display: flex; gap: 10px; margin-top: 20px; }
 .required { color: var(--naranja); }
