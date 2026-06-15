@@ -353,38 +353,40 @@ export default function BindersPage() {
             <label>
               Vigencia <span className="required">*</span>
             </label>
-            <div className="fila-fechas">
-              <div>
-                <span className="sub">Efecto</span>
-                <input
-                  type="date"
-                  className="inp-fecha"
-                  value={form.fecha_efecto}
-                  onChange={(e) =>
-                    setForm({
-                      ...form,
-                      fecha_efecto: e.target.value,
-                      fecha_vencimiento: e.target.value ? masDias(e.target.value, 365) : form.fecha_vencimiento,
-                    })
-                  }
-                />
+            <div className="vigencia">
+              <div className="vig-fechas">
+                <div className="vig-campo">
+                  <span className="sub">Efecto</span>
+                  <input
+                    type="date"
+                    className="inp-fecha"
+                    value={form.fecha_efecto}
+                    onChange={(e) =>
+                      setForm({
+                        ...form,
+                        fecha_efecto: e.target.value,
+                        fecha_vencimiento: e.target.value ? masDias(e.target.value, 365) : form.fecha_vencimiento,
+                      })
+                    }
+                  />
+                </div>
+                <div className="vig-campo">
+                  <span className="sub">Vencimiento</span>
+                  <input
+                    type="date"
+                    className="inp-fecha"
+                    value={form.fecha_vencimiento}
+                    onChange={(e) => setForm({ ...form, fecha_vencimiento: e.target.value })}
+                  />
+                </div>
               </div>
-              <div>
+              <div className="vig-campo">
                 <span className="sub">YOA</span>
                 <input
                   type="text"
                   className="inp-yoa"
                   value={form.yoa}
                   onChange={(e) => setForm({ ...form, yoa: e.target.value })}
-                />
-              </div>
-              <div>
-                <span className="sub">Vencimiento</span>
-                <input
-                  type="date"
-                  className="inp-fecha"
-                  value={form.fecha_vencimiento}
-                  onChange={(e) => setForm({ ...form, fecha_vencimiento: e.target.value })}
                 />
               </div>
             </div>
