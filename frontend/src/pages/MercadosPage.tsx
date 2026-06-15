@@ -14,7 +14,6 @@ const VACIO: FormState = {
   nombre: "",
   codigo: "",
   tipo_mercado: "",
-  mercado: "",
   toba: false,
   fecha: "",
   notas: "",
@@ -71,7 +70,6 @@ export default function MercadosPage() {
       nombre: m.nombre,
       codigo: m.codigo ?? "",
       tipo_mercado: m.tipo_mercado ?? "",
-      mercado: m.mercado ?? "",
       toba: m.toba,
       fecha: m.fecha ?? "",
       notas: m.notas ?? "",
@@ -84,13 +82,20 @@ export default function MercadosPage() {
       setError("El nombre es obligatorio.");
       return;
     }
+    if (!form.codigo?.trim()) {
+      setError("El código es obligatorio.");
+      return;
+    }
+    if (!form.tipo_mercado?.trim()) {
+      setError("El tipo de mercado es obligatorio.");
+      return;
+    }
     setSaving(true);
     setError(null);
     const payload: MercadoWrite = {
       nombre: form.nombre.trim(),
-      codigo: form.codigo?.trim() || null,
-      tipo_mercado: form.tipo_mercado?.trim() || null,
-      mercado: form.mercado?.trim() || null,
+      codigo: form.codigo.trim(),
+      tipo_mercado: form.tipo_mercado,
       toba: !!form.toba,
       fecha: form.toba ? form.fecha || null : null,
       notas: form.notas?.trim() || null,
@@ -193,21 +198,21 @@ export default function MercadosPage() {
             />
           </div>
           <div className="field">
-            <label>Código</label>
+            <label>
+              Código <span className="required">*</span>
+            </label>
             <input type="text" value={form.codigo ?? ""} onChange={(e) => setForm({ ...form, codigo: e.target.value })} />
           </div>
           <div className="field">
-            <label>Tipo de mercado</label>
+            <label>
+              Tipo de mercado <span className="required">*</span>
+            </label>
             <OptionButtons
               value={form.tipo_mercado ?? ""}
               options={TIPOS_MERCADO}
               onChange={(v) => setForm({ ...form, tipo_mercado: v })}
               vertical
             />
-          </div>
-          <div className="field">
-            <label>Mercado (agrupador)</label>
-            <input type="text" value={form.mercado ?? ""} onChange={(e) => setForm({ ...form, mercado: e.target.value })} />
           </div>
           <div className="field">
             <div className="toba-row">
