@@ -144,3 +144,12 @@ td.acciones { text-align: right; white-space: nowrap; }
 .toba-row .fecha-inline label { font-size: 13px; color: var(--gris); }
 .panel-actions { display: flex; gap: 10px; margin-top: 20px; }
 .required { color: var(--naranja); }
+
+/* Secciones de un binder */
+.seccion { border: 1px solid var(--borde); border-radius: 10px; padding: 12px; margin-bottom: 12px; background: #fcfcfd; }
+.seccion-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.mini-label { font-size: 13px; color: var(--gris); font-weight: 500; display: block; margin-bottom: 4px; }
+.linea-mercado { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
+.linea-mercado select { flex: 1; padding: 7px 9px; border: 1px solid var(--borde); border-radius: 8px; font-size: 14px; font-family: inherit; background: #fff; }
+.linea-mercado .part { width: 70px; padding: 7px 9px; border: 1px solid var(--borde); border-radius: 8px; font-size: 14px; font-family: inherit; }
+.btn-sm { padding: 5px 10px; font-size: 13px; }

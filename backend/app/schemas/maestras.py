@@ -125,54 +125,56 @@ class TomadorRead(TomadorBase):
 
 
 # ───────────────────────────────── Binder ────────────────────────────────
+# Estructura: Binder → Secciones → (Mercado + participación)
+class SeccionMercadoIn(BaseModel):
+    mercado_id: int
+    participacion: Decimal | None = None
+
+
+class SeccionMercadoOut(BaseModel):
+    mercado_id: int
+    participacion: Decimal | None = None
+    mercado_nombre: str | None = None
+
+
+class BinderSeccionIn(BaseModel):
+    ramo: str | None = None
+    mercados: list[SeccionMercadoIn] = []
+
+
+class BinderSeccionOut(BaseModel):
+    id: int
+    ramo: str | None = None
+    mercados: list[SeccionMercadoOut] = []
+
+
 class BinderBase(BaseModel):
-    titulo: str
+    referencia: str
     umr: str | None = None
     agreement_number: str | None = None
-    referencia_bar: str | None = None
-    coverholder: str | None = None
-    mercado: str | None = None
+    productor_id: int | None = None
     fecha_efecto: dt.date | None = None
     fecha_vencimiento: dt.date | None = None
     estado: str | None = None
-    yoa: str | None = None
     moneda: str | None = None
-    limite_primas: Decimal | None = None
     comision: Decimal | None = None
-    comision_retenida: Decimal | None = None
-    profit_commission: bool = False
-    gwp: Decimal | None = None
-    netto_uw: Decimal | None = None
-    number_policies: int | None = None
-    ramo: str | None = None
-    numero_secciones: int | None = None
-    ramo_seccion1: str | None = None
-    ramo_seccion2: str | None = None
-    ramo_seccion3: str | None = None
-    ramo_seccion4: str | None = None
-    intervalo_risk: str | None = None
-    plazo_envio_risk: str | None = None
-    intervalo_premium: str | None = None
-    plazo_envio_premium: str | None = None
-    intervalo_claims: str | None = None
-    plazo_envio_claims: str | None = None
-    plazo_pago: str | None = None
-    cuenta: str | None = None
-    claims_bdx: str | None = None
+    limite_primas: Decimal | None = None
+    yoa: str | None = None
     notas: str | None = None
 
 
 class BinderCreate(BinderBase):
-    pass
+    secciones: list[BinderSeccionIn] = []
 
 
 class BinderUpdate(BinderBase):
-    # Todos opcionales: en edición no es obligatorio reenviar el título.
-    titulo: str | None = None
+    referencia: str | None = None
+    secciones: list[BinderSeccionIn] | None = None
 
 
 class BinderRead(BinderBase):
-    model_config = ConfigDict(from_attributes=True)
     id: int
+    coverholder_nombre: str | None = None
+    secciones: list[BinderSeccionOut] = []
     created_at: dt.datetime
     updated_at: dt.datetime

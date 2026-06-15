@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from .. import crud
 from ..db import get_db
-from ..models.maestras import Binder, Mercado, Productor, Tomador
+from ..models.maestras import Mercado, Productor, Tomador
 from ..schemas import maestras as sch
 
 
@@ -84,12 +84,4 @@ tomadores_router = _make_router(
     search_cols=lambda m: [m.nombre, m.cif],
 )
 
-binders_router = _make_router(
-    prefix="/binders",
-    tag="Binders",
-    model=Binder,
-    read_schema=sch.BinderRead,
-    create_schema=sch.BinderCreate,
-    update_schema=sch.BinderUpdate,
-    search_cols=lambda m: [m.titulo, m.umr, m.coverholder],
-)
+# El router de binders vive aparte (estructura anidada: secciones → mercados).

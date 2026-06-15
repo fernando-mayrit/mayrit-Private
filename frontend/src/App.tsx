@@ -3,6 +3,7 @@ import logo from "./assets/mayrit-logo.png";
 import MercadosPage from "./pages/MercadosPage";
 import ProductoresPage from "./pages/ProductoresPage";
 import TomadoresPage from "./pages/TomadoresPage";
+import BindersPage from "./pages/BindersPage";
 import EnConstruccion from "./components/EnConstruccion";
 
 type Page =
@@ -73,7 +74,7 @@ export default function App() {
           {page === "productores" && <ProductoresPage />}
           {page === "mercados" && <MercadosPage />}
           {page === "tomadores" && <TomadoresPage />}
-          {page === "binders" && <EnConstruccion titulo="Binders" />}
+          {page === "binders" && <BindersPage />}
           {page === "polizas" && <EnConstruccion titulo="Pólizas (Open Market)" />}
           {page === "consultoria" && <EnConstruccion titulo="Consultoría (Fees)" />}
           {page === "comisiones" && <EnConstruccion titulo="Comisiones" />}
