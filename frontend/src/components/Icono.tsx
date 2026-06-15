@@ -1,16 +1,23 @@
-// Iconos (línea, monocromos) para el menú lateral. Usan currentColor, así heredan el color del texto.
-const base = {
-  width: 17,
-  height: 17,
-  viewBox: "0 0 24 24",
-  fill: "none",
-  stroke: "currentColor",
-  strokeWidth: 1.8,
-  strokeLinecap: "round" as const,
-  strokeLinejoin: "round" as const,
+// Iconos (línea) para el menú lateral, cada uno con su color.
+const COLORES: Record<string, string> = {
+  binders: "#da5833", // naranja marca
+  polizas: "#2f6fb0", // azul
+  consultoria: "#2e8b6f", // verde
+  comisiones: "#c9971c", // dorado
+  ramos: "#7a5cc0", // morado
 };
 
 export default function Icono({ name }: { name: string }) {
+  const base = {
+    width: 17,
+    height: 17,
+    viewBox: "0 0 24 24",
+    fill: "none",
+    stroke: COLORES[name] ?? "currentColor",
+    strokeWidth: 1.8,
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const,
+  };
   switch (name) {
     case "binders":
       return (
