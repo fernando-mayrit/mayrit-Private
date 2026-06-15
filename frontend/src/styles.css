@@ -25,17 +25,37 @@ body { margin: 0; background: var(--fondo); }
 h1, h2, h3 { font-family: var(--fuente-titulo); font-weight: 600; color: var(--gris); }
 
 /* Cabecera: fondo blanco con el logo y una línea naranja de acento */
-/* Disposición con barra lateral (Maestras / Negocio) */
-.layout { display: flex; min-height: 100vh; align-items: stretch; }
-.sidebar {
-  width: 232px; flex-shrink: 0; background: #fff;
-  border-right: 1px solid var(--borde); display: flex; flex-direction: column;
+/* Disposición: cabecera superior (Maestras) + cuerpo con barra lateral (Negocio) */
+.app { display: flex; flex-direction: column; min-height: 100vh; }
+
+.app-header {
+  background: #fff; border-bottom: 1px solid var(--borde);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+  padding: 14px 24px; display: flex; align-items: center; gap: 18px;
 }
-.sidebar-logo { padding: 18px 20px 12px; }
-.sidebar-logo img { height: 44px; display: block; }
+.app-header img.logo { height: 46px; display: block; }
+.app-header .sep { width: 1px; height: 34px; background: var(--borde); }
+
+/* Pestañas superiores (Maestras) */
+.tabs { display: flex; gap: 6px; }
+.tab {
+  background: none; border: none; cursor: pointer; font-size: 18px;
+  color: var(--gris-medio); padding: 8px 16px; border-radius: 8px;
+  font-family: var(--fuente-titulo);
+}
+.tab:hover { background: var(--gris-claro); color: var(--gris); }
+.tab.active { color: var(--naranja-osc); background: #f8e2d8; font-weight: 600; }
+
 /* Línea de acento: degradado del naranja de marca al gris del fondo. */
 .acento-naranja { height: 3px; background: linear-gradient(to right, #da5833, var(--fondo)); }
-.sidebar-nav { padding: 14px 10px; }
+
+/* Cuerpo: barra lateral + contenido */
+.body { display: flex; flex: 1; align-items: stretch; }
+.sidebar {
+  width: 210px; flex-shrink: 0; background: #fff;
+  border-right: 1px solid var(--borde);
+}
+.sidebar-nav { padding: 16px 10px; }
 .nav-group { margin-bottom: 16px; }
 .nav-group-title {
   font-size: 12px; letter-spacing: .06em; text-transform: uppercase;
