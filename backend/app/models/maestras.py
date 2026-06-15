@@ -31,7 +31,7 @@ class Productor(Base):
     codigo: Mapped[str | None] = mapped_column(String(50), index=True)   # IdCorredor
     numero: Mapped[int | None] = mapped_column(Integer)                  # NumeroCorredor
     nombre: Mapped[str] = mapped_column(String(255), index=True)         # NombreCorredor
-    tipo: Mapped[int | None] = mapped_column(Integer)                    # TipoCorredor (1=corredor, ...)
+    tipo: Mapped[str | None] = mapped_column(String(40))                 # Corredor / Agencia de Suscripción
     es_coverholder: Mapped[bool] = mapped_column(Boolean, default=False)  # Coverholder (agencia)
 
     cif: Mapped[str | None] = mapped_column(String(50))

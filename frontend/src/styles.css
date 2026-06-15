@@ -38,6 +38,16 @@ h1, h2, h3 { font-family: var(--fuente-titulo); font-weight: 600; color: var(--g
 .app-header img.logo { height: 50px; display: block; }
 .app-header .sep { width: 1px; height: 38px; background: var(--borde); }
 .app-header .subtitulo { color: var(--gris-medio); font-size: 22px; font-family: var(--fuente-titulo); }
+
+/* Pestañas de navegación entre maestras */
+.tabs { display: flex; gap: 6px; }
+.tab {
+  background: none; border: none; cursor: pointer;
+  font-size: 18px; color: var(--gris-medio);
+  padding: 8px 16px; border-radius: 8px; font-family: var(--fuente-titulo);
+}
+.tab:hover { background: var(--gris-claro); color: var(--gris); }
+.tab.active { color: var(--naranja-osc); background: #f8e2d8; font-weight: 600; }
 /* Línea de acento: degradado del naranja de marca al gris del fondo (se funde a la derecha). */
 .acento-naranja { height: 3px; background: linear-gradient(to right, #da5833, var(--fondo)); }
 
