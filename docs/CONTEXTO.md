@@ -56,6 +56,12 @@ El dominio (binders/BDX/UMR/UCR/liquidaciones) solapa mucho con la app de Alea, 
 **agregador/intermediario**. Reutilizable: arquitectura, utillaje de SharePoint (`sharepoint.py`),
 generación de Word, patrón Postgres-en-Azure.
 
+**Datos compartidos (códigos postales):** Mayrit NO duplica el callejero; lee la tabla
+`codigos_postales` (~37.900 filas) de la **base `alea`** del mismo servidor, en **solo lectura**.
+Como esa tabla es de `aleaadmin` y `alea_app` no puede ceder permisos, Mayrit se conecta a la base
+`alea` reutilizando las credenciales de `~/.alea/.env` (ver `ref_database_url` en `config.py` y
+`app/codigos_postales.py`). Endpoint: `GET /codigos-postales/{cp}`.
+
 ## Inspección de SharePoint — HECHA (2026-06-15)
 Esquema real volcado en `docs/esquema_sharepoint.txt` (138 listas, solo esquema, sin datos).
 Setup reutilizado de Alea: misma app `Alea-SharePoint` + mismo certificado; se concedió
