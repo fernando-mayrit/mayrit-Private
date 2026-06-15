@@ -42,9 +42,19 @@ export interface Productor {
   updated_at: string;
 }
 
+export interface RiskCode {
+  id?: number;
+  codigo: string;
+  descripcion: string | null;
+}
 export interface Ramo {
   id: number;
   nombre: string;
+  risk_codes: RiskCode[];
+}
+export interface RamoWrite {
+  nombre: string;
+  risk_codes: { codigo: string; descripcion: string | null }[];
 }
 
 // ── Binders (Negocio) ── estructura: Binder → Secciones → (Mercado + participación)

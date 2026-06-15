@@ -5,6 +5,7 @@ from .maestras import (
     Mercado,
     Productor,
     Ramo,
+    RiskCode,
     SeccionMercado,
     Tomador,
 )
@@ -14,6 +15,7 @@ __all__ = [
     "Mercado",
     "Tomador",
     "Ramo",
+    "RiskCode",
     "Binder",
     "BinderSeccion",
     "SeccionMercado",

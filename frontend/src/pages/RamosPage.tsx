@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 import { crud } from "../api";
-import type { Ramo } from "../types";
+import type { Ramo, RamoWrite } from "../types";
 import FormPanel from "../components/FormPanel";
 
-const api = crud<Ramo, { nombre: string }>("/ramos");
+const api = crud<Ramo, RamoWrite>("/ramos");
 
-type FormState = { id?: number; nombre: string };
-const VACIO: FormState = { nombre: "" };
+type RCForm = { codigo: string; descripcion: string };
+type FormState = { id?: number; nombre: string; risk_codes: RCForm[] };
+const VACIO: FormState = { nombre: "", risk_codes: [] };
 
 export default function RamosPage() {
   const [items, setItems] = useState<Ramo[]>([]);
@@ -46,6 +47,29 @@ export default function RamosPage() {
     setForm(null);
     setInicial(null);
   }
+  function abrirNuevo() {
+    abrir({ ...VACIO, risk_codes: [] });
+  }
+  function abrirEdicion(r: Ramo) {
+    abrir({
+      id: r.id,
+      nombre: r.nombre,
+      risk_codes: r.risk_codes.map((rc) => ({ codigo: rc.codigo, descripcion: rc.descripcion ?? "" })),
+    });
+  }
+
+  function setRC(i: number, campo: keyof RCForm, valor: string) {
+    if (!form) return;
+    setForm({ ...form, risk_codes: form.risk_codes.map((rc, idx) => (idx === i ? { ...rc, [campo]: valor } : rc)) });
+  }
+  function addRC() {
+    if (!form) return;
+    setForm({ ...form, risk_codes: [...form.risk_codes, { codigo: "", descripcion: "" }] });
+  }
+  function removeRC(i: number) {
+    if (!form) return;
+    setForm({ ...form, risk_codes: form.risk_codes.filter((_, idx) => idx !== i) });
+  }
 
   async function guardar() {
     if (!form) return;
@@ -55,9 +79,15 @@ export default function RamosPage() {
     }
     setSaving(true);
     setError(null);
+    const payload: RamoWrite = {
+      nombre: form.nombre.trim(),
+      risk_codes: form.risk_codes
+        .filter((rc) => rc.codigo.trim())
+        .map((rc) => ({ codigo: rc.codigo.trim().toUpperCase(), descripcion: rc.descripcion.trim() || null })),
+    };
     try {
-      if (form.id) await api.update(form.id, { nombre: form.nombre.trim() });
-      else await api.create({ nombre: form.nombre.trim() });
+      if (form.id) await api.update(form.id, payload);
+      else await api.create(payload);
       cerrar();
       await cargar();
     } catch (e) {
@@ -68,7 +98,7 @@ export default function RamosPage() {
   }
 
   async function borrar(r: Ramo) {
-    if (!confirm(`¿Borrar el ramo "${r.nombre}"?`)) return;
+    if (!confirm(`¿Borrar el ramo "${r.nombre}"? (se borran también sus Risk Codes)`)) return;
     try {
       await api.remove(r.id);
       await cargar();
@@ -90,7 +120,7 @@ export default function RamosPage() {
         <button className="btn-secondary" onClick={() => cargar()}>
           Buscar
         </button>
-        <button className="btn-primary" onClick={() => abrir({ ...VACIO })}>
+        <button className="btn-primary" onClick={abrirNuevo}>
           + Nuevo ramo
         </button>
       </div>
@@ -106,6 +136,7 @@ export default function RamosPage() {
           <thead>
             <tr>
               <th>Ramo</th>
+              <th>Risk Codes</th>
               <th></th>
             </tr>
           </thead>
@@ -113,8 +144,9 @@ export default function RamosPage() {
             {items.map((r) => (
               <tr key={r.id}>
                 <td>{r.nombre}</td>
+                <td>{r.risk_codes.length ? r.risk_codes.map((rc) => rc.codigo).join(", ") : "—"}</td>
                 <td className="acciones">
-                  <button className="btn-link" onClick={() => abrir({ id: r.id, nombre: r.nombre })}>
+                  <button className="btn-link" onClick={() => abrirEdicion(r)}>
                     Editar
                   </button>
                   <button className="btn-link" style={{ color: "var(--rojo)" }} onClick={() => borrar(r)}>
@@ -146,6 +178,33 @@ export default function RamosPage() {
               onChange={(e) => setForm({ ...form, nombre: e.target.value })}
             />
           </div>
+
+          <label className="mini-label">Risk Codes</label>
+          {form.risk_codes.map((rc, i) => (
+            <div className="linea-mercado" key={i}>
+              <input
+                type="text"
+                className="part"
+                style={{ width: 90, textTransform: "uppercase" }}
+                placeholder="Código"
+                value={rc.codigo}
+                onChange={(e) => setRC(i, "codigo", e.target.value)}
+              />
+              <input
+                type="text"
+                style={{ flex: 1, padding: "7px 9px", border: "1px solid var(--borde)", borderRadius: 8, fontSize: 14 }}
+                placeholder="Descripción (opcional)"
+                value={rc.descripcion}
+                onChange={(e) => setRC(i, "descripcion", e.target.value)}
+              />
+              <button className="btn-link" style={{ color: "var(--rojo)" }} onClick={() => removeRC(i)}>
+                ✕
+              </button>
+            </div>
+          ))}
+          <button className="btn-secondary btn-sm" onClick={addRC}>
+            + Añadir Risk Code
+          </button>
         </FormPanel>
       )}
     </div>

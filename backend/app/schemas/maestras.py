@@ -125,21 +125,33 @@ class TomadorRead(TomadorBase):
 
 
 # ────────────────────────────────── Ramo ─────────────────────────────────
+class RiskCodeIn(BaseModel):
+    codigo: str
+    descripcion: str | None = None
+
+
+class RiskCodeOut(BaseModel):
+    id: int
+    codigo: str
+    descripcion: str | None = None
+
+
 class RamoBase(BaseModel):
     nombre: str
 
 
 class RamoCreate(RamoBase):
-    pass
+    risk_codes: list[RiskCodeIn] = []
 
 
 class RamoUpdate(BaseModel):
     nombre: str | None = None
+    risk_codes: list[RiskCodeIn] | None = None
 
 
 class RamoRead(RamoBase):
-    model_config = ConfigDict(from_attributes=True)
     id: int
+    risk_codes: list[RiskCodeOut] = []
 
 
 # ───────────────────────────────── Binder ────────────────────────────────

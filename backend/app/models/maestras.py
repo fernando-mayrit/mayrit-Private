@@ -101,6 +101,23 @@ class Ramo(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     nombre: Mapped[str] = mapped_column(String(120), unique=True, index=True)
 
+    risk_codes: Mapped[list["RiskCode"]] = relationship(
+        back_populates="ramo", cascade="all, delete-orphan", order_by="RiskCode.codigo"
+    )
+
+
+class RiskCode(Base):
+    """Risk Code asociado a un Ramo. Un ramo tiene varios; un risk code pertenece a un solo ramo."""
+
+    __tablename__ = "risk_codes"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    ramo_id: Mapped[int] = mapped_column(ForeignKey("ramos.id", ondelete="CASCADE"), index=True)
+    codigo: Mapped[str] = mapped_column(String(20), unique=True, index=True)  # único: no se repite entre ramos
+    descripcion: Mapped[str | None] = mapped_column(String(255))
+
+    ramo: Mapped["Ramo"] = relationship(back_populates="risk_codes")
+
 
 class Binder(Base):
     """Binder (binding authority): conecta una agencia (coverholder) con uno o varios mercados."""
