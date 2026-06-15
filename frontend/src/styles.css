@@ -12,7 +12,7 @@
   --rojo: #b42318;
 
   --fuente-texto: system-ui, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  --fuente-titulo: var(--fuente-texto);
+  --fuente-titulo: "Calibri", "Segoe UI", system-ui, sans-serif;
 
   font-family: var(--fuente-texto);
   color: var(--gris);
