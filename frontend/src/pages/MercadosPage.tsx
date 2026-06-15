@@ -180,7 +180,7 @@ export default function MercadosPage() {
 
       {form && (
         <FormPanel
-          title={form.id ? "Editar mercado" : "Nuevo mercado"}
+          title={form.id ? "Editar Mercado" : "Nuevo Mercado"}
           dirty={dirty}
           saving={saving}
           onSave={guardar}
