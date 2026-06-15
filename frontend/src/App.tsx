@@ -4,7 +4,9 @@ import MercadosPage from "./pages/MercadosPage";
 import ProductoresPage from "./pages/ProductoresPage";
 import TomadoresPage from "./pages/TomadoresPage";
 import BindersPage from "./pages/BindersPage";
+import RamosPage from "./pages/RamosPage";
 import EnConstruccion from "./components/EnConstruccion";
+import Icono from "./components/Icono";
 
 type Page =
   | "productores"
@@ -13,7 +15,8 @@ type Page =
   | "binders"
   | "polizas"
   | "consultoria"
-  | "comisiones";
+  | "comisiones"
+  | "ramos";
 
 // Barra superior: las Maestras (las partes).
 const MAESTRAS: { id: Page; label: string }[] = [
@@ -29,6 +32,9 @@ const NEGOCIO: { id: Page; label: string }[] = [
   { id: "consultoria", label: "Consultoría" },
   { id: "comisiones", label: "Comisiones" },
 ];
+
+// Menú lateral: Configuración (catálogos compartidos).
+const CONFIG: { id: Page; label: string }[] = [{ id: "ramos", label: "Ramos" }];
 
 export default function App() {
   const [page, setPage] = useState<Page>("productores");
@@ -63,6 +69,22 @@ export default function App() {
                   className={"nav-item" + (page === it.id ? " active" : "")}
                   onClick={() => setPage(it.id)}
                 >
+                  <Icono name={it.id} />
+                  {it.label}
+                </button>
+              ))}
+            </div>
+          </nav>
+          <nav className="sidebar-nav sidebar-bottom">
+            <div className="nav-group">
+              <div className="nav-group-title">Configuración</div>
+              {CONFIG.map((it) => (
+                <button
+                  key={it.id}
+                  className={"nav-item" + (page === it.id ? " active" : "")}
+                  onClick={() => setPage(it.id)}
+                >
+                  <Icono name={it.id} />
                   {it.label}
                 </button>
               ))}
@@ -78,6 +100,7 @@ export default function App() {
           {page === "polizas" && <EnConstruccion titulo="Pólizas (Open Market)" />}
           {page === "consultoria" && <EnConstruccion titulo="Consultoría (Fees)" />}
           {page === "comisiones" && <EnConstruccion titulo="Comisiones" />}
+          {page === "ramos" && <RamosPage />}
         </main>
       </div>
     </div>
