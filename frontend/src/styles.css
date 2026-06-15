@@ -39,8 +39,8 @@ h1, h2, h3 { font-family: var(--fuente-titulo); font-weight: 600; color: var(--g
 /* Pestañas superiores (Maestras) */
 .tabs { display: flex; gap: 6px; }
 .tab {
-  background: none; border: none; cursor: pointer; font-size: 18px;
-  color: var(--gris-medio); padding: 8px 16px; border-radius: 8px;
+  background: none; border: none; cursor: pointer; font-size: 16px;
+  color: var(--gris-medio); padding: 7px 14px; border-radius: 8px;
   font-family: var(--fuente-titulo);
 }
 .tab:hover { background: var(--gris-claro); color: var(--gris); }
