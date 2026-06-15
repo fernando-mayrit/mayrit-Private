@@ -14,7 +14,13 @@ const MONEDAS = ["EUR", "GBP", "USD"];
 const PREFIJO_UMR = "B1634";
 
 type LineaForm = { mercado_id: string; participacion: string };
-type SeccionForm = { ramo: string; comision: string; limite_primas: string; mercados: LineaForm[] };
+type SeccionForm = {
+  ramo: string;
+  risk_code: string;
+  comision: string;
+  limite_primas: string;
+  mercados: LineaForm[];
+};
 type FormState = {
   id?: number;
   agreement_number: string;
@@ -31,6 +37,7 @@ type FormState = {
 
 const SECCION_VACIA: SeccionForm = {
   ramo: "",
+  risk_code: "",
   comision: "",
   limite_primas: "",
   mercados: [{ mercado_id: "", participacion: "" }],
@@ -88,7 +95,7 @@ export default function BindersPage() {
   const [items, setItems] = useState<Binder[]>([]);
   const [agencias, setAgencias] = useState<Productor[]>([]);
   const [mercados, setMercados] = useState<Mercado[]>([]);
-  const [ramos, setRamos] = useState<string[]>([]);
+  const [ramos, setRamos] = useState<Ramo[]>([]);
   const [q, setQ] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -120,7 +127,7 @@ export default function BindersPage() {
       ]);
       setAgencias((prod as Productor[]).filter((p) => p.tipo === "Agencia de Suscripción"));
       setMercados(merc as Mercado[]);
-      setRamos((ram as Ramo[]).map((r) => r.nombre));
+      setRamos(ram as Ramo[]);
     } catch {
       /* si fallan, los selectores quedan vacíos */
     }
@@ -132,8 +139,7 @@ export default function BindersPage() {
     const n = nombre.trim();
     try {
       await apiRamos.create({ nombre: n });
-      const ram = (await apiRamos.list()) as Ramo[];
-      setRamos(ram.map((r) => r.nombre));
+      setRamos((await apiRamos.list()) as Ramo[]);
       setRamo(i, n);
     } catch (e) {
       setError((e as Error).message);
@@ -174,6 +180,7 @@ export default function BindersPage() {
         b.secciones.length > 0
           ? b.secciones.map((s) => ({
               ramo: s.ramo ?? "",
+              risk_code: s.risk_code ?? "",
               comision: s.comision != null ? String(s.comision) : "",
               limite_primas: s.limite_primas != null ? String(s.limite_primas) : "",
               mercados:
@@ -199,9 +206,10 @@ export default function BindersPage() {
     if (form) setSecciones(form.secciones.filter((_, idx) => idx !== i));
   }
   function setRamo(i: number, ramo: string) {
-    if (form) setSecciones(form.secciones.map((s, idx) => (idx === i ? { ...s, ramo } : s)));
+    // al cambiar de ramo se resetea el risk code (depende del ramo)
+    if (form) setSecciones(form.secciones.map((s, idx) => (idx === i ? { ...s, ramo, risk_code: "" } : s)));
   }
-  function setSeccionCampo(i: number, campo: "comision" | "limite_primas", valor: string) {
+  function setSeccionCampo(i: number, campo: "comision" | "limite_primas" | "risk_code", valor: string) {
     if (form) setSecciones(form.secciones.map((s, idx) => (idx === i ? { ...s, [campo]: valor } : s)));
   }
   function addMercado(i: number) {
@@ -240,6 +248,8 @@ export default function BindersPage() {
     for (let i = 0; i < form.secciones.length; i++) {
       const s = form.secciones[i];
       if (!s.ramo.trim()) return setError(`La sección ${i + 1} necesita un ramo.`);
+      const codes = ramos.find((r) => r.nombre === s.ramo)?.risk_codes ?? [];
+      if (codes.length && !s.risk_code) return setError(`La sección ${i + 1} necesita un risk code.`);
       if (s.mercados.filter((m) => m.mercado_id).length === 0)
         return setError(`La sección ${i + 1} necesita al menos un mercado.`);
     }
@@ -258,6 +268,7 @@ export default function BindersPage() {
       notas: form.notas.trim() || null,
       secciones: form.secciones.map((s) => ({
         ramo: s.ramo.trim() || null,
+        risk_code: s.risk_code || null,
         comision: num(s.comision),
         limite_primas: num(s.limite_primas),
         mercados: s.mercados
@@ -466,7 +477,7 @@ export default function BindersPage() {
                   onChange={(e) => (e.target.value === "__nuevo__" ? nuevoRamo(i) : setRamo(i, e.target.value))}
                 >
                   <option value="">— Elige ramo —</option>
-                  {[...new Set([...(s.ramo ? [s.ramo] : []), ...ramos])].map((r) => (
+                  {[...new Set([...(s.ramo ? [s.ramo] : []), ...ramos.map((r) => r.nombre)])].map((r) => (
                     <option key={r} value={r}>
                       {r}
                     </option>
@@ -474,6 +485,40 @@ export default function BindersPage() {
                   <option value="__nuevo__">➕ Añadir ramo…</option>
                 </select>
               </div>
+              {(() => {
+                const codes = ramos.find((r) => r.nombre === s.ramo)?.risk_codes ?? [];
+                return (
+                  <div className="field">
+                    <label>Risk Code</label>
+                    <select
+                      value={s.risk_code}
+                      disabled={!s.ramo}
+                      onChange={(e) => setSeccionCampo(i, "risk_code", e.target.value)}
+                    >
+                      <option value="">
+                        {!s.ramo
+                          ? "— Elige antes el ramo —"
+                          : codes.length
+                          ? "— Elige risk code —"
+                          : "(ese ramo no tiene risk codes)"}
+                      </option>
+                      {[
+                        ...new Set([
+                          ...(s.risk_code ? [s.risk_code] : []),
+                          ...codes.map((c) => c.codigo),
+                        ]),
+                      ].map((c) => {
+                        const desc = codes.find((x) => x.codigo === c)?.descripcion;
+                        return (
+                          <option key={c} value={c}>
+                            {desc ? `${c} — ${desc}` : c}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </div>
+                );
+              })()}
               <div className="field">
                 <label>Comisión (%)</label>
                 <input

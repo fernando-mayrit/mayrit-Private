@@ -159,6 +159,7 @@ class BinderSeccion(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     binder_id: Mapped[int] = mapped_column(ForeignKey("binders.id", ondelete="CASCADE"), index=True)
     ramo: Mapped[str | None] = mapped_column(String(120))
+    risk_code: Mapped[str | None] = mapped_column(String(20))            # risk code (del ramo elegido)
     comision: Mapped[Decimal | None] = mapped_column(Numeric(7, 4))      # % comisión de la sección
     limite_primas: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
 
