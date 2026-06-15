@@ -47,6 +47,9 @@ Modelar desde cero en PostgreSQL y **desconectar tabla a tabla**. Reglas:
   su lista de SharePoint.
 - Orden previsto: **(1) Maestras** (Productores/Agencias · Mercados · Binders) → **(2) BDX** (núcleo)
   → **(3) Liquidaciones + LPAN** → **(4) Siniestros + UCR** → **(5) Recibos** → accesorios.
+- **"App primero, volcado al final" (decisión 2026-06-15):** NO se copian datos reales a Postgres
+  mientras Access siga vivo (evita dos bases divergiendo). Cada módulo se construye con datos de
+  prueba; el volcado real se hace UNA vez en el cutover, apagando Access para esa tabla a la vez.
 
 ## Sinergia con Alea
 El dominio (binders/BDX/UMR/UCR/liquidaciones) solapa mucho con la app de Alea, pero desde el lado
@@ -70,18 +73,43 @@ Credenciales locales en `~/.mayrit/.env` (fuera de Git).
   `bdx_lineas`; ~36 listas `Mayrit - Claims…` (siniestros por binder) → `siniestros`.
 - **Accesorio (fuera del núcleo)**: ~20 listas `Contabilidad - *` (movimientos bancarios).
 
-## Fase 1 — Maestras: MODELADA (2026-06-15)
+## Fase 1 — Maestras: EN CURSO (2026-06-15)
 Base de datos `mayrit` creada en el servidor Azure (PostgreSQL 16, usuario `mayrit_app`,
-credenciales en `~/.mayrit/.env`). Backend con SQLAlchemy + Alembic:
-- `backend/app/db.py` — engine, sesión y `Base`.
+credenciales en `~/.mayrit/.env`).
+
+**Backend (hecho):**
+- `backend/app/db.py` — engine SQLAlchemy, sesión y `Base`.
 - `backend/app/models/maestras.py` — `Productor` (de `TCorredores`), `Mercado` (de
   `TMercados`), `Binder` (de `TBinders`). Cada fila lleva `sp_old_id` para casar con
   Access/SharePoint durante la convivencia.
 - `backend/alembic/` — migraciones; la inicial ya está **aplicada** (tablas creadas).
-Comandos: `alembic revision --autogenerate -m "..."` y `alembic upgrade head` (desde `backend/`).
+  Comandos (desde `backend/`): `alembic revision --autogenerate -m "..."` y `alembic upgrade head`.
+- `backend/app/schemas/` + `crud.py` + `routers/maestras.py` — **API REST CRUD** de las 3
+  maestras (listar con `?q=`, obtener, crear, editar, borrar). CORS para el frontend.
 
-## Pendiente inmediato
-**Cargar datos** de las maestras leyendo de SharePoint (puente de solo lectura) hacia las
-tablas nuevas, o exponer CRUD/endpoints. Decisión abierta: hay `TLiquidaciones` y
-`TLiquidaciones1` (cuál es la buena) — relevante en la Fase 3, no ahora.
-Orden de migración: Maestras → BDX → Liquidaciones+LPAN → Siniestros+UCR → Recibos.
+**Frontend (hecho):**
+- `frontend/` — Vite + React + TypeScript. `src/api.ts` (cliente CRUD), `src/types.ts`.
+- `src/pages/MercadosPage.tsx` — **pantalla de Mercados completa** (tabla, buscador, alta/
+  edición en panel lateral, borrado). Probada de extremo a extremo contra la base real.
+- **Identidad visual** aplicada (ver sección Imagen de marca).
+
+**Pendiente de Fase 1:** pantallas de **Productores** y **Binders** (replicar el patrón de
+Mercados) + un **menú de navegación** entre las tres. Luego, cuando estén listas, el cutover
+de cada maestra (volcado real + apagar Access), según "app primero, volcado al final".
+
+## Imagen de marca (estándar a seguir en todo)
+- Colores: **naranja `#da5833`** (PANTONE 7579 C) y **gris `#4b4b4b`** (PANTONE 446 C).
+- Logo: "MAYRIT" con la Y naranja, **sin el lema "Insurance Broker"**
+  (`frontend/src/assets/mayrit-logo.png`, va sobre fondo claro).
+- Tipografía: **Aller** (Aller Display para títulos; cuerpo en sans neutra hasta tener las
+  Aller normales). Fuentes en `frontend/src/assets/fonts/`.
+- Implementado en `frontend/src/styles.css` y `App.tsx`.
+
+## Cómo arrancar la app (desarrollo)
+Dos terminales (requiere venv del backend y `npm install` en el frontend hechos):
+- Backend:  `cd backend` · `.venv\Scripts\uvicorn app.main:app --reload`  → http://localhost:8000
+- Frontend: `cd frontend` · `npm run dev`  → http://localhost:5173
+
+## Decisión abierta (para más adelante)
+Hay `TLiquidaciones` (4330) y `TLiquidaciones1` (4018): decidir cuál es la buena. Relevante en
+la Fase 3 (Liquidaciones+LPAN), no ahora.
