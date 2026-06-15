@@ -13,7 +13,7 @@ const PERSONAS = ["Persona física", "Persona jurídica"];
 type FormState = {
   id?: number;
   nombre: string;
-  codigo: string;
+  alias: string;
   tipo: string;
   pais: string;
   persona: string;
@@ -27,7 +27,7 @@ type FormState = {
 
 const VACIO: FormState = {
   nombre: "",
-  codigo: "",
+  alias: "",
   tipo: "",
   pais: "España",
   persona: "",
@@ -68,7 +68,7 @@ export default function ProductoresPage() {
   const [form, setForm] = useState<FormState | null>(null);
   const [inicial, setInicial] = useState<FormState | null>(null);
   const [saving, setSaving] = useState(false);
-  const [localidadesCP, setLocalidadesCP] = useState<string[]>([]); // opciones si un CP tiene varias localidades
+  const [localidadesCP, setLocalidadesCP] = useState<string[]>([]);
 
   const dirty = !!form && JSON.stringify(form) !== JSON.stringify(inicial);
   const esEspana = form?.pais === "España";
@@ -97,6 +97,32 @@ export default function ProductoresPage() {
     setError(null);
   }
 
+  function cerrar() {
+    setForm(null);
+    setInicial(null);
+  }
+
+  function abrirNuevo() {
+    abrir({ ...VACIO });
+  }
+
+  function abrirEdicion(p: Productor) {
+    abrir({
+      id: p.id,
+      nombre: p.nombre,
+      alias: p.alias ?? "",
+      tipo: p.tipo ?? "",
+      pais: p.pais ?? "España",
+      persona: p.persona ?? "",
+      cif: p.cif ?? "",
+      domicilio: p.domicilio ?? "",
+      codigo_postal: p.codigo_postal ?? "",
+      localidad: p.localidad ?? "",
+      provincia: p.provincia ?? "",
+      notas: p.notas ?? "",
+    });
+  }
+
   // Al escribir el CP (España): rellena provincia y localidad desde el callejero compartido.
   async function onCp(cp: string) {
     setForm((f) => (f ? { ...f, codigo_postal: cp } : f));
@@ -111,7 +137,7 @@ export default function ProductoresPage() {
             ? {
                 ...f,
                 codigo_postal: cp,
-                provincia: provs[0] ?? f.provincia,
+                provincia: provs[0] ?? "",
                 localidad: locs.length === 1 ? locs[0] : "",
               }
             : f
@@ -124,37 +150,11 @@ export default function ProductoresPage() {
     }
   }
 
-  function cerrar() {
-    setForm(null);
-    setInicial(null);
-  }
-
-  function abrirNuevo() {
-    abrir({ ...VACIO });
-  }
-
-  function abrirEdicion(p: Productor) {
-    abrir({
-      id: p.id,
-      nombre: p.nombre,
-      codigo: p.codigo ?? "",
-      tipo: p.tipo ?? "",
-      pais: p.pais ?? "España",
-      persona: p.persona ?? "",
-      cif: p.cif ?? "",
-      domicilio: p.domicilio ?? "",
-      codigo_postal: p.codigo_postal ?? "",
-      localidad: p.localidad ?? "",
-      provincia: p.provincia ?? "",
-      notas: p.notas ?? "",
-    });
-  }
-
   async function guardar() {
     if (!form) return;
     const obligatorios: [keyof FormState, string][] = [
       ["nombre", "El nombre es obligatorio."],
-      ["codigo", "El código es obligatorio."],
+      ["alias", "El alias es obligatorio."],
       ["tipo", "El tipo es obligatorio."],
       ["pais", "El país es obligatorio."],
       ["persona", "Indica si es persona física o jurídica."],
@@ -185,7 +185,7 @@ export default function ProductoresPage() {
     setError(null);
     const payload: ProductorWrite = {
       nombre: form.nombre.trim(),
-      codigo: form.codigo.trim(),
+      alias: form.alias.trim(),
       tipo: form.tipo,
       pais: form.pais,
       persona: form.persona,
@@ -246,7 +246,7 @@ export default function ProductoresPage() {
       <div className="toolbar">
         <input
           type="search"
-          placeholder="Buscar por nombre, código o CIF…"
+          placeholder="Buscar por nombre, alias o CIF…"
           value={q}
           onChange={(e) => setQ(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && cargar()}
@@ -270,7 +270,7 @@ export default function ProductoresPage() {
           <thead>
             <tr>
               <th>Nombre</th>
-              <th>Código</th>
+              <th>Alias</th>
               <th>Tipo</th>
               <th>País</th>
               <th>Localidad</th>
@@ -281,7 +281,7 @@ export default function ProductoresPage() {
             {items.map((p) => (
               <tr key={p.id}>
                 <td>{p.nombre}</td>
-                <td>{p.codigo ?? "—"}</td>
+                <td>{p.alias ?? "—"}</td>
                 <td>{p.tipo ?? "—"}</td>
                 <td>{p.pais ?? "—"}</td>
                 <td>{p.localidad ?? "—"}</td>
@@ -308,7 +308,7 @@ export default function ProductoresPage() {
           onClose={cerrar}
         >
           {campo("Nombre", "nombre", true)}
-          {campo("Código", "codigo", true)}
+          {campo("Alias", "alias", true)}
 
           <div className="field">
             <label>
@@ -330,7 +330,11 @@ export default function ProductoresPage() {
               value={form.pais}
               onChange={(e) => {
                 setLocalidadesCP([]);
-                setForm({ ...form, pais: e.target.value, cif: formateaCif(form.cif, e.target.value, form.persona) });
+                setForm({
+                  ...form,
+                  pais: e.target.value,
+                  cif: formateaCif(form.cif, e.target.value, form.persona),
+                });
               }}
             >
               {PAISES.map((p) => (
@@ -378,10 +382,12 @@ export default function ProductoresPage() {
             <label>
               Localidad <span className="required">*</span>
             </label>
-            {esEspana && localidadesCP.length > 1 ? (
+            {esEspana ? (
               <select value={form.localidad} onChange={(e) => setForm({ ...form, localidad: e.target.value })}>
-                <option value="">— Elige localidad —</option>
-                {localidadesCP.map((l) => (
+                <option value="">
+                  {localidadesCP.length || form.localidad ? "— Elige localidad —" : "— Escribe antes el código postal —"}
+                </option>
+                {[...new Set([...(form.localidad ? [form.localidad] : []), ...localidadesCP])].map((l) => (
                   <option key={l} value={l}>
                     {l}
                   </option>
@@ -411,11 +417,7 @@ export default function ProductoresPage() {
 
           <div className="field">
             <label>Notas</label>
-            <textarea
-              rows={3}
-              value={form.notas}
-              onChange={(e) => setForm({ ...form, notas: e.target.value })}
-            />
+            <textarea rows={3} value={form.notas} onChange={(e) => setForm({ ...form, notas: e.target.value })} />
           </div>
         </FormPanel>
       )}

@@ -61,7 +61,7 @@ productores_router = _make_router(
     read_schema=sch.ProductorRead,
     create_schema=sch.ProductorCreate,
     update_schema=sch.ProductorUpdate,
-    search_cols=lambda m: [m.nombre, m.codigo, m.cif],
+    search_cols=lambda m: [m.nombre, m.alias, m.cif],
 )
 
 mercados_router = _make_router(

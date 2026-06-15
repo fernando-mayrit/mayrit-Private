@@ -16,7 +16,7 @@ from pydantic import BaseModel, ConfigDict
 # ─────────────────────────────── Productor ───────────────────────────────
 class ProductorBase(BaseModel):
     nombre: str
-    codigo: str | None = None
+    alias: str | None = None
     tipo: str | None = None
     persona: str | None = None
     cif: str | None = None
@@ -35,7 +35,7 @@ class ProductorCreate(ProductorBase):
 
 class ProductorUpdate(BaseModel):
     nombre: str | None = None
-    codigo: str | None = None
+    alias: str | None = None
     tipo: str | None = None
     persona: str | None = None
     cif: str | None = None

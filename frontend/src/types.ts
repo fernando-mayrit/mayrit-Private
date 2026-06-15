@@ -27,7 +27,7 @@ export interface MercadoWrite {
 export interface Productor {
   id: number;
   nombre: string;
-  codigo: string | null;
+  alias: string | null;
   tipo: string | null;
   persona: string | null;
   cif: string | null;
@@ -75,7 +75,7 @@ export interface TomadorWrite {
 // Campos editables al crear/editar un productor.
 export interface ProductorWrite {
   nombre: string;
-  codigo?: string | null;
+  alias?: string | null;
   tipo?: string | null;
   persona?: string | null;
   cif?: string | null;

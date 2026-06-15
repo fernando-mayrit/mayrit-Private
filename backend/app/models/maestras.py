@@ -28,7 +28,7 @@ class Productor(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     sp_old_id: Mapped[int | None] = mapped_column(Integer, index=True)
 
-    codigo: Mapped[str | None] = mapped_column(String(50), index=True)   # IdCorredor
+    alias: Mapped[str | None] = mapped_column(String(50), index=True)    # alias / código corto (IdCorredor)
     nombre: Mapped[str] = mapped_column(String(255), index=True)         # NombreCorredor
     tipo: Mapped[str | None] = mapped_column(String(40))                 # Corredor / Agencia de Suscripción
     persona: Mapped[str | None] = mapped_column(String(20))              # Persona física / jurídica
