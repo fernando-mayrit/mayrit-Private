@@ -93,9 +93,13 @@ credenciales en `~/.mayrit/.env`).
   edición en panel lateral, borrado). Probada de extremo a extremo contra la base real.
 - **Identidad visual** aplicada (ver sección Imagen de marca).
 
-**Pendiente de Fase 1:** pantallas de **Productores** y **Binders** (replicar el patrón de
-Mercados) + un **menú de navegación** entre las tres. Luego, cuando estén listas, el cutover
-de cada maestra (volcado real + apagar Access), según "app primero, volcado al final".
+Pantallas hechas: **Mercados** y **Productores** (CRUD completo), con **menú de navegación**
+por pestañas (Productores / Mercados / Binders). Productores: tipo Corredor/Agencia de
+Suscripción + Coverholder Sí/No, con la mayoría de campos obligatorios.
+
+**Pendiente de Fase 1:** pantalla de **Binders** (ahora un placeholder). Luego, cuando estén
+listas, el cutover de cada maestra (volcado real + apagar Access), según "app primero, volcado
+al final".
 
 ## Imagen de marca (estándar a seguir en todo)
 - Colores: **naranja `#da5833`** (PANTONE 7579 C) y **gris `#4b4b4b`** (PANTONE 446 C).
