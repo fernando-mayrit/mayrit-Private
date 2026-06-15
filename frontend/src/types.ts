@@ -55,7 +55,6 @@ export interface BinderSeccion {
 }
 export interface Binder {
   id: number;
-  referencia: string;
   umr: string | null;
   agreement_number: string | null;
   productor_id: number | null;
@@ -73,9 +72,8 @@ export interface Binder {
   updated_at: string;
 }
 export interface BinderWrite {
-  referencia: string;
+  agreement_number: string;
   umr?: string | null;
-  agreement_number?: string | null;
   productor_id?: number | null;
   fecha_efecto?: string | null;
   fecha_vencimiento?: string | null;

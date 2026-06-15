@@ -101,9 +101,8 @@ class Binder(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     sp_old_id: Mapped[int | None] = mapped_column(Integer, index=True)
 
-    referencia: Mapped[str] = mapped_column(String(120), index=True)     # código del binder (B1634...)
-    umr: Mapped[str | None] = mapped_column(String(120), index=True)     # UMR
-    agreement_number: Mapped[str | None] = mapped_column(String(120))    # Agreement Number
+    agreement_number: Mapped[str | None] = mapped_column(String(120), index=True)  # Agreement Number
+    umr: Mapped[str | None] = mapped_column(String(120), index=True)     # UMR = "B1634" + Agreement Number
 
     # Coverholder = la agencia (un Productor de tipo "Agencia de Suscripción")
     productor_id: Mapped[int | None] = mapped_column(ForeignKey("productores.id"))

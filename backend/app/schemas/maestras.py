@@ -149,9 +149,8 @@ class BinderSeccionOut(BaseModel):
 
 
 class BinderBase(BaseModel):
-    referencia: str
+    agreement_number: str
     umr: str | None = None
-    agreement_number: str | None = None
     productor_id: int | None = None
     fecha_efecto: dt.date | None = None
     fecha_vencimiento: dt.date | None = None
@@ -168,7 +167,7 @@ class BinderCreate(BinderBase):
 
 
 class BinderUpdate(BinderBase):
-    referencia: str | None = None
+    agreement_number: str | None = None
     secciones: list[BinderSeccionIn] | None = None
 
 

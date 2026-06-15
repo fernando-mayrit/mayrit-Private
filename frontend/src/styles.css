@@ -121,6 +121,17 @@ td.acciones { text-align: right; white-space: nowrap; }
 }
 .field input:focus, .field textarea:focus, .field select:focus { outline: none; border-color: var(--naranja); box-shadow: 0 0 0 3px rgba(224, 122, 90, 0.25); }
 .field input[readonly] { background: var(--gris-claro); color: var(--gris-medio); cursor: default; }
+/* Regla global: las fechas van centradas en su caja en toda la app */
+input[type="date"] { text-align: center; }
+
+/* Vigencia del binder: efecto · YOA · vencimiento en una fila, pegadas a la izquierda */
+.fila-fechas { display: flex; gap: 10px; align-items: flex-end; }
+.fila-fechas > div { display: flex; flex-direction: column; gap: 4px; }
+.fila-fechas .sub { font-size: 12px; color: var(--gris-medio); }
+.fila-fechas input { padding: 8px 10px; border: 1px solid var(--borde); border-radius: 8px; font-size: 14px; font-family: inherit; }
+.fila-fechas input:focus { outline: none; border-color: var(--naranja); box-shadow: 0 0 0 3px rgba(224, 122, 90, 0.25); }
+.fila-fechas .inp-fecha { width: 150px; }
+.fila-fechas .inp-yoa { width: 80px; text-align: center; }
 .field.check { flex-direction: row; align-items: center; gap: 8px; }
 
 /* Selector de opción en forma de botones (componente OptionButtons) */

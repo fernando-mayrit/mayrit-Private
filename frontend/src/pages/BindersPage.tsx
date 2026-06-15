@@ -10,22 +10,22 @@ const apiMercados = crud<Mercado, unknown>("/mercados");
 
 const ESTADOS = ["Activo", "Vencido", "Cancelado"];
 const MONEDAS = ["EUR", "GBP", "USD"];
+const PREFIJO_UMR = "B1634";
 
 type LineaForm = { mercado_id: string; participacion: string };
 type SeccionForm = { ramo: string; mercados: LineaForm[] };
 type FormState = {
   id?: number;
-  referencia: string;
-  umr: string;
   agreement_number: string;
+  umr: string;
   productor_id: string;
   fecha_efecto: string;
   fecha_vencimiento: string;
+  yoa: string;
   estado: string;
   moneda: string;
   comision: string;
   limite_primas: string;
-  yoa: string;
   notas: string;
   secciones: SeccionForm[];
 };
@@ -33,19 +33,18 @@ type FormState = {
 const SECCION_VACIA: SeccionForm = { ramo: "", mercados: [{ mercado_id: "", participacion: "" }] };
 
 const VACIO: FormState = {
-  referencia: "",
-  umr: "",
   agreement_number: "",
+  umr: "",
   productor_id: "",
   fecha_efecto: "",
   fecha_vencimiento: "",
+  yoa: "",
   estado: "",
   moneda: "",
   comision: "",
   limite_primas: "",
-  yoa: "",
   notas: "",
-  secciones: [{ ...SECCION_VACIA, mercados: [{ mercado_id: "", participacion: "" }] }],
+  secciones: [JSON.parse(JSON.stringify(SECCION_VACIA))],
 };
 
 function num(v: string): number | null {
@@ -53,6 +52,21 @@ function num(v: string): number | null {
   if (!s) return null;
   const n = Number(s);
   return isNaN(n) ? null : n;
+}
+
+function umrDe(agreement: string): string {
+  return agreement.trim() ? PREFIJO_UMR + agreement.trim() : "";
+}
+
+function masDias(iso: string, dias: number): string {
+  if (!iso) return "";
+  const d = new Date(iso + "T00:00:00");
+  if (isNaN(d.getTime())) return "";
+  d.setDate(d.getDate() + dias);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }
 
 export default function BindersPage() {
@@ -112,17 +126,16 @@ export default function BindersPage() {
   function abrirEdicion(b: Binder) {
     abrir({
       id: b.id,
-      referencia: b.referencia,
-      umr: b.umr ?? "",
       agreement_number: b.agreement_number ?? "",
+      umr: b.umr ?? "",
       productor_id: b.productor_id != null ? String(b.productor_id) : "",
       fecha_efecto: b.fecha_efecto ?? "",
       fecha_vencimiento: b.fecha_vencimiento ?? "",
+      yoa: b.yoa ?? "",
       estado: b.estado ?? "",
       moneda: b.moneda ?? "",
       comision: b.comision != null ? String(b.comision) : "",
       limite_primas: b.limite_primas != null ? String(b.limite_primas) : "",
-      yoa: b.yoa ?? "",
       notas: b.notas ?? "",
       secciones:
         b.secciones.length > 0
@@ -140,76 +153,72 @@ export default function BindersPage() {
     });
   }
 
-  // ── edición de secciones/mercados (inmutable) ──
+  // ── secciones / mercados (inmutable) ──
   function setSecciones(secs: SeccionForm[]) {
     setForm((f) => (f ? { ...f, secciones: secs } : f));
   }
   function addSeccion() {
-    if (!form) return;
-    setSecciones([...form.secciones, JSON.parse(JSON.stringify(SECCION_VACIA))]);
+    if (form) setSecciones([...form.secciones, JSON.parse(JSON.stringify(SECCION_VACIA))]);
   }
   function removeSeccion(i: number) {
-    if (!form) return;
-    setSecciones(form.secciones.filter((_, idx) => idx !== i));
+    if (form) setSecciones(form.secciones.filter((_, idx) => idx !== i));
   }
   function setRamo(i: number, ramo: string) {
-    if (!form) return;
-    setSecciones(form.secciones.map((s, idx) => (idx === i ? { ...s, ramo } : s)));
+    if (form) setSecciones(form.secciones.map((s, idx) => (idx === i ? { ...s, ramo } : s)));
   }
   function addMercado(i: number) {
-    if (!form) return;
-    setSecciones(
-      form.secciones.map((s, idx) =>
-        idx === i ? { ...s, mercados: [...s.mercados, { mercado_id: "", participacion: "" }] } : s
-      )
-    );
+    if (form)
+      setSecciones(
+        form.secciones.map((s, idx) =>
+          idx === i ? { ...s, mercados: [...s.mercados, { mercado_id: "", participacion: "" }] } : s
+        )
+      );
   }
   function removeMercado(i: number, j: number) {
-    if (!form) return;
-    setSecciones(
-      form.secciones.map((s, idx) =>
-        idx === i ? { ...s, mercados: s.mercados.filter((_, k) => k !== j) } : s
-      )
-    );
+    if (form)
+      setSecciones(
+        form.secciones.map((s, idx) =>
+          idx === i ? { ...s, mercados: s.mercados.filter((_, k) => k !== j) } : s
+        )
+      );
   }
   function setLinea(i: number, j: number, campo: keyof LineaForm, valor: string) {
-    if (!form) return;
-    setSecciones(
-      form.secciones.map((s, idx) =>
-        idx === i
-          ? { ...s, mercados: s.mercados.map((m, k) => (k === j ? { ...m, [campo]: valor } : m)) }
-          : s
-      )
-    );
+    if (form)
+      setSecciones(
+        form.secciones.map((s, idx) =>
+          idx === i
+            ? { ...s, mercados: s.mercados.map((m, k) => (k === j ? { ...m, [campo]: valor } : m)) }
+            : s
+        )
+      );
   }
 
   async function guardar() {
     if (!form) return;
-    if (!form.referencia.trim()) return setError("La referencia del binder es obligatoria.");
-    if (!form.productor_id) return setError("El coverholder (agencia) es obligatorio.");
+    if (!form.agreement_number.trim()) return setError("El Agreement Number es obligatorio.");
+    if (!form.productor_id) return setError("El coverholder es obligatorio.");
     if (!form.fecha_efecto) return setError("La fecha de efecto es obligatoria.");
     if (!form.fecha_vencimiento) return setError("La fecha de vencimiento es obligatoria.");
     for (let i = 0; i < form.secciones.length; i++) {
       const s = form.secciones[i];
       if (!s.ramo.trim()) return setError(`La sección ${i + 1} necesita un ramo.`);
-      const conMercado = s.mercados.filter((m) => m.mercado_id);
-      if (conMercado.length === 0) return setError(`La sección ${i + 1} necesita al menos un mercado.`);
+      if (s.mercados.filter((m) => m.mercado_id).length === 0)
+        return setError(`La sección ${i + 1} necesita al menos un mercado.`);
     }
 
     setSaving(true);
     setError(null);
     const payload: BinderWrite = {
-      referencia: form.referencia.trim(),
-      umr: form.umr.trim() || null,
-      agreement_number: form.agreement_number.trim() || null,
+      agreement_number: form.agreement_number.trim(),
+      umr: umrDe(form.agreement_number) || null,
       productor_id: Number(form.productor_id),
       fecha_efecto: form.fecha_efecto || null,
       fecha_vencimiento: form.fecha_vencimiento || null,
+      yoa: form.yoa.trim() || null,
       estado: form.estado || null,
       moneda: form.moneda || null,
       comision: num(form.comision),
       limite_primas: num(form.limite_primas),
-      yoa: form.yoa.trim() || null,
       notas: form.notas.trim() || null,
       secciones: form.secciones.map((s) => ({
         ramo: s.ramo.trim() || null,
@@ -231,7 +240,7 @@ export default function BindersPage() {
   }
 
   async function borrar(b: Binder) {
-    if (!confirm(`¿Borrar el binder "${b.referencia}"?`)) return;
+    if (!confirm(`¿Borrar el binder "${b.umr ?? b.agreement_number}"?`)) return;
     try {
       await api.remove(b.id);
       await cargar();
@@ -245,7 +254,7 @@ export default function BindersPage() {
       <div className="toolbar">
         <input
           type="search"
-          placeholder="Buscar por referencia o UMR…"
+          placeholder="Buscar por UMR o Agreement Number…"
           value={q}
           onChange={(e) => setQ(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && cargar()}
@@ -268,7 +277,7 @@ export default function BindersPage() {
         <table>
           <thead>
             <tr>
-              <th>Referencia</th>
+              <th>UMR</th>
               <th>Coverholder</th>
               <th>Vigencia</th>
               <th>Estado</th>
@@ -279,7 +288,7 @@ export default function BindersPage() {
           <tbody>
             {items.map((b) => (
               <tr key={b.id}>
-                <td>{b.referencia}</td>
+                <td>{b.umr ?? "—"}</td>
                 <td>{b.coverholder_nombre ?? "—"}</td>
                 <td>
                   {b.fecha_efecto ?? "—"} → {b.fecha_vencimiento ?? "—"}
@@ -310,19 +319,24 @@ export default function BindersPage() {
         >
           <div className="field">
             <label>
-              Referencia <span className="required">*</span>
+              Agreement Number <span className="required">*</span>
             </label>
             <input
               type="text"
-              value={form.referencia}
+              value={form.agreement_number}
               autoFocus
-              onChange={(e) => setForm({ ...form, referencia: e.target.value })}
+              onChange={(e) => setForm({ ...form, agreement_number: e.target.value, umr: umrDe(e.target.value) })}
             />
           </div>
 
           <div className="field">
+            <label>UMR</label>
+            <input type="text" value={form.umr} readOnly placeholder="Se genera con el Agreement Number" />
+          </div>
+
+          <div className="field">
             <label>
-              Coverholder (agencia) <span className="required">*</span>
+              Coverholder <span className="required">*</span>
             </label>
             <select value={form.productor_id} onChange={(e) => setForm({ ...form, productor_id: e.target.value })}>
               <option value="">— Elige agencia —</option>
@@ -334,38 +348,46 @@ export default function BindersPage() {
             </select>
           </div>
 
-          <div className="field">
-            <label>UMR</label>
-            <input type="text" value={form.umr} onChange={(e) => setForm({ ...form, umr: e.target.value })} />
-          </div>
-          <div className="field">
-            <label>Agreement Number</label>
-            <input
-              type="text"
-              value={form.agreement_number}
-              onChange={(e) => setForm({ ...form, agreement_number: e.target.value })}
-            />
-          </div>
-
+          {/* Vigencia: efecto · YOA · vencimiento (vencimiento = efecto + 365, editable) */}
           <div className="field">
             <label>
-              Fecha de efecto <span className="required">*</span>
+              Vigencia <span className="required">*</span>
             </label>
-            <input
-              type="date"
-              value={form.fecha_efecto}
-              onChange={(e) => setForm({ ...form, fecha_efecto: e.target.value })}
-            />
-          </div>
-          <div className="field">
-            <label>
-              Fecha de vencimiento <span className="required">*</span>
-            </label>
-            <input
-              type="date"
-              value={form.fecha_vencimiento}
-              onChange={(e) => setForm({ ...form, fecha_vencimiento: e.target.value })}
-            />
+            <div className="fila-fechas">
+              <div>
+                <span className="sub">Efecto</span>
+                <input
+                  type="date"
+                  className="inp-fecha"
+                  value={form.fecha_efecto}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      fecha_efecto: e.target.value,
+                      fecha_vencimiento: e.target.value ? masDias(e.target.value, 365) : form.fecha_vencimiento,
+                    })
+                  }
+                />
+              </div>
+              <div>
+                <span className="sub">YOA</span>
+                <input
+                  type="text"
+                  className="inp-yoa"
+                  value={form.yoa}
+                  onChange={(e) => setForm({ ...form, yoa: e.target.value })}
+                />
+              </div>
+              <div>
+                <span className="sub">Vencimiento</span>
+                <input
+                  type="date"
+                  className="inp-fecha"
+                  value={form.fecha_vencimiento}
+                  onChange={(e) => setForm({ ...form, fecha_vencimiento: e.target.value })}
+                />
+              </div>
+            </div>
           </div>
 
           <div className="field">
@@ -388,10 +410,6 @@ export default function BindersPage() {
               value={form.limite_primas}
               onChange={(e) => setForm({ ...form, limite_primas: e.target.value })}
             />
-          </div>
-          <div className="field">
-            <label>YOA (año de cuenta)</label>
-            <input type="text" value={form.yoa} onChange={(e) => setForm({ ...form, yoa: e.target.value })} />
           </div>
 
           {/* Secciones */}

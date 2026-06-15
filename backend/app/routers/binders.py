@@ -17,7 +17,6 @@ router = APIRouter(prefix="/binders", tags=["Binders"])
 def _serializar(b: Binder) -> dict:
     return {
         "id": b.id,
-        "referencia": b.referencia,
         "umr": b.umr,
         "agreement_number": b.agreement_number,
         "productor_id": b.productor_id,
@@ -66,7 +65,7 @@ def listar(q: str | None = None, db: Session = Depends(get_db)):
     stmt = select(Binder).order_by(Binder.id)
     if q:
         like = f"%{q}%"
-        stmt = stmt.where(or_(Binder.referencia.ilike(like), Binder.umr.ilike(like)))
+        stmt = stmt.where(or_(Binder.umr.ilike(like), Binder.agreement_number.ilike(like)))
     return [_serializar(b) for b in db.scalars(stmt).all()]
 
 
