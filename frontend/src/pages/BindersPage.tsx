@@ -342,7 +342,11 @@ export default function BindersPage() {
               type="text"
               value={form.agreement_number}
               autoFocus
-              onChange={(e) => setForm({ ...form, agreement_number: e.target.value, umr: umrDe(e.target.value) })}
+              style={{ textTransform: "uppercase" }}
+              onChange={(e) => {
+                const v = e.target.value.toUpperCase();
+                setForm({ ...form, agreement_number: v, umr: umrDe(v) });
+              }}
             />
           </div>
 
