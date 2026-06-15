@@ -9,6 +9,9 @@ import EnConstruccion from "./components/EnConstruccion";
 
 // Iconos estilo Alea: emoji por opción.
 const EMOJI: Record<string, string> = {
+  productores: "🤝",
+  mercados: "🏦",
+  tomadores: "👥",
   binders: "📑",
   polizas: "📄",
   consultoria: "💼",
@@ -59,6 +62,7 @@ export default function App() {
               className={"tab" + (page === t.id ? " active" : "")}
               onClick={() => setPage(t.id)}
             >
+              <span className="nav-emoji">{EMOJI[t.id]}</span>
               {t.label}
             </button>
           ))}
