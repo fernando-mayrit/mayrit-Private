@@ -1,0 +1,72 @@
+# ─────────────────────────────────────────────────────────────────────────────
+#  .gitignore de Mayrit — BLINDADO contra subida de datos personales / secretos
+#  Regla: el CÓDIGO y las NOTAS van al repo; los DATOS y SECRETOS, NUNCA.
+#  (Mismo criterio que el repo de Alea.)
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Credenciales / secretos ─────────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+*.pfx
+*.pem
+*.key
+*.cer
+*.crt
+*.p12
+
+# ── Bases de datos y copias de seguridad (DATOS REALES) ──────────────────────
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+*.db-wal
+*.db-shm
+*.accdb
+*.mdb
+
+# ── Hojas de cálculo y documentos (pueden contener datos de clientes) ────────
+*.xlsx
+*.xls
+*.xlsm
+*.csv
+*.docx
+*.dotx
+*.doc
+*.dot
+*.pdf
+
+# ── Python (backend FastAPI) ─────────────────────────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ── Node / React (frontend) ──────────────────────────────────────────────────
+node_modules/
+dist/
+build/
+.vite/
+*.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# ── Config local de Claude Code (rutas de esta máquina) ──────────────────────
+.claude/settings.local.json
+
+# ── Editores ─────────────────────────────────────────────────────────────────
+.vscode/*
+!.vscode/extensions.json
+.idea/
+
+# ── Sistema operativo ────────────────────────────────────────────────────────
+Thumbs.db
+desktop.ini
+.DS_Store

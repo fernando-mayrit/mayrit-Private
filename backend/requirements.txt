@@ -1,0 +1,10 @@
+fastapi
+uvicorn[standard]
+psycopg[binary]
+sqlalchemy
+alembic
+pydantic-settings
+python-dotenv
+# Puente de SOLO LECTURA a SharePoint durante la convivencia con Access:
+Office365-REST-Python-Client
+cryptography
