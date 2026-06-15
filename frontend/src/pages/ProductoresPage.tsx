@@ -301,7 +301,7 @@ export default function ProductoresPage() {
 
       {form && (
         <FormPanel
-          title={form.id ? "Editar productor" : "Nuevo productor"}
+          title={form.id ? "Editar Productor" : "Nuevo Productor"}
           dirty={dirty}
           saving={saving}
           onSave={guardar}
@@ -348,7 +348,6 @@ export default function ProductoresPage() {
               value={form.persona}
               options={PERSONAS}
               onChange={(v) => setForm({ ...form, persona: v, cif: formateaCif(form.cif, form.pais, v) })}
-              vertical
             />
           </div>
 

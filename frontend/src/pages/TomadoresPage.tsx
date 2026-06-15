@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
-import { crud } from "../api";
+import { useState, useEffect } from "react";
+import { crud, buscarCp } from "../api";
 import type { Tomador, TomadorWrite } from "../types";
 import FormPanel from "../components/FormPanel";
 import OptionButtons from "../components/OptionButtons";
+import { PAISES } from "../data/paises";
 
 const api = crud<Tomador, TomadorWrite>("/tomadores");
 
@@ -11,29 +12,46 @@ const TIPOS = ["Persona física", "Persona jurídica"];
 type FormState = {
   id?: number;
   nombre: string;
-  alias: string;
   tipo: string;
+  pais: string;
   cif: string;
   domicilio: string;
   codigo_postal: string;
   localidad: string;
   provincia: string;
-  pais: string;
   notas: string;
 };
 
 const VACIO: FormState = {
   nombre: "",
-  alias: "",
   tipo: "",
+  pais: "España",
   cif: "",
   domicilio: "",
   codigo_postal: "",
   localidad: "",
   provincia: "",
-  pais: "",
   notas: "",
 };
+
+// Máscara del CIF/NIF: solo España. Jurídica → X-00000000; Física → 00000000-X. Extranjero: libre.
+function formateaCif(raw: string, pais: string, tipo: string): string {
+  if (pais !== "España") return raw;
+  const s = raw.toUpperCase().replace(/[^A-Z0-9]/g, "");
+  if (tipo === "Persona jurídica") {
+    const letra = s.match(/[A-Z]/)?.[0] ?? "";
+    const nums = s.replace(/[^0-9]/g, "").slice(0, 8);
+    if (!letra) return nums;
+    return nums ? `${letra}-${nums}` : letra;
+  }
+  if (tipo === "Persona física") {
+    const nums = s.replace(/[^0-9]/g, "").slice(0, 8);
+    const letra = s.replace(/[^A-Z]/g, "").slice(-1);
+    if (!letra) return nums;
+    return `${nums}-${letra}`;
+  }
+  return raw;
+}
 
 export default function TomadoresPage() {
   const [items, setItems] = useState<Tomador[]>([]);
@@ -44,8 +62,10 @@ export default function TomadoresPage() {
   const [form, setForm] = useState<FormState | null>(null);
   const [inicial, setInicial] = useState<FormState | null>(null);
   const [saving, setSaving] = useState(false);
+  const [localidadesCP, setLocalidadesCP] = useState<string[]>([]);
 
   const dirty = !!form && JSON.stringify(form) !== JSON.stringify(inicial);
+  const esEspana = form?.pais === "España";
 
   async function cargar(search = q) {
     setLoading(true);
@@ -67,6 +87,7 @@ export default function TomadoresPage() {
   function abrir(estado: FormState) {
     setForm(estado);
     setInicial(estado);
+    setLocalidadesCP([]);
     setError(null);
   }
 
@@ -83,33 +104,61 @@ export default function TomadoresPage() {
     abrir({
       id: t.id,
       nombre: t.nombre,
-      alias: t.alias ?? "",
       tipo: t.tipo ?? "",
+      pais: t.pais ?? "España",
       cif: t.cif ?? "",
       domicilio: t.domicilio ?? "",
       codigo_postal: t.codigo_postal ?? "",
       localidad: t.localidad ?? "",
       provincia: t.provincia ?? "",
-      pais: t.pais ?? "",
       notas: t.notas ?? "",
     });
+  }
+
+  async function onCp(cp: string) {
+    setForm((f) => (f ? { ...f, codigo_postal: cp } : f));
+    if (form?.pais === "España" && /^\d{5}$/.test(cp)) {
+      try {
+        const r = await buscarCp(cp);
+        const locs = [...new Set(r.resultados.map((x) => x.localidad))];
+        const provs = [...new Set(r.resultados.map((x) => x.provincia))];
+        setLocalidadesCP(locs);
+        setForm((f) =>
+          f ? { ...f, codigo_postal: cp, provincia: provs[0] ?? "", localidad: locs.length === 1 ? locs[0] : "" } : f
+        );
+      } catch {
+        setLocalidadesCP([]);
+      }
+    } else {
+      setLocalidadesCP([]);
+    }
   }
 
   async function guardar() {
     if (!form) return;
     const obligatorios: [keyof FormState, string][] = [
       ["nombre", "El nombre es obligatorio."],
-      ["tipo", "El tipo es obligatorio."],
-      ["cif", "El CIF es obligatorio."],
+      ["tipo", "Indica si es persona física o jurídica."],
+      ["pais", "El país es obligatorio."],
+      ["cif", "El CIF/NIF es obligatorio."],
       ["domicilio", "El domicilio es obligatorio."],
       ["codigo_postal", "El código postal es obligatorio."],
       ["localidad", "La localidad es obligatoria."],
       ["provincia", "La provincia es obligatoria."],
-      ["pais", "El país es obligatorio."],
     ];
     for (const [campo, msg] of obligatorios) {
       if (!String(form[campo] ?? "").trim()) {
         setError(msg);
+        return;
+      }
+    }
+    if (esEspana) {
+      if (form.tipo === "Persona jurídica" && !/^[A-Z]-\d{8}$/.test(form.cif)) {
+        setError("El CIF (persona jurídica) debe tener el formato X-00000000.");
+        return;
+      }
+      if (form.tipo === "Persona física" && !/^\d{8}-[A-Z]$/.test(form.cif)) {
+        setError("El NIF (persona física) debe tener el formato 00000000-X.");
         return;
       }
     }
@@ -118,14 +167,13 @@ export default function TomadoresPage() {
     setError(null);
     const payload: TomadorWrite = {
       nombre: form.nombre.trim(),
-      alias: form.alias.trim() || null,
       tipo: form.tipo,
+      pais: form.pais,
       cif: form.cif.trim(),
       domicilio: form.domicilio.trim(),
       codigo_postal: form.codigo_postal.trim(),
       localidad: form.localidad.trim(),
       provincia: form.provincia.trim(),
-      pais: form.pais.trim(),
       notas: form.notas.trim() || null,
     };
     try {
@@ -165,12 +213,20 @@ export default function TomadoresPage() {
     );
   }
 
+  const cifPlaceholder = !esEspana
+    ? "Identificación fiscal"
+    : form?.tipo === "Persona jurídica"
+    ? "X-00000000"
+    : form?.tipo === "Persona física"
+    ? "00000000-X"
+    : "Elige antes Física/Jurídica";
+
   return (
     <div className="container">
       <div className="toolbar">
         <input
           type="search"
-          placeholder="Buscar por nombre, CIF o alias…"
+          placeholder="Buscar por nombre o CIF…"
           value={q}
           onChange={(e) => setQ(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && cargar()}
@@ -194,8 +250,8 @@ export default function TomadoresPage() {
           <thead>
             <tr>
               <th>Nombre</th>
-              <th>Alias</th>
               <th>Tipo</th>
+              <th>País</th>
               <th>CIF</th>
               <th>Localidad</th>
               <th></th>
@@ -205,8 +261,8 @@ export default function TomadoresPage() {
             {items.map((t) => (
               <tr key={t.id}>
                 <td>{t.nombre}</td>
-                <td>{t.alias ?? "—"}</td>
                 <td>{t.tipo ?? "—"}</td>
+                <td>{t.pais ?? "—"}</td>
                 <td>{t.cif ?? "—"}</td>
                 <td>{t.localidad ?? "—"}</td>
                 <td className="acciones">
@@ -225,14 +281,13 @@ export default function TomadoresPage() {
 
       {form && (
         <FormPanel
-          title={form.id ? "Editar tomador" : "Nuevo tomador"}
+          title={form.id ? "Editar Tomador" : "Nuevo Tomador"}
           dirty={dirty}
           saving={saving}
           onSave={guardar}
           onClose={cerrar}
         >
           {campo("Nombre", "nombre", true)}
-          {campo("Alias", "alias")}
 
           <div className="field">
             <label>
@@ -241,25 +296,90 @@ export default function TomadoresPage() {
             <OptionButtons
               value={form.tipo}
               options={TIPOS}
-              onChange={(v) => setForm({ ...form, tipo: v })}
-              vertical
+              onChange={(v) => setForm({ ...form, tipo: v, cif: formateaCif(form.cif, form.pais, v) })}
             />
           </div>
 
-          {campo("CIF", "cif", true)}
+          <div className="field">
+            <label>
+              País <span className="required">*</span>
+            </label>
+            <select
+              value={form.pais}
+              onChange={(e) => {
+                setLocalidadesCP([]);
+                setForm({ ...form, pais: e.target.value, cif: formateaCif(form.cif, e.target.value, form.tipo) });
+              }}
+            >
+              {PAISES.map((p) => (
+                <option key={p} value={p}>
+                  {p}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="field">
+            <label>
+              CIF / NIF <span className="required">*</span>
+            </label>
+            <input
+              type="text"
+              value={form.cif}
+              placeholder={cifPlaceholder}
+              onChange={(e) => setForm({ ...form, cif: formateaCif(e.target.value, form.pais, form.tipo) })}
+            />
+          </div>
+
           {campo("Domicilio", "domicilio", true)}
-          {campo("Código postal", "codigo_postal", true)}
-          {campo("Localidad", "localidad", true)}
-          {campo("Provincia", "provincia", true)}
-          {campo("País", "pais", true)}
+
+          <div className="field">
+            <label>
+              Código postal <span className="required">*</span>
+            </label>
+            <input type="text" value={form.codigo_postal} onChange={(e) => onCp(e.target.value)} />
+          </div>
+
+          <div className="field">
+            <label>
+              Localidad <span className="required">*</span>
+            </label>
+            {esEspana ? (
+              <select value={form.localidad} onChange={(e) => setForm({ ...form, localidad: e.target.value })}>
+                <option value="">
+                  {localidadesCP.length || form.localidad ? "— Elige localidad —" : "— Escribe antes el código postal —"}
+                </option>
+                {[...new Set([...(form.localidad ? [form.localidad] : []), ...localidadesCP])].map((l) => (
+                  <option key={l} value={l}>
+                    {l}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <input
+                type="text"
+                value={form.localidad}
+                onChange={(e) => setForm({ ...form, localidad: e.target.value })}
+              />
+            )}
+          </div>
+
+          <div className="field">
+            <label>
+              Provincia <span className="required">*</span>
+            </label>
+            <input
+              type="text"
+              value={form.provincia}
+              readOnly={esEspana}
+              placeholder={esEspana ? "Se rellena con el código postal" : ""}
+              onChange={(e) => setForm({ ...form, provincia: e.target.value })}
+            />
+          </div>
 
           <div className="field">
             <label>Notas</label>
-            <textarea
-              rows={3}
-              value={form.notas}
-              onChange={(e) => setForm({ ...form, notas: e.target.value })}
-            />
+            <textarea rows={3} value={form.notas} onChange={(e) => setForm({ ...form, notas: e.target.value })} />
           </div>
         </FormPanel>
       )}

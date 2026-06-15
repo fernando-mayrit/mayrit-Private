@@ -81,7 +81,7 @@ tomadores_router = _make_router(
     read_schema=sch.TomadorRead,
     create_schema=sch.TomadorCreate,
     update_schema=sch.TomadorUpdate,
-    search_cols=lambda m: [m.nombre, m.cif, m.alias],
+    search_cols=lambda m: [m.nombre, m.cif],
 )
 
 binders_router = _make_router(

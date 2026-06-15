@@ -45,7 +45,6 @@ export interface Productor {
 export interface Tomador {
   id: number;
   nombre: string;
-  alias: string | null;
   tipo: string | null;
   cif: string | null;
   domicilio: string | null;
@@ -61,7 +60,6 @@ export interface Tomador {
 
 export interface TomadorWrite {
   nombre: string;
-  alias?: string | null;
   tipo?: string | null;
   cif?: string | null;
   domicilio?: string | null;

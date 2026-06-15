@@ -90,7 +90,6 @@ class MercadoRead(MercadoBase):
 # ──────────────────────────────── Tomador ────────────────────────────────
 class TomadorBase(BaseModel):
     nombre: str
-    alias: str | None = None
     tipo: str | None = None
     cif: str | None = None
     domicilio: str | None = None
@@ -108,7 +107,6 @@ class TomadorCreate(TomadorBase):
 
 class TomadorUpdate(BaseModel):
     nombre: str | None = None
-    alias: str | None = None
     tipo: str | None = None
     cif: str | None = None
     domicilio: str | None = None

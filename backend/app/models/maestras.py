@@ -78,7 +78,6 @@ class Tomador(Base):
     sp_old_id: Mapped[int | None] = mapped_column(Integer, index=True)
 
     nombre: Mapped[str] = mapped_column(String(255), index=True)         # NombreCliente
-    alias: Mapped[str | None] = mapped_column(String(255))              # Alias
     tipo: Mapped[str | None] = mapped_column(String(40))                # Persona física / jurídica
     cif: Mapped[str | None] = mapped_column(String(50), index=True)
     domicilio: Mapped[str | None] = mapped_column(String(255))
