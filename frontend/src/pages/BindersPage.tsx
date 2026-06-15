@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { crud } from "../api";
 import type { Binder, BinderWrite, Mercado, Productor, Ramo } from "../types";
 import FormPanel from "../components/FormPanel";
-import OptionButtons from "../components/OptionButtons";
 
 const api = crud<Binder, BinderWrite>("/binders");
 const apiProductores = crud<Productor, unknown>("/productores");
@@ -10,7 +9,6 @@ const apiMercados = crud<Mercado, unknown>("/mercados");
 const apiRamos = crud<Ramo, { nombre: string }>("/ramos");
 
 const ESTADOS = ["En Vigor", "Cancelado", "Renovado", "No Renovado", "Cerrado"];
-const MONEDAS = ["EUR", "GBP", "USD"];
 const PREFIJO_UMR = "B1634";
 
 type LineaForm = { mercado_id: string; participacion: string };
@@ -330,6 +328,7 @@ export default function BindersPage() {
               <th>Coverholder</th>
               <th>Vigencia</th>
               <th>Estado</th>
+              <th>Moneda</th>
               <th>Secciones</th>
               <th></th>
             </tr>
@@ -343,6 +342,7 @@ export default function BindersPage() {
                   {b.fecha_efecto ?? "—"} → {b.fecha_vencimiento ?? "—"}
                 </td>
                 <td>{b.estado ?? "—"}</td>
+                <td>{b.moneda ?? "—"}</td>
                 <td>{b.secciones.length}</td>
                 <td className="acciones">
                   <button className="btn-link" onClick={() => abrirEdicion(b)}>
@@ -449,11 +449,17 @@ export default function BindersPage() {
 
           <div className="field">
             <label>Estado</label>
-            <OptionButtons value={form.estado} options={ESTADOS} onChange={(v) => setForm({ ...form, estado: v })} />
-          </div>
-          <div className="field">
-            <label>Moneda</label>
-            <OptionButtons value={form.moneda} options={MONEDAS} onChange={(v) => setForm({ ...form, moneda: v })} />
+            <select
+              value={form.estado}
+              disabled={!form.id}
+              onChange={(e) => setForm({ ...form, estado: e.target.value })}
+            >
+              {ESTADOS.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </select>
           </div>
 
           {/* Secciones */}

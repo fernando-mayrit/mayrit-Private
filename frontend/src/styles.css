@@ -126,6 +126,7 @@ td.acciones { text-align: right; white-space: nowrap; }
 }
 .field input:focus, .field textarea:focus, .field select:focus { outline: none; border-color: var(--naranja); box-shadow: 0 0 0 3px rgba(224, 122, 90, 0.25); }
 .field input[readonly] { background: var(--gris-claro); color: var(--gris-medio); cursor: default; }
+.field select:disabled { background: var(--gris-claro); color: var(--gris-medio); cursor: default; opacity: 1; }
 /* Regla global: las fechas van centradas en su caja en toda la app */
 input[type="date"] { text-align: center; }
 
