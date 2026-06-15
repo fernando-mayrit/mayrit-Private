@@ -120,6 +120,7 @@ td.acciones { text-align: right; white-space: nowrap; }
   padding: 8px 10px; border: 1px solid var(--borde); border-radius: 8px; font-size: 14px; font-family: inherit; background: #fff;
 }
 .field input:focus, .field textarea:focus, .field select:focus { outline: none; border-color: var(--naranja); box-shadow: 0 0 0 3px rgba(224, 122, 90, 0.25); }
+.field input[readonly] { background: var(--gris-claro); color: var(--gris-medio); cursor: default; }
 .field.check { flex-direction: row; align-items: center; gap: 8px; }
 
 /* Selector de opción en forma de botones (componente OptionButtons) */

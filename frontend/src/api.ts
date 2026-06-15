@@ -21,6 +21,17 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+// Consulta de un código postal (datos compartidos con Alea): localidades + provincia.
+export interface CpResultado {
+  localidad: string;
+  provincia: string;
+}
+export function buscarCp(cp: string) {
+  return request<{ codigo_postal: string; resultados: CpResultado[] }>(
+    `/codigos-postales/${encodeURIComponent(cp)}`
+  );
+}
+
 // CRUD genérico para una colección (p. ej. "/mercados").
 export function crud<TRead, TWrite>(collection: string) {
   return {

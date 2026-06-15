@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { crud } from "../api";
+import { crud, buscarCp } from "../api";
 import type { Productor, ProductorWrite } from "../types";
 import FormPanel from "../components/FormPanel";
 import OptionButtons from "../components/OptionButtons";
@@ -68,6 +68,7 @@ export default function ProductoresPage() {
   const [form, setForm] = useState<FormState | null>(null);
   const [inicial, setInicial] = useState<FormState | null>(null);
   const [saving, setSaving] = useState(false);
+  const [localidadesCP, setLocalidadesCP] = useState<string[]>([]); // opciones si un CP tiene varias localidades
 
   const dirty = !!form && JSON.stringify(form) !== JSON.stringify(inicial);
   const esEspana = form?.pais === "España";
@@ -92,7 +93,35 @@ export default function ProductoresPage() {
   function abrir(estado: FormState) {
     setForm(estado);
     setInicial(estado);
+    setLocalidadesCP([]);
     setError(null);
+  }
+
+  // Al escribir el CP (España): rellena provincia y localidad desde el callejero compartido.
+  async function onCp(cp: string) {
+    setForm((f) => (f ? { ...f, codigo_postal: cp } : f));
+    if (form?.pais === "España" && /^\d{5}$/.test(cp)) {
+      try {
+        const r = await buscarCp(cp);
+        const locs = [...new Set(r.resultados.map((x) => x.localidad))];
+        const provs = [...new Set(r.resultados.map((x) => x.provincia))];
+        setLocalidadesCP(locs);
+        setForm((f) =>
+          f
+            ? {
+                ...f,
+                codigo_postal: cp,
+                provincia: provs[0] ?? f.provincia,
+                localidad: locs.length === 1 ? locs[0] : "",
+              }
+            : f
+        );
+      } catch {
+        setLocalidadesCP([]);
+      }
+    } else {
+      setLocalidadesCP([]);
+    }
   }
 
   function cerrar() {
@@ -299,7 +328,10 @@ export default function ProductoresPage() {
             </label>
             <select
               value={form.pais}
-              onChange={(e) => setForm({ ...form, pais: e.target.value, cif: formateaCif(form.cif, e.target.value, form.persona) })}
+              onChange={(e) => {
+                setLocalidadesCP([]);
+                setForm({ ...form, pais: e.target.value, cif: formateaCif(form.cif, e.target.value, form.persona) });
+              }}
             >
               {PAISES.map((p) => (
                 <option key={p} value={p}>
@@ -334,9 +366,48 @@ export default function ProductoresPage() {
           </div>
 
           {campo("Domicilio", "domicilio", true)}
-          {campo("Código postal", "codigo_postal", true)}
-          {campo("Localidad", "localidad", true)}
-          {campo("Provincia", "provincia", true)}
+
+          <div className="field">
+            <label>
+              Código postal <span className="required">*</span>
+            </label>
+            <input type="text" value={form.codigo_postal} onChange={(e) => onCp(e.target.value)} />
+          </div>
+
+          <div className="field">
+            <label>
+              Localidad <span className="required">*</span>
+            </label>
+            {esEspana && localidadesCP.length > 1 ? (
+              <select value={form.localidad} onChange={(e) => setForm({ ...form, localidad: e.target.value })}>
+                <option value="">— Elige localidad —</option>
+                {localidadesCP.map((l) => (
+                  <option key={l} value={l}>
+                    {l}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <input
+                type="text"
+                value={form.localidad}
+                onChange={(e) => setForm({ ...form, localidad: e.target.value })}
+              />
+            )}
+          </div>
+
+          <div className="field">
+            <label>
+              Provincia <span className="required">*</span>
+            </label>
+            <input
+              type="text"
+              value={form.provincia}
+              readOnly={esEspana}
+              placeholder={esEspana ? "Se rellena con el código postal" : ""}
+              onChange={(e) => setForm({ ...form, provincia: e.target.value })}
+            />
+          </div>
 
           <div className="field">
             <label>Notas</label>

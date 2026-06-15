@@ -2,7 +2,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .routers import maestras
+from .routers import codigos_postales, maestras
 
 app = FastAPI(title="Mayrit API", version="0.1.0")
 
@@ -25,3 +25,4 @@ app.include_router(maestras.productores_router)
 app.include_router(maestras.mercados_router)
 app.include_router(maestras.tomadores_router)
 app.include_router(maestras.binders_router)
+app.include_router(codigos_postales.router)
