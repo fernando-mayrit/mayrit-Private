@@ -18,7 +18,7 @@ class ProductorBase(BaseModel):
     nombre: str
     codigo: str | None = None
     tipo: str | None = None
-    es_coverholder: bool = False
+    persona: str | None = None
     cif: str | None = None
     domicilio: str | None = None
     codigo_postal: str | None = None
@@ -37,7 +37,7 @@ class ProductorUpdate(BaseModel):
     nombre: str | None = None
     codigo: str | None = None
     tipo: str | None = None
-    es_coverholder: bool | None = None
+    persona: str | None = None
     cif: str | None = None
     domicilio: str | None = None
     codigo_postal: str | None = None

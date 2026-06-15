@@ -29,7 +29,7 @@ export interface Productor {
   nombre: string;
   codigo: string | null;
   tipo: string | null;
-  es_coverholder: boolean;
+  persona: string | null;
   cif: string | null;
   domicilio: string | null;
   codigo_postal: string | null;
@@ -77,7 +77,7 @@ export interface ProductorWrite {
   nombre: string;
   codigo?: string | null;
   tipo?: string | null;
-  es_coverholder?: boolean;
+  persona?: string | null;
   cif?: string | null;
   domicilio?: string | null;
   codigo_postal?: string | null;
