@@ -99,10 +99,10 @@ navegación** por pestañas (Productores / Mercados / Tomadores / Binders).
 - Tomadores (antes "Clientes", renombrado): tipo Persona física/jurídica, alias opcional,
   dirección completa obligatoria.
 
-**Estructura del menú (barra lateral con grupos):** los **Productores, Mercados y Tomadores**
-son *Maestras* (las partes); **Binders NO es una maestra** — es el *Negocio/núcleo* (de él
-cuelgan BDX, Liquidaciones, Siniestros, Recibos). El menú lateral los separa en grupos
-"Maestras" y "Negocio".
+**Estructura del menú (dos niveles):** las **Maestras** (Productores, Mercados, Tomadores) van
+en la **barra superior**; el **Negocio/núcleo** va en una **barra lateral** izquierda. **Binders
+NO es una maestra** — es Negocio (de él cuelgan BDX, Liquidaciones, Siniestros, Recibos), así
+que vive en el lateral.
 
 **Pendiente de Fase 1:** pantalla de **Binders** (ahora un placeholder). Luego, cuando estén
 listas, el cutover de cada maestra (volcado real + apagar Access), según "app primero, volcado
