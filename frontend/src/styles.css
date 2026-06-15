@@ -125,6 +125,8 @@ td.acciones { text-align: right; white-space: nowrap; }
 
 /* Selector de opción en forma de botones (componente OptionButtons) */
 .optbtns { display: flex; flex-wrap: wrap; gap: 8px; }
+/* En horizontal, los botones reparten el ancho a partes iguales. */
+.optbtns:not(.vertical) .optbtn { flex: 1 1 0; text-align: center; }
 .optbtns.vertical { flex-direction: column; align-items: flex-start; gap: 6px; }
 .optbtns.vertical .optbtn { width: 50%; text-align: left; }
 .optbtn {
