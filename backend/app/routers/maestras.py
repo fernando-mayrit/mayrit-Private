@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from .. import crud
 from ..db import get_db
-from ..models.maestras import Binder, Mercado, Productor
+from ..models.maestras import Binder, Mercado, Productor, Tomador
 from ..schemas import maestras as sch
 
 
@@ -72,6 +72,16 @@ mercados_router = _make_router(
     create_schema=sch.MercadoCreate,
     update_schema=sch.MercadoUpdate,
     search_cols=lambda m: [m.nombre, m.codigo],
+)
+
+tomadores_router = _make_router(
+    prefix="/tomadores",
+    tag="Tomadores",
+    model=Tomador,
+    read_schema=sch.TomadorRead,
+    create_schema=sch.TomadorCreate,
+    update_schema=sch.TomadorUpdate,
+    search_cols=lambda m: [m.nombre, m.cif, m.alias],
 )
 
 binders_router = _make_router(

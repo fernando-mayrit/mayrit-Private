@@ -2,13 +2,15 @@ import { useState } from "react";
 import logo from "./assets/mayrit-logo.png";
 import MercadosPage from "./pages/MercadosPage";
 import ProductoresPage from "./pages/ProductoresPage";
+import TomadoresPage from "./pages/TomadoresPage";
 import BindersPage from "./pages/BindersPage";
 
-type Page = "productores" | "mercados" | "binders";
+type Page = "productores" | "mercados" | "tomadores" | "binders";
 
 const TABS: { id: Page; label: string }[] = [
   { id: "productores", label: "Productores" },
   { id: "mercados", label: "Mercados" },
+  { id: "tomadores", label: "Tomadores" },
   { id: "binders", label: "Binders" },
 ];
 
@@ -36,6 +38,7 @@ export default function App() {
 
       {page === "productores" && <ProductoresPage />}
       {page === "mercados" && <MercadosPage />}
+      {page === "tomadores" && <TomadoresPage />}
       {page === "binders" && <BindersPage />}
     </>
   );

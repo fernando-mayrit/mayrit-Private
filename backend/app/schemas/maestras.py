@@ -87,6 +87,45 @@ class MercadoRead(MercadoBase):
     updated_at: dt.datetime
 
 
+# ──────────────────────────────── Tomador ────────────────────────────────
+class TomadorBase(BaseModel):
+    nombre: str
+    alias: str | None = None
+    tipo: str | None = None
+    cif: str | None = None
+    domicilio: str | None = None
+    codigo_postal: str | None = None
+    localidad: str | None = None
+    provincia: str | None = None
+    pais: str | None = None
+    notas: str | None = None
+    sp_old_id: int | None = None
+
+
+class TomadorCreate(TomadorBase):
+    pass
+
+
+class TomadorUpdate(BaseModel):
+    nombre: str | None = None
+    alias: str | None = None
+    tipo: str | None = None
+    cif: str | None = None
+    domicilio: str | None = None
+    codigo_postal: str | None = None
+    localidad: str | None = None
+    provincia: str | None = None
+    pais: str | None = None
+    notas: str | None = None
+
+
+class TomadorRead(TomadorBase):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    created_at: dt.datetime
+    updated_at: dt.datetime
+
+
 # ───────────────────────────────── Binder ────────────────────────────────
 class BinderBase(BaseModel):
     titulo: str

@@ -1,4 +1,4 @@
 """Modelos ORM de Mayrit. Importa aquí cada modelo para que Alembic los detecte."""
-from .maestras import Binder, Mercado, Productor
+from .maestras import Binder, Mercado, Productor, Tomador
 
-__all__ = ["Productor", "Mercado", "Binder"]
+__all__ = ["Productor", "Mercado", "Tomador", "Binder"]

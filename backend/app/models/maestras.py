@@ -69,6 +69,31 @@ class Mercado(Base):
     )
 
 
+class Tomador(Base):
+    """Tomador de las pólizas (antes 'Clientes'; renombrado para no confundir con las agencias)."""
+
+    __tablename__ = "tomadores"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    sp_old_id: Mapped[int | None] = mapped_column(Integer, index=True)
+
+    nombre: Mapped[str] = mapped_column(String(255), index=True)         # NombreCliente
+    alias: Mapped[str | None] = mapped_column(String(255))              # Alias
+    tipo: Mapped[str | None] = mapped_column(String(40))                # Persona física / jurídica
+    cif: Mapped[str | None] = mapped_column(String(50), index=True)
+    domicilio: Mapped[str | None] = mapped_column(String(255))
+    codigo_postal: Mapped[str | None] = mapped_column(String(20))
+    localidad: Mapped[str | None] = mapped_column(String(120))
+    provincia: Mapped[str | None] = mapped_column(String(120))
+    pais: Mapped[str | None] = mapped_column(String(120))
+    notas: Mapped[str | None] = mapped_column(Text)
+
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
 class Binder(Base):
     """Binding authority entre una agencia (coverholder) y un mercado asegurador."""
 
