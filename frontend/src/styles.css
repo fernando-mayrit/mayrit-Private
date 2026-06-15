@@ -1,71 +1,104 @@
+/* ─── Tipografía corporativa Mayrit (Aller) ───
+   En la carpeta de marca solo existen Aller Display (logotipo) y Aller Italic.
+   Aller Display se usa para títulos; el cuerpo usa una sans neutra que combina. */
+@font-face {
+  font-family: "Aller Display";
+  src: url("./assets/fonts/AllerDisplay.ttf") format("truetype");
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Aller";
+  src: url("./assets/fonts/Aller_It.ttf") format("truetype");
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+}
+
 :root {
-  --azul: #1f4e79;
-  --azul-claro: #2f6fb0;
-  --gris: #6b7280;
+  /* Colores corporativos (PDF de marca) */
+  --naranja: #da5833;       /* PANTONE 7579 C */
+  --naranja-osc: #c14a28;   /* variante para hover */
+  --gris: #4b4b4b;          /* PANTONE 446 C */
+  --gris-medio: #6b7280;
   --gris-claro: #f3f4f6;
   --borde: #e5e7eb;
   --rojo: #b42318;
-  font-family: system-ui, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  color: #1f2937;
+
+  --fuente-titulo: "Aller Display", system-ui, "Segoe UI", sans-serif;
+  --fuente-texto: system-ui, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+
+  font-family: var(--fuente-texto);
+  color: var(--gris);
 }
 
 * { box-sizing: border-box; }
 body { margin: 0; background: #fafbfc; }
 
+h1, h2, h3 { font-family: var(--fuente-titulo); font-weight: 400; color: var(--gris); }
+
+/* Cabecera: fondo blanco con el logo y una línea naranja de acento */
 .app-header {
-  background: var(--azul);
-  color: #fff;
-  padding: 14px 24px;
+  background: #fff;
+  border-bottom: 1px solid var(--borde);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+  padding: 12px 24px;
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 16px;
 }
-.app-header h1 { font-size: 20px; margin: 0; }
-.app-header span { color: #cdddee; font-size: 13px; }
+.app-header::after { content: none; }
+.app-header img.logo { height: 34px; display: block; }
+.app-header .sep { width: 1px; height: 26px; background: var(--borde); }
+.app-header .subtitulo { color: var(--gris-medio); font-size: 14px; font-family: var(--fuente-titulo); }
+.acento-naranja { height: 3px; background: var(--naranja); }
 
 .container { max-width: 1100px; margin: 0 auto; padding: 24px; }
 
 .toolbar { display: flex; gap: 12px; align-items: center; margin-bottom: 16px; }
 .toolbar input[type="search"] {
   flex: 1; padding: 9px 12px; border: 1px solid var(--borde);
-  border-radius: 8px; font-size: 14px;
+  border-radius: 8px; font-size: 14px; font-family: inherit;
 }
+.toolbar input[type="search"]:focus { outline: none; border-color: var(--naranja); box-shadow: 0 0 0 3px rgba(218, 88, 51, 0.15); }
 
 button {
   font-size: 14px; padding: 8px 14px; border-radius: 8px;
-  border: 1px solid transparent; cursor: pointer;
+  border: 1px solid transparent; cursor: pointer; font-family: inherit;
 }
-.btn-primary { background: var(--azul); color: #fff; }
-.btn-primary:hover { background: var(--azul-claro); }
-.btn-secondary { background: #fff; color: var(--azul); border-color: var(--borde); }
+.btn-primary { background: var(--naranja); color: #fff; }
+.btn-primary:hover { background: var(--naranja-osc); }
+.btn-primary:disabled { background: #e3a892; cursor: default; }
+.btn-secondary { background: #fff; color: var(--gris); border-color: var(--borde); }
 .btn-secondary:hover { background: var(--gris-claro); }
 .btn-danger { background: #fff; color: var(--rojo); border-color: #f1c6c1; }
 .btn-danger:hover { background: #fdecea; }
-.btn-link { background: none; border: none; color: var(--azul-claro); padding: 4px 8px; }
+.btn-link { background: none; border: none; color: var(--naranja); padding: 4px 8px; }
 .btn-link:hover { text-decoration: underline; }
 
 table { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid var(--borde); border-radius: 10px; overflow: hidden; }
 th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--borde); font-size: 14px; }
-th { background: var(--gris-claro); color: #374151; font-weight: 600; }
+th { background: var(--gris-claro); color: var(--gris); font-weight: 600; }
 tr:last-child td { border-bottom: none; }
-tr:hover td { background: #fbfdff; }
+tr:hover td { background: #fdf6f3; }
 td.acciones { text-align: right; white-space: nowrap; }
 
-.empty, .loading, .error { padding: 24px; text-align: center; color: var(--gris); }
+.empty, .loading, .error { padding: 24px; text-align: center; color: var(--gris-medio); }
 .error { color: var(--rojo); }
 
-.badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; background: var(--gris-claro); color: #374151; }
-.badge.si { background: #e7f6ec; color: #1a7f37; }
+.badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; background: var(--gris-claro); color: var(--gris); }
+.badge.si { background: #fbe4dc; color: var(--naranja-osc); }
 
 /* Formulario en panel lateral */
 .overlay { position: fixed; inset: 0; background: rgba(0,0,0,.3); display: flex; justify-content: flex-end; }
 .panel { width: 440px; max-width: 100%; height: 100%; background: #fff; padding: 24px; overflow-y: auto; box-shadow: -4px 0 16px rgba(0,0,0,.12); }
 .panel h2 { margin-top: 0; }
 .field { margin-bottom: 14px; display: flex; flex-direction: column; gap: 4px; }
-.field label { font-size: 13px; color: #374151; font-weight: 500; }
+.field label { font-size: 13px; color: var(--gris); font-weight: 500; }
 .field input[type="text"], .field input[type="date"], .field textarea {
   padding: 8px 10px; border: 1px solid var(--borde); border-radius: 8px; font-size: 14px; font-family: inherit;
 }
+.field input:focus, .field textarea:focus { outline: none; border-color: var(--naranja); box-shadow: 0 0 0 3px rgba(218, 88, 51, 0.15); }
 .field.check { flex-direction: row; align-items: center; gap: 8px; }
 .panel-actions { display: flex; gap: 10px; margin-top: 20px; }
-.required { color: var(--rojo); }
+.required { color: var(--naranja); }
