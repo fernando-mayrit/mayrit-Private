@@ -102,7 +102,7 @@ button {
 .btn-link:hover { text-decoration: underline; }
 
 table { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid var(--borde); border-radius: 10px; overflow: hidden; }
-th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--borde); font-size: 14px; }
+th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--borde); font-size: 12px; }
 th { background: var(--gris-claro); color: var(--gris); font-weight: 600; }
 tr:last-child td { border-bottom: none; }
 tr:hover td { background: #fdf6f3; }

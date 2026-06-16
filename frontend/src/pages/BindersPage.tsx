@@ -470,7 +470,7 @@ export default function BindersPage() {
         <div className="empty">No hay binders. Crea el primero con «+ Nuevo binder».</div>
       ) : (
         <div className="tabla-scroll">
-          <table className="compacto">
+          <table>
             <thead>
               <tr>
                 <th>UMR</th>
