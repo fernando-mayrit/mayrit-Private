@@ -156,7 +156,7 @@ td.num, th.num { text-align: right; }
 /* Fila de dos campos a la par (alineados por su base, para que un check encaje con un input) */
 .field-row { display: flex; gap: 12px; align-items: flex-end; }
 .field-row > .field { flex: 1; min-width: 0; }
-.field-row .field.check.pc-check { margin-bottom: 14px; white-space: nowrap; }
+.field-row .field.check.pc-check { margin-bottom: 14px; white-space: nowrap; font-size: 11px; }
 
 /* Selector de opción en forma de botones (componente OptionButtons) */
 .optbtns { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -187,6 +187,7 @@ td.num, th.num { text-align: right; }
 .linea-mercado { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
 .linea-mercado select { flex: 1; padding: 7px 9px; border: 1px solid var(--borde); border-radius: 8px; font-size: 14px; font-family: inherit; background: #fff; }
 .linea-mercado .part { width: 70px; padding: 7px 9px; border: 1px solid var(--borde); border-radius: 8px; font-size: 14px; font-family: inherit; }
+.linea-mercado .num-input.part-num { width: 120px; flex: 0 0 auto; }
 .btn-sm { padding: 5px 10px; font-size: 13px; }
 
 /* Risk codes de una sección (casillas) */

@@ -18,6 +18,7 @@ type Props = {
   suffix?: string;
   placeholder?: string;
   id?: string;
+  className?: string;
 };
 
 // Edición (estilo es-ES: coma decimal, sin miles) → canónica (punto decimal, sin miles).
@@ -48,6 +49,7 @@ export default function NumberInput({
   suffix,
   placeholder,
   id,
+  className,
 }: Props) {
   const [focused, setFocused] = useState(false);
   const [buf, setBuf] = useState("");
@@ -55,7 +57,7 @@ export default function NumberInput({
   const shown = focused ? buf : formatDisplay(value, decimals, thousands);
 
   return (
-    <div className="num-input">
+    <div className={className ? `num-input ${className}` : "num-input"}>
       <input
         id={id}
         type="text"

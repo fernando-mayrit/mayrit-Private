@@ -263,18 +263,28 @@ export default function BindersPage() {
 
   async function guardar() {
     if (!form) return;
+    // Todos los campos son obligatorios al dar de alta un binder (salvo notas).
     if (!form.agreement_number.trim()) return setError("El Agreement Number es obligatorio.");
     if (!form.productor_id) return setError("El coverholder es obligatorio.");
     if (!form.fecha_efecto) return setError("La fecha de efecto es obligatoria.");
     if (!form.fecha_vencimiento) return setError("La fecha de vencimiento es obligatoria.");
+    if (!form.yoa.trim()) return setError("El YOA es obligatorio.");
     for (let i = 0; i < form.secciones.length; i++) {
       const s = form.secciones[i];
-      if (!s.ramo.trim()) return setError(`La sección ${i + 1} necesita un ramo.`);
+      const N = `La sección ${i + 1}`;
+      if (!s.ramo.trim()) return setError(`${N} necesita un ramo.`);
       const codes = ramos.find((r) => r.nombre === s.ramo)?.risk_codes ?? [];
       if (codes.length && s.risk_codes.length === 0)
-        return setError(`La sección ${i + 1} necesita al menos un risk code.`);
-      if (s.mercados.filter((m) => m.mercado_id).length === 0)
-        return setError(`La sección ${i + 1} necesita al menos un mercado.`);
+        return setError(`${N} necesita al menos un risk code.`);
+      if (num(s.limite_primas) == null) return setError(`${N}: el límite de primas es obligatorio.`);
+      if (num(s.notificacion) == null) return setError(`${N}: la notificación es obligatoria.`);
+      const com = num(s.comision);
+      if (com == null) return setError(`${N}: la comisión es obligatoria.`);
+      if (com > 100) return setError(`${N}: la comisión no puede ser mayor que 100 %.`);
+      const lineas = s.mercados.filter((m) => m.mercado_id);
+      if (lineas.length === 0) return setError(`${N} necesita al menos un mercado.`);
+      if (lineas.some((m) => num(m.participacion) == null))
+        return setError(`${N}: cada mercado necesita su participación (%).`);
     }
 
     setSaving(true);
@@ -593,12 +603,12 @@ export default function BindersPage() {
                       </option>
                     ))}
                   </select>
-                  <input
-                    type="text"
-                    className="part"
-                    placeholder="%"
+                  <NumberInput
+                    className="part-num"
                     value={m.participacion}
-                    onChange={(e) => setLinea(i, j, "participacion", e.target.value)}
+                    onChange={(v) => setLinea(i, j, "participacion", v)}
+                    suffix="%"
+                    thousands={false}
                   />
                   {s.mercados.length > 1 && (
                     <button className="btn-link" style={{ color: "var(--rojo)" }} onClick={() => removeMercado(i, j)}>

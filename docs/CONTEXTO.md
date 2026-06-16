@@ -22,7 +22,10 @@ los BDX que cuelgan de ellos + liquidaciones de primas**. Accesorio: compliance,
      por defecto "En Vigor" y bloqueado en el alta; estados: En Vigor/Cancelado/Renovado/No
      Renovado/Cerrado); **Moneda** = EUR automática (no se pregunta; columna en tablas).
    - Cada **Sección**: **Ramo** (del catálogo) · **Risk Codes** (varios, de los del ramo) ·
-     **Comisión %** · **Límite de primas** · **Mercados** (varios, con participación %).
+     **Límite de primas** · **Notificación %** · **Comisión %** (≤100) · **Sujeto a PC?** (sí/no) ·
+     **Mercados** (varios, con participación %). Todos obligatorios al dar de alta (salvo notas).
+     **Límite de primas + Notificación %** son la base de un cálculo FUTURO: comparar la producción
+     que se va notificando en cada BDX contra ese límite y **avisar cuando se exceda** (Fase BDX).
    - Tablas: `binders`, `binder_secciones`, `seccion_mercados`, `seccion_risk_codes`. Router propio.
 2. **Pólizas** — el negocio de *Open Market* (OM). [pendiente]
 3. **Consultoría** — los *fees*. [pendiente]
