@@ -188,6 +188,9 @@ td.num, th.num { text-align: right; }
 .linea-mercado select { flex: 1; padding: 7px 9px; border: 1px solid var(--borde); border-radius: 8px; font-size: 14px; font-family: inherit; background: #fff; }
 .linea-mercado .part { width: 70px; padding: 7px 9px; border: 1px solid var(--borde); border-radius: 8px; font-size: 14px; font-family: inherit; }
 .linea-mercado .num-input.part-num { width: 120px; flex: 0 0 auto; }
+/* Total de participaciones de la sección: rojo si no cuadra, verde si suma 100 % */
+.part-total { font-size: 12px; color: var(--rojo); margin-top: 6px; font-weight: 600; }
+.part-total.ok { color: #15803d; }
 .btn-sm { padding: 5px 10px; font-size: 13px; }
 
 /* Risk codes de una sección (casillas) */

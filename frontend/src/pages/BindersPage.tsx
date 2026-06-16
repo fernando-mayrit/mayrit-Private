@@ -66,6 +66,11 @@ function num(v: string): number | null {
   return isNaN(n) ? null : n;
 }
 
+// Formato de % (es-ES, 2 decimales) para mensajes y totales en vivo.
+function pct(n: number): string {
+  return new Intl.NumberFormat("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n) + " %";
+}
+
 function umrDe(agreement: string): string {
   return agreement.trim() ? PREFIJO_UMR + agreement.trim() : "";
 }
@@ -285,6 +290,9 @@ export default function BindersPage() {
       if (lineas.length === 0) return setError(`${N} necesita al menos un mercado.`);
       if (lineas.some((m) => num(m.participacion) == null))
         return setError(`${N}: cada mercado necesita su participación (%).`);
+      const suma = lineas.reduce((a, m) => a + (num(m.participacion) ?? 0), 0);
+      if (Math.abs(suma - 100) > 0.005)
+        return setError(`${N}: la suma de participaciones debe ser 100 % (ahora ${pct(suma)}).`);
     }
 
     setSaving(true);
@@ -620,6 +628,16 @@ export default function BindersPage() {
               <button className="btn-secondary btn-sm" onClick={() => addMercado(i)}>
                 + Añadir mercado
               </button>
+              {(() => {
+                const suma = s.mercados.reduce((a, m) => a + (num(m.participacion) ?? 0), 0);
+                const ok = Math.abs(suma - 100) < 0.005;
+                return (
+                  <div className={ok ? "part-total ok" : "part-total"}>
+                    Total participación: {pct(suma)}
+                    {!ok && " (debe sumar 100 %)"}
+                  </div>
+                );
+              })()}
             </div>
           ))}
           <button className="btn-secondary" onClick={addSeccion}>
