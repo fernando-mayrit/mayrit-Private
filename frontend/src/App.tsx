@@ -99,7 +99,7 @@ export default function App() {
               {CONFIG.map((it) => (
                 <button
                   key={it.id}
-                  className={"nav-item" + (page === it.id ? " active" : "")}
+                  className={"nav-item nav-item-sm" + (page === it.id ? " active" : "")}
                   onClick={() => setPage(it.id)}
                 >
                   <span className="nav-emoji">{EMOJI[it.id]}</span>

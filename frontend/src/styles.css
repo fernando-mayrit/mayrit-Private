@@ -71,6 +71,9 @@ h1, h2, h3 { font-family: var(--fuente-titulo); font-weight: 600; color: var(--g
   font-size: 16px; color: var(--gris); font-family: var(--fuente-titulo);
 }
 .nav-emoji { width: 20px; text-align: center; font-size: 16px; line-height: 1; flex-shrink: 0; }
+/* Ítems de Configuración (Ramos, Cuentas Bancarias): letra bastante más pequeña */
+.nav-item-sm { font-size: 12px; padding: 6px 12px; }
+.nav-item-sm .nav-emoji { font-size: 13px; }
 .nav-item:hover { background: var(--gris-claro); }
 .nav-item.active { background: #f8e2d8; color: var(--naranja-osc); font-weight: 600; }
 .content { flex: 1; min-width: 0; }
