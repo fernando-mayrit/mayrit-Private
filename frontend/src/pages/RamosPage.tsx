@@ -100,10 +100,12 @@ export default function RamosPage() {
     }
   }
 
-  async function borrar(r: Ramo) {
-    if (!confirm(`¿Borrar el ramo "${r.nombre}"? (se borran también sus Risk Codes)`)) return;
+  async function borrarActual() {
+    if (!form?.id) return;
+    if (!confirm(`¿Borrar el ramo "${form.nombre}"? (se borran también sus Risk Codes)`)) return;
     try {
-      await api.remove(r.id);
+      await api.remove(form.id);
+      cerrar();
       await cargar();
     } catch (e) {
       setError((e as Error).message);
@@ -150,9 +152,6 @@ export default function RamosPage() {
                   <button className="btn-link" onClick={() => abrirEdicion(r)}>
                     Editar
                   </button>
-                  <button className="btn-link" style={{ color: "var(--rojo)" }} onClick={() => borrar(r)}>
-                    Borrar
-                  </button>
                 </td>
               </tr>
             ))}
@@ -168,6 +167,7 @@ export default function RamosPage() {
           error={error}
           onSave={guardar}
           onClose={cerrar}
+          onDelete={form.id ? borrarActual : undefined}
         >
           <div className="field">
             <label>

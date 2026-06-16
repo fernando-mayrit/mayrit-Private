@@ -163,6 +163,8 @@ export default function BindersPage() {
     !!form &&
     (JSON.stringify(form) !== JSON.stringify(inicial) ||
       (modo === "suplemento" && (!!supEfecto || !!supMotivo)));
+  // Binder existente abierto para editar: documento fijo, solo el Estado es editable.
+  const soloEstado = !!form && modo === "edicion" && !!form.id;
   // Profit Commission del binder solo se puede activar si alguna sección tiene "Sujeto a PC?".
   const algunaPC = !!form && form.secciones.some((s) => s.sujeto_pc);
 
@@ -248,13 +250,6 @@ export default function BindersPage() {
   }
   function abrirEdicion(b: Binder) {
     setModo("edicion");
-    setSupEfecto("");
-    setSupMotivo("");
-    abrir(formDesde(b));
-  }
-  // Nuevo suplemento: mismo formulario, precargado con los términos actuales; al guardar crea versión.
-  function abrirSuplemento(b: Binder) {
-    setModo("suplemento");
     setSupEfecto("");
     setSupMotivo("");
     abrir(formDesde(b));
@@ -477,25 +472,28 @@ export default function BindersPage() {
     }
   }
 
-  // El Estado es lo único que se cambia directamente (sin suplemento), desde la propia tabla.
-  async function cambiarEstado(b: Binder, estado: string) {
-    setError(null);
+  async function borrarActual() {
+    if (!form?.id) return;
+    if (!confirm(`¿Borrar el binder "${form.umr || form.agreement_number}"?`)) return;
     try {
-      await api.update(b.id, { estado });
+      await api.remove(form.id);
+      cerrar();
       await cargar();
     } catch (e) {
       setError((e as Error).message);
     }
   }
 
-  async function borrar(b: Binder) {
-    if (!confirm(`¿Borrar el binder "${b.umr ?? b.agreement_number}"?`)) return;
-    try {
-      await api.remove(b.id);
-      await cargar();
-    } catch (e) {
-      setError((e as Error).message);
-    }
+  // Desde dentro del binder (vista de edición): pasar a "Nuevo suplemento" reutilizando los valores actuales.
+  function pasarASuplemento() {
+    setModo("suplemento");
+    setSupEfecto("");
+    setSupMotivo("");
+  }
+  // Abrir el historial del binder que se está viendo.
+  function historialDesdeForm() {
+    const b = items.find((x) => x.id === form?.id);
+    if (b) abrirHistorial(b);
   }
 
   // Mercado con mayor participación del binder (entre todas las secciones) → su Código (IdMercado).
@@ -559,20 +557,7 @@ export default function BindersPage() {
                   <td>{b.yoa ?? "—"}</td>
                   <td>{b.coverholder_alias ?? b.coverholder_nombre ?? "—"}</td>
                   <td>{mercadoPrincipal(b)}</td>
-                  <td>
-                    <select
-                      className="estado-sel"
-                      value={b.estado ?? ""}
-                      onChange={(e) => cambiarEstado(b, e.target.value)}
-                    >
-                      {!b.estado && <option value="">—</option>}
-                      {ESTADOS.map((s) => (
-                        <option key={s} value={s}>
-                          {s}
-                        </option>
-                      ))}
-                    </select>
-                  </td>
+                  <td>{b.estado ?? "—"}</td>
                   <td>{ramosDe(b)}</td>
                   <td>{fechaCorta(b.fecha_efecto)}</td>
                   <td>{fechaCorta(b.fecha_vencimiento)}</td>
@@ -580,17 +565,8 @@ export default function BindersPage() {
                   <td className="num">—</td>
                   <td>—</td>
                   <td className="acciones">
-                    <button className="btn-link" onClick={() => abrirSuplemento(b)}>
-                      + Suplemento
-                    </button>
-                    <button className="btn-link" onClick={() => abrirHistorial(b)}>
-                      Historial
-                    </button>
-                    <button className="btn-link" title="Solo para corregir errores de grabación" onClick={() => abrirEdicion(b)}>
-                      Corregir
-                    </button>
-                    <button className="btn-link" style={{ color: "var(--rojo)" }} onClick={() => borrar(b)}>
-                      Borrar
+                    <button className="btn-link" onClick={() => abrirEdicion(b)}>
+                      Editar
                     </button>
                   </td>
                 </tr>
@@ -606,7 +582,7 @@ export default function BindersPage() {
             modo === "suplemento"
               ? `Nuevo suplemento · ${form.umr || form.agreement_number}`
               : form.id
-              ? `Corregir Binder · ${form.umr || form.agreement_number}`
+              ? `Editar Binder · ${form.umr || form.agreement_number}`
               : "Nuevo Binder"
           }
           dirty={dirty}
@@ -615,13 +591,39 @@ export default function BindersPage() {
           saveLabel={modo === "suplemento" ? "Crear suplemento" : "Guardar"}
           onSave={guardar}
           onClose={cerrar}
+          onDelete={soloEstado ? borrarActual : undefined}
         >
-          {modo === "edicion" && form.id && (
-            <div className="aviso-correccion">
-              ⚠ <strong>Corrección de errores de grabación.</strong> Para cualquier cambio real del
-              binder usa «+ Suplemento». El Estado se cambia desde la tabla.
-            </div>
+          {soloEstado && (
+            <>
+              <div className="field">
+                <label>Estado</label>
+                <select value={form.estado} onChange={(e) => setForm({ ...form, estado: e.target.value })}>
+                  {ESTADOS.map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="binder-botones">
+                <button className="btn-secondary btn-sm" onClick={pasarASuplemento}>
+                  + Suplemento
+                </button>
+                <button className="btn-secondary btn-sm" onClick={historialDesdeForm}>
+                  Historial
+                </button>
+              </div>
+              <div className="hint" style={{ margin: "2px 0 12px" }}>
+                El binder es un documento fijo: aquí solo se cambia el Estado. Para cualquier otro
+                cambio, usa «+ Suplemento».
+              </div>
+            </>
           )}
+
+          <fieldset
+            disabled={soloEstado}
+            style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}
+          >
           {modo === "suplemento" && (
             <div className="sup-cabecera">
               <div className="hint" style={{ marginBottom: 10 }}>
@@ -731,20 +733,22 @@ export default function BindersPage() {
             </div>
           </div>
 
-          <div className="field">
-            <label>Estado</label>
-            <select
-              value={form.estado}
-              disabled={!form.id}
-              onChange={(e) => setForm({ ...form, estado: e.target.value })}
-            >
-              {ESTADOS.map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
-            </select>
-          </div>
+          {!soloEstado && (
+            <div className="field">
+              <label>Estado</label>
+              <select
+                value={form.estado}
+                disabled={!form.id}
+                onChange={(e) => setForm({ ...form, estado: e.target.value })}
+              >
+                {ESTADOS.map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {/* Secciones */}
           <h3 style={{ marginBottom: 8 }}>Secciones</h3>
@@ -1005,6 +1009,7 @@ export default function BindersPage() {
             <label>Notas</label>
             <textarea rows={3} value={form.notas} onChange={(e) => setForm({ ...form, notas: e.target.value })} />
           </div>
+          </fieldset>
         </FormPanel>
       )}
 

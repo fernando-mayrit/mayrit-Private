@@ -19,6 +19,8 @@ type Props = {
   error?: string | null; // mensaje de validación/guardado; se muestra visible junto a los botones
   onSave: () => void;
   onClose: () => void; // se llama solo cuando el cierre está confirmado
+  onDelete?: () => void; // si se pasa, muestra "Borrar" dentro del panel (normalmente solo al editar)
+  deleteLabel?: string;
   children: ReactNode;
 };
 
@@ -30,6 +32,8 @@ export default function FormPanel({
   error,
   onSave,
   onClose,
+  onDelete,
+  deleteLabel = "Borrar",
   children,
 }: Props) {
   const errorRef = useRef<HTMLDivElement>(null);
@@ -76,12 +80,19 @@ export default function FormPanel({
         )}
 
         <div className="panel-actions">
-          <button className="btn-primary" onClick={onSave} disabled={saving}>
-            {saving ? "Guardando…" : saveLabel}
-          </button>
-          <button className="btn-secondary" onClick={attemptClose} disabled={saving}>
-            Cancelar
-          </button>
+          {onDelete && (
+            <button className="btn-danger" onClick={onDelete} disabled={saving}>
+              {deleteLabel}
+            </button>
+          )}
+          <div className="panel-actions-right">
+            <button className="btn-primary" onClick={onSave} disabled={saving}>
+              {saving ? "Guardando…" : saveLabel}
+            </button>
+            <button className="btn-secondary" onClick={attemptClose} disabled={saving}>
+              Cancelar
+            </button>
+          </div>
         </div>
       </div>
     </div>

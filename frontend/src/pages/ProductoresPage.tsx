@@ -211,10 +211,12 @@ export default function ProductoresPage() {
     }
   }
 
-  async function borrar(p: Productor) {
-    if (!confirm(`¿Borrar el productor "${p.nombre}"?`)) return;
+  async function borrarActual() {
+    if (!form?.id) return;
+    if (!confirm(`¿Borrar el productor "${form.nombre}"?`)) return;
     try {
-      await api.remove(p.id);
+      await api.remove(form.id);
+      cerrar();
       await cargar();
     } catch (e) {
       setError((e as Error).message);
@@ -290,9 +292,6 @@ export default function ProductoresPage() {
                   <button className="btn-link" onClick={() => abrirEdicion(p)}>
                     Editar
                   </button>
-                  <button className="btn-link" style={{ color: "var(--rojo)" }} onClick={() => borrar(p)}>
-                    Borrar
-                  </button>
                 </td>
               </tr>
             ))}
@@ -308,6 +307,7 @@ export default function ProductoresPage() {
           error={error}
           onSave={guardar}
           onClose={cerrar}
+          onDelete={form.id ? borrarActual : undefined}
         >
           {campo("Nombre", "nombre", true)}
           {campo("Alias", "alias", true)}

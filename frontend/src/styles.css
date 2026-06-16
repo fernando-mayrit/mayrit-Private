@@ -113,10 +113,10 @@ tr:hover td { background: #fdf6f3; }
 td.acciones { text-align: right; white-space: nowrap; }
 /* Contenedor con scroll horizontal para tablas anchas (p. ej. binders) */
 .tabla-scroll { overflow-x: auto; }
-/* Estado editable en la propia tabla (único cambio directo del binder) */
-.estado-sel { padding: 3px 6px; border: 1px solid var(--borde); border-radius: 6px; font-size: 12px; font-family: inherit; background: #fff; }
-/* Aviso en el panel de corrección de un binder */
-.aviso-correccion { background: #fff7ed; border: 1px solid #fed7aa; color: var(--gris); border-radius: 8px; padding: 10px 12px; font-size: 13px; margin-bottom: 14px; }
+/* Botones de acción dentro de la ficha de un binder (+ Suplemento / Historial) */
+.binder-botones { display: flex; gap: 8px; margin-bottom: 6px; }
+/* Ficha del binder en solo-lectura (todo gris salvo el Estado, que va arriba) */
+fieldset[disabled] { opacity: .85; }
 
 .empty, .loading, .error { padding: 24px; text-align: center; color: var(--gris-medio); }
 .error { color: var(--rojo); }
@@ -190,7 +190,8 @@ td.num, th.num { text-align: right; }
 .toba-row .check-inline { display: flex; align-items: center; gap: 8px; cursor: pointer; }
 .toba-row .fecha-inline { display: flex; align-items: center; gap: 8px; }
 .toba-row .fecha-inline label { font-size: 13px; color: var(--gris); }
-.panel-actions { display: flex; gap: 10px; margin-top: 20px; }
+.panel-actions { display: flex; gap: 10px; margin-top: 20px; align-items: center; justify-content: space-between; }
+.panel-actions-right { display: flex; gap: 10px; margin-left: auto; }
 /* Mensaje de error del formulario: banda roja visible, pegada abajo junto a los botones */
 .panel-error {
   position: sticky; bottom: 0; margin-top: 16px;

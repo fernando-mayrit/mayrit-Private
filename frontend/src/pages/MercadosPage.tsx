@@ -115,10 +115,12 @@ export default function MercadosPage() {
     }
   }
 
-  async function borrar(m: Mercado) {
-    if (!confirm(`¿Borrar el mercado "${m.nombre}"?`)) return;
+  async function borrarActual() {
+    if (!form?.id) return;
+    if (!confirm(`¿Borrar el mercado "${form.nombre}"?`)) return;
     try {
-      await api.remove(m.id);
+      await api.remove(form.id);
+      cerrar();
       await cargar();
     } catch (e) {
       setError((e as Error).message);
@@ -169,9 +171,6 @@ export default function MercadosPage() {
                   <button className="btn-link" onClick={() => abrirEdicion(m)}>
                     Editar
                   </button>
-                  <button className="btn-link" style={{ color: "var(--rojo)" }} onClick={() => borrar(m)}>
-                    Borrar
-                  </button>
                 </td>
               </tr>
             ))}
@@ -187,6 +186,7 @@ export default function MercadosPage() {
           error={error}
           onSave={guardar}
           onClose={cerrar}
+          onDelete={form.id ? borrarActual : undefined}
         >
           <div className="field">
             <label>

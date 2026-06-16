@@ -125,10 +125,12 @@ export default function CuentasBancariasPage() {
     }
   }
 
-  async function borrar(c: CuentaBancaria) {
-    if (!confirm(`¿Borrar la cuenta "${c.nombre}"?`)) return;
+  async function borrarActual() {
+    if (!form?.id) return;
+    if (!confirm(`¿Borrar la cuenta "${form.nombre}"?`)) return;
     try {
-      await api.remove(c.id);
+      await api.remove(form.id);
+      cerrar();
       await cargar();
     } catch (e) {
       setError((e as Error).message);
@@ -195,9 +197,6 @@ export default function CuentasBancariasPage() {
                   <button className="btn-link" onClick={() => abrirEdicion(c)}>
                     Editar
                   </button>
-                  <button className="btn-link" style={{ color: "var(--rojo)" }} onClick={() => borrar(c)}>
-                    Borrar
-                  </button>
                 </td>
               </tr>
             ))}
@@ -213,6 +212,7 @@ export default function CuentasBancariasPage() {
           error={error}
           onSave={guardar}
           onClose={cerrar}
+          onDelete={form.id ? borrarActual : undefined}
         >
           {campo("Nombre", "nombre", true)}
           {campo("Banco", "banco")}

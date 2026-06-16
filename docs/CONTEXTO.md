@@ -45,10 +45,14 @@ los BDX que cuelgan de ellos + liquidaciones de primas**. Accesorio: compliance,
      nueva versión (reutiliza el formulario del binder). En la UI: acción "+ Suplemento" y "Historial".
      Endpoints `GET`/`POST /binders/{id}/suplementos`. En Access NO se llevaba control de suplementos
      (funcionalidad nueva). Pendiente (con BDX): **recálculo** cuando un suplemento sea retroactivo.
-   - **El binder es un documento FIJO (decisión 2026-06-16).** Una vez dado de alta NO se edita: todo
-     cambio real va por **suplemento**. Lo único que se cambia directamente es el **Estado** (desplegable
-     en la propia tabla; PUT solo de `estado`, no crea versión). Se mantiene una acción **"Corregir"**
-     (el formulario completo) SOLO como excepción para errores de grabación, con aviso en el panel.
+   - **El binder es un documento FIJO (decisión 2026-06-16).** En el listado cada fila solo tiene
+     **"Editar"**. Al abrir el binder, la ficha está en **solo lectura salvo el Estado** (lo único
+     editable; se guarda con PUT, no crea versión). Desde dentro de la ficha hay botones
+     **"+ Suplemento"** (pasa a editar como nueva versión) e **"Historial"**, y **"Borrar"** en las
+     acciones del panel. No hay edición libre de los términos (eso es un suplemento).
+   - **Convención de UI (toda la app):** "Borrar" ya NO está en los listados; vive **dentro del
+     formulario** (prop `onDelete` de `FormPanel`, botón rojo a la izquierda de Guardar/Cancelar),
+     visible solo al editar un registro existente.
 2. **Pólizas** — el negocio de *Open Market* (OM). [pendiente]
 3. **Consultoría** — los *fees*. [pendiente]
 4. **Comisiones** — negocio del que se generan comisiones pero que no es binder ni póliza. [pendiente]

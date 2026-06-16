@@ -191,10 +191,12 @@ export default function TomadoresPage() {
     }
   }
 
-  async function borrar(t: Tomador) {
-    if (!confirm(`¿Borrar el tomador "${t.nombre}"?`)) return;
+  async function borrarActual() {
+    if (!form?.id) return;
+    if (!confirm(`¿Borrar el tomador "${form.nombre}"?`)) return;
     try {
-      await api.remove(t.id);
+      await api.remove(form.id);
+      cerrar();
       await cargar();
     } catch (e) {
       setError((e as Error).message);
@@ -270,9 +272,6 @@ export default function TomadoresPage() {
                   <button className="btn-link" onClick={() => abrirEdicion(t)}>
                     Editar
                   </button>
-                  <button className="btn-link" style={{ color: "var(--rojo)" }} onClick={() => borrar(t)}>
-                    Borrar
-                  </button>
                 </td>
               </tr>
             ))}
@@ -288,6 +287,7 @@ export default function TomadoresPage() {
           error={error}
           onSave={guardar}
           onClose={cerrar}
+          onDelete={form.id ? borrarActual : undefined}
         >
           {campo("Nombre", "nombre", true)}
 
