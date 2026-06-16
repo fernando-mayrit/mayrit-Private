@@ -257,6 +257,7 @@ class BinderUpdate(BinderBase):
 class BinderRead(BinderBase):
     id: int
     coverholder_nombre: str | None = None
+    coverholder_alias: str | None = None
     cuenta_bancaria_nombre: str | None = None
     secciones: list[BinderSeccionOut] = []
     created_at: dt.datetime

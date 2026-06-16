@@ -96,6 +96,19 @@ function pct(n: number): string {
   return new Intl.NumberFormat("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n) + " %";
 }
 
+// Fecha ISO (aaaa-mm-dd) → dd/mm/aaaa para mostrar en tablas.
+function fechaCorta(iso: string | null): string {
+  if (!iso) return "—";
+  const [y, m, d] = iso.split("-");
+  return d && m && y ? `${d}/${m}/${y}` : iso;
+}
+
+// Ramos distintos de un binder (de sus secciones), unidos por coma.
+function ramosDe(b: Binder): string {
+  const set = [...new Set(b.secciones.map((s) => s.ramo).filter(Boolean))];
+  return set.length ? (set.join(", ") as string) : "—";
+}
+
 function umrDe(agreement: string): string {
   return agreement.trim() ? PREFIJO_UMR + agreement.trim() : "";
 }
@@ -418,6 +431,19 @@ export default function BindersPage() {
     }
   }
 
+  // Mercado con mayor participación del binder (entre todas las secciones) → su Código (IdMercado).
+  function mercadoPrincipal(b: Binder): string {
+    let best: { id: number; part: number } | null = null;
+    for (const s of b.secciones)
+      for (const m of s.mercados) {
+        const p = m.participacion ?? 0;
+        if (!best || p > best.part) best = { id: m.mercado_id, part: p };
+      }
+    if (!best) return "—";
+    const mc = mercados.find((x) => x.id === best!.id);
+    return mc?.codigo || mc?.nombre || "—";
+  }
+
   return (
     <div className="container">
       <div className="toolbar">
@@ -443,41 +469,51 @@ export default function BindersPage() {
       ) : items.length === 0 ? (
         <div className="empty">No hay binders. Crea el primero con «+ Nuevo binder».</div>
       ) : (
-        <table>
-          <thead>
-            <tr>
-              <th>UMR</th>
-              <th>Coverholder</th>
-              <th>Vigencia</th>
-              <th>Estado</th>
-              <th>Moneda</th>
-              <th>Secciones</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((b) => (
-              <tr key={b.id}>
-                <td>{b.umr ?? "—"}</td>
-                <td>{b.coverholder_nombre ?? "—"}</td>
-                <td>
-                  {b.fecha_efecto ?? "—"} → {b.fecha_vencimiento ?? "—"}
-                </td>
-                <td>{b.estado ?? "—"}</td>
-                <td>{b.moneda ?? "—"}</td>
-                <td>{b.secciones.length}</td>
-                <td className="acciones">
-                  <button className="btn-link" onClick={() => abrirEdicion(b)}>
-                    Editar
-                  </button>
-                  <button className="btn-link" style={{ color: "var(--rojo)" }} onClick={() => borrar(b)}>
-                    Borrar
-                  </button>
-                </td>
+        <div className="tabla-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>UMR</th>
+                <th>YOA</th>
+                <th>Coverholder</th>
+                <th>Mercado</th>
+                <th>Estado</th>
+                <th>Ramo</th>
+                <th>Efecto</th>
+                <th>Vencimiento</th>
+                <th className="num">GWP</th>
+                <th className="num">Notificación</th>
+                <th>Notificado</th>
+                <th></th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {items.map((b) => (
+                <tr key={b.id}>
+                  <td>{b.umr ?? "—"}</td>
+                  <td>{b.yoa ?? "—"}</td>
+                  <td>{b.coverholder_alias ?? b.coverholder_nombre ?? "—"}</td>
+                  <td>{mercadoPrincipal(b)}</td>
+                  <td>{b.estado ?? "—"}</td>
+                  <td>{ramosDe(b)}</td>
+                  <td>{fechaCorta(b.fecha_efecto)}</td>
+                  <td>{fechaCorta(b.fecha_vencimiento)}</td>
+                  <td className="num">—</td>
+                  <td className="num">—</td>
+                  <td>—</td>
+                  <td className="acciones">
+                    <button className="btn-link" onClick={() => abrirEdicion(b)}>
+                      Editar
+                    </button>
+                    <button className="btn-link" style={{ color: "var(--rojo)" }} onClick={() => borrar(b)}>
+                      Borrar
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
 
       {form && (

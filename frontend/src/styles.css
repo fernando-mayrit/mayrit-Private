@@ -107,6 +107,8 @@ th { background: var(--gris-claro); color: var(--gris); font-weight: 600; }
 tr:last-child td { border-bottom: none; }
 tr:hover td { background: #fdf6f3; }
 td.acciones { text-align: right; white-space: nowrap; }
+/* Contenedor con scroll horizontal para tablas anchas (p. ej. binders) */
+.tabla-scroll { overflow-x: auto; }
 
 .empty, .loading, .error { padding: 24px; text-align: center; color: var(--gris-medio); }
 .error { color: var(--rojo); }

@@ -21,6 +21,7 @@ def _serializar(b: Binder) -> dict:
         "agreement_number": b.agreement_number,
         "productor_id": b.productor_id,
         "coverholder_nombre": b.productor.nombre if b.productor else None,
+        "coverholder_alias": b.productor.alias if b.productor else None,
         "fecha_efecto": b.fecha_efecto,
         "fecha_vencimiento": b.fecha_vencimiento,
         "estado": b.estado,

@@ -93,6 +93,7 @@ export interface Binder extends BinderComun {
   agreement_number: string | null;
   productor_id: number | null;
   coverholder_nombre: string | null;
+  coverholder_alias: string | null;
   cuenta_bancaria_nombre: string | null;
   fecha_efecto: string | null;
   fecha_vencimiento: string | null;
