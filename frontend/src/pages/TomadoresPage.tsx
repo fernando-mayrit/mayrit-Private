@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { crud, buscarCp } from "../api";
 import type { Tomador, TomadorWrite } from "../types";
 import FormPanel from "../components/FormPanel";
+import PageHeader from "../components/PageHeader";
 import OptionButtons from "../components/OptionButtons";
 import { PAISES } from "../data/paises";
 
@@ -223,6 +224,7 @@ export default function TomadoresPage() {
 
   return (
     <div className="container">
+      <PageHeader emoji="👥" title="Tomadores" />
       <div className="toolbar">
         <input
           type="search"

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { crud } from "../api";
 import type { Ramo, RamoWrite } from "../types";
 import FormPanel from "../components/FormPanel";
+import PageHeader from "../components/PageHeader";
 
 const api = crud<Ramo, RamoWrite>("/ramos");
 
@@ -109,6 +110,7 @@ export default function RamosPage() {
 
   return (
     <div className="container compacto">
+      <PageHeader emoji="🏷️" title="Ramos" />
       <div className="toolbar">
         <input
           type="search"

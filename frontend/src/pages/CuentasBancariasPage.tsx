@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { crud } from "../api";
 import type { CuentaBancaria, CuentaBancariaWrite } from "../types";
 import FormPanel from "../components/FormPanel";
+import PageHeader from "../components/PageHeader";
 
 const api = crud<CuentaBancaria, CuentaBancariaWrite>("/cuentas-bancarias");
 
@@ -150,6 +151,7 @@ export default function CuentasBancariasPage() {
 
   return (
     <div className="container compacto">
+      <PageHeader emoji="🏧" title="Cuentas Bancarias" />
       <div className="toolbar">
         <input
           type="search"

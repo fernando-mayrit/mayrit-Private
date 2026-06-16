@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { crud } from "../api";
 import type { Binder, BinderWrite, CuentaBancaria, Mercado, Productor, Ramo } from "../types";
 import FormPanel from "../components/FormPanel";
+import PageHeader from "../components/PageHeader";
 import NumberInput from "../components/NumberInput";
 
 const api = crud<Binder, BinderWrite>("/binders");
@@ -446,6 +447,7 @@ export default function BindersPage() {
 
   return (
     <div className="container">
+      <PageHeader emoji="📑" title="Binders" />
       <div className="toolbar">
         <input
           type="search"

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { crud, buscarCp } from "../api";
 import type { Productor, ProductorWrite } from "../types";
 import FormPanel from "../components/FormPanel";
+import PageHeader from "../components/PageHeader";
 import OptionButtons from "../components/OptionButtons";
 import { PAISES } from "../data/paises";
 
@@ -243,6 +244,7 @@ export default function ProductoresPage() {
 
   return (
     <div className="container">
+      <PageHeader emoji="🤝" title="Productores" />
       <div className="toolbar">
         <input
           type="search"

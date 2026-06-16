@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { crud } from "../api";
 import type { Mercado, MercadoWrite } from "../types";
 import FormPanel from "../components/FormPanel";
+import PageHeader from "../components/PageHeader";
 import OptionButtons from "../components/OptionButtons";
 
 const api = crud<Mercado, MercadoWrite>("/mercados");
@@ -124,6 +125,7 @@ export default function MercadosPage() {
 
   return (
     <div className="container">
+      <PageHeader emoji="🏦" title="Mercados" />
       <div className="toolbar">
         <input
           type="search"
