@@ -45,6 +45,10 @@ los BDX que cuelgan de ellos + liquidaciones de primas**. Accesorio: compliance,
      nueva versión (reutiliza el formulario del binder). En la UI: acción "+ Suplemento" y "Historial".
      Endpoints `GET`/`POST /binders/{id}/suplementos`. En Access NO se llevaba control de suplementos
      (funcionalidad nueva). Pendiente (con BDX): **recálculo** cuando un suplemento sea retroactivo.
+   - **El binder es un documento FIJO (decisión 2026-06-16).** Una vez dado de alta NO se edita: todo
+     cambio real va por **suplemento**. Lo único que se cambia directamente es el **Estado** (desplegable
+     en la propia tabla; PUT solo de `estado`, no crea versión). Se mantiene una acción **"Corregir"**
+     (el formulario completo) SOLO como excepción para errores de grabación, con aviso en el panel.
 2. **Pólizas** — el negocio de *Open Market* (OM). [pendiente]
 3. **Consultoría** — los *fees*. [pendiente]
 4. **Comisiones** — negocio del que se generan comisiones pero que no es binder ni póliza. [pendiente]

@@ -477,6 +477,17 @@ export default function BindersPage() {
     }
   }
 
+  // El Estado es lo único que se cambia directamente (sin suplemento), desde la propia tabla.
+  async function cambiarEstado(b: Binder, estado: string) {
+    setError(null);
+    try {
+      await api.update(b.id, { estado });
+      await cargar();
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
+
   async function borrar(b: Binder) {
     if (!confirm(`¿Borrar el binder "${b.umr ?? b.agreement_number}"?`)) return;
     try {
@@ -548,7 +559,20 @@ export default function BindersPage() {
                   <td>{b.yoa ?? "—"}</td>
                   <td>{b.coverholder_alias ?? b.coverholder_nombre ?? "—"}</td>
                   <td>{mercadoPrincipal(b)}</td>
-                  <td>{b.estado ?? "—"}</td>
+                  <td>
+                    <select
+                      className="estado-sel"
+                      value={b.estado ?? ""}
+                      onChange={(e) => cambiarEstado(b, e.target.value)}
+                    >
+                      {!b.estado && <option value="">—</option>}
+                      {ESTADOS.map((s) => (
+                        <option key={s} value={s}>
+                          {s}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
                   <td>{ramosDe(b)}</td>
                   <td>{fechaCorta(b.fecha_efecto)}</td>
                   <td>{fechaCorta(b.fecha_vencimiento)}</td>
@@ -556,14 +580,14 @@ export default function BindersPage() {
                   <td className="num">—</td>
                   <td>—</td>
                   <td className="acciones">
-                    <button className="btn-link" onClick={() => abrirEdicion(b)}>
-                      Editar
-                    </button>
                     <button className="btn-link" onClick={() => abrirSuplemento(b)}>
                       + Suplemento
                     </button>
                     <button className="btn-link" onClick={() => abrirHistorial(b)}>
                       Historial
+                    </button>
+                    <button className="btn-link" title="Solo para corregir errores de grabación" onClick={() => abrirEdicion(b)}>
+                      Corregir
                     </button>
                     <button className="btn-link" style={{ color: "var(--rojo)" }} onClick={() => borrar(b)}>
                       Borrar
@@ -582,7 +606,7 @@ export default function BindersPage() {
             modo === "suplemento"
               ? `Nuevo suplemento · ${form.umr || form.agreement_number}`
               : form.id
-              ? "Editar Binder"
+              ? `Corregir Binder · ${form.umr || form.agreement_number}`
               : "Nuevo Binder"
           }
           dirty={dirty}
@@ -592,6 +616,12 @@ export default function BindersPage() {
           onSave={guardar}
           onClose={cerrar}
         >
+          {modo === "edicion" && form.id && (
+            <div className="aviso-correccion">
+              ⚠ <strong>Corrección de errores de grabación.</strong> Para cualquier cambio real del
+              binder usa «+ Suplemento». El Estado se cambia desde la tabla.
+            </div>
+          )}
           {modo === "suplemento" && (
             <div className="sup-cabecera">
               <div className="hint" style={{ marginBottom: 10 }}>

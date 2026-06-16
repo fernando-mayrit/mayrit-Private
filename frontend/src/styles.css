@@ -113,6 +113,10 @@ tr:hover td { background: #fdf6f3; }
 td.acciones { text-align: right; white-space: nowrap; }
 /* Contenedor con scroll horizontal para tablas anchas (p. ej. binders) */
 .tabla-scroll { overflow-x: auto; }
+/* Estado editable en la propia tabla (único cambio directo del binder) */
+.estado-sel { padding: 3px 6px; border: 1px solid var(--borde); border-radius: 6px; font-size: 12px; font-family: inherit; background: #fff; }
+/* Aviso en el panel de corrección de un binder */
+.aviso-correccion { background: #fff7ed; border: 1px solid #fed7aa; color: var(--gris); border-radius: 8px; padding: 10px 12px; font-size: 13px; margin-bottom: 14px; }
 
 .empty, .loading, .error { padding: 24px; text-align: center; color: var(--gris-medio); }
 .error { color: var(--rojo); }
