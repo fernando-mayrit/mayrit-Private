@@ -5,6 +5,7 @@ import ProductoresPage from "./pages/ProductoresPage";
 import TomadoresPage from "./pages/TomadoresPage";
 import BindersPage from "./pages/BindersPage";
 import RamosPage from "./pages/RamosPage";
+import CuentasBancariasPage from "./pages/CuentasBancariasPage";
 import EnConstruccion from "./components/EnConstruccion";
 
 // Iconos estilo Alea: emoji por opción.
@@ -17,6 +18,7 @@ const EMOJI: Record<string, string> = {
   consultoria: "💼",
   comisiones: "💶",
   ramos: "🏷️",
+  cuentas: "🏧",
 };
 
 type Page =
@@ -27,7 +29,8 @@ type Page =
   | "polizas"
   | "consultoria"
   | "comisiones"
-  | "ramos";
+  | "ramos"
+  | "cuentas";
 
 // Barra superior: las Maestras (las partes).
 const MAESTRAS: { id: Page; label: string }[] = [
@@ -45,7 +48,10 @@ const NEGOCIO: { id: Page; label: string }[] = [
 ];
 
 // Menú lateral: Configuración (catálogos compartidos).
-const CONFIG: { id: Page; label: string }[] = [{ id: "ramos", label: "Ramos" }];
+const CONFIG: { id: Page; label: string }[] = [
+  { id: "ramos", label: "Ramos" },
+  { id: "cuentas", label: "Cuentas Bancarias" },
+];
 
 export default function App() {
   const [page, setPage] = useState<Page>("productores");
@@ -113,6 +119,7 @@ export default function App() {
           {page === "consultoria" && <EnConstruccion titulo="Consultoría (Fees)" />}
           {page === "comisiones" && <EnConstruccion titulo="Comisiones" />}
           {page === "ramos" && <RamosPage />}
+          {page === "cuentas" && <CuentasBancariasPage />}
         </main>
       </div>
     </div>

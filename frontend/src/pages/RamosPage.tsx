@@ -108,7 +108,7 @@ export default function RamosPage() {
   }
 
   return (
-    <div className="container">
+    <div className="container compacto">
       <div className="toolbar">
         <input
           type="search"

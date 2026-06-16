@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { crud } from "../api";
-import type { Binder, BinderWrite, Mercado, Productor, Ramo } from "../types";
+import type { Binder, BinderWrite, CuentaBancaria, Mercado, Productor, Ramo } from "../types";
 import FormPanel from "../components/FormPanel";
 import NumberInput from "../components/NumberInput";
 
@@ -8,8 +8,10 @@ const api = crud<Binder, BinderWrite>("/binders");
 const apiProductores = crud<Productor, unknown>("/productores");
 const apiMercados = crud<Mercado, unknown>("/mercados");
 const apiRamos = crud<Ramo, { nombre: string }>("/ramos");
+const apiCuentas = crud<CuentaBancaria, unknown>("/cuentas-bancarias");
 
 const ESTADOS = ["En Vigor", "Cancelado", "Renovado", "No Renovado", "Cerrado"];
+const INTERVALOS = ["Mensual", "Trimestral", "Semestral", "Anual"];
 const PREFIJO_UMR = "B1634";
 
 type LineaForm = { mercado_id: string; participacion: string };
@@ -32,6 +34,18 @@ type FormState = {
   yoa: string;
   estado: string;
   moneda: string;
+  // Datos comunes del binder (debajo de las secciones)
+  profit_commission: boolean;
+  pc_porcentaje: string;
+  pc_gastos: string;
+  risk_bdx_intervalo: string;
+  risk_bdx_plazo: string;
+  premium_bdx_intervalo: string;
+  premium_bdx_plazo: string;
+  claims_bdx_intervalo: string;
+  claims_bdx_plazo: string;
+  comision_mayrit: string;
+  cuenta_bancaria_id: string;
   notas: string;
   secciones: SeccionForm[];
 };
@@ -55,6 +69,17 @@ const VACIO: FormState = {
   yoa: "",
   estado: "En Vigor",
   moneda: "EUR",
+  profit_commission: false,
+  pc_porcentaje: "",
+  pc_gastos: "",
+  risk_bdx_intervalo: "",
+  risk_bdx_plazo: "",
+  premium_bdx_intervalo: "",
+  premium_bdx_plazo: "",
+  claims_bdx_intervalo: "",
+  claims_bdx_plazo: "",
+  comision_mayrit: "",
+  cuenta_bancaria_id: "",
   notas: "",
   secciones: [JSON.parse(JSON.stringify(SECCION_VACIA))],
 };
@@ -104,6 +129,7 @@ export default function BindersPage() {
   const [agencias, setAgencias] = useState<Productor[]>([]);
   const [mercados, setMercados] = useState<Mercado[]>([]);
   const [ramos, setRamos] = useState<Ramo[]>([]);
+  const [cuentas, setCuentas] = useState<CuentaBancaria[]>([]);
   const [q, setQ] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -113,6 +139,16 @@ export default function BindersPage() {
   const [saving, setSaving] = useState(false);
 
   const dirty = !!form && JSON.stringify(form) !== JSON.stringify(inicial);
+  // Profit Commission del binder solo se puede activar si alguna sección tiene "Sujeto a PC?".
+  const algunaPC = !!form && form.secciones.some((s) => s.sujeto_pc);
+
+  useEffect(() => {
+    if (!algunaPC) {
+      setForm((f) =>
+        f && f.profit_commission ? { ...f, profit_commission: false, pc_porcentaje: "", pc_gastos: "" } : f
+      );
+    }
+  }, [algunaPC]);
 
   async function cargar(search = q) {
     setLoading(true);
@@ -128,14 +164,16 @@ export default function BindersPage() {
 
   async function cargarRefs() {
     try {
-      const [prod, merc, ram] = await Promise.all([
+      const [prod, merc, ram, cta] = await Promise.all([
         apiProductores.list(),
         apiMercados.list(),
         apiRamos.list(),
+        apiCuentas.list(),
       ]);
       setAgencias((prod as Productor[]).filter((p) => p.tipo === "Agencia de Suscripción"));
       setMercados(merc as Mercado[]);
       setRamos(ram as Ramo[]);
+      setCuentas(cta as CuentaBancaria[]);
     } catch {
       /* si fallan, los selectores quedan vacíos */
     }
@@ -183,6 +221,17 @@ export default function BindersPage() {
       yoa: b.yoa ?? "",
       estado: b.estado ?? "",
       moneda: b.moneda ?? "",
+      profit_commission: !!b.profit_commission,
+      pc_porcentaje: b.pc_porcentaje != null ? String(b.pc_porcentaje) : "",
+      pc_gastos: b.pc_gastos != null ? String(b.pc_gastos) : "",
+      risk_bdx_intervalo: b.risk_bdx_intervalo ?? "",
+      risk_bdx_plazo: b.risk_bdx_plazo != null ? String(b.risk_bdx_plazo) : "",
+      premium_bdx_intervalo: b.premium_bdx_intervalo ?? "",
+      premium_bdx_plazo: b.premium_bdx_plazo != null ? String(b.premium_bdx_plazo) : "",
+      claims_bdx_intervalo: b.claims_bdx_intervalo ?? "",
+      claims_bdx_plazo: b.claims_bdx_plazo != null ? String(b.claims_bdx_plazo) : "",
+      comision_mayrit: b.comision_mayrit != null ? String(b.comision_mayrit) : "",
+      cuenta_bancaria_id: b.cuenta_bancaria_id != null ? String(b.cuenta_bancaria_id) : "",
       notas: b.notas ?? "",
       secciones:
         b.secciones.length > 0
@@ -295,6 +344,23 @@ export default function BindersPage() {
         return setError(`${N}: la suma de participaciones debe ser 100 % (ahora ${pct(suma)}).`);
     }
 
+    // Datos comunes del binder (obligatorios; las notas no).
+    if (form.profit_commission) {
+      if (num(form.pc_porcentaje) == null) return setError("Con Profit Commission, el PC (%) es obligatorio.");
+      if (num(form.pc_gastos) == null) return setError("Con Profit Commission, los Gastos (%) son obligatorios.");
+    }
+    const bdx: [string, string, string][] = [
+      ["Risk Bdx", form.risk_bdx_intervalo, form.risk_bdx_plazo],
+      ["Premium Bdx", form.premium_bdx_intervalo, form.premium_bdx_plazo],
+      ["Claims Bdx", form.claims_bdx_intervalo, form.claims_bdx_plazo],
+    ];
+    for (const [label, intervalo, plazo] of bdx) {
+      if (!intervalo) return setError(`Indica el intervalo de ${label}.`);
+      if (num(plazo) == null) return setError(`Indica el plazo (días) de ${label}.`);
+    }
+    if (num(form.comision_mayrit) == null) return setError("La comisión Mayrit es obligatoria.");
+    if (!form.cuenta_bancaria_id) return setError("La cuenta bancaria es obligatoria.");
+
     setSaving(true);
     setError(null);
     const payload: BinderWrite = {
@@ -306,6 +372,17 @@ export default function BindersPage() {
       yoa: form.yoa.trim() || null,
       estado: form.estado || null,
       moneda: form.moneda || null,
+      profit_commission: form.profit_commission,
+      pc_porcentaje: form.profit_commission ? num(form.pc_porcentaje) : null,
+      pc_gastos: form.profit_commission ? num(form.pc_gastos) : null,
+      risk_bdx_intervalo: form.risk_bdx_intervalo || null,
+      risk_bdx_plazo: num(form.risk_bdx_plazo),
+      premium_bdx_intervalo: form.premium_bdx_intervalo || null,
+      premium_bdx_plazo: num(form.premium_bdx_plazo),
+      claims_bdx_intervalo: form.claims_bdx_intervalo || null,
+      claims_bdx_plazo: num(form.claims_bdx_plazo),
+      comision_mayrit: num(form.comision_mayrit),
+      cuenta_bancaria_id: form.cuenta_bancaria_id ? Number(form.cuenta_bancaria_id) : null,
       notas: form.notas.trim() || null,
       secciones: form.secciones.map((s) => ({
         ramo: s.ramo.trim() || null,
@@ -601,15 +678,22 @@ export default function BindersPage() {
               </div>
 
               <label className="mini-label">Mercados y participación</label>
-              {s.mercados.map((m, j) => (
+              {s.mercados.map((m, j) => {
+                // Excluir del desplegable los mercados ya elegidos en OTRAS líneas de esta sección.
+                const usados = new Set(
+                  s.mercados.filter((_, k) => k !== j).map((x) => x.mercado_id).filter(Boolean)
+                );
+                return (
                 <div className="linea-mercado" key={j}>
                   <select value={m.mercado_id} onChange={(e) => setLinea(i, j, "mercado_id", e.target.value)}>
                     <option value="">— Mercado —</option>
-                    {mercados.map((mc) => (
-                      <option key={mc.id} value={mc.id}>
-                        {mc.nombre}
-                      </option>
-                    ))}
+                    {mercados
+                      .filter((mc) => !usados.has(String(mc.id)) || String(mc.id) === m.mercado_id)
+                      .map((mc) => (
+                        <option key={mc.id} value={mc.id}>
+                          {mc.nombre}
+                        </option>
+                      ))}
                   </select>
                   <NumberInput
                     className="part-num"
@@ -624,7 +708,8 @@ export default function BindersPage() {
                     </button>
                   )}
                 </div>
-              ))}
+                );
+              })}
               <button className="btn-secondary btn-sm" onClick={() => addMercado(i)}>
                 + Añadir mercado
               </button>
@@ -643,6 +728,116 @@ export default function BindersPage() {
           <button className="btn-secondary" onClick={addSeccion}>
             + Añadir sección
           </button>
+
+          {/* ── Datos comunes del binder (no por sección) ── */}
+          <h3 style={{ marginTop: 22, marginBottom: 8 }}>Datos del binder</h3>
+
+          <label className="field check">
+            <input
+              type="checkbox"
+              checked={form.profit_commission}
+              disabled={!algunaPC}
+              onChange={(e) => setForm({ ...form, profit_commission: e.target.checked })}
+            />
+            Profit Commission
+          </label>
+          {!algunaPC && <span className="hint">Para activarlo, alguna sección debe tener «Sujeto a PC?».</span>}
+          {form.profit_commission && (
+            <div className="field-row">
+              <div className="field">
+                <label>
+                  PC <span className="required">*</span>
+                </label>
+                <NumberInput
+                  value={form.pc_porcentaje}
+                  onChange={(v) => setForm({ ...form, pc_porcentaje: v })}
+                  suffix="%"
+                  thousands={false}
+                />
+              </div>
+              <div className="field">
+                <label>
+                  Gastos <span className="required">*</span>
+                </label>
+                <NumberInput
+                  value={form.pc_gastos}
+                  onChange={(v) => setForm({ ...form, pc_gastos: v })}
+                  suffix="%"
+                  thousands={false}
+                />
+              </div>
+            </div>
+          )}
+
+          {(
+            [
+              ["Risk Bdx", "risk_bdx_intervalo", "risk_bdx_plazo"],
+              ["Premium Bdx", "premium_bdx_intervalo", "premium_bdx_plazo"],
+              ["Claims Bdx", "claims_bdx_intervalo", "claims_bdx_plazo"],
+            ] as const
+          ).map(([label, ik, pk]) => (
+            <div className="field-row" key={ik}>
+              <div className="field">
+                <label>
+                  {label} — Intervalo <span className="required">*</span>
+                </label>
+                <select value={form[ik]} onChange={(e) => setForm({ ...form, [ik]: e.target.value })}>
+                  <option value="">— Intervalo —</option>
+                  {INTERVALOS.map((iv) => (
+                    <option key={iv} value={iv}>
+                      {iv}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="field">
+                <label>
+                  Plazo (días) <span className="required">*</span>
+                </label>
+                <NumberInput
+                  value={form[pk]}
+                  onChange={(v) => setForm({ ...form, [pk]: v })}
+                  decimals={0}
+                  thousands={false}
+                />
+              </div>
+            </div>
+          ))}
+
+          <div className="field-row">
+            <div className="field">
+              <label>
+                Comisión Mayrit <span className="required">*</span>
+              </label>
+              <NumberInput
+                value={form.comision_mayrit}
+                onChange={(v) => setForm({ ...form, comision_mayrit: v })}
+                suffix="%"
+                thousands={false}
+              />
+            </div>
+            <div className="field" />
+          </div>
+
+          <div className="field">
+            <label>
+              Cuenta bancaria <span className="required">*</span>
+            </label>
+            <select
+              value={form.cuenta_bancaria_id}
+              onChange={(e) => setForm({ ...form, cuenta_bancaria_id: e.target.value })}
+            >
+              <option value="">— Elige cuenta —</option>
+              {cuentas.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.nombre}
+                </option>
+              ))}
+            </select>
+            {cuentas.length === 0 && (
+              <span className="hint">Crea cuentas en Configuración → Cuentas Bancarias.</span>
+            )}
+          </div>
 
           <div className="field" style={{ marginTop: 16 }}>
             <label>Notas</label>

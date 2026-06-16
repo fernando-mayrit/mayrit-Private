@@ -124,6 +124,39 @@ class TomadorRead(TomadorBase):
     updated_at: dt.datetime
 
 
+# ──────────────────────────── Cuenta bancaria ────────────────────────────
+class CuentaBancariaBase(BaseModel):
+    nombre: str
+    banco: str | None = None
+    titular: str | None = None
+    iban: str | None = None
+    swift_bic: str | None = None
+    moneda: str | None = None
+    notas: str | None = None
+    sp_old_id: int | None = None
+
+
+class CuentaBancariaCreate(CuentaBancariaBase):
+    pass
+
+
+class CuentaBancariaUpdate(BaseModel):
+    nombre: str | None = None
+    banco: str | None = None
+    titular: str | None = None
+    iban: str | None = None
+    swift_bic: str | None = None
+    moneda: str | None = None
+    notas: str | None = None
+
+
+class CuentaBancariaRead(CuentaBancariaBase):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    created_at: dt.datetime
+    updated_at: dt.datetime
+
+
 # ────────────────────────────────── Ramo ─────────────────────────────────
 class RiskCodeIn(BaseModel):
     codigo: str
@@ -197,6 +230,18 @@ class BinderBase(BaseModel):
     estado: str | None = None
     moneda: str | None = None
     yoa: str | None = None
+    # Datos comunes del binder
+    profit_commission: bool = False
+    pc_porcentaje: Decimal | None = None
+    pc_gastos: Decimal | None = None
+    risk_bdx_intervalo: str | None = None
+    risk_bdx_plazo: int | None = None
+    premium_bdx_intervalo: str | None = None
+    premium_bdx_plazo: int | None = None
+    claims_bdx_intervalo: str | None = None
+    claims_bdx_plazo: int | None = None
+    comision_mayrit: Decimal | None = None
+    cuenta_bancaria_id: int | None = None
     notas: str | None = None
 
 
@@ -212,6 +257,7 @@ class BinderUpdate(BinderBase):
 class BinderRead(BinderBase):
     id: int
     coverholder_nombre: str | None = None
+    cuenta_bancaria_nombre: str | None = None
     secciones: list[BinderSeccionOut] = []
     created_at: dt.datetime
     updated_at: dt.datetime

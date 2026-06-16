@@ -73,12 +73,27 @@ export interface BinderSeccion {
   sujeto_pc: boolean;
   mercados: SeccionMercadoLinea[];
 }
-export interface Binder {
+// Datos comunes del binder (no por sección).
+export interface BinderComun {
+  profit_commission: boolean;
+  pc_porcentaje: number | null;
+  pc_gastos: number | null;
+  risk_bdx_intervalo: string | null;
+  risk_bdx_plazo: number | null;
+  premium_bdx_intervalo: string | null;
+  premium_bdx_plazo: number | null;
+  claims_bdx_intervalo: string | null;
+  claims_bdx_plazo: number | null;
+  comision_mayrit: number | null;
+  cuenta_bancaria_id: number | null;
+}
+export interface Binder extends BinderComun {
   id: number;
   umr: string | null;
   agreement_number: string | null;
   productor_id: number | null;
   coverholder_nombre: string | null;
+  cuenta_bancaria_nombre: string | null;
   fecha_efecto: string | null;
   fecha_vencimiento: string | null;
   estado: string | null;
@@ -89,7 +104,7 @@ export interface Binder {
   created_at: string;
   updated_at: string;
 }
-export interface BinderWrite {
+export interface BinderWrite extends BinderComun {
   agreement_number: string;
   umr?: string | null;
   productor_id?: number | null;
@@ -135,6 +150,29 @@ export interface TomadorWrite {
   localidad?: string | null;
   provincia?: string | null;
   pais?: string | null;
+  notas?: string | null;
+}
+
+export interface CuentaBancaria {
+  id: number;
+  nombre: string;
+  banco: string | null;
+  titular: string | null;
+  iban: string | null;
+  swift_bic: string | null;
+  moneda: string | null;
+  notas: string | null;
+  sp_old_id: number | null;
+  created_at: string;
+  updated_at: string;
+}
+export interface CuentaBancariaWrite {
+  nombre: string;
+  banco?: string | null;
+  titular?: string | null;
+  iban?: string | null;
+  swift_bic?: string | null;
+  moneda?: string | null;
   notas?: string | null;
 }
 

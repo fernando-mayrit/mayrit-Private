@@ -26,7 +26,15 @@ los BDX que cuelgan de ellos + liquidaciones de primas**. Accesorio: compliance,
      **Mercados** (varios, con participación %). Todos obligatorios al dar de alta (salvo notas).
      **Límite de primas + Notificación %** son la base de un cálculo FUTURO: comparar la producción
      que se va notificando en cada BDX contra ese límite y **avisar cuando se exceda** (Fase BDX).
-   - Tablas: `binders`, `binder_secciones`, `seccion_mercados`, `seccion_risk_codes`. Router propio.
+   - Cada sección: la **suma de participaciones de sus mercados debe ser 100 %** (con total en vivo).
+     Al añadir mercados, el desplegable oculta los ya elegidos en esa sección.
+   - **Datos comunes del binder** (debajo de las secciones, no por sección): **Profit Commission**
+     (check; solo activable si alguna sección tiene "Sujeto a PC?"; al activarlo aparecen **PC %** y
+     **Gastos %**, obligatorios) · **Intervalo + Plazo (días)** para **Risk Bdx**, **Premium Bdx** y
+     **Claims Bdx** (intervalo: Mensual/Trimestral/Semestral/Anual) · **Comisión Mayrit %** ·
+     **Cuenta bancaria** (del catálogo). Todo obligatorio salvo Notas.
+   - Tablas: `binders` (+ columnas comunes), `binder_secciones`, `seccion_mercados`,
+     `seccion_risk_codes`. Router propio.
 2. **Pólizas** — el negocio de *Open Market* (OM). [pendiente]
 3. **Consultoría** — los *fees*. [pendiente]
 4. **Comisiones** — negocio del que se generan comisiones pero que no es binder ni póliza. [pendiente]
@@ -34,6 +42,9 @@ los BDX que cuelgan de ellos + liquidaciones de primas**. Accesorio: compliance,
 **Catálogos (Configuración):** **Ramos** — pantalla de gestión (alta/edición/borrado). Cada ramo
 tiene varios **Risk Codes** (código único: un risk code pertenece a un solo ramo). Tablas `ramos`
 (11 sembrados) y `risk_codes`. Se usan en las secciones de binder (y luego en pólizas).
+**Cuentas Bancarias** — pantalla CRUD (`cuentas_bancarias`: nombre, banco, IBAN con validación
+mod-97, SWIFT/BIC, moneda, notas). Alimenta el desplegable de cuenta del binder. Las pantallas de
+catálogo van con tipografía más pequeña (clase CSS `compacto`).
 
 ## Stack
 - Backend: **FastAPI + PostgreSQL** (Azure, mismo servidor que Alea, base `mayrit` aparte).

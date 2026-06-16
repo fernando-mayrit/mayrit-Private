@@ -138,6 +138,21 @@ class Binder(Base):
     estado: Mapped[str | None] = mapped_column(String(60))
     moneda: Mapped[str | None] = mapped_column(String(10))
     yoa: Mapped[str | None] = mapped_column(String(20))                  # Year of Account (año del efecto)
+
+    # ── Datos comunes del binder (no por sección) ──
+    profit_commission: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
+    pc_porcentaje: Mapped[Decimal | None] = mapped_column(Numeric(7, 4))   # PC % (si profit_commission)
+    pc_gastos: Mapped[Decimal | None] = mapped_column(Numeric(7, 4))       # Gastos % (si profit_commission)
+    # Intervalo (Mensual/Trimestral/Semestral/Anual) + plazo en días, por tipo de bordereau
+    risk_bdx_intervalo: Mapped[str | None] = mapped_column(String(20))
+    risk_bdx_plazo: Mapped[int | None] = mapped_column(Integer)
+    premium_bdx_intervalo: Mapped[str | None] = mapped_column(String(20))
+    premium_bdx_plazo: Mapped[int | None] = mapped_column(Integer)
+    claims_bdx_intervalo: Mapped[str | None] = mapped_column(String(20))
+    claims_bdx_plazo: Mapped[int | None] = mapped_column(Integer)
+    comision_mayrit: Mapped[Decimal | None] = mapped_column(Numeric(7, 4))  # comisión Mayrit %
+    cuenta_bancaria_id: Mapped[int | None] = mapped_column(ForeignKey("cuentas_bancarias.id"))
+
     notas: Mapped[str | None] = mapped_column(Text)
 
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -146,6 +161,7 @@ class Binder(Base):
     )
 
     productor: Mapped["Productor | None"] = relationship()
+    cuenta_bancaria: Mapped["CuentaBancaria | None"] = relationship()
     secciones: Mapped[list["BinderSeccion"]] = relationship(
         back_populates="binder", cascade="all, delete-orphan", order_by="BinderSeccion.id"
     )
@@ -197,3 +213,25 @@ class SeccionRiskCode(Base):
     codigo: Mapped[str] = mapped_column(String(20))
 
     seccion: Mapped["BinderSeccion"] = relationship(back_populates="risk_codes")
+
+
+class CuentaBancaria(Base):
+    """Cuenta bancaria (catálogo de Configuración). Se usa, p. ej., en los binders."""
+
+    __tablename__ = "cuentas_bancarias"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    sp_old_id: Mapped[int | None] = mapped_column(Integer, index=True)
+
+    nombre: Mapped[str] = mapped_column(String(160))          # alias/descripción de la cuenta
+    banco: Mapped[str | None] = mapped_column(String(160))
+    titular: Mapped[str | None] = mapped_column(String(160))
+    iban: Mapped[str | None] = mapped_column(String(40))
+    swift_bic: Mapped[str | None] = mapped_column(String(20))
+    moneda: Mapped[str | None] = mapped_column(String(10))
+    notas: Mapped[str | None] = mapped_column(Text)
+
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
