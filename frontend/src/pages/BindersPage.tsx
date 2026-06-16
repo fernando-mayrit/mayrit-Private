@@ -735,10 +735,10 @@ export default function BindersPage() {
 
           {!soloEstado && (
             <div className="field">
-              <label>Estado</label>
+              <label>Estado{modo === "suplemento" && <span className="hint"> · no se cambia en un suplemento</span>}</label>
               <select
                 value={form.estado}
-                disabled={!form.id}
+                disabled
                 onChange={(e) => setForm({ ...form, estado: e.target.value })}
               >
                 {ESTADOS.map((s) => (

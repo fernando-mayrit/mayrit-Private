@@ -115,6 +115,8 @@ td.acciones { text-align: right; white-space: nowrap; }
 .tabla-scroll { overflow-x: auto; }
 /* Botones de acción dentro de la ficha de un binder (+ Suplemento / Historial) */
 .binder-botones { display: flex; gap: 8px; margin-bottom: 6px; }
+.binder-botones button { background: #f8e2d8; color: var(--naranja-osc); border-color: var(--naranja); font-weight: 600; }
+.binder-botones button:hover { background: #f3d3c4; }
 /* Ficha del binder en solo-lectura (todo gris salvo el Estado, que va arriba) */
 fieldset[disabled] { opacity: .85; }
 
