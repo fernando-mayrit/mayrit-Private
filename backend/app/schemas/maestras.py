@@ -262,3 +262,10 @@ class BinderRead(BinderBase):
     secciones: list[BinderSeccionOut] = []
     created_at: dt.datetime
     updated_at: dt.datetime
+
+
+# Suplemento = nueva versión del binder: los términos completos + fecha de efecto y motivo.
+class SuplementoCreate(BinderBase):
+    secciones: list[BinderSeccionIn] = []
+    suplemento_fecha_efecto: dt.date | None = None
+    motivo: str | None = None

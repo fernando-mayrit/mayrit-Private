@@ -14,7 +14,7 @@ from __future__ import annotations
 import datetime as dt
 from decimal import Decimal
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, func
+from sqlalchemy import JSON, Boolean, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..db import Base
@@ -165,6 +165,9 @@ class Binder(Base):
     secciones: Mapped[list["BinderSeccion"]] = relationship(
         back_populates="binder", cascade="all, delete-orphan", order_by="BinderSeccion.id"
     )
+    suplementos: Mapped[list["BinderSuplemento"]] = relationship(
+        back_populates="binder", cascade="all, delete-orphan", order_by="BinderSuplemento.numero"
+    )
 
 
 class BinderSeccion(Base):
@@ -187,6 +190,24 @@ class BinderSeccion(Base):
     risk_codes: Mapped[list["SeccionRiskCode"]] = relationship(
         back_populates="seccion", cascade="all, delete-orphan", order_by="SeccionRiskCode.id"
     )
+
+
+class BinderSuplemento(Base):
+    """Versión del binder. Cada suplemento guarda un SNAPSHOT completo de los términos
+    (en JSON) con su número y fecha de efecto. El nº 0 es el alta inicial. La versión
+    vigente en una fecha es la de mayor `fecha_efecto` <= esa fecha."""
+
+    __tablename__ = "binder_suplementos"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    binder_id: Mapped[int] = mapped_column(ForeignKey("binders.id", ondelete="CASCADE"), index=True)
+    numero: Mapped[int] = mapped_column(Integer)               # 0 = alta inicial, 1, 2…
+    fecha_efecto: Mapped[dt.date | None] = mapped_column(Date)  # cuándo aplica (puede ser retroactiva)
+    motivo: Mapped[str | None] = mapped_column(Text)
+    snapshot: Mapped[dict] = mapped_column(JSON)               # copia completa de los términos
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    binder: Mapped["Binder"] = relationship(back_populates="suplementos")
 
 
 class SeccionMercado(Base):
