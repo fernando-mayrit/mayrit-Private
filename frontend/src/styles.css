@@ -81,8 +81,8 @@ h1, h2, h3 { font-family: var(--fuente-titulo); font-weight: 600; color: var(--g
 .container { max-width: 1100px; margin: 0 auto; padding: 24px; }
 
 /* Título de cada pantalla (emoji + nombre), encima del buscador */
-.page-title { font-size: 20px; margin: 0 0 16px; display: flex; align-items: center; gap: 10px; }
-.page-title-emoji { font-size: 22px; line-height: 1; }
+.page-title { font-size: 26px; margin: 0 0 16px; display: flex; align-items: center; gap: 12px; }
+.page-title-emoji { font-size: 30px; line-height: 1; }
 
 .toolbar { display: flex; gap: 12px; align-items: center; margin-bottom: 16px; }
 .toolbar input[type="search"] {

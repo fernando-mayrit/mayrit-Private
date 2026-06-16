@@ -45,10 +45,12 @@ export default function MercadosPage() {
     }
   }
 
+  // Búsqueda en vivo: filtra mientras se teclea (pequeño retardo para no saturar).
   useEffect(() => {
-    cargar("");
+    const t = setTimeout(() => cargar(q), 250);
+    return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [q]);
 
   function abrir(estado: FormState) {
     setForm(estado);
@@ -134,9 +136,6 @@ export default function MercadosPage() {
           onChange={(e) => setQ(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && cargar()}
         />
-        <button className="btn-secondary" onClick={() => cargar()}>
-          Buscar
-        </button>
         <button className="btn-primary" onClick={abrirNuevo}>
           + Nuevo mercado
         </button>
