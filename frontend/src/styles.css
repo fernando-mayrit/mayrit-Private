@@ -141,6 +141,23 @@ input[type="date"] { text-align: center; }
 .vigencia .inp-yoa { width: 80px; text-align: center; }
 .field.check { flex-direction: row; align-items: center; gap: 8px; }
 
+/* Campo numérico estándar: alineado a la derecha, con sufijo opcional (p. ej. %) */
+.num-input { display: flex; align-items: center; gap: 6px; }
+.num-input .inp-num {
+  flex: 1; min-width: 0; padding: 8px 10px; border: 1px solid var(--borde);
+  border-radius: 8px; font-size: 14px; font-family: inherit; background: #fff;
+  text-align: right;
+}
+.num-input .inp-num:focus { outline: none; border-color: var(--naranja); box-shadow: 0 0 0 3px rgba(224, 122, 90, 0.25); }
+.num-suffix { color: var(--gris-medio); font-size: 14px; flex-shrink: 0; }
+/* En tablas, las celdas numéricas también van a la derecha */
+td.num, th.num { text-align: right; }
+
+/* Fila de dos campos a la par (alineados por su base, para que un check encaje con un input) */
+.field-row { display: flex; gap: 12px; align-items: flex-end; }
+.field-row > .field { flex: 1; min-width: 0; }
+.field-row .field.check.pc-check { margin-bottom: 14px; white-space: nowrap; }
+
 /* Selector de opción en forma de botones (componente OptionButtons) */
 .optbtns { display: flex; flex-wrap: wrap; gap: 8px; }
 /* En horizontal, los botones reparten el ancho a partes iguales. */

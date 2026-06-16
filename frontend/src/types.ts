@@ -67,8 +67,10 @@ export interface BinderSeccion {
   id?: number;
   ramo: string | null;
   risk_codes: string[];
-  comision: number | null;
   limite_primas: number | null;
+  notificacion: number | null;
+  comision: number | null;
+  sujeto_pc: boolean;
   mercados: SeccionMercadoLinea[];
 }
 export interface Binder {
@@ -100,8 +102,10 @@ export interface BinderWrite {
   secciones: {
     ramo: string | null;
     risk_codes: string[];
-    comision: number | null;
     limite_primas: number | null;
+    notificacion: number | null;
+    comision: number | null;
+    sujeto_pc: boolean;
     mercados: { mercado_id: number; participacion: number | null }[];
   }[];
 }

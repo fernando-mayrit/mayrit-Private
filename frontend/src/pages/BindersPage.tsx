@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { crud } from "../api";
 import type { Binder, BinderWrite, Mercado, Productor, Ramo } from "../types";
 import FormPanel from "../components/FormPanel";
+import NumberInput from "../components/NumberInput";
 
 const api = crud<Binder, BinderWrite>("/binders");
 const apiProductores = crud<Productor, unknown>("/productores");
@@ -15,8 +16,10 @@ type LineaForm = { mercado_id: string; participacion: string };
 type SeccionForm = {
   ramo: string;
   risk_codes: string[];
-  comision: string;
   limite_primas: string;
+  notificacion: string;
+  comision: string;
+  sujeto_pc: boolean;
   mercados: LineaForm[];
 };
 type FormState = {
@@ -36,8 +39,10 @@ type FormState = {
 const SECCION_VACIA: SeccionForm = {
   ramo: "",
   risk_codes: [],
-  comision: "",
   limite_primas: "",
+  notificacion: "",
+  comision: "",
+  sujeto_pc: false,
   mercados: [{ mercado_id: "", participacion: "" }],
 };
 
@@ -179,8 +184,10 @@ export default function BindersPage() {
           ? b.secciones.map((s) => ({
               ramo: s.ramo ?? "",
               risk_codes: s.risk_codes ?? [],
-              comision: s.comision != null ? String(s.comision) : "",
               limite_primas: s.limite_primas != null ? String(s.limite_primas) : "",
+              notificacion: s.notificacion != null ? String(s.notificacion) : "",
+              comision: s.comision != null ? String(s.comision) : "",
+              sujeto_pc: !!s.sujeto_pc,
               mercados:
                 s.mercados.length > 0
                   ? s.mercados.map((m) => ({
@@ -207,7 +214,14 @@ export default function BindersPage() {
     // al cambiar de ramo se resetean los risk codes (dependen del ramo)
     if (form) setSecciones(form.secciones.map((s, idx) => (idx === i ? { ...s, ramo, risk_codes: [] } : s)));
   }
-  function setSeccionCampo(i: number, campo: "comision" | "limite_primas", valor: string) {
+  function setSeccionCampo(
+    i: number,
+    campo: "comision" | "limite_primas" | "notificacion",
+    valor: string
+  ) {
+    if (form) setSecciones(form.secciones.map((s, idx) => (idx === i ? { ...s, [campo]: valor } : s)));
+  }
+  function setSeccionFlag(i: number, campo: "sujeto_pc", valor: boolean) {
     if (form) setSecciones(form.secciones.map((s, idx) => (idx === i ? { ...s, [campo]: valor } : s)));
   }
   function toggleRiskCode(i: number, codigo: string) {
@@ -278,8 +292,10 @@ export default function BindersPage() {
       secciones: form.secciones.map((s) => ({
         ramo: s.ramo.trim() || null,
         risk_codes: s.risk_codes,
-        comision: num(s.comision),
         limite_primas: num(s.limite_primas),
+        notificacion: num(s.notificacion),
+        comision: num(s.comision),
+        sujeto_pc: s.sujeto_pc,
         mercados: s.mercados
           .filter((m) => m.mercado_id)
           .map((m) => ({ mercado_id: Number(m.mercado_id), participacion: num(m.participacion) })),
@@ -528,21 +544,42 @@ export default function BindersPage() {
                   </div>
                 );
               })()}
-              <div className="field">
-                <label>Comisión (%)</label>
-                <input
-                  type="text"
-                  value={s.comision}
-                  onChange={(e) => setSeccionCampo(i, "comision", e.target.value)}
-                />
+              <div className="field-row">
+                <div className="field">
+                  <label>Límite de primas</label>
+                  <NumberInput
+                    value={s.limite_primas}
+                    onChange={(v) => setSeccionCampo(i, "limite_primas", v)}
+                  />
+                </div>
+                <div className="field">
+                  <label>Notificación</label>
+                  <NumberInput
+                    value={s.notificacion}
+                    onChange={(v) => setSeccionCampo(i, "notificacion", v)}
+                    suffix="%"
+                    thousands={false}
+                  />
+                </div>
               </div>
-              <div className="field">
-                <label>Límite de primas</label>
-                <input
-                  type="text"
-                  value={s.limite_primas}
-                  onChange={(e) => setSeccionCampo(i, "limite_primas", e.target.value)}
-                />
+              <div className="field-row">
+                <div className="field">
+                  <label>Comisión</label>
+                  <NumberInput
+                    value={s.comision}
+                    onChange={(v) => setSeccionCampo(i, "comision", v)}
+                    suffix="%"
+                    thousands={false}
+                  />
+                </div>
+                <label className="field check pc-check">
+                  <input
+                    type="checkbox"
+                    checked={s.sujeto_pc}
+                    onChange={(e) => setSeccionFlag(i, "sujeto_pc", e.target.checked)}
+                  />
+                  Sujeto a PC?
+                </label>
               </div>
 
               <label className="mini-label">Mercados y participación</label>

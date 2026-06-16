@@ -170,8 +170,10 @@ class SeccionMercadoOut(BaseModel):
 class BinderSeccionIn(BaseModel):
     ramo: str | None = None
     risk_codes: list[str] = []
-    comision: Decimal | None = None
     limite_primas: Decimal | None = None
+    notificacion: Decimal | None = None
+    comision: Decimal | None = None
+    sujeto_pc: bool = False
     mercados: list[SeccionMercadoIn] = []
 
 
@@ -179,8 +181,10 @@ class BinderSeccionOut(BaseModel):
     id: int
     ramo: str | None = None
     risk_codes: list[str] = []
-    comision: Decimal | None = None
     limite_primas: Decimal | None = None
+    notificacion: Decimal | None = None
+    comision: Decimal | None = None
+    sujeto_pc: bool = False
     mercados: list[SeccionMercadoOut] = []
 
 

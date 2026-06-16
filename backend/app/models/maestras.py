@@ -159,8 +159,10 @@ class BinderSeccion(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     binder_id: Mapped[int] = mapped_column(ForeignKey("binders.id", ondelete="CASCADE"), index=True)
     ramo: Mapped[str | None] = mapped_column(String(120))
-    comision: Mapped[Decimal | None] = mapped_column(Numeric(7, 4))      # % comisión de la sección
     limite_primas: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    notificacion: Mapped[Decimal | None] = mapped_column(Numeric(7, 4))   # % de notificación
+    comision: Mapped[Decimal | None] = mapped_column(Numeric(7, 4))       # % comisión de la sección
+    sujeto_pc: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
 
     binder: Mapped["Binder"] = relationship(back_populates="secciones")
     mercados: Mapped[list["SeccionMercado"]] = relationship(
