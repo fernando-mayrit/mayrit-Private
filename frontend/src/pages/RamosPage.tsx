@@ -164,6 +164,7 @@ export default function RamosPage() {
           title={form.id ? "Editar Ramo" : "Nuevo Ramo"}
           dirty={dirty}
           saving={saving}
+          error={error}
           onSave={guardar}
           onClose={cerrar}
         >

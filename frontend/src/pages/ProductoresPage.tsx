@@ -304,6 +304,7 @@ export default function ProductoresPage() {
           title={form.id ? "Editar Productor" : "Nuevo Productor"}
           dirty={dirty}
           saving={saving}
+          error={error}
           onSave={guardar}
           onClose={cerrar}
         >

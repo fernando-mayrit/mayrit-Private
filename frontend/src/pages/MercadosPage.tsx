@@ -183,6 +183,7 @@ export default function MercadosPage() {
           title={form.id ? "Editar Mercado" : "Nuevo Mercado"}
           dirty={dirty}
           saving={saving}
+          error={error}
           onSave={guardar}
           onClose={cerrar}
         >

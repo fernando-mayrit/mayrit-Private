@@ -485,6 +485,7 @@ export default function BindersPage() {
           title={form.id ? "Editar Binder" : "Nuevo Binder"}
           dirty={dirty}
           saving={saving}
+          error={error}
           onSave={guardar}
           onClose={cerrar}
         >

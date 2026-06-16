@@ -181,6 +181,12 @@ td.num, th.num { text-align: right; }
 .toba-row .fecha-inline { display: flex; align-items: center; gap: 8px; }
 .toba-row .fecha-inline label { font-size: 13px; color: var(--gris); }
 .panel-actions { display: flex; gap: 10px; margin-top: 20px; }
+/* Mensaje de error del formulario: banda roja visible, pegada abajo junto a los botones */
+.panel-error {
+  position: sticky; bottom: 0; margin-top: 16px;
+  background: #fdecea; color: var(--rojo); border: 1px solid #f1c6c1;
+  border-radius: 8px; padding: 10px 12px; font-size: 13px; font-weight: 600;
+}
 .required { color: var(--naranja); }
 
 /* Secciones de un binder */

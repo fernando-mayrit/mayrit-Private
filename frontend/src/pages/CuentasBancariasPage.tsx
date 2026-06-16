@@ -209,6 +209,7 @@ export default function CuentasBancariasPage() {
           title={form.id ? "Editar Cuenta Bancaria" : "Nueva Cuenta Bancaria"}
           dirty={dirty}
           saving={saving}
+          error={error}
           onSave={guardar}
           onClose={cerrar}
         >

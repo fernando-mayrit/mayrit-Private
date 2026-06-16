@@ -284,6 +284,7 @@ export default function TomadoresPage() {
           title={form.id ? "Editar Tomador" : "Nuevo Tomador"}
           dirty={dirty}
           saving={saving}
+          error={error}
           onSave={guardar}
           onClose={cerrar}
         >
