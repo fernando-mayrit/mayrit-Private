@@ -35,6 +35,16 @@ los BDX que cuelgan de ellos + liquidaciones de primas**. Accesorio: compliance,
      **Cuenta bancaria** (del catálogo). Todo obligatorio salvo Notas.
    - Tablas: `binders` (+ columnas comunes), `binder_secciones`, `seccion_mercados`,
      `seccion_risk_codes`. Router propio.
+   - **Suplementos = versiones (decisión 2026-06-16).** Un suplemento puede cambiar casi cualquier
+     término. Se modela como **snapshot**: el binder normalizado es el estado ACTUAL; la tabla
+     `binder_suplementos` guarda cada versión (número 0=alta, 1, 2…) con **fecha de efecto**
+     (puede ser **retroactiva**), motivo y una **copia JSON completa de los términos**. La versión
+     vigente en una fecha = la de mayor `fecha_efecto ≤ fecha` (lo usará el cálculo de BDX:
+     GWP/Notificación según la versión vigente en la fecha de cada BDX). **Editar** el binder =
+     corrección de la versión vigente (refresca su snapshot, NO crea versión); **"+ Suplemento"** =
+     nueva versión (reutiliza el formulario del binder). En la UI: acción "+ Suplemento" y "Historial".
+     Endpoints `GET`/`POST /binders/{id}/suplementos`. En Access NO se llevaba control de suplementos
+     (funcionalidad nueva). Pendiente (con BDX): **recálculo** cuando un suplemento sea retroactivo.
 2. **Pólizas** — el negocio de *Open Market* (OM). [pendiente]
 3. **Consultoría** — los *fees*. [pendiente]
 4. **Comisiones** — negocio del que se generan comisiones pero que no es binder ni póliza. [pendiente]
