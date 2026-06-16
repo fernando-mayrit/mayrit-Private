@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { crud } from "../api";
-import type { Binder, BinderWrite, CuentaBancaria, Mercado, Productor, Ramo } from "../types";
+import { crud, listarSuplementos, crearSuplemento } from "../api";
+import type { Binder, BinderWrite, CuentaBancaria, Mercado, Productor, Ramo, Suplemento } from "../types";
 import FormPanel from "../components/FormPanel";
 import PageHeader from "../components/PageHeader";
 import NumberInput from "../components/NumberInput";
@@ -151,8 +151,18 @@ export default function BindersPage() {
   const [form, setForm] = useState<FormState | null>(null);
   const [inicial, setInicial] = useState<FormState | null>(null);
   const [saving, setSaving] = useState(false);
+  // modo del panel: "edicion" (alta/corrección, usa PUT/POST binder) o "suplemento" (nueva versión)
+  const [modo, setModo] = useState<"edicion" | "suplemento">("edicion");
+  const [supEfecto, setSupEfecto] = useState("");
+  const [supMotivo, setSupMotivo] = useState("");
+  // Historial de versiones (panel de solo lectura)
+  const [historial, setHistorial] = useState<Suplemento[] | null>(null);
+  const [histBinder, setHistBinder] = useState<Binder | null>(null);
 
-  const dirty = !!form && JSON.stringify(form) !== JSON.stringify(inicial);
+  const dirty =
+    !!form &&
+    (JSON.stringify(form) !== JSON.stringify(inicial) ||
+      (modo === "suplemento" && (!!supEfecto || !!supMotivo)));
   // Profit Commission del binder solo se puede activar si alguna sección tiene "Sujeto a PC?".
   const algunaPC = !!form && form.secciones.some((s) => s.sujeto_pc);
 
@@ -226,12 +236,31 @@ export default function BindersPage() {
   function cerrar() {
     setForm(null);
     setInicial(null);
+    setModo("edicion");
+    setSupEfecto("");
+    setSupMotivo("");
   }
   function abrirNuevo() {
+    setModo("edicion");
+    setSupEfecto("");
+    setSupMotivo("");
     abrir(JSON.parse(JSON.stringify(VACIO)));
   }
   function abrirEdicion(b: Binder) {
-    abrir({
+    setModo("edicion");
+    setSupEfecto("");
+    setSupMotivo("");
+    abrir(formDesde(b));
+  }
+  // Nuevo suplemento: mismo formulario, precargado con los términos actuales; al guardar crea versión.
+  function abrirSuplemento(b: Binder) {
+    setModo("suplemento");
+    setSupEfecto("");
+    setSupMotivo("");
+    abrir(formDesde(b));
+  }
+  function formDesde(b: Binder): FormState {
+    return {
       id: b.id,
       agreement_number: b.agreement_number ?? "",
       umr: b.umr ?? "",
@@ -271,7 +300,7 @@ export default function BindersPage() {
                   : [{ mercado_id: "", participacion: "" }],
             }))
           : [JSON.parse(JSON.stringify(SECCION_VACIA))],
-    });
+    };
   }
 
   // ── secciones / mercados (inmutable) ──
@@ -380,6 +409,10 @@ export default function BindersPage() {
     }
     if (num(form.comision_mayrit) == null) return setError("La comisión Mayrit es obligatoria.");
     if (!form.cuenta_bancaria_id) return setError("La cuenta bancaria es obligatoria.");
+    if (modo === "suplemento") {
+      if (!supEfecto) return setError("Indica la fecha de efecto del suplemento.");
+      if (!supMotivo.trim()) return setError("Indica el motivo del suplemento.");
+    }
 
     setSaving(true);
     setError(null);
@@ -417,14 +450,30 @@ export default function BindersPage() {
       })),
     };
     try {
-      if (form.id) await api.update(form.id, payload);
-      else await api.create(payload);
+      if (modo === "suplemento" && form.id) {
+        await crearSuplemento(form.id, { ...payload, suplemento_fecha_efecto: supEfecto || null, motivo: supMotivo.trim() });
+      } else if (form.id) {
+        await api.update(form.id, payload);
+      } else {
+        await api.create(payload);
+      }
       cerrar();
       await cargar();
     } catch (e) {
       setError((e as Error).message);
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function abrirHistorial(b: Binder) {
+    setError(null);
+    try {
+      const sup = await listarSuplementos(b.id);
+      setHistBinder(b);
+      setHistorial(sup);
+    } catch (e) {
+      setError((e as Error).message);
     }
   }
 
@@ -510,6 +559,12 @@ export default function BindersPage() {
                     <button className="btn-link" onClick={() => abrirEdicion(b)}>
                       Editar
                     </button>
+                    <button className="btn-link" onClick={() => abrirSuplemento(b)}>
+                      + Suplemento
+                    </button>
+                    <button className="btn-link" onClick={() => abrirHistorial(b)}>
+                      Historial
+                    </button>
                     <button className="btn-link" style={{ color: "var(--rojo)" }} onClick={() => borrar(b)}>
                       Borrar
                     </button>
@@ -523,13 +578,47 @@ export default function BindersPage() {
 
       {form && (
         <FormPanel
-          title={form.id ? "Editar Binder" : "Nuevo Binder"}
+          title={
+            modo === "suplemento"
+              ? `Nuevo suplemento · ${form.umr || form.agreement_number}`
+              : form.id
+              ? "Editar Binder"
+              : "Nuevo Binder"
+          }
           dirty={dirty}
           saving={saving}
           error={error}
+          saveLabel={modo === "suplemento" ? "Crear suplemento" : "Guardar"}
           onSave={guardar}
           onClose={cerrar}
         >
+          {modo === "suplemento" && (
+            <div className="sup-cabecera">
+              <div className="hint" style={{ marginBottom: 10 }}>
+                Modifica abajo lo que cambie este suplemento. La fecha de efecto puede ser retroactiva.
+              </div>
+              <div className="field-row">
+                <div className="field">
+                  <label>
+                    Fecha de efecto <span className="required">*</span>
+                  </label>
+                  <input
+                    type="date"
+                    className="inp-fecha"
+                    value={supEfecto}
+                    onChange={(e) => setSupEfecto(e.target.value)}
+                  />
+                </div>
+                <div className="field">
+                  <label>
+                    Motivo <span className="required">*</span>
+                  </label>
+                  <input type="text" value={supMotivo} onChange={(e) => setSupMotivo(e.target.value)} />
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="field">
             <label>
               Agreement Number <span className="required">*</span>
@@ -538,6 +627,7 @@ export default function BindersPage() {
               type="text"
               value={form.agreement_number}
               autoFocus
+              readOnly={modo === "suplemento"}
               style={{ textTransform: "uppercase" }}
               onChange={(e) => {
                 const v = e.target.value.toUpperCase();
@@ -886,6 +976,58 @@ export default function BindersPage() {
             <textarea rows={3} value={form.notas} onChange={(e) => setForm({ ...form, notas: e.target.value })} />
           </div>
         </FormPanel>
+      )}
+
+      {historial && (
+        <div className="overlay">
+          <div className="panel" role="dialog" aria-modal="true" aria-label="Historial de suplementos">
+            <div className="panel-head">
+              <h2>Historial · {histBinder?.umr ?? histBinder?.agreement_number}</h2>
+              <button className="panel-close" onClick={() => setHistorial(null)} aria-label="Cerrar">
+                ✕
+              </button>
+            </div>
+            <div className="panel-body">
+              {historial.length === 0 ? (
+                <div className="empty">Sin versiones.</div>
+              ) : (
+                [...historial]
+                  .sort((a, b) => b.numero - a.numero)
+                  .map((s) => {
+                    const limTotal = (s.snapshot?.secciones ?? []).reduce(
+                      (a, x) => a + (x.limite_primas ?? 0),
+                      0
+                    );
+                    return (
+                      <div className="sup-item" key={s.numero}>
+                        <div className="sup-item-head">
+                          <strong>{s.numero === 0 ? "Alta inicial (v0)" : `Suplemento ${s.numero}`}</strong>
+                          <span className="sub">{fechaCorta(s.fecha_efecto)}</span>
+                        </div>
+                        {s.motivo && <div className="hint">{s.motivo}</div>}
+                        <div className="sup-item-terms">
+                          Límite total:{" "}
+                          {limTotal
+                            ? new Intl.NumberFormat("es-ES", {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              }).format(limTotal)
+                            : "—"}
+                          {"  ·  Comisión Mayrit: "}
+                          {s.snapshot?.comision_mayrit != null ? pct(s.snapshot.comision_mayrit) : "—"}
+                        </div>
+                      </div>
+                    );
+                  })
+              )}
+            </div>
+            <div className="panel-actions">
+              <button className="btn-secondary" onClick={() => setHistorial(null)}>
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

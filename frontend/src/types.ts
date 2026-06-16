@@ -126,6 +126,20 @@ export interface BinderWrite extends BinderComun {
   }[];
 }
 
+// Suplemento = una versión del binder (snapshot de los términos en una fecha de efecto).
+export interface Suplemento {
+  id: number | null;
+  numero: number;
+  fecha_efecto: string | null;
+  motivo: string | null;
+  created_at: string;
+  snapshot: {
+    comision_mayrit: number | null;
+    secciones: { ramo: string | null; limite_primas: number | null; comision: number | null }[];
+    [k: string]: unknown;
+  };
+}
+
 export interface Tomador {
   id: number;
   nombre: string;

@@ -32,6 +32,18 @@ export function buscarCp(cp: string) {
   );
 }
 
+// Suplementos (versiones) de un binder.
+import type { Suplemento, BinderWrite } from "./types";
+export function listarSuplementos(binderId: number) {
+  return request<Suplemento[]>(`/binders/${binderId}/suplementos`);
+}
+export function crearSuplemento(
+  binderId: number,
+  payload: BinderWrite & { suplemento_fecha_efecto: string | null; motivo: string | null }
+) {
+  return request(`/binders/${binderId}/suplementos`, { method: "POST", body: JSON.stringify(payload) });
+}
+
 // CRUD genérico para una colección (p. ej. "/mercados").
 export function crud<TRead, TWrite>(collection: string) {
   return {
