@@ -30,10 +30,11 @@ Lo que **no** va a Git (cada equipo tiene lo suyo, fuera del repo):
 ## Puesta en marcha (resumen)
 
 ### Backend
+El venv va FUERA del repo (OneDrive rompe los venv que tiene dentro):
 ```
+py -m venv %USERPROFILE%\.mayrit\venv
+%USERPROFILE%\.mayrit\venv\Scripts\activate
 cd backend
-python -m venv .venv
-.venv\Scripts\activate
 pip install -r requirements.txt
 copy .env.example %USERPROFILE%\.mayrit\.env   # y rellenar credenciales
 uvicorn app.main:app --reload

@@ -14,7 +14,7 @@ from __future__ import annotations
 import datetime as dt
 from decimal import Decimal
 
-from sqlalchemy import JSON, Boolean, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, func
+from sqlalchemy import JSON, Boolean, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, func, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..db import Base
@@ -245,14 +245,162 @@ class CuentaBancaria(Base):
     sp_old_id: Mapped[int | None] = mapped_column(Integer, index=True)
 
     nombre: Mapped[str] = mapped_column(String(160))          # alias/descripción de la cuenta
+    categoria: Mapped[str | None] = mapped_column(String(20))  # Primas / Gastos / Siniestros
     banco: Mapped[str | None] = mapped_column(String(160))
     titular: Mapped[str | None] = mapped_column(String(160))
     iban: Mapped[str | None] = mapped_column(String(40))
     swift_bic: Mapped[str | None] = mapped_column(String(20))
     moneda: Mapped[str | None] = mapped_column(String(10))
     notas: Mapped[str | None] = mapped_column(Text)
+    # Activa/inactiva: una cuenta inactiva no se puede elegir en ningún sitio (p. ej. binders).
+    activa: Mapped[bool] = mapped_column(Boolean, server_default=text("true"), default=True)
 
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+
+# ───────────────────────────────── BDX (bordereaux) ──────────────────────────
+class Bdx(Base):
+    """Cabecera de un bordereau: una entrega de un periodo de reporte para un binder.
+    Risk y Premium comparten estructura (campo `tipo`); Claims va en otra tabla.
+    Coverholder/UMR/YOA NO se repiten aquí: salen del binder."""
+
+    __tablename__ = "bdx"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    binder_id: Mapped[int] = mapped_column(ForeignKey("binders.id", ondelete="CASCADE"), index=True)
+    tipo: Mapped[str] = mapped_column(String(20))                # 'Risk' | 'Premium'
+    reporting_period_start: Mapped[dt.date | None] = mapped_column(Date)
+    reporting_period_end: Mapped[dt.date | None] = mapped_column(Date)
+    estado: Mapped[str | None] = mapped_column(String(40))
+    notas: Mapped[str | None] = mapped_column(Text)
+
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    binder: Mapped["Binder"] = relationship()
+    lineas: Mapped[list["BdxLinea"]] = relationship(
+        back_populates="bdx", cascade="all, delete-orphan", order_by="BdxLinea.id"
+    )
+
+
+class BdxLinea(Base):
+    """Línea de un bordereau Risk/Premium (Lloyd's Coverholder Reporting Standard).
+    Columnas 8–77 del estándar + bloque interno de control de cobro/pago (80–90)."""
+
+    __tablename__ = "bdx_lineas"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    sp_old_id: Mapped[int | None] = mapped_column(Integer, index=True)   # _OldID del origen
+    bdx_id: Mapped[int] = mapped_column(ForeignKey("bdx.id", ondelete="CASCADE"), index=True)
+
+    # ── Identificación de la línea ──
+    section_no: Mapped[int | None] = mapped_column(Integer)
+    class_of_business: Mapped[str | None] = mapped_column(String(120))
+    risk_code: Mapped[str | None] = mapped_column(String(20))
+    type_of_insurance: Mapped[str | None] = mapped_column(String(40))   # Direct / Reinsurance
+    certificate_ref: Mapped[str | None] = mapped_column(String(120))
+
+    # ── Asegurado ──
+    insured_name: Mapped[str | None] = mapped_column(String(255))
+    insured_id: Mapped[str | None] = mapped_column(String(60))
+    insured_address: Mapped[str | None] = mapped_column(String(255))
+    insured_province: Mapped[str | None] = mapped_column(String(120))
+    insured_postcode: Mapped[str | None] = mapped_column(String(20))
+    insured_country: Mapped[str | None] = mapped_column(String(80))
+
+    # ── Riesgo ──
+    risk_inception_date: Mapped[dt.date | None] = mapped_column(Date)
+    risk_expiry_date: Mapped[dt.date | None] = mapped_column(Date)
+    location_risk_province: Mapped[str | None] = mapped_column(String(120))
+    location_risk_country: Mapped[str | None] = mapped_column(String(80))
+    risk_transaction_type: Mapped[str | None] = mapped_column(String(40))   # New/Renewal/Endorsement/Cancellation
+    transaction_type: Mapped[str | None] = mapped_column(String(40))        # Original/Additional/Return premium
+    effective_date_transaction: Mapped[dt.date | None] = mapped_column(Date)
+    expiry_date_transaction: Mapped[dt.date | None] = mapped_column(Date)
+
+    # ── Prima ──
+    original_currency_premium: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    gross_written_premium: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    written_line_pct: Mapped[Decimal | None] = mapped_column(Numeric(7, 4))
+    total_gwp_our_line: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    fees: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    commission_coverholder_pct: Mapped[Decimal | None] = mapped_column(Numeric(7, 4))
+    commission_coverholder_amount: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    total_taxes_levies: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    total_gwp_including_tax: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    net_premium_to_broker: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+
+    # ── Suma asegurada / deducible ──
+    sum_insured_currency: Mapped[str | None] = mapped_column(String(10))
+    sum_insured_our_line: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    deductible_amount: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    deductible_basis: Mapped[str | None] = mapped_column(String(40))
+
+    # ── Impuestos 1–4 (desglosados) ──
+    tax1_jurisdiction: Mapped[str | None] = mapped_column(String(120))
+    tax1_type: Mapped[str | None] = mapped_column(String(80))
+    tax1_taxable_premium: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    tax1_pct: Mapped[Decimal | None] = mapped_column(Numeric(7, 4))
+    tax1_amount: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    tax1_administered_by: Mapped[str | None] = mapped_column(String(80))
+    tax1_payable_by: Mapped[str | None] = mapped_column(String(80))
+
+    tax2_jurisdiction: Mapped[str | None] = mapped_column(String(120))
+    tax2_type: Mapped[str | None] = mapped_column(String(80))
+    tax2_taxable_premium: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    tax2_pct: Mapped[Decimal | None] = mapped_column(Numeric(7, 4))
+    tax2_amount: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    tax2_administered_by: Mapped[str | None] = mapped_column(String(80))
+    tax2_payable_by: Mapped[str | None] = mapped_column(String(80))
+
+    tax3_jurisdiction: Mapped[str | None] = mapped_column(String(120))
+    tax3_type: Mapped[str | None] = mapped_column(String(80))
+    tax3_taxable_premium: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    tax3_pct: Mapped[Decimal | None] = mapped_column(Numeric(7, 4))
+    tax3_amount: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    tax3_administered_by: Mapped[str | None] = mapped_column(String(80))
+    tax3_payable_by: Mapped[str | None] = mapped_column(String(80))
+
+    tax4_jurisdiction: Mapped[str | None] = mapped_column(String(120))
+    tax4_type: Mapped[str | None] = mapped_column(String(80))
+    tax4_taxable_premium: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    tax4_pct: Mapped[Decimal | None] = mapped_column(Numeric(7, 4))
+    tax4_amount: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    tax4_administered_by: Mapped[str | None] = mapped_column(String(80))
+    tax4_payable_by: Mapped[str | None] = mapped_column(String(80))
+
+    # ── Plazos / Lloyd's / brokerage ──
+    instalment_number: Mapped[int | None] = mapped_column(Integer)
+    number_of_instalments: Mapped[int | None] = mapped_column(Integer)
+    referred_to_london: Mapped[str | None] = mapped_column(String(10))   # Yes/No
+    pct_for_lloyds: Mapped[Decimal | None] = mapped_column(Numeric(7, 4))
+    policy_issuance_date: Mapped[dt.date | None] = mapped_column(Date)
+    policy_number_reinsured: Mapped[str | None] = mapped_column(String(120))
+    brokerage_pct: Mapped[Decimal | None] = mapped_column(Numeric(7, 4))
+    brokerage_amount: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    final_net_premium_uw: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+
+    # ── Control interno (no viene en el BDX; gestión de cobro/pago) ──
+    prima_cobrada: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
+    ingresado: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    premium_payment_date: Mapped[dt.date | None] = mapped_column(Date)
+    traspaso: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
+    traspasado: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    fecha_traspaso: Mapped[dt.date | None] = mapped_column(Date)
+    liquidado: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
+    liquidado_uw: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    fecha_liquidacion: Mapped[dt.date | None] = mapped_column(Date)
+    recibo: Mapped[str | None] = mapped_column(String(120))
+    notas: Mapped[str | None] = mapped_column(Text)
+
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    bdx: Mapped["Bdx"] = relationship(back_populates="lineas")

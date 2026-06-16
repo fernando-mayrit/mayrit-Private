@@ -4,6 +4,7 @@ import type { Binder, BinderWrite, CuentaBancaria, Mercado, Productor, Ramo, Sup
 import FormPanel from "../components/FormPanel";
 import PageHeader from "../components/PageHeader";
 import NumberInput from "../components/NumberInput";
+import BinderDetalle from "./BinderDetalle";
 
 const api = crud<Binder, BinderWrite>("/binders");
 const apiProductores = crud<Productor, unknown>("/productores");
@@ -139,6 +140,7 @@ function yoaDe(iso: string): string {
 }
 
 export default function BindersPage() {
+  const [detalle, setDetalle] = useState<Binder | null>(null); // ficha "interior" del binder
   const [items, setItems] = useState<Binder[]>([]);
   const [agencias, setAgencias] = useState<Productor[]>([]);
   const [mercados, setMercados] = useState<Mercado[]>([]);
@@ -509,6 +511,18 @@ export default function BindersPage() {
     return mc?.alias || mc?.nombre || "—";
   }
 
+  if (detalle) {
+    return (
+      <BinderDetalle
+        binder={detalle}
+        onBack={() => {
+          setDetalle(null);
+          cargar();
+        }}
+      />
+    );
+  }
+
   return (
     <div className="container">
       <PageHeader emoji="📑" title="Binders" />
@@ -552,7 +566,7 @@ export default function BindersPage() {
             </thead>
             <tbody>
               {items.map((b) => (
-                <tr key={b.id}>
+                <tr key={b.id} className="fila-click" onClick={() => setDetalle(b)} title="Abrir ficha (Datos / BDX)">
                   <td>{b.umr ?? "—"}</td>
                   <td>{b.yoa ?? "—"}</td>
                   <td>{b.coverholder_alias ?? b.coverholder_nombre ?? "—"}</td>
@@ -564,7 +578,10 @@ export default function BindersPage() {
                   <td className="num">—</td>
                   <td className="num">—</td>
                   <td>—</td>
-                  <td className="acciones">
+                  <td className="acciones" onClick={(e) => e.stopPropagation()}>
+                    <button className="btn-link" onClick={() => setDetalle(b)}>
+                      Abrir
+                    </button>
                     <button className="btn-link" onClick={() => abrirEdicion(b)}>
                       Editar
                     </button>
@@ -994,14 +1011,27 @@ export default function BindersPage() {
               onChange={(e) => setForm({ ...form, cuenta_bancaria_id: e.target.value })}
             >
               <option value="">— Elige cuenta —</option>
-              {cuentas.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.nombre}
-                </option>
-              ))}
+              {cuentas
+                // Solo cuentas de Primas y activas; pero si el binder ya tenía otra, se mantiene.
+                .filter(
+                  (c) =>
+                    (c.activa && c.categoria === "Primas") ||
+                    String(c.id) === form.cuenta_bancaria_id
+                )
+                .map((c) => {
+                  const noValida = !(c.activa && c.categoria === "Primas");
+                  return (
+                    <option key={c.id} value={c.id}>
+                      {c.nombre}
+                      {noValida ? " (no válida)" : ""}
+                    </option>
+                  );
+                })}
             </select>
-            {cuentas.length === 0 && (
-              <span className="hint">Crea cuentas en Configuración → Cuentas Bancarias.</span>
+            {cuentas.filter((c) => c.activa && c.categoria === "Primas").length === 0 && (
+              <span className="hint">
+                No hay cuentas de Primas activas. Créalas en Configuración → Cuentas Bancarias.
+              </span>
             )}
           </div>
 

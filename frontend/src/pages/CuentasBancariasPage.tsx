@@ -9,20 +9,26 @@ const api = crud<CuentaBancaria, CuentaBancariaWrite>("/cuentas-bancarias");
 type FormState = {
   id?: number;
   nombre: string;
+  categoria: string;
   banco: string;
   iban: string;
   swift_bic: string;
   moneda: string;
   notas: string;
+  activa: boolean;
 };
+
+const CATEGORIAS = ["Primas", "Gastos", "Siniestros"];
 
 const VACIO: FormState = {
   nombre: "",
+  categoria: "",
   banco: "",
   iban: "",
   swift_bic: "",
   moneda: "EUR",
   notas: "",
+  activa: true,
 };
 
 // IBAN: mayúsculas, solo alfanumérico, en bloques de 4 (formato habitual de impresión).
@@ -88,30 +94,38 @@ export default function CuentasBancariasPage() {
     abrir({
       id: c.id,
       nombre: c.nombre,
+      categoria: c.categoria ?? "",
       banco: c.banco ?? "",
       iban: c.iban ? formateaIban(c.iban) : "",
       swift_bic: c.swift_bic ?? "",
       moneda: c.moneda ?? "EUR",
       notas: c.notas ?? "",
+      activa: c.activa,
     });
   }
 
   async function guardar() {
     if (!form) return;
     if (!form.nombre.trim()) return setError("El nombre de la cuenta es obligatorio.");
+    if (!form.categoria) return setError("La categoría es obligatoria.");
+    if (!form.banco.trim()) return setError("El banco es obligatorio.");
     const ibanLimpio = form.iban.replace(/\s/g, "").toUpperCase();
-    if (ibanLimpio && !ibanValido(ibanLimpio))
-      return setError("El IBAN no es válido (revisa los dígitos).");
+    if (!ibanLimpio) return setError("El IBAN es obligatorio.");
+    if (!ibanValido(ibanLimpio)) return setError("El IBAN no es válido (revisa los dígitos).");
+    if (!form.swift_bic.trim()) return setError("El SWIFT / BIC es obligatorio.");
+    if (!form.moneda.trim()) return setError("La moneda es obligatoria.");
 
     setSaving(true);
     setError(null);
     const payload: CuentaBancariaWrite = {
       nombre: form.nombre.trim(),
+      categoria: form.categoria || null,
       banco: form.banco.trim() || null,
       iban: ibanLimpio || null,
       swift_bic: form.swift_bic.trim().toUpperCase() || null,
       moneda: form.moneda.trim() || null,
       notas: form.notas.trim() || null,
+      activa: form.activa,
     };
     try {
       if (form.id) await api.update(form.id, payload);
@@ -180,19 +194,23 @@ export default function CuentasBancariasPage() {
           <thead>
             <tr>
               <th>Nombre</th>
+              <th>Categoría</th>
               <th>Banco</th>
               <th>IBAN</th>
               <th>Moneda</th>
+              <th>Estado</th>
               <th></th>
             </tr>
           </thead>
           <tbody>
             {items.map((c) => (
-              <tr key={c.id}>
+              <tr key={c.id} style={c.activa ? undefined : { opacity: 0.55 }}>
                 <td>{c.nombre}</td>
+                <td>{c.categoria ?? "—"}</td>
                 <td>{c.banco ?? "—"}</td>
                 <td>{c.iban ?? "—"}</td>
                 <td>{c.moneda ?? "—"}</td>
+                <td>{c.activa ? "Activa" : "Inactiva"}</td>
                 <td className="acciones">
                   <button className="btn-link" onClick={() => abrirEdicion(c)}>
                     Editar
@@ -215,9 +233,27 @@ export default function CuentasBancariasPage() {
           onDelete={form.id ? borrarActual : undefined}
         >
           {campo("Nombre", "nombre", true)}
-          {campo("Banco", "banco")}
           <div className="field">
-            <label>IBAN</label>
+            <label>
+              Categoría <span className="required">*</span>
+            </label>
+            <select
+              value={form.categoria}
+              onChange={(e) => setForm({ ...form, categoria: e.target.value })}
+            >
+              <option value="">— Elige categoría —</option>
+              {CATEGORIAS.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+          </div>
+          {campo("Banco", "banco", true)}
+          <div className="field">
+            <label>
+              IBAN <span className="required">*</span>
+            </label>
             <input
               type="text"
               value={form.iban}
@@ -226,8 +262,19 @@ export default function CuentasBancariasPage() {
               onChange={(e) => setForm({ ...form, iban: formateaIban(e.target.value) })}
             />
           </div>
-          {campo("SWIFT / BIC", "swift_bic", false, true)}
-          {campo("Moneda", "moneda")}
+          {campo("SWIFT / BIC", "swift_bic", true, true)}
+          {campo("Moneda", "moneda", true)}
+          <div className="field">
+            <label className="check-inline">
+              <input
+                type="checkbox"
+                checked={form.activa}
+                onChange={(e) => setForm({ ...form, activa: e.target.checked })}
+              />
+              Cuenta activa
+            </label>
+            <span className="hint">Si se desactiva, no se podrá elegir en binders ni en ningún otro sitio.</span>
+          </div>
           <div className="field">
             <label>Notas</label>
             <textarea rows={3} value={form.notas} onChange={(e) => setForm({ ...form, notas: e.target.value })} />

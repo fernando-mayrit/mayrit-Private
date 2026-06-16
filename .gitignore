@@ -59,7 +59,7 @@ yarn-error.log*
 .pnpm-debug.log*
 
 # ── Config local de Claude Code (rutas de esta máquina) ──────────────────────
-.claude/settings.local.json
+.claude/
 
 # ── Editores ─────────────────────────────────────────────────────────────────
 .vscode/*

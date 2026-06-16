@@ -191,8 +191,10 @@ de tareas: clic derecho → "Anclar a la barra de tareas".
 - Icono de marca: `mayrit-Y.ico` (regenerable con `backend/tools/generar_icono_y.py`); favicon en
   `frontend/public/favicon.ico`.
 
-**Desarrollo (dos terminales):** requiere venv del backend y `npm install` en el frontend hechos:
-- Backend:  `cd backend` · `.venv\Scripts\uvicorn app.main:app --reload`  → http://localhost:8000
+**Desarrollo (dos terminales):** requiere venv del backend y `npm install` en el frontend hechos.
+⚠️ El **venv vive FUERA del repo** (en `%USERPROFILE%\.mayrit\venv`), porque el repo está en
+OneDrive y OneDrive deshidrata/borra los venv que tiene dentro. Los lanzadores ya apuntan ahí.
+- Backend:  `cd backend` · `& "$env:USERPROFILE\.mayrit\venv\Scripts\uvicorn.exe" app.main:app --reload`  → http://localhost:8000
 - Frontend: `cd frontend` · `npm run dev`  → http://localhost:5173
 
 ## Decisión abierta (para más adelante)

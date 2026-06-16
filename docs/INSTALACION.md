@@ -92,21 +92,23 @@ contraseñas), nunca por Git ni email.
 
 ## 3. Backend (FastAPI)
 
-Crea el entorno virtual e instala dependencias:
+Crea el entorno virtual **FUERA del repo** (en `%USERPROFILE%\.mayrit\venv`) e instala
+dependencias. ⚠️ Importante si el repo está en OneDrive: OneDrive deshidrata/borra los venv,
+así que el entorno NO debe vivir dentro del repo.
 
 ```powershell
+py -m venv $env:USERPROFILE\.mayrit\venv
+& "$env:USERPROFILE\.mayrit\venv\Scripts\python.exe" -m pip install --upgrade pip
 cd C:\Dev\mayrit\backend
-py -m venv .venv
-.\.venv\Scripts\python.exe -m pip install --upgrade pip
-.\.venv\Scripts\pip.exe install -r requirements.txt
+& "$env:USERPROFILE\.mayrit\venv\Scripts\pip.exe" install -r requirements.txt
 ```
 
 Las tablas ya existen en la base `mayrit` de Azure (compartida). **No** hace falta crear nada;
 las migraciones de Alembic solo se ejecutan cuando alguien cambia el modelo:
 
 ```powershell
-# Solo si el modelo cambió y este equipo va por detrás:
-.\.venv\Scripts\alembic.exe upgrade head
+# Solo si el modelo cambió y este equipo va por detrás (desde backend\):
+& "$env:USERPROFILE\.mayrit\venv\Scripts\alembic.exe" upgrade head
 ```
 
 ---
@@ -143,7 +145,7 @@ ocultos y abre la app en Edge modo app.
 ```powershell
 # Terminal 1 — backend
 cd C:\Dev\mayrit\backend
-.\.venv\Scripts\uvicorn.exe app.main:app --reload      # → http://localhost:8000
+& "$env:USERPROFILE\.mayrit\venv\Scripts\uvicorn.exe" app.main:app --reload   # → http://localhost:8000
 
 # Terminal 2 — frontend
 cd C:\Dev\mayrit\frontend
@@ -191,7 +193,7 @@ Si un `git pull` trae cambios en dependencias, vuelve a lanzar `pip install -r r
 - [ ] Git, Python 3.12+ y Node LTS instalados (terminal reabierta)
 - [ ] `git clone … C:\Dev\mayrit`
 - [ ] `~/.mayrit\.env` creado y relleno + `mayrit-sp.pfx` copiado
-- [ ] backend: `py -m venv .venv` + `pip install -r requirements.txt`
+- [ ] backend: `py -m venv %USERPROFILE%\.mayrit\venv` (FUERA del repo) + `pip install -r requirements.txt`
 - [ ] frontend: `npm install`
 - [ ] acceso directo creado (`configurar_acceso_directo.ps1`) **o** las dos terminales
 - [ ] http://localhost:5173 abre la app

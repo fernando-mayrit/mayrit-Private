@@ -127,12 +127,14 @@ class TomadorRead(TomadorBase):
 # ──────────────────────────── Cuenta bancaria ────────────────────────────
 class CuentaBancariaBase(BaseModel):
     nombre: str
+    categoria: str | None = None
     banco: str | None = None
     titular: str | None = None
     iban: str | None = None
     swift_bic: str | None = None
     moneda: str | None = None
     notas: str | None = None
+    activa: bool = True
     sp_old_id: int | None = None
 
 
@@ -142,12 +144,14 @@ class CuentaBancariaCreate(CuentaBancariaBase):
 
 class CuentaBancariaUpdate(BaseModel):
     nombre: str | None = None
+    categoria: str | None = None
     banco: str | None = None
     titular: str | None = None
     iban: str | None = None
     swift_bic: str | None = None
     moneda: str | None = None
     notas: str | None = None
+    activa: bool | None = None
 
 
 class CuentaBancariaRead(CuentaBancariaBase):
@@ -269,3 +273,148 @@ class SuplementoCreate(BinderBase):
     secciones: list[BinderSeccionIn] = []
     suplemento_fecha_efecto: dt.date | None = None
     motivo: str | None = None
+
+
+# ───────────────────────────────── BDX (bordereaux) ──────────────────────────
+class BdxLineaBase(BaseModel):
+    """Todos los campos editables de una línea (todos opcionales: en import vienen vacíos)."""
+    # Identificación
+    section_no: int | None = None
+    class_of_business: str | None = None
+    risk_code: str | None = None
+    type_of_insurance: str | None = None
+    certificate_ref: str | None = None
+    # Asegurado
+    insured_name: str | None = None
+    insured_id: str | None = None
+    insured_address: str | None = None
+    insured_province: str | None = None
+    insured_postcode: str | None = None
+    insured_country: str | None = None
+    # Riesgo
+    risk_inception_date: dt.date | None = None
+    risk_expiry_date: dt.date | None = None
+    location_risk_province: str | None = None
+    location_risk_country: str | None = None
+    risk_transaction_type: str | None = None
+    transaction_type: str | None = None
+    effective_date_transaction: dt.date | None = None
+    expiry_date_transaction: dt.date | None = None
+    # Prima
+    original_currency_premium: Decimal | None = None
+    gross_written_premium: Decimal | None = None
+    written_line_pct: Decimal | None = None
+    total_gwp_our_line: Decimal | None = None
+    fees: Decimal | None = None
+    commission_coverholder_pct: Decimal | None = None
+    commission_coverholder_amount: Decimal | None = None
+    total_taxes_levies: Decimal | None = None
+    total_gwp_including_tax: Decimal | None = None
+    net_premium_to_broker: Decimal | None = None
+    # Suma asegurada / deducible
+    sum_insured_currency: str | None = None
+    sum_insured_our_line: Decimal | None = None
+    deductible_amount: Decimal | None = None
+    deductible_basis: str | None = None
+    # Impuestos 1–4
+    tax1_jurisdiction: str | None = None
+    tax1_type: str | None = None
+    tax1_taxable_premium: Decimal | None = None
+    tax1_pct: Decimal | None = None
+    tax1_amount: Decimal | None = None
+    tax1_administered_by: str | None = None
+    tax1_payable_by: str | None = None
+    tax2_jurisdiction: str | None = None
+    tax2_type: str | None = None
+    tax2_taxable_premium: Decimal | None = None
+    tax2_pct: Decimal | None = None
+    tax2_amount: Decimal | None = None
+    tax2_administered_by: str | None = None
+    tax2_payable_by: str | None = None
+    tax3_jurisdiction: str | None = None
+    tax3_type: str | None = None
+    tax3_taxable_premium: Decimal | None = None
+    tax3_pct: Decimal | None = None
+    tax3_amount: Decimal | None = None
+    tax3_administered_by: str | None = None
+    tax3_payable_by: str | None = None
+    tax4_jurisdiction: str | None = None
+    tax4_type: str | None = None
+    tax4_taxable_premium: Decimal | None = None
+    tax4_pct: Decimal | None = None
+    tax4_amount: Decimal | None = None
+    tax4_administered_by: str | None = None
+    tax4_payable_by: str | None = None
+    # Plazos / Lloyd's / brokerage
+    instalment_number: int | None = None
+    number_of_instalments: int | None = None
+    referred_to_london: str | None = None
+    pct_for_lloyds: Decimal | None = None
+    policy_issuance_date: dt.date | None = None
+    policy_number_reinsured: str | None = None
+    brokerage_pct: Decimal | None = None
+    brokerage_amount: Decimal | None = None
+    final_net_premium_uw: Decimal | None = None
+    # Control interno
+    prima_cobrada: bool = False
+    ingresado: Decimal | None = None
+    premium_payment_date: dt.date | None = None
+    traspaso: bool = False
+    traspasado: Decimal | None = None
+    fecha_traspaso: dt.date | None = None
+    liquidado: bool = False
+    liquidado_uw: Decimal | None = None
+    fecha_liquidacion: dt.date | None = None
+    recibo: str | None = None
+    notas: str | None = None
+
+
+class BdxLineaCreate(BdxLineaBase):
+    pass
+
+
+class BdxLineaUpdate(BdxLineaBase):
+    """Edición parcial: los bool pasan a opcionales para no forzarlos."""
+    prima_cobrada: bool | None = None
+    traspaso: bool | None = None
+    liquidado: bool | None = None
+
+
+class BdxLineaRead(BdxLineaBase):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    bdx_id: int
+    sp_old_id: int | None = None
+
+
+class BdxBase(BaseModel):
+    tipo: str                                    # 'Risk' | 'Premium'
+    reporting_period_start: dt.date | None = None
+    reporting_period_end: dt.date | None = None
+    estado: str | None = None
+    notas: str | None = None
+
+
+class BdxCreate(BdxBase):
+    pass
+
+
+class BdxUpdate(BaseModel):
+    tipo: str | None = None
+    reporting_period_start: dt.date | None = None
+    reporting_period_end: dt.date | None = None
+    estado: str | None = None
+    notas: str | None = None
+
+
+class BdxRead(BdxBase):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    binder_id: int
+    num_lineas: int = 0
+    created_at: dt.datetime
+    updated_at: dt.datetime
+
+
+class BdxDetalle(BdxRead):
+    lineas: list[BdxLineaRead] = []

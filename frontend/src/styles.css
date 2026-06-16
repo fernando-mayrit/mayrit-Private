@@ -39,11 +39,12 @@ h1, h2, h3 { font-family: var(--fuente-titulo); font-weight: 600; color: var(--g
 /* Pestañas superiores (Maestras) */
 .tabs { display: flex; gap: 6px; }
 .tab {
-  display: inline-flex; align-items: center; gap: 7px;
-  background: none; border: none; cursor: pointer; font-size: 16px;
-  color: var(--gris-medio); padding: 7px 14px; border-radius: 8px;
+  display: inline-flex; align-items: center; gap: 6px;
+  background: none; border: none; cursor: pointer; font-size: 13px;
+  color: var(--gris-medio); padding: 6px 12px; border-radius: 8px;
   font-family: var(--fuente-titulo);
 }
+.tab .nav-emoji { width: 16px; font-size: 13px; }
 .tab:hover { background: var(--gris-claro); color: var(--gris); }
 .tab.active { color: var(--naranja-osc); background: #f8e2d8; font-weight: 600; }
 
@@ -78,7 +79,7 @@ h1, h2, h3 { font-family: var(--fuente-titulo); font-weight: 600; color: var(--g
 .nav-item.active { background: #f8e2d8; color: var(--naranja-osc); font-weight: 600; }
 .content { flex: 1; min-width: 0; }
 
-.container { max-width: 1100px; margin: 0 auto; padding: 24px; }
+.container { max-width: 1600px; margin: 0 auto; padding: 24px 32px; }
 
 /* Título de cada pantalla (emoji + nombre), encima del buscador */
 .page-title { font-size: 26px; margin: 0 0 16px; display: flex; align-items: center; gap: 12px; }
@@ -187,6 +188,9 @@ td.num, th.num { text-align: right; }
 /* Seleccionado: tono tenue que se distingue sin estridencia */
 .optbtn.sel { background: #f8e2d8; color: var(--naranja-osc); border-color: var(--naranja); font-weight: 600; }
 
+/* Checkbox con etiqueta en línea (reutilizable) */
+.check-inline { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }
+
 /* Fila TOBA + Fecha (la fecha aparece solo si TOBA está activo) */
 .toba-row { display: flex; align-items: center; gap: 20px; }
 .toba-row .check-inline { display: flex; align-items: center; gap: 8px; cursor: pointer; }
@@ -230,3 +234,22 @@ td.num, th.num { text-align: right; }
 .compacto { font-size: 12px; }
 .compacto th, .compacto td { font-size: 12px; padding: 7px 10px; }
 .compacto .field label, .compacto input, .compacto select, .compacto textarea, .compacto button { font-size: 12px; }
+
+/* ── Ficha "interior" del binder (Datos / BDX) ── */
+.fila-click { cursor: pointer; }
+.fila-click:hover { background: var(--gris-claro); }
+.detalle-top { margin-bottom: 8px; }
+.detalle-sub { color: var(--gris-medio); font-size: 14px; }
+.detalle-tabs { margin: 8px 0 16px; border-bottom: 1px solid var(--borde); }
+.datos-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 10px 24px; margin-top: 8px;
+}
+.dato { display: flex; flex-direction: column; gap: 2px; }
+.dato-label { font-size: 12px; color: var(--gris-medio); }
+.dato-valor { font-size: 14px; }
+.dato-full { grid-column: 1 / -1; }
+/* Grupos de campos en la ficha de línea de BDX */
+.bdx-grupo { border-top: 1px solid var(--borde); margin-top: 14px; padding-top: 8px; }
+.bdx-grupo:first-of-type { border-top: none; margin-top: 0; }
+.bdx-grupo h3 { margin: 0 0 8px; font-size: 14px; color: var(--naranja-osc); }

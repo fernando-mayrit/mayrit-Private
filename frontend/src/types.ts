@@ -140,6 +140,125 @@ export interface Suplemento {
   };
 }
 
+// ── BDX (bordereaux Risk/Premium) ──
+export interface Bdx {
+  id: number;
+  binder_id: number;
+  tipo: string; // 'Risk' | 'Premium'
+  reporting_period_start: string | null;
+  reporting_period_end: string | null;
+  estado: string | null;
+  notas: string | null;
+  num_lineas: number;
+  created_at: string;
+  updated_at: string;
+}
+export interface BdxWrite {
+  tipo: string;
+  reporting_period_start?: string | null;
+  reporting_period_end?: string | null;
+  estado?: string | null;
+  notas?: string | null;
+}
+
+// Línea de un BDX. Campos del estándar (8–77) + control interno (80–90).
+// Todos opcionales: en import/manual pueden venir vacíos.
+export interface BdxLinea {
+  id: number;
+  bdx_id: number;
+  sp_old_id?: number | null;
+  // Identificación
+  section_no?: number | null;
+  class_of_business?: string | null;
+  risk_code?: string | null;
+  type_of_insurance?: string | null;
+  certificate_ref?: string | null;
+  // Asegurado
+  insured_name?: string | null;
+  insured_id?: string | null;
+  insured_address?: string | null;
+  insured_province?: string | null;
+  insured_postcode?: string | null;
+  insured_country?: string | null;
+  // Riesgo
+  risk_inception_date?: string | null;
+  risk_expiry_date?: string | null;
+  location_risk_province?: string | null;
+  location_risk_country?: string | null;
+  risk_transaction_type?: string | null;
+  transaction_type?: string | null;
+  effective_date_transaction?: string | null;
+  expiry_date_transaction?: string | null;
+  // Prima
+  original_currency_premium?: string | number | null;
+  gross_written_premium?: string | number | null;
+  written_line_pct?: string | number | null;
+  total_gwp_our_line?: string | number | null;
+  fees?: string | number | null;
+  commission_coverholder_pct?: string | number | null;
+  commission_coverholder_amount?: string | number | null;
+  total_taxes_levies?: string | number | null;
+  total_gwp_including_tax?: string | number | null;
+  net_premium_to_broker?: string | number | null;
+  // Suma asegurada / deducible
+  sum_insured_currency?: string | null;
+  sum_insured_our_line?: string | number | null;
+  deductible_amount?: string | number | null;
+  deductible_basis?: string | null;
+  // Impuestos 1–4
+  tax1_jurisdiction?: string | null;
+  tax1_type?: string | null;
+  tax1_taxable_premium?: string | number | null;
+  tax1_pct?: string | number | null;
+  tax1_amount?: string | number | null;
+  tax1_administered_by?: string | null;
+  tax1_payable_by?: string | null;
+  tax2_jurisdiction?: string | null;
+  tax2_type?: string | null;
+  tax2_taxable_premium?: string | number | null;
+  tax2_pct?: string | number | null;
+  tax2_amount?: string | number | null;
+  tax2_administered_by?: string | null;
+  tax2_payable_by?: string | null;
+  tax3_jurisdiction?: string | null;
+  tax3_type?: string | null;
+  tax3_taxable_premium?: string | number | null;
+  tax3_pct?: string | number | null;
+  tax3_amount?: string | number | null;
+  tax3_administered_by?: string | null;
+  tax3_payable_by?: string | null;
+  tax4_jurisdiction?: string | null;
+  tax4_type?: string | null;
+  tax4_taxable_premium?: string | number | null;
+  tax4_pct?: string | number | null;
+  tax4_amount?: string | number | null;
+  tax4_administered_by?: string | null;
+  tax4_payable_by?: string | null;
+  // Plazos / Lloyd's / brokerage
+  instalment_number?: number | null;
+  number_of_instalments?: number | null;
+  referred_to_london?: string | null;
+  pct_for_lloyds?: string | number | null;
+  policy_issuance_date?: string | null;
+  policy_number_reinsured?: string | null;
+  brokerage_pct?: string | number | null;
+  brokerage_amount?: string | number | null;
+  final_net_premium_uw?: string | number | null;
+  // Control interno
+  prima_cobrada?: boolean;
+  ingresado?: string | number | null;
+  premium_payment_date?: string | null;
+  traspaso?: boolean;
+  traspasado?: string | number | null;
+  fecha_traspaso?: string | null;
+  liquidado?: boolean;
+  liquidado_uw?: string | number | null;
+  fecha_liquidacion?: string | null;
+  recibo?: string | null;
+  notas?: string | null;
+}
+export type BdxLineaWrite = Omit<BdxLinea, "id" | "bdx_id" | "sp_old_id">;
+
 export interface Tomador {
   id: number;
   nombre: string;
@@ -171,24 +290,28 @@ export interface TomadorWrite {
 export interface CuentaBancaria {
   id: number;
   nombre: string;
+  categoria: string | null;
   banco: string | null;
   titular: string | null;
   iban: string | null;
   swift_bic: string | null;
   moneda: string | null;
   notas: string | null;
+  activa: boolean;
   sp_old_id: number | null;
   created_at: string;
   updated_at: string;
 }
 export interface CuentaBancariaWrite {
   nombre: string;
+  categoria?: string | null;
   banco?: string | null;
   titular?: string | null;
   iban?: string | null;
   swift_bic?: string | null;
   moneda?: string | null;
   notas?: string | null;
+  activa?: boolean;
 }
 
 // Campos editables al crear/editar un productor.

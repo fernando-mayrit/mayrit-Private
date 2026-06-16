@@ -8,7 +8,8 @@ Set fso = CreateObject("Scripting.FileSystemObject")
 base = fso.GetParentFolderName(WScript.ScriptFullName)
 sh.CurrentDirectory = base
 
-py = base & "\backend\.venv\Scripts\python.exe"
+' El venv vive FUERA de OneDrive (que lo deshidrata/borra): en %USERPROFILE%\.mayrit\venv.
+py = sh.ExpandEnvironmentStrings("%USERPROFILE%") & "\.mayrit\venv\Scripts\python.exe"
 
 sh.Run "cmd /c set PYTHONDONTWRITEBYTECODE=1&& cd /d """ & base & "\backend"" && """ & py & """ -m uvicorn app.main:app --port 8000", 0, False
 sh.Run "cmd /c cd /d """ & base & "\frontend"" && npm run dev", 0, False

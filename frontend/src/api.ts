@@ -44,6 +44,29 @@ export function crearSuplemento(
   return request(`/binders/${binderId}/suplementos`, { method: "POST", body: JSON.stringify(payload) });
 }
 
+// ── BDX (bordereaux de un binder) ──
+import type { Bdx, BdxWrite, BdxLinea, BdxLineaWrite } from "./types";
+
+export interface BdxDetalle extends Bdx {
+  lineas: BdxLinea[];
+}
+export const bdxApi = {
+  listar: (binderId: number, tipo?: string) =>
+    request<Bdx[]>(`/binders/${binderId}/bdx${tipo ? `?tipo=${encodeURIComponent(tipo)}` : ""}`),
+  crear: (binderId: number, data: BdxWrite) =>
+    request<Bdx>(`/binders/${binderId}/bdx`, { method: "POST", body: JSON.stringify(data) }),
+  detalle: (bdxId: number) => request<BdxDetalle>(`/bdx/${bdxId}`),
+  editar: (bdxId: number, data: Partial<BdxWrite>) =>
+    request<Bdx>(`/bdx/${bdxId}`, { method: "PUT", body: JSON.stringify(data) }),
+  borrar: (bdxId: number) => request<void>(`/bdx/${bdxId}`, { method: "DELETE" }),
+  crearLinea: (bdxId: number, data: BdxLineaWrite) =>
+    request<BdxLinea>(`/bdx/${bdxId}/lineas`, { method: "POST", body: JSON.stringify(data) }),
+  editarLinea: (lineaId: number, data: Partial<BdxLineaWrite>) =>
+    request<BdxLinea>(`/bdx/lineas/${lineaId}`, { method: "PUT", body: JSON.stringify(data) }),
+  borrarLinea: (lineaId: number) =>
+    request<void>(`/bdx/lineas/${lineaId}`, { method: "DELETE" }),
+};
+
 // CRUD genérico para una colección (p. ej. "/mercados").
 export function crud<TRead, TWrite>(collection: string) {
   return {
