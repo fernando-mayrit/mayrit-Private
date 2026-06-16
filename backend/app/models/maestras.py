@@ -55,7 +55,7 @@ class Mercado(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     sp_old_id: Mapped[int | None] = mapped_column(Integer, index=True)
 
-    codigo: Mapped[str | None] = mapped_column(String(50), index=True)   # IdMercado
+    alias: Mapped[str | None] = mapped_column(String(50), index=True)    # alias / código corto (IdMercado)
     nombre: Mapped[str] = mapped_column(String(255), index=True)         # NombreMercado
     id_tipo: Mapped[int | None] = mapped_column(Integer)                 # IdTipo
     tipo_mercado: Mapped[str | None] = mapped_column(String(120))        # TipoMercado

@@ -3,7 +3,7 @@
 export interface Mercado {
   id: number;
   nombre: string;
-  codigo: string | null;
+  alias: string | null;
   id_tipo: number | null;
   tipo_mercado: string | null;
   toba: boolean;
@@ -17,7 +17,7 @@ export interface Mercado {
 // Campos editables al crear/editar un mercado.
 export interface MercadoWrite {
   nombre: string;
-  codigo?: string | null;
+  alias?: string | null;
   tipo_mercado?: string | null;
   toba?: boolean;
   fecha?: string | null;

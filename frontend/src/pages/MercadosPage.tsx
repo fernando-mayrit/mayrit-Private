@@ -12,7 +12,7 @@ type FormState = MercadoWrite & { id?: number };
 
 const VACIO: FormState = {
   nombre: "",
-  codigo: "",
+  alias: "",
   tipo_mercado: "",
   toba: false,
   fecha: "",
@@ -68,7 +68,7 @@ export default function MercadosPage() {
     abrir({
       id: m.id,
       nombre: m.nombre,
-      codigo: m.codigo ?? "",
+      alias: m.alias ?? "",
       tipo_mercado: m.tipo_mercado ?? "",
       toba: m.toba,
       fecha: m.fecha ?? "",
@@ -82,8 +82,8 @@ export default function MercadosPage() {
       setError("El nombre es obligatorio.");
       return;
     }
-    if (!form.codigo?.trim()) {
-      setError("El código es obligatorio.");
+    if (!form.alias?.trim()) {
+      setError("El alias es obligatorio.");
       return;
     }
     if (!form.tipo_mercado?.trim()) {
@@ -94,7 +94,7 @@ export default function MercadosPage() {
     setError(null);
     const payload: MercadoWrite = {
       nombre: form.nombre.trim(),
-      codigo: form.codigo.trim(),
+      alias: form.alias?.trim(),
       tipo_mercado: form.tipo_mercado,
       toba: !!form.toba,
       fecha: form.toba ? form.fecha || null : null,
@@ -127,7 +127,7 @@ export default function MercadosPage() {
       <div className="toolbar">
         <input
           type="search"
-          placeholder="Buscar por nombre o código…"
+          placeholder="Buscar por nombre o alias…"
           value={q}
           onChange={(e) => setQ(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && cargar()}
@@ -151,7 +151,7 @@ export default function MercadosPage() {
           <thead>
             <tr>
               <th>Nombre</th>
-              <th>Código</th>
+              <th>Alias</th>
               <th>Tipo</th>
               <th>TOBA</th>
               <th></th>
@@ -161,7 +161,7 @@ export default function MercadosPage() {
             {items.map((m) => (
               <tr key={m.id}>
                 <td>{m.nombre}</td>
-                <td>{m.codigo ?? "—"}</td>
+                <td>{m.alias ?? "—"}</td>
                 <td>{m.tipo_mercado ?? "—"}</td>
                 <td>{m.toba ? <span className="badge si">Sí</span> : <span className="badge">No</span>}</td>
                 <td className="acciones">
@@ -200,9 +200,9 @@ export default function MercadosPage() {
           </div>
           <div className="field">
             <label>
-              Código <span className="required">*</span>
+              Alias <span className="required">*</span>
             </label>
-            <input type="text" value={form.codigo ?? ""} onChange={(e) => setForm({ ...form, codigo: e.target.value })} />
+            <input type="text" value={form.alias ?? ""} onChange={(e) => setForm({ ...form, alias: e.target.value })} />
           </div>
           <div className="field">
             <label>

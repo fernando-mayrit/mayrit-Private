@@ -441,7 +441,7 @@ export default function BindersPage() {
       }
     if (!best) return "—";
     const mc = mercados.find((x) => x.id === best!.id);
-    return mc?.codigo || mc?.nombre || "—";
+    return mc?.alias || mc?.nombre || "—";
   }
 
   return (

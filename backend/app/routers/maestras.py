@@ -71,7 +71,7 @@ mercados_router = _make_router(
     read_schema=sch.MercadoRead,
     create_schema=sch.MercadoCreate,
     update_schema=sch.MercadoUpdate,
-    search_cols=lambda m: [m.nombre, m.codigo],
+    search_cols=lambda m: [m.nombre, m.alias],
 )
 
 tomadores_router = _make_router(

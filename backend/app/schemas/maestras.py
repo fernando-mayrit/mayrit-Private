@@ -57,7 +57,7 @@ class ProductorRead(ProductorBase):
 # ──────────────────────────────── Mercado ────────────────────────────────
 class MercadoBase(BaseModel):
     nombre: str
-    codigo: str | None = None
+    alias: str | None = None
     id_tipo: int | None = None
     tipo_mercado: str | None = None
     toba: bool = False
@@ -72,7 +72,7 @@ class MercadoCreate(MercadoBase):
 
 class MercadoUpdate(BaseModel):
     nombre: str | None = None
-    codigo: str | None = None
+    alias: str | None = None
     id_tipo: int | None = None
     tipo_mercado: str | None = None
     toba: bool | None = None
