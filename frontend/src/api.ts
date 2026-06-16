@@ -65,7 +65,47 @@ export const bdxApi = {
     request<BdxLinea>(`/bdx/lineas/${lineaId}`, { method: "PUT", body: JSON.stringify(data) }),
   borrarLinea: (lineaId: number) =>
     request<void>(`/bdx/lineas/${lineaId}`, { method: "DELETE" }),
+  // Importación desde SharePoint (solo lectura el preview; el import escribe).
+  sharepointPreview: (binderId: number) =>
+    request<BdxPreview>(`/binders/${binderId}/bdx/sharepoint-preview`),
+  importarSharepoint: (binderId: number) =>
+    request<BdxImportResult>(`/binders/${binderId}/bdx/import`, { method: "POST" }),
+  excelDir: (sub = "") =>
+    request<ExcelDir>(`/bdx/excel-dir${sub ? `?sub=${encodeURIComponent(sub)}` : ""}`),
 };
+
+export interface ExcelDir {
+  base: string;
+  sub: string;
+  dirs: string[];
+  files: { name: string; size: number; mtime: number }[];
+}
+
+export interface BdxPreview {
+  list_title: string;
+  total_lineas: number;
+  periodos: string[];
+  suma_gwp: number;
+  suma_gwp_our_line: number;
+  incluidas_en_premium: number;
+  muestra: Record<string, unknown>[];
+}
+export interface BdxImportResult {
+  bdx_id: number;
+  list_title: string;
+  insertadas: number;
+  actualizadas: number;
+  sin_old_id: number;
+  periodos: string[];
+  conciliacion: {
+    lineas_sharepoint: number;
+    lineas_postgres: number;
+    lineas_ok: boolean;
+    gwp_sharepoint: number;
+    gwp_postgres: number;
+    gwp_ok: boolean;
+  };
+}
 
 // CRUD genérico para una colección (p. ej. "/mercados").
 export function crud<TRead, TWrite>(collection: string) {

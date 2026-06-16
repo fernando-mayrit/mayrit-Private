@@ -26,12 +26,14 @@ h1, h2, h3 { font-family: var(--fuente-titulo); font-weight: 600; color: var(--g
 
 /* Cabecera: fondo blanco con el logo y una línea naranja de acento */
 /* Disposición: cabecera superior (Maestras) + cuerpo con barra lateral (Negocio) */
-.app { display: flex; flex-direction: column; min-height: 100vh; }
+/* App a pantalla completa: cabecera y barra lateral fijas; solo el contenido hace scroll. */
+.app { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
 
 .app-header {
   background: #fff; border-bottom: 1px solid var(--borde);
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
   padding: 14px 24px; display: flex; align-items: center; gap: 18px;
+  flex-shrink: 0;
 }
 .app-header img.logo { height: 46px; display: block; }
 .app-header .sep { width: 1px; height: 34px; background: var(--borde); }
@@ -49,14 +51,14 @@ h1, h2, h3 { font-family: var(--fuente-titulo); font-weight: 600; color: var(--g
 .tab.active { color: var(--naranja-osc); background: #f8e2d8; font-weight: 600; }
 
 /* Línea de acento: degradado del naranja de marca al gris del fondo. */
-.acento-naranja { height: 3px; background: linear-gradient(to right, #da5833, var(--fondo)); }
+.acento-naranja { height: 3px; background: linear-gradient(to right, #da5833, var(--fondo)); flex-shrink: 0; }
 
-/* Cuerpo: barra lateral + contenido */
-.body { display: flex; flex: 1; align-items: stretch; }
+/* Cuerpo: barra lateral + contenido. min-height:0 permite que el contenido haga scroll interno. */
+.body { display: flex; flex: 1; align-items: stretch; min-height: 0; }
 .sidebar {
   width: 210px; flex-shrink: 0; background: #fff;
   border-right: 1px solid var(--borde);
-  display: flex; flex-direction: column;
+  display: flex; flex-direction: column; overflow-y: auto;
 }
 .sidebar-nav { padding: 16px 10px; }
 .sidebar-bottom { margin-top: auto; }  /* Configuración abajo del todo */
@@ -77,7 +79,7 @@ h1, h2, h3 { font-family: var(--fuente-titulo); font-weight: 600; color: var(--g
 .nav-item-sm .nav-emoji { font-size: 13px; }
 .nav-item:hover { background: var(--gris-claro); }
 .nav-item.active { background: #f8e2d8; color: var(--naranja-osc); font-weight: 600; }
-.content { flex: 1; min-width: 0; }
+.content { flex: 1; min-width: 0; min-height: 0; overflow-y: auto; }
 
 .container { max-width: 1600px; margin: 0 auto; padding: 24px 32px; }
 
@@ -91,6 +93,17 @@ h1, h2, h3 { font-family: var(--fuente-titulo); font-weight: 600; color: var(--g
   border-radius: 8px; font-size: 14px; font-family: inherit;
 }
 .toolbar input[type="search"]:focus { outline: none; border-color: var(--naranja); box-shadow: 0 0 0 3px rgba(224, 122, 90, 0.25); }
+/* Desplegables de filtro en la barra (YOA / Coverholder / Estado) */
+.toolbar .filtro {
+  padding: 9px 10px; border: 1px solid var(--borde); border-radius: 8px;
+  font-size: 14px; font-family: inherit; background: #fff; color: var(--gris); max-width: 200px;
+}
+.toolbar .filtro:focus { outline: none; border-color: var(--naranja); box-shadow: 0 0 0 3px rgba(224, 122, 90, 0.25); }
+/* Aviso al corregir un error de grabación de un binder (no crea suplemento) */
+.aviso-correccion {
+  background: #fdf0e9; border: 1px solid var(--naranja); color: var(--gris);
+  border-radius: 8px; padding: 10px 12px; font-size: 13px; margin-bottom: 14px;
+}
 
 button {
   font-size: 14px; padding: 8px 14px; border-radius: 8px;
@@ -112,6 +125,14 @@ th { background: var(--gris-claro); color: var(--gris); font-weight: 600; }
 tr:last-child td { border-bottom: none; }
 tr:hover td { background: #fdf6f3; }
 td.acciones { text-align: right; white-space: nowrap; }
+/* Filas de binders coloreadas por estado (la celda lleva el color para ganar al hover) */
+tr.estado-en-vigor td { background: #f7d9d0; }            /* rojo pastel (marca) — en vigor */
+tr.estado-en-vigor:hover td { background: #f2cabd; }
+tr.estado-renovado td { background: #dcebe0; }            /* verde pastel — renovado */
+tr.estado-renovado:hover td { background: #cee2d4; }
+tr.estado-cerrado td { background: var(--gris); color: #ededed; }   /* gris oscuro — cerrado */
+tr.estado-cerrado:hover td { background: #595959; }
+tr.estado-cerrado .btn-link { color: #ffd9cc; }          /* enlaces legibles sobre gris oscuro */
 /* Contenedor con scroll horizontal para tablas anchas (p. ej. binders) */
 .tabla-scroll { overflow-x: auto; }
 /* Botones de acción dentro de la ficha de un binder (+ Suplemento / Historial) */
@@ -128,7 +149,7 @@ fieldset[disabled] { opacity: .85; }
 .badge.si { background: #fbede8; color: var(--naranja-osc); }
 
 /* Formulario en panel lateral */
-.overlay { position: fixed; inset: 0; background: rgba(0,0,0,.3); display: flex; justify-content: flex-end; }
+.overlay { position: fixed; inset: 0; background: rgba(0,0,0,.3); display: flex; justify-content: flex-end; z-index: 100; }
 .panel { width: 440px; max-width: 100%; height: 100%; background: #fff; padding: 24px; overflow-y: auto; box-shadow: -4px 0 16px rgba(0,0,0,.12); }
 .panel-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
 .panel-head h2 { margin: 0; }
@@ -168,6 +189,52 @@ input[type="date"] { text-align: center; }
 .num-suffix { color: var(--gris-medio); font-size: 14px; flex-shrink: 0; }
 /* En tablas, las celdas numéricas también van a la derecha */
 td.num, th.num { text-align: right; }
+.celda-centro { text-align: center; }
+/* Tic verde para cobrado/liquidado/incluido en BDX */
+.tic-ok { color: #15803d; font-weight: 700; }
+/* Tabla de BDX: cabeceras pegajosas y manipulables */
+/* Ficha del binder a pantalla completa: la tabla de BDX ocupa el alto restante y hace su
+   propio scroll (vertical y horizontal); así no hay scroll de página y la cabecera no se mueve. */
+.detalle-binder { height: 100%; display: flex; flex-direction: column; }
+.bdx-tabla-cont { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.bdx-scroll { flex: 1; min-height: 0; overflow: auto; }
+/* border-collapse: separate + overflow visible: el sticky se ancla al contenedor que scrollea
+   (.bdx-scroll), no a la tabla. El `overflow:hidden` genérico de `table` rompía el sticky. */
+.bdx-tabla { border-collapse: separate; border-spacing: 0; overflow: visible; border-radius: 0; }
+.bdx-tabla thead th {
+  position: sticky; top: 0; z-index: 2; user-select: none;
+  background: var(--gris-claro);
+  box-shadow: inset 0 -1px 0 var(--borde); /* línea inferior (con separate no hay borde colapsado) */
+}
+.col-arrastrable { cursor: grab; }
+.col-arrastrable.arrastrando { opacity: .5; }
+.col-arrastrable:active { cursor: grabbing; }
+/* Menú de columnas (clic derecho en la cabecera de la tabla de BDX) */
+.col-menu {
+  position: fixed; z-index: 50; background: #fff; border: 1px solid var(--borde);
+  border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,.15); padding: 6px;
+  max-height: 60vh; overflow-y: auto; min-width: 200px;
+}
+.col-menu-titulo { font-size: 12px; font-weight: 600; color: var(--gris-medio); padding: 4px 8px; text-transform: uppercase; letter-spacing: .04em; }
+.col-menu-item { display: flex; align-items: center; gap: 8px; padding: 5px 8px; font-size: 13px; cursor: pointer; border-radius: 6px; }
+.col-menu-item:hover { background: var(--gris-claro); }
+/* Barra superior de la tabla de BDX: info de líneas a la izq. + cuadro de totales a la dcha. */
+.bdx-topbar { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 8px; }
+.bdx-acciones { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.bdx-totales { display: flex; border: 1px solid var(--borde); border-radius: 10px; overflow: hidden; background: #fff; }
+.tot-col { padding: 8px 14px; border-left: 1px solid var(--borde); min-width: 190px; }
+.tot-col:first-child { border-left: none; }
+.tot-row { display: flex; justify-content: space-between; gap: 18px; font-size: 13px; padding: 2px 0; }
+.tot-row span { color: var(--gris-medio); }
+.tot-row b { font-variant-numeric: tabular-nums; }
+.tot-row.tot-pdte { border-top: 1px solid var(--borde); margin-top: 2px; padding-top: 4px; }
+.tot-row.tot-pdte span, .tot-row.tot-pdte b { color: var(--naranja-osc); font-weight: 600; }
+/* Embudo de filtro en la cabecera */
+.col-filtro { margin-left: 6px; cursor: pointer; color: var(--gris-medio); font-size: 11px; }
+.col-filtro:hover { color: var(--naranja-osc); }
+.col-filtro.activo { color: var(--naranja-osc); font-weight: 700; }
+.col-filtro-pop { min-width: 220px; }
+.col-filtro-acciones { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--borde); }
 
 /* Fila de dos campos a la par (alineados por su base, para que un check encaje con un input) */
 .field-row { display: flex; gap: 12px; align-items: flex-end; }
@@ -241,6 +308,10 @@ td.num, th.num { text-align: right; }
 .detalle-top { margin-bottom: 8px; }
 .detalle-sub { color: var(--gris-medio); font-size: 14px; }
 .detalle-tabs { margin: 8px 0 16px; border-bottom: 1px solid var(--borde); }
+/* En la ficha del binder, pegar el contenido (toolbar + cuadro + tabla) a la línea de pestañas. */
+.detalle-binder { padding-top: 12px; }
+.detalle-binder .detalle-tabs { margin-bottom: 8px; }
+.detalle-binder .toolbar { margin-bottom: 8px; }
 .datos-grid {
   display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
   gap: 10px 24px; margin-top: 8px;
@@ -253,3 +324,39 @@ td.num, th.num { text-align: right; }
 .bdx-grupo { border-top: 1px solid var(--borde); margin-top: 14px; padding-top: 8px; }
 .bdx-grupo:first-of-type { border-top: none; margin-top: 0; }
 .bdx-grupo h3 { margin: 0 0 8px; font-size: 14px; color: var(--naranja-osc); }
+
+/* Tabla de cálculo de Profit Commission */
+.pc-tabla .pc-seccion td { background: var(--gris-claro); font-weight: 600; text-transform: uppercase; font-size: 11px; letter-spacing: .04em; color: var(--gris-medio); }
+.pc-tabla .pc-subtotal td { font-weight: 600; border-top: 1px solid var(--borde); }
+.pc-tabla .pc-fuerte td { font-weight: 700; }
+.pc-tabla td:first-child { padding-left: 10px; }
+.pc-tabla .num { font-variant-numeric: tabular-nums; }
+/* Campo a completar a mano (p. ej. IBNR): fondo ámbar para que destaque */
+.input-completar .inp-num { background: #fff4d6; border-color: var(--naranja); }
+.input-completar .inp-num:focus { background: #fff; }
+
+/* Pestaña Bloqueo: columnas Risk / Premium / Claims con sus meses */
+.bloqueo-cols { display: flex; gap: 48px; flex-wrap: wrap; align-items: flex-start; }
+.bloqueo-col { min-width: 240px; }
+.bloqueo-col h3 { display: flex; align-items: center; gap: 8px; font-size: 20px; color: var(--gris); margin: 0 0 12px; }
+.bloqueo-fila { display: flex; align-items: center; gap: 8px; padding: 6px 0; font-size: 14px; }
+.lock-btn { background: none; border: none; cursor: pointer; font-size: 15px; padding: 0; line-height: 1; }
+.ayuda { width: 16px; height: 16px; border: 1px solid var(--borde); border-radius: 50%; font-size: 10px; color: var(--gris-medio); display: inline-flex; align-items: center; justify-content: center; cursor: help; }
+
+/* Diseñador del formulario de línea de BDX */
+.diseno-barra { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; }
+.diseno-barra .sel { background: #f8e2d8; color: var(--naranja-osc); border-color: var(--naranja); font-weight: 600; }
+.campos-grid { display: grid; gap: 0 16px; }
+.campo-full { grid-column: 1 / -1; }
+.grupo-cab { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.grupo-tools { display: flex; align-items: center; gap: 4px; }
+.col-btn { width: 22px; height: 22px; padding: 0; border: 1px solid var(--borde); background: #fff; border-radius: 6px; font-size: 12px; cursor: pointer; }
+.col-btn.sel { background: #f8e2d8; color: var(--naranja-osc); border-color: var(--naranja); font-weight: 600; }
+.btn-mini { padding: 0 4px; font-size: 12px; }
+.grupo-diseno { border: 1px dashed var(--borde); border-radius: 10px; padding: 10px; margin-bottom: 12px; background: #fcfcfd; }
+.campo-chip { display: inline-flex; align-items: center; gap: 6px; justify-content: space-between; background: #fff; border: 1px solid var(--borde); border-radius: 8px; padding: 6px 8px; margin: 4px 0; font-size: 13px; cursor: grab; }
+.campo-chip.arrastrando { opacity: .5; }
+.campo-chip-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.campo-vacio { grid-column: 1 / -1; color: var(--gris-medio); font-size: 13px; padding: 10px; text-align: center; border: 1px dashed var(--borde); border-radius: 8px; }
+.disponibles .chips-wrap { display: flex; flex-wrap: wrap; gap: 8px; }
+.disponibles .campo-chip { cursor: grab; }

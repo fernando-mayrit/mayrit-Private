@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { fmtMiles } from "../format";
 
 /**
  * Campo numérico ESTÁNDAR de la app: alineado a la derecha, con formato es-ES
@@ -29,16 +30,9 @@ function toCanonical(editing: string): string {
 function toEditing(canonical: string): string {
   return canonical ? canonical.replace(".", ",") : "";
 }
-// Canónica → presentación formateada (es-ES) cuando el campo no está enfocado.
+// Canónica → presentación formateada cuando el campo no está enfocado (formato único de la app).
 function formatDisplay(canonical: string, decimals: number, thousands: boolean): string {
-  if (!canonical) return "";
-  const n = Number(canonical);
-  if (isNaN(n)) return canonical;
-  return new Intl.NumberFormat("es-ES", {
-    minimumFractionDigits: decimals,
-    maximumFractionDigits: decimals,
-    useGrouping: thousands,
-  }).format(n);
+  return fmtMiles(canonical, decimals, thousands);
 }
 
 export default function NumberInput({

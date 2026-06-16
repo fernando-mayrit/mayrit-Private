@@ -63,12 +63,18 @@ export interface SeccionMercadoLinea {
   participacion: number | null;
   mercado_nombre?: string | null;
 }
+// Grupo de Límite de Primas: un par (límite + % notificación) que cubre 1..N secciones.
+export interface BinderLimite {
+  limite_primas: number | null;
+  notificacion: number | null;
+}
 export interface BinderSeccion {
   id?: number;
   ramo: string | null;
   risk_codes: string[];
-  limite_primas: number | null;
-  notificacion: number | null;
+  limite_grupo: number | null; // índice en Binder.limites
+  limite_primas: number | null; // derivado del grupo (solo lectura)
+  notificacion: number | null; // derivado del grupo (solo lectura)
   comision: number | null;
   sujeto_pc: boolean;
   mercados: SeccionMercadoLinea[];
@@ -101,6 +107,7 @@ export interface Binder extends BinderComun {
   moneda: string | null;
   yoa: string | null;
   notas: string | null;
+  limites: BinderLimite[];
   secciones: BinderSeccion[];
   created_at: string;
   updated_at: string;
@@ -115,11 +122,11 @@ export interface BinderWrite extends BinderComun {
   moneda?: string | null;
   yoa?: string | null;
   notas?: string | null;
+  limites: BinderLimite[];
   secciones: {
     ramo: string | null;
     risk_codes: string[];
-    limite_primas: number | null;
-    notificacion: number | null;
+    limite_grupo: number | null;
     comision: number | null;
     sujeto_pc: boolean;
     mercados: { mercado_id: number; participacion: number | null }[];
@@ -135,7 +142,8 @@ export interface Suplemento {
   created_at: string;
   snapshot: {
     comision_mayrit: number | null;
-    secciones: { ramo: string | null; limite_primas: number | null; comision: number | null }[];
+    limites?: { limite_primas: number | null; notificacion: number | null }[];
+    secciones: { ramo: string | null; limite_grupo?: number | null; limite_primas: number | null; comision: number | null }[];
     [k: string]: unknown;
   };
 }
@@ -167,6 +175,9 @@ export interface BdxLinea {
   id: number;
   bdx_id: number;
   sp_old_id?: number | null;
+  // Periodo de reporte (por línea)
+  reporting_period_start?: string | null;
+  reporting_period_end?: string | null;
   // Identificación
   section_no?: number | null;
   class_of_business?: string | null;
@@ -190,7 +201,7 @@ export interface BdxLinea {
   effective_date_transaction?: string | null;
   expiry_date_transaction?: string | null;
   // Prima
-  original_currency_premium?: string | number | null;
+  original_currency?: string | null; // moneda de la prima (p. ej. EUR)
   gross_written_premium?: string | number | null;
   written_line_pct?: string | number | null;
   total_gwp_our_line?: string | number | null;
@@ -201,7 +212,7 @@ export interface BdxLinea {
   total_gwp_including_tax?: string | number | null;
   net_premium_to_broker?: string | number | null;
   // Suma asegurada / deducible
-  sum_insured_currency?: string | null;
+  sum_insured_total?: string | number | null; // suma asegurada 100 %
   sum_insured_our_line?: string | number | null;
   deductible_amount?: string | number | null;
   deductible_basis?: string | null;
@@ -244,6 +255,9 @@ export interface BdxLinea {
   brokerage_pct?: string | number | null;
   brokerage_amount?: string | number | null;
   final_net_premium_uw?: string | number | null;
+  // Premium (subconjunto)
+  incluido_en_premium?: boolean;
+  premium_bdx?: string | null;
   // Control interno
   prima_cobrada?: boolean;
   ingresado?: string | number | null;

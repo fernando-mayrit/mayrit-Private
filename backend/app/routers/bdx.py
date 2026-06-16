@@ -3,15 +3,40 @@ Endpoints de BDX (bordereaux Risk/Premium). Estructura:
   Binder → BDX (cabecera de un periodo) → líneas.
 Claims va en otro módulo.
 """
+import os
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from ..config import settings
 from ..db import get_db
 from ..models.maestras import Binder, Bdx, BdxLinea
 from ..schemas import maestras as sch
 
 router = APIRouter(tags=["BDX"])
+
+
+@router.get("/bdx/excel-dir")
+def excel_dir(sub: str = ""):
+    """Lista (SOLO LECTURA) carpetas y ficheros Excel de la carpeta base de BDX, para el
+    selector dentro de la app. `sub` navega por subcarpetas, restringido a la base."""
+    base = os.path.abspath(settings.bdx_excel_dir)
+    destino = os.path.abspath(os.path.join(base, sub)) if sub else base
+    if os.path.commonpath([base, destino]) != base:  # no salir de la base
+        raise HTTPException(status_code=400, detail="Ruta fuera de la carpeta base.")
+    if not os.path.isdir(destino):
+        raise HTTPException(status_code=404, detail=f"No existe la carpeta: {destino}")
+    dirs, files = [], []
+    for nombre in sorted(os.listdir(destino), key=str.lower):
+        ruta = os.path.join(destino, nombre)
+        if os.path.isdir(ruta):
+            dirs.append(nombre)
+        elif nombre.lower().endswith((".xlsx", ".xls")):
+            st = os.stat(ruta)
+            files.append({"name": nombre, "size": st.st_size, "mtime": int(st.st_mtime)})
+    rel = os.path.relpath(destino, base)
+    return {"base": base, "sub": "" if rel == "." else rel.replace("\\", "/"), "dirs": dirs, "files": files}
 
 
 def _cab(b: Bdx, num: int | None = None) -> dict:

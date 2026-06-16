@@ -22,10 +22,18 @@ los BDX que cuelgan de ellos + liquidaciones de primas**. Accesorio: compliance,
      por defecto "En Vigor" y bloqueado en el alta; estados: En Vigor/Cancelado/Renovado/No
      Renovado/Cerrado); **Moneda** = EUR automática (no se pregunta; columna en tablas).
    - Cada **Sección**: **Ramo** (del catálogo) · **Risk Codes** (varios, de los del ramo) ·
-     **Límite de primas** · **Notificación %** · **Comisión %** (≤100) · **Sujeto a PC?** (sí/no) ·
-     **Mercados** (varios, con participación %). Todos obligatorios al dar de alta (salvo notas).
-     **Límite de primas + Notificación %** son la base de un cálculo FUTURO: comparar la producción
-     que se va notificando en cada BDX contra ese límite y **avisar cuando se exceda** (Fase BDX).
+     **Comisión %** (≤100) · **Sujeto a PC?** (sí/no) · **Mercados** (varios, con participación %).
+     Todos obligatorios al dar de alta (salvo notas).
+   - **Límite de Primas = grupos (decisión 2026-06-16).** El **Límite de primas + Notificación %**
+     NO vive en la sección: es un **grupo de límite** (`BinderLimite`) que cubre **1..N secciones**.
+     En el formulario, un selector de **Ámbito** (debajo de las secciones) ofrece 3 modos —los dos
+     comunes en un clic y el flexible debajo—: **Todo el binder** (1 grupo con todas), **Por sección**
+     (1 grupo por sección, el comportamiento previo) y **Por grupos** (subconjuntos; cada sección se
+     marca en su grupo, asignación tipo radio → cada sección en exactamente 1 grupo). Tablas:
+     `binder_limites` (límite + notificación) + `binder_secciones.limite_id` (FK, `SET NULL`).
+     **Límite + Notificación %** son la base de un cálculo FUTURO: comparar la producción notificada
+     en los BDX de **todas las secciones de un mismo grupo** contra ese límite y **avisar al exceder**
+     (Fase BDX). El snapshot del suplemento guarda `limites` + el `limite_grupo` de cada sección.
    - Cada sección: la **suma de participaciones de sus mercados debe ser 100 %** (con total en vivo).
      Al añadir mercados, el desplegable oculta los ya elegidos en esa sección.
    - **Datos comunes del binder** (debajo de las secciones, no por sección): **Profit Commission**
@@ -101,6 +109,20 @@ Modelar desde cero en PostgreSQL y **desconectar tabla a tabla**. Reglas:
 - **"App primero, volcado al final" (decisión 2026-06-15):** NO se copian datos reales a Postgres
   mientras Access siga vivo (evita dos bases divergiendo). Cada módulo se construye con datos de
   prueba; el volcado real se hace UNA vez en el cutover, apagando Access para esa tabla a la vez.
+- **Matiz "app primero" — cohorte inerte (decisión 2026-06-16):** la regla anterior solo evita la
+  divergencia de datos **vivos** (escribibles a la vez en ambos lados). Los binders **ya cerrados e
+  inertes** en SharePoint no se vuelven a tocar → migrarlos antes NO duplica ni diverge. Por eso la
+  migración se hace **por cohortes según ciclo de vida**: (a) **cohorte inerte** = binders Cerrado/No
+  Renovado con **toda su cadena cerrada** (sin siniestros/UCR abiertos, liquidaciones y recibos
+  cuadrados, sin movimientos esperados; colchón temporal p. ej. cerrados hace > N meses) → se migran
+  ya como **histórico de solo lectura**; (b) **cohorte viva** (En Vigor / con BDX en curso) → cutover
+  al final con disciplina de único escritor. "Cerrado" en la cabecera NO basta: la cola larga de
+  siniestros puede seguir viva.
+- **Volcado binder a binder, controlado (decisión 2026-06-16):** NADA de migración en bloque masiva.
+  El volcado es **uno a uno**: se importa un binder con toda su cadena, se **verifica**, y solo
+  entonces se pasa al siguiente. Así un error se detecta y corrige aislado. Idempotente: usar
+  `sp_old_id` para casar filas y una **marca de "migrado"** por binder para no procesarlo dos veces.
+  El mismo importador servirá luego para los Excel de BDX del día a día (mismo modelo de datos).
 
 ## Sinergia con Alea
 El dominio (binders/BDX/UMR/UCR/liquidaciones) solapa mucho con la app de Alea, pero desde el lado
@@ -164,6 +186,113 @@ que vive en el lateral.
 **Pendiente de Fase 1:** pantalla de **Binders** (ahora un placeholder). Luego, cuando estén
 listas, el cutover de cada maestra (volcado real + apagar Access), según "app primero, volcado
 al final".
+
+## Fase 2 — BDX (núcleo): EN CURSO (2026-06-16)
+**Decisiones de modelado:**
+- **Un único BDX por binder** (no por periodo). Los periodos nuevos se añaden como más líneas y se
+  distinguen por `reporting_period_start` **a nivel de línea** (columnas `reporting_period_start` /
+  `reporting_period_end` en `bdx_lineas`).
+- **Risk = la tabla entera; Premium = subconjunto de columnas**, no una tabla aparte. La misma fila
+  lleva `incluido_en_premium` (bool) y `premium_bdx` (fecha). (4 columnas nuevas en `bdx_lineas`,
+  migración `c2d3e4f5a6b7`.)
+
+**Origen y carga (decisión 2026-06-16):** los Risk BDX se traen **directamente de cada lista
+`Mayrit - <UMR>` de SharePoint** (no por Excel para el histórico). Las maestras (agencia, mercados…)
+las crea el usuario a mano; el importador NO las toca. Volcado **uno a uno y verificado** (ver
+"Volcado binder a binder").
+
+**Lector de SharePoint:** `backend/app/sharepoint.py` (SOLO LECTURA, auth por certificado vía
+`settings.sp_*` de `~/.mayrit/.env`). Mapea columnas por **Título visible** (estable entre listas;
+el InternalName varía) con el dict `MAPEO`. Endpoint de previsualización (sin escribir):
+`GET /binders/{id}/bdx/sharepoint-preview` → nº líneas, periodos, sumas y muestra. Probado contra
+listas reales (CY0118ALE: 93 líneas; CY0219ALE: 133, 10 periodos).
+
+**Normalizaciones pendientes para el import real (vistas en el preview):**
+- Los **% vienen como fracción** en SharePoint (0.8 = 80 %, 0.264 = 26,4 %) → **×100** al importar
+  (en la app los % se guardan como entero, p. ej. 80).
+- **"Original Currency Premium" trae la MONEDA** (`'EUR'`), no un importe; **"Sum Insured Currency"**
+  trae un importe. El nombre de columna no coincide con el significado / con nuestro tipo → revisar
+  el mapeo de esas dos al importar.
+- `Premium Payment Date` viene como texto `dd/mm/aaaa`; las fechas vienen con hora/`Z` → tomar la
+  parte de fecha.
+- `_OldID` → `sp_old_id` por línea (clave de idempotencia).
+
+**Importador (HECHO 2026-06-16):** `backend/app/bdx_import.py` + `POST /binders/{id}/bdx/import`.
+Crea/rellena el **BDX único** del binder (tipo Risk), **idempotente por `sp_old_id`** (re-importar
+actualiza, no duplica), y devuelve **conciliación** (nº líneas y suma GWP SharePoint↔Postgres).
+Coacción por el tipo de cada columna del modelo. Decisiones tomadas con datos reales:
+- **`_OldID` se expone como `OData__OldID`** (SharePoint antepone `OData_` a campos que empiezan por
+  `_`); el lector lo resuelve. Es la clave de idempotencia.
+- **Dinero = 2 decimales (céntimos).** El origen trae **ruido de coma flotante** (9–13 decimales, p. ej.
+  `294,3999999999998`), no precisión real → se **cuantiza a la escala de la columna** (dinero 2, % 4)
+  al guardar. La conciliación redondea cada línea a céntimos antes de sumar.
+- **% ×100** (origen en fracción: 0,8 → 80,0000).
+- Importes con coma/punto (miles y decimal europeos); fechas sin hora.
+
+**Verificado SOLO en `B1634CY0219ALE` (binder 12):** 133 líneas, 10 periodos, idempotente (2ª pasada =
+133 actualizadas, 0 nuevas), conciliación **OK** (GWP 322.178,69 = 322.178,69).
+
+**Plantillas que varían por binder (decisión 2026-06-16):** las listas de SharePoint NO tienen los
+mismos títulos de columna. p. ej. CY0219 usa "Commission **Coverholder** %/Amount" (CY0118 "Commission
+%/Amount"), "Transaction Type (Original **premium**…)", "Sum insured **Amount**" (vs "Our Line"), y una
+columna "Fees". Por eso el lector (`app/sharepoint.py`) mapea por **alias** (lista de títulos posibles
+por campo) con coincidencia exacta y luego por prefijo. **Hallazgo importante:** lo que el Access llama
+"GWP" en el cálculo de PC es el **GWP *our line*** (`total_gwp_our_line`), no el GWP al 100%. Tras
+corregir el mapeo, el binder 12 cuadra con el Access del usuario (GWP our line 289.929,21 ≈ 289.929,19;
+Comisión Coverholder 81.144,18 ≈ 81.144,17). El primer import perdió la comisión (salía 0) por usar
+solo los títulos de CY0118.
+
+**Regla de cálculo (decisión 2026-06-16): la base de TODOS los cálculos es el GWP *our line*** =
+`total_gwp_our_line` (lo suscrito × Written Line %, nuestra participación), NO el GWP al 100%
+(`gross_written_premium`). Aplica a este binder y a todos los futuros (totalizadores de la tabla y
+cálculo de PC). **Profit Commission (pestaña Cálculos):** GWP our line − Comisiones (Coverholder +
+Mayrit, **medias reales** de los importes de los BDX: Coverholder = `commission_coverholder_amount`,
+Mayrit = `brokerage_amount`; pueden variar por operación) → Net to UWs; − Siniestralidad
+(Indemnización/Fees, Pagado/Reservas, editable simulada) − IBNR (**% manual sobre GWP**) − UW Expenses
+(Gastos % del binder × GWP) = Total Outcome; **Resultado** = GWP − Total Outcome; **PC** = PC % ×
+Resultado (sin recortar el negativo). Verificado contra el Access del usuario en CY0219ALE.
+Pendiente menor: el dinero se guarda a 2 decimales por línea, así que las sumas pueden diferir ~2
+céntimos del Access (que redondea al sumar); si hace falta cuadre exacto, subir la escala a 4 decimales.
+
+**UI de BDX (hecho 2026-06-16):** en la ficha del binder, pestaña BDX → tabla `BdxTabla` con
+columnas ordenables, **reordenables arrastrando**, ocultables (clic derecho), **filtro por columna
+estilo Excel**, contador (líneas filtradas + GWP + Prima a Mayrit), columnas calculadas (Pdte.
+Cobro/Traspaso/Liq.) y configuración **persistida** en localStorage (clave `mayrit.bdx.columnas.v3`).
+Botón **"⬆ Subir Excel"** abre un **selector de carpeta servido por el backend**
+(`GET /bdx/excel-dir`, base en `settings.bdx_excel_dir`) — de momento solo deja **elegir** el fichero.
+
+**⏳ TAREA PENDIENTE — parser de Excel (día a día):** falta el código que, al elegir un `.xlsx`
+en "Subir Excel", lo **lea y vuelque** las líneas al BDX del binder (equivalente a `bdx_import.py`
+pero leyendo de Excel en vez de SharePoint: mapear columnas, ×100 en %, importes coma/punto, fechas
+sin hora, idempotencia). Requiere ver primero la **estructura real** de los Excel de las agencias
+(carpeta de Alea) para fijar el mapeo de columnas. Aparcado mientras se pulen otras cosas del front.
+
+**Próximo paso:** UI para lanzar el preview/import desde la app (pantalla de Migración) y seguir
+binder a binder.
+
+## Sesión 16-17/06/2026 — ficha del binder (pestañas) y cálculos
+- **Pestañas de la ficha del binder** (`BinderDetalle.tsx`), en este orden: **Bloqueo · Datos · BDX ·
+  Cálculos · Siniestros · Triangulación**. (La que abre por defecto sigue siendo Datos.)
+- **Datos:** tabla "Cifras por mes (Reporting Start)" con **GWP our line · Net Premium to Broker ·
+  Recibo** y un **check por fila**. Marcar meses **filtra la tabla BDX** por ese `reporting_period_start`
+  (filtro bidireccional: "Quitar filtros" en BDX también limpia los checks de Datos).
+- **BDX:** la tabla (`BdxTabla`) tiene cabeceras fijas (sticky), scroll propio (no de página),
+  columnas ordenables/reordenables (drag)/ocultables (clic derecho) y **filtro por columna estilo
+  Excel**; persistencia en localStorage **`mayrit.bdx.columnas.v4`** (orden por defecto: Certificado,
+  Asegurado, Risk Bdx, Prima a Mayrit, Incluido Premium, Premium Bdx, Cobrado, Pdte. Cobro, Traspasado,
+  Pdte. Traspaso, Liquidado, Pdte. Liq.). Cuadro de **totales 4 columnas** arriba a la derecha
+  (GWP our line/Pólizas[pdte]/Líneas · Prima a Mayrit/Cobrado/Pdte Cobro · A traspasar/Traspasado/Pdte ·
+  A liquidar/Liquidado/Pdte). Botones (Subir Excel, + Nueva línea) en la misma fila que los totales.
+- **Cálculos:** cuadro de **Profit Commission** que replica el Access del usuario (ver arriba la regla).
+  La caja de **IBNR** va en ámbar (campo a rellenar). Verificado contra Access en CY0219ALE.
+- **Bloqueo:** tabla de 3 columnas (Risk/Premium/Claims BDX) con sus meses + candado 🔓/🔒 (estado
+  local, **sin persistencia ni lógica de "presentar" todavía**). Claims vacío (sin módulo de siniestros).
+- **Diseñador de formulario de línea** (`BdxLineaPanel.tsx`): botón "✎ Diseñar" → arrastrar campos,
+  columnas por grupo, mostrar/ocultar, renombrar; persistido (`mayrit.bdxlinea.layout.v1`).
+- **Formato único** (`frontend/src/format.ts`): `fmtMiles` (miles con punto, agrupa también los de 4
+  cifras, que es-ES no agrupaba) y `fmtFechaES` (dd/mm/aaaa en toda la app).
+- **Pendiente de contenido:** pestañas **Bloqueo** (lógica/persistencia), **Siniestros** y
+  **Triangulación** (placeholder); contar **Pólizas**; parser de Excel (arriba).
 
 ## Imagen de marca (estándar a seguir en todo)
 - Colores: **naranja `#da5833`** (PANTONE 7579 C) y **gris `#4b4b4b`** (PANTONE 446 C).

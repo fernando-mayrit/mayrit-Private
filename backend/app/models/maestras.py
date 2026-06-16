@@ -168,28 +168,62 @@ class Binder(Base):
     suplementos: Mapped[list["BinderSuplemento"]] = relationship(
         back_populates="binder", cascade="all, delete-orphan", order_by="BinderSuplemento.numero"
     )
+    limites: Mapped[list["BinderLimite"]] = relationship(
+        back_populates="binder", cascade="all, delete-orphan", order_by="BinderLimite.id"
+    )
+
+
+class BinderLimite(Base):
+    """Grupo de Límite de Primas: un par (límite + % de notificación) que aplica a UNA o
+    VARIAS secciones del binder. Permite fijar el límite de forma genérica (un grupo con
+    todas las secciones), por sección (un grupo por sección) o por subconjuntos. La
+    producción notificada en los BDX de todas las secciones de un mismo grupo se compara
+    contra ese límite (aviso al excederlo — Fase BDX)."""
+
+    __tablename__ = "binder_limites"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    binder_id: Mapped[int] = mapped_column(ForeignKey("binders.id", ondelete="CASCADE"), index=True)
+    limite_primas: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    notificacion: Mapped[Decimal | None] = mapped_column(Numeric(7, 4))   # % de notificación
+
+    binder: Mapped["Binder"] = relationship(back_populates="limites")
+    secciones: Mapped[list["BinderSeccion"]] = relationship(back_populates="limite")
 
 
 class BinderSeccion(Base):
-    """Sección de un binder: un ramo con su propio conjunto de mercados y participaciones."""
+    """Sección de un binder: un ramo con su propio conjunto de mercados y participaciones.
+    El Límite de Primas no vive aquí: la sección apunta a un grupo de límite (`BinderLimite`)
+    que puede compartir con otras secciones."""
 
     __tablename__ = "binder_secciones"
 
     id: Mapped[int] = mapped_column(primary_key=True)
     binder_id: Mapped[int] = mapped_column(ForeignKey("binders.id", ondelete="CASCADE"), index=True)
     ramo: Mapped[str | None] = mapped_column(String(120))
-    limite_primas: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
-    notificacion: Mapped[Decimal | None] = mapped_column(Numeric(7, 4))   # % de notificación
+    limite_id: Mapped[int | None] = mapped_column(
+        ForeignKey("binder_limites.id", ondelete="SET NULL"), index=True
+    )
     comision: Mapped[Decimal | None] = mapped_column(Numeric(7, 4))       # % comisión de la sección
     sujeto_pc: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
 
     binder: Mapped["Binder"] = relationship(back_populates="secciones")
+    limite: Mapped["BinderLimite | None"] = relationship(back_populates="secciones")
     mercados: Mapped[list["SeccionMercado"]] = relationship(
         back_populates="seccion", cascade="all, delete-orphan", order_by="SeccionMercado.id"
     )
     risk_codes: Mapped[list["SeccionRiskCode"]] = relationship(
         back_populates="seccion", cascade="all, delete-orphan", order_by="SeccionRiskCode.id"
     )
+
+    # Compatibilidad de lectura: el límite/notificación efectivos de la sección vienen de su grupo.
+    @property
+    def limite_primas(self) -> Decimal | None:
+        return self.limite.limite_primas if self.limite else None
+
+    @property
+    def notificacion(self) -> Decimal | None:
+        return self.limite.notificacion if self.limite else None
 
 
 class BinderSuplemento(Base):
@@ -298,6 +332,11 @@ class BdxLinea(Base):
     sp_old_id: Mapped[int | None] = mapped_column(Integer, index=True)   # _OldID del origen
     bdx_id: Mapped[int] = mapped_column(ForeignKey("bdx.id", ondelete="CASCADE"), index=True)
 
+    # ── Periodo de reporte (por línea) ──
+    # El BDX es único por binder; cada periodo (mensual/trimestral…) se distingue por esta fecha.
+    reporting_period_start: Mapped[dt.date | None] = mapped_column(Date, index=True)
+    reporting_period_end: Mapped[dt.date | None] = mapped_column(Date)
+
     # ── Identificación de la línea ──
     section_no: Mapped[int | None] = mapped_column(Integer)
     class_of_business: Mapped[str | None] = mapped_column(String(120))
@@ -324,7 +363,7 @@ class BdxLinea(Base):
     expiry_date_transaction: Mapped[dt.date | None] = mapped_column(Date)
 
     # ── Prima ──
-    original_currency_premium: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    original_currency: Mapped[str | None] = mapped_column(String(10))   # moneda de la prima (p. ej. EUR)
     gross_written_premium: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
     written_line_pct: Mapped[Decimal | None] = mapped_column(Numeric(7, 4))
     total_gwp_our_line: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
@@ -336,7 +375,7 @@ class BdxLinea(Base):
     net_premium_to_broker: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
 
     # ── Suma asegurada / deducible ──
-    sum_insured_currency: Mapped[str | None] = mapped_column(String(10))
+    sum_insured_total: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))  # suma asegurada 100 %
     sum_insured_our_line: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
     deductible_amount: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
     deductible_basis: Mapped[str | None] = mapped_column(String(40))
@@ -384,6 +423,10 @@ class BdxLinea(Base):
     brokerage_pct: Mapped[Decimal | None] = mapped_column(Numeric(7, 4))
     brokerage_amount: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
     final_net_premium_uw: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+
+    # ── Premium (subconjunto): la fila entra en el Premium Bdx y con qué fecha ──
+    incluido_en_premium: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
+    premium_bdx: Mapped[dt.date | None] = mapped_column(Date)
 
     # ── Control interno (no viene en el BDX; gestión de cobro/pago) ──
     prima_cobrada: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)

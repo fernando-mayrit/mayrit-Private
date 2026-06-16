@@ -204,11 +204,21 @@ class SeccionMercadoOut(BaseModel):
     mercado_nombre: str | None = None
 
 
+# Grupo de Límite de Primas: un par (límite + % notificación) que cubre 1..N secciones.
+class BinderLimiteIn(BaseModel):
+    limite_primas: Decimal | None = None
+    notificacion: Decimal | None = None
+
+
+class BinderLimiteOut(BinderLimiteIn):
+    pass
+
+
 class BinderSeccionIn(BaseModel):
     ramo: str | None = None
     risk_codes: list[str] = []
-    limite_primas: Decimal | None = None
-    notificacion: Decimal | None = None
+    # Índice (0-based) del grupo de límite (en `limites`) al que pertenece la sección.
+    limite_grupo: int | None = None
     comision: Decimal | None = None
     sujeto_pc: bool = False
     mercados: list[SeccionMercadoIn] = []
@@ -218,6 +228,8 @@ class BinderSeccionOut(BaseModel):
     id: int
     ramo: str | None = None
     risk_codes: list[str] = []
+    limite_grupo: int | None = None
+    # Límite/notificación efectivos (derivados del grupo) para mostrar sin recombinar.
     limite_primas: Decimal | None = None
     notificacion: Decimal | None = None
     comision: Decimal | None = None
@@ -250,11 +262,13 @@ class BinderBase(BaseModel):
 
 
 class BinderCreate(BinderBase):
+    limites: list[BinderLimiteIn] = []
     secciones: list[BinderSeccionIn] = []
 
 
 class BinderUpdate(BinderBase):
     agreement_number: str | None = None
+    limites: list[BinderLimiteIn] | None = None
     secciones: list[BinderSeccionIn] | None = None
 
 
@@ -263,6 +277,7 @@ class BinderRead(BinderBase):
     coverholder_nombre: str | None = None
     coverholder_alias: str | None = None
     cuenta_bancaria_nombre: str | None = None
+    limites: list[BinderLimiteOut] = []
     secciones: list[BinderSeccionOut] = []
     created_at: dt.datetime
     updated_at: dt.datetime
@@ -270,6 +285,7 @@ class BinderRead(BinderBase):
 
 # Suplemento = nueva versión del binder: los términos completos + fecha de efecto y motivo.
 class SuplementoCreate(BinderBase):
+    limites: list[BinderLimiteIn] = []
     secciones: list[BinderSeccionIn] = []
     suplemento_fecha_efecto: dt.date | None = None
     motivo: str | None = None
@@ -278,6 +294,9 @@ class SuplementoCreate(BinderBase):
 # ───────────────────────────────── BDX (bordereaux) ──────────────────────────
 class BdxLineaBase(BaseModel):
     """Todos los campos editables de una línea (todos opcionales: en import vienen vacíos)."""
+    # Periodo de reporte (por línea; identifica el periodo dentro del BDX único del binder)
+    reporting_period_start: dt.date | None = None
+    reporting_period_end: dt.date | None = None
     # Identificación
     section_no: int | None = None
     class_of_business: str | None = None
@@ -301,7 +320,7 @@ class BdxLineaBase(BaseModel):
     effective_date_transaction: dt.date | None = None
     expiry_date_transaction: dt.date | None = None
     # Prima
-    original_currency_premium: Decimal | None = None
+    original_currency: str | None = None
     gross_written_premium: Decimal | None = None
     written_line_pct: Decimal | None = None
     total_gwp_our_line: Decimal | None = None
@@ -312,7 +331,7 @@ class BdxLineaBase(BaseModel):
     total_gwp_including_tax: Decimal | None = None
     net_premium_to_broker: Decimal | None = None
     # Suma asegurada / deducible
-    sum_insured_currency: str | None = None
+    sum_insured_total: Decimal | None = None
     sum_insured_our_line: Decimal | None = None
     deductible_amount: Decimal | None = None
     deductible_basis: str | None = None
@@ -355,6 +374,9 @@ class BdxLineaBase(BaseModel):
     brokerage_pct: Decimal | None = None
     brokerage_amount: Decimal | None = None
     final_net_premium_uw: Decimal | None = None
+    # Premium (subconjunto): la fila entra en el Premium Bdx y con qué fecha
+    incluido_en_premium: bool = False
+    premium_bdx: dt.date | None = None
     # Control interno
     prima_cobrada: bool = False
     ingresado: Decimal | None = None
@@ -375,6 +397,7 @@ class BdxLineaCreate(BdxLineaBase):
 
 class BdxLineaUpdate(BdxLineaBase):
     """Edición parcial: los bool pasan a opcionales para no forzarlos."""
+    incluido_en_premium: bool | None = None
     prima_cobrada: bool | None = None
     traspaso: bool | None = None
     liquidado: bool | None = None

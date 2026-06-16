@@ -32,6 +32,20 @@ class Settings(BaseSettings):
     # callejero de códigos postales. Se leen con el propio usuario de Mayrit (solo lectura).
     pg_database_ref: str = "alea"
 
+    # SharePoint (SOLO LECTURA): puente para traer los BDX históricos del sitio Mayrit-Negocio.
+    # Autenticación por certificado (mismo app/cert que Alea). Credenciales en ~/.mayrit/.env.
+    sp_site_url: str = ""
+    sp_tenant_id: str = ""
+    sp_client_id: str = ""
+    sp_pfx_path: str = ""
+    sp_pfx_password: str = ""
+
+    # Carpeta base donde están los Excel de BDX (para el selector dentro de la app).
+    bdx_excel_dir: str = (
+        r"C:\Users\ferna\Mayrit Insurance Broker\Mayrit - Negocio - Documentos"
+        r"\Agencias de Suscripcion\Alea\Binders\Dale (CY)"
+    )
+
     @property
     def database_url(self) -> str:
         return (

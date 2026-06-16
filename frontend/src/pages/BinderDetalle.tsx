@@ -1,67 +1,86 @@
 import { useEffect, useState } from "react";
-import { bdxApi, type BdxDetalle } from "../api";
+import { bdxApi, type BdxDetalle, type BdxPreview, type BdxImportResult, type ExcelDir } from "../api";
 import type { Binder, Bdx, BdxLinea } from "../types";
-import FormPanel from "../components/FormPanel";
 import BdxLineaPanel from "../components/BdxLineaPanel";
+import BdxTabla from "../components/BdxTabla";
+import NumberInput from "../components/NumberInput";
+import { fmtMiles, fmtFechaES } from "../format";
 
-const TIPOS = ["Risk", "Premium"];
-const ESTADOS_BDX = ["Abierto", "Cerrado"];
+function n(v: unknown): number {
+  const x = Number(String(v ?? "").replace(",", "."));
+  return isNaN(x) ? 0 : x;
+}
 
-type BdxForm = {
-  id?: number;
-  tipo: string;
-  reporting_period_start: string;
-  reporting_period_end: string;
-  estado: string;
-  notas: string;
-};
-const BDX_VACIO: BdxForm = {
-  tipo: "Risk",
-  reporting_period_start: "",
-  reporting_period_end: "",
-  estado: "Abierto",
-  notas: "",
-};
+const MESES_ES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+function mesLargo(k: string): string {
+  const [y, mo] = k.split("-");
+  return `${MESES_ES[Number(mo) - 1] ?? mo} ${y}`;
+}
+// Meses (aaaa-mm) distintos de un campo de fecha en las líneas.
+function mesesDe(lineas: BdxLinea[], campo: keyof BdxLinea, filtro?: (l: BdxLinea) => boolean): string[] {
+  const s = new Set<string>();
+  for (const l of lineas) {
+    if (filtro && !filtro(l)) continue;
+    const k = String(l[campo] ?? "").slice(0, 7);
+    if (k) s.add(k);
+  }
+  return [...s].sort().reverse();
+}
 
-function fecha(s: string | null): string {
-  return s ?? "—";
+function fmtFecha(s: string | null | undefined): string {
+  return fmtFechaES(s) || "—";
 }
 function imp(v: string | number | null | undefined): string {
-  if (v == null || v === "") return "—";
-  const n = Number(v);
-  return isNaN(n) ? String(v) : n.toLocaleString("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return fmtMiles(v) || "—";
 }
 
 export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBack: () => void }) {
-  const [tab, setTab] = useState<"datos" | "bdx">("datos");
+  const [tab, setTab] = useState<"datos" | "bloqueo" | "bdx" | "calculos" | "siniestros" | "triangulacion">("datos");
 
-  // ── BDX ──
+  // ── BDX (uno por binder) ──
   const [bdxs, setBdxs] = useState<Bdx[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [sel, setSel] = useState<BdxDetalle | null>(null); // el BDX del binder, con líneas
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [sel, setSel] = useState<BdxDetalle | null>(null); // BDX abierto (con líneas)
-  const [bdxForm, setBdxForm] = useState<BdxForm | null>(null);
-  const [bdxInicial, setBdxInicial] = useState<BdxForm | null>(null);
-  const [saving, setSaving] = useState(false);
   const [linea, setLinea] = useState<BdxLinea | "nueva" | null>(null);
 
-  async function cargarBdx() {
+  // ── Selector de Excel (carpeta servida por el backend) ──
+  const [excelOpen, setExcelOpen] = useState(false);
+  const [excelDir, setExcelDir] = useState<ExcelDir | null>(null);
+  const [excelBusy, setExcelBusy] = useState(false);
+  const [excelErr, setExcelErr] = useState<string | null>(null);
+  const [excelSel, setExcelSel] = useState<string | null>(null);
+  // Cálculos PC: siniestralidad simulada (aún sin datos reales) — entradas editables.
+  const [indemPaid, setIndemPaid] = useState("0");
+  const [indemRes, setIndemRes] = useState("0");
+  const [feesPaid, setFeesPaid] = useState("0");
+  const [feesRes, setFeesRes] = useState("0");
+  const [ibnrPct, setIbnrPct] = useState("0");
+  // Selección de meses/periodos en la tabla de Datos.
+  const [selMeses, setSelMeses] = useState<Set<string>>(new Set());
+  // Bloqueo de periodos por tipo de BDX (local de momento; falta persistencia/lógica de presentar).
+  const [bloqueos, setBloqueos] = useState<Set<string>>(new Set());
+
+  // ── Importación desde SharePoint ──
+  const [importAbierto, setImportAbierto] = useState(false);
+  const [preview, setPreview] = useState<BdxPreview | null>(null);
+  const [importRes, setImportRes] = useState<BdxImportResult | null>(null);
+  const [importBusy, setImportBusy] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
+
+  const importado = bdxs.length > 0;
+
+  async function cargar() {
     setLoading(true);
     setError(null);
     try {
-      setBdxs(await bdxApi.listar(binder.id));
+      const lista = await bdxApi.listar(binder.id);
+      setBdxs(lista);
+      setSel(lista.length > 0 ? await bdxApi.detalle(lista[0].id) : null);
     } catch (e) {
       setError((e as Error).message);
     } finally {
       setLoading(false);
-    }
-  }
-  async function abrirBdx(id: number) {
-    setError(null);
-    try {
-      setSel(await bdxApi.detalle(id));
-    } catch (e) {
-      setError((e as Error).message);
     }
   }
   async function refrescarSel() {
@@ -69,53 +88,85 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
   }
 
   useEffect(() => {
-    if (tab === "bdx") cargarBdx();
+    cargar();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab]);
+  }, [binder.id]);
 
-  // ── Cabecera BDX (alta/edición) ──
-  const bdxDirty = !!bdxForm && JSON.stringify(bdxForm) !== JSON.stringify(bdxInicial);
-  function nuevoBdx() {
-    const f = { ...BDX_VACIO };
-    setBdxForm(f);
-    setBdxInicial(f);
-  }
-  async function guardarBdx() {
-    if (!bdxForm) return;
-    setSaving(true);
-    setError(null);
+  async function abrirImport() {
+    setImportAbierto(true);
+    setPreview(null);
+    setImportRes(null);
+    setImportError(null);
+    setImportBusy(true);
     try {
-      const payload = {
-        tipo: bdxForm.tipo,
-        reporting_period_start: bdxForm.reporting_period_start || null,
-        reporting_period_end: bdxForm.reporting_period_end || null,
-        estado: bdxForm.estado || null,
-        notas: bdxForm.notas.trim() || null,
-      };
-      if (bdxForm.id) await bdxApi.editar(bdxForm.id, payload);
-      else await bdxApi.crear(binder.id, payload);
-      setBdxForm(null);
-      await cargarBdx();
+      setPreview(await bdxApi.sharepointPreview(binder.id));
     } catch (e) {
-      setError((e as Error).message);
+      setImportError((e as Error).message);
     } finally {
-      setSaving(false);
+      setImportBusy(false);
     }
   }
-  async function borrarBdx(b: Bdx) {
-    if (!confirm(`¿Borrar el BDX ${b.tipo} ${fecha(b.reporting_period_start)} → ${fecha(b.reporting_period_end)} y todas sus líneas?`))
-      return;
+  async function hacerImport() {
+    setImportBusy(true);
+    setImportError(null);
     try {
-      await bdxApi.borrar(b.id);
-      if (sel?.id === b.id) setSel(null);
-      await cargarBdx();
+      setImportRes(await bdxApi.importarSharepoint(binder.id));
+      await cargar();
     } catch (e) {
-      setError((e as Error).message);
+      setImportError((e as Error).message);
+    } finally {
+      setImportBusy(false);
     }
   }
+  function cerrarImport() {
+    setImportAbierto(false);
+    setPreview(null);
+    setImportRes(null);
+    setImportError(null);
+  }
+
+  async function cargarCarpeta(sub: string) {
+    setExcelBusy(true);
+    setExcelErr(null);
+    try {
+      setExcelDir(await bdxApi.excelDir(sub));
+    } catch (e) {
+      setExcelErr((e as Error).message);
+    } finally {
+      setExcelBusy(false);
+    }
+  }
+  function elegirExcel() {
+    setExcelOpen(true);
+    setExcelSel(null);
+    setExcelDir(null);
+    cargarCarpeta("");
+  }
+  function subirCarpeta() {
+    const sub = excelDir?.sub ?? "";
+    const padre = sub.includes("/") ? sub.slice(0, sub.lastIndexOf("/")) : "";
+    cargarCarpeta(padre);
+  }
+
+  // Cifras por mes (Reporting Start): GWP (our line), Net Premium to Broker y recibos.
+  const porMes = (() => {
+    const m = new Map<string, { gwp: number; net: number; recibos: Set<string> }>();
+    for (const l of sel?.lineas ?? []) {
+      const k = String(l.reporting_period_start ?? "").slice(0, 7); // aaaa-mm
+      if (!k) continue;
+      const cur = m.get(k) ?? { gwp: 0, net: 0, recibos: new Set<string>() };
+      cur.gwp += n(l.total_gwp_our_line);
+      cur.net += n(l.net_premium_to_broker);
+      if (l.recibo) cur.recibos.add(String(l.recibo));
+      m.set(k, cur);
+    }
+    return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+  })();
+  const totGwp = porMes.reduce((a, [, v]) => a + v.gwp, 0);
+  const totNet = porMes.reduce((a, [, v]) => a + v.net, 0);
 
   return (
-    <div className="container">
+    <div className="container detalle-binder">
       <div className="detalle-top">
         <button className="btn-link" onClick={onBack}>
           ← Volver a Binders
@@ -125,196 +176,298 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
           {binder.umr ?? binder.agreement_number ?? `Binder ${binder.id}`}
         </h1>
         <div className="detalle-sub">
-          {binder.coverholder_nombre ?? "—"} · {fecha(binder.fecha_efecto)} → {fecha(binder.fecha_vencimiento)} ·{" "}
+          {binder.coverholder_nombre ?? "—"} · {fmtFecha(binder.fecha_efecto)} → {fmtFecha(binder.fecha_vencimiento)} ·{" "}
           {binder.estado ?? "—"}
         </div>
       </div>
 
       <div className="tabs detalle-tabs">
+        <button className={"tab" + (tab === "bloqueo" ? " active" : "")} onClick={() => setTab("bloqueo")}>
+          Bloqueo
+        </button>
         <button className={"tab" + (tab === "datos" ? " active" : "")} onClick={() => setTab("datos")}>
           Datos
         </button>
         <button className={"tab" + (tab === "bdx" ? " active" : "")} onClick={() => setTab("bdx")}>
           BDX
         </button>
+        <button className={"tab" + (tab === "calculos" ? " active" : "")} onClick={() => setTab("calculos")}>
+          Cálculos
+        </button>
+        <button className={"tab" + (tab === "siniestros" ? " active" : "")} onClick={() => setTab("siniestros")}>
+          Siniestros
+        </button>
+        <button className={"tab" + (tab === "triangulacion" ? " active" : "")} onClick={() => setTab("triangulacion")}>
+          Triangulación
+        </button>
       </div>
 
       {error && <div className="error">⚠ {error}</div>}
 
       {tab === "datos" && (
-        <div className="datos-grid">
-          <Dato label="UMR" valor={binder.umr} />
-          <Dato label="Agreement Number" valor={binder.agreement_number} />
-          <Dato label="Coverholder" valor={binder.coverholder_nombre} />
-          <Dato label="YOA" valor={binder.yoa} />
-          <Dato label="Efecto" valor={binder.fecha_efecto} />
-          <Dato label="Vencimiento" valor={binder.fecha_vencimiento} />
-          <Dato label="Estado" valor={binder.estado} />
-          <Dato label="Moneda" valor={binder.moneda} />
-          <Dato label="Comisión Mayrit %" valor={binder.comision_mayrit} />
-          <Dato label="Cuenta bancaria" valor={binder.cuenta_bancaria_nombre} />
-          <Dato label="Secciones" valor={String(binder.secciones?.length ?? 0)} />
-          <div className="dato-full hint">
-            Para editar los términos del binder, usa «Editar» / «+ Suplemento» en el listado de Binders.
-          </div>
-        </div>
-      )}
-
-      {tab === "bdx" && !sel && (
         <>
-          <div className="toolbar">
-            <button className="btn-primary" onClick={nuevoBdx}>
-              + Nuevo BDX
-            </button>
-          </div>
+          <h3 style={{ margin: "4px 0 8px" }}>Cifras por mes (Reporting Start)</h3>
           {loading ? (
             <div className="loading">Cargando…</div>
-          ) : bdxs.length === 0 ? (
-            <div className="empty">Este binder no tiene BDX. Crea el primero con «+ Nuevo BDX».</div>
+          ) : porMes.length === 0 ? (
+            <div className="empty">Aún no hay BDX importado. Ve a la pestaña BDX para importarlo.</div>
           ) : (
-            <table className="compacto">
+            <table className="compacto" style={{ maxWidth: 560 }}>
               <thead>
                 <tr>
-                  <th>Tipo</th>
-                  <th>Periodo</th>
-                  <th>Estado</th>
-                  <th>Nº líneas</th>
-                  <th></th>
+                  <th style={{ width: 28 }}>
+                    <input
+                      type="checkbox"
+                      checked={selMeses.size > 0 && selMeses.size === porMes.length}
+                      onChange={(e) =>
+                        setSelMeses(e.target.checked ? new Set(porMes.map(([m]) => m)) : new Set())
+                      }
+                    />
+                  </th>
+                  <th>Mes</th>
+                  <th className="num">GWP</th>
+                  <th className="num">Net Premium to Broker</th>
+                  <th>Recibo</th>
                 </tr>
               </thead>
               <tbody>
-                {bdxs.map((b) => (
-                  <tr key={b.id} className="fila-click" onClick={() => abrirBdx(b.id)}>
-                    <td>{b.tipo}</td>
-                    <td>
-                      {fecha(b.reporting_period_start)} → {fecha(b.reporting_period_end)}
-                    </td>
-                    <td>{b.estado ?? "—"}</td>
-                    <td>{b.num_lineas}</td>
-                    <td className="acciones" onClick={(e) => e.stopPropagation()}>
-                      <button className="btn-link" onClick={() => abrirBdx(b.id)}>
-                        Abrir
-                      </button>
-                      <button className="btn-link" style={{ color: "var(--rojo)" }} onClick={() => borrarBdx(b)}>
-                        Borrar
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                {porMes.map(([mes, v]) => {
+                  const [y, mo] = mes.split("-");
+                  return (
+                    <tr key={mes}>
+                      <td className="celda-centro">
+                        <input
+                          type="checkbox"
+                          checked={selMeses.has(mes)}
+                          onChange={() =>
+                            setSelMeses((s) => {
+                              const ns = new Set(s);
+                              if (ns.has(mes)) ns.delete(mes);
+                              else ns.add(mes);
+                              return ns;
+                            })
+                          }
+                        />
+                      </td>
+                      <td>{`${mo}/${y}`}</td>
+                      <td className="num">{imp(v.gwp)}</td>
+                      <td className="num">{imp(v.net)}</td>
+                      <td>{v.recibos.size ? [...v.recibos].join(", ") : "—"}</td>
+                    </tr>
+                  );
+                })}
+                <tr style={{ fontWeight: 600, borderTop: "2px solid var(--borde)" }}>
+                  <td></td>
+                  <td>Total</td>
+                  <td className="num">{imp(totGwp)}</td>
+                  <td className="num">{imp(totNet)}</td>
+                  <td></td>
+                </tr>
               </tbody>
             </table>
           )}
         </>
       )}
 
-      {tab === "bdx" && sel && (
-        <>
-          <div className="toolbar">
-            <button className="btn-link" onClick={() => setSel(null)}>
-              ← BDX del binder
-            </button>
-            <span style={{ fontWeight: 600 }}>
-              {sel.tipo} · {fecha(sel.reporting_period_start)} → {fecha(sel.reporting_period_end)} ·{" "}
-              {sel.lineas.length} líneas
-            </span>
-            <button className="btn-primary" onClick={() => setLinea("nueva")}>
-              + Nueva línea
-            </button>
-          </div>
-          {sel.lineas.length === 0 ? (
-            <div className="empty">Este BDX no tiene líneas. Añade una con «+ Nueva línea» (o importa Excel — próximamente).</div>
-          ) : (
-            <div className="tabla-scroll">
-              <table className="compacto">
-                <thead>
-                  <tr>
-                    <th>Sec.</th>
-                    <th>Risk Code</th>
-                    <th>Certificado</th>
-                    <th>Asegurado</th>
-                    <th>Inicio</th>
-                    <th>Vto.</th>
-                    <th>GWP</th>
-                    <th>Com.%</th>
-                    <th>Cobr.</th>
-                    <th>Liq.</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {sel.lineas.map((l) => (
-                    <tr key={l.id} className="fila-click" onClick={() => setLinea(l)}>
-                      <td>{l.section_no ?? "—"}</td>
-                      <td>{l.risk_code ?? "—"}</td>
-                      <td>{l.certificate_ref ?? "—"}</td>
-                      <td>{l.insured_name ?? "—"}</td>
-                      <td>{fecha(l.risk_inception_date ?? null)}</td>
-                      <td>{fecha(l.risk_expiry_date ?? null)}</td>
-                      <td style={{ textAlign: "right" }}>{imp(l.gross_written_premium)}</td>
-                      <td style={{ textAlign: "right" }}>{imp(l.commission_coverholder_pct)}</td>
-                      <td>{l.prima_cobrada ? "✓" : ""}</td>
-                      <td>{l.liquidado ? "✓" : ""}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+      {tab === "bloqueo" && (
+        (() => {
+          const ls = sel?.lineas ?? [];
+          const cols: { titulo: string; emoji: string; meses: string[] }[] = [
+            { titulo: "Risk BDX", emoji: "📊", meses: mesesDe(ls, "reporting_period_start") },
+            { titulo: "Premium BDX", emoji: "💷", meses: mesesDe(ls, "premium_bdx", (l) => !!l.incluido_en_premium) },
+            { titulo: "Claims BDX", emoji: "⚖️", meses: [] },
+          ];
+          const toggle = (k: string) =>
+            setBloqueos((s) => {
+              const ns = new Set(s);
+              if (ns.has(k)) ns.delete(k);
+              else ns.add(k);
+              return ns;
+            });
+          return (
+            <div className="bloqueo-cols">
+              {cols.map((c) => (
+                <div className="bloqueo-col" key={c.titulo}>
+                  <h3>
+                    <span className="page-title-emoji" style={{ fontSize: 20 }}>{c.emoji}</span> {c.titulo}
+                  </h3>
+                  {c.meses.length === 0 ? (
+                    <div className="hint">— sin periodos —</div>
+                  ) : (
+                    c.meses.map((m) => {
+                      const key = `${c.titulo}:${m}`;
+                      const bloq = bloqueos.has(key);
+                      return (
+                        <div className="bloqueo-fila" key={m}>
+                          <input type="checkbox" />
+                          <button
+                            className="lock-btn"
+                            onClick={() => toggle(key)}
+                            title={bloq ? "Bloqueado (clic para desbloquear)" : "Desbloqueado (clic para bloquear)"}
+                          >
+                            {bloq ? "🔒" : "🔓"}
+                          </button>
+                          <span>{mesLargo(m)}</span>
+                          <span className="ayuda" title="Bloquear este periodo impide presentarlo / modificarlo.">?</span>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              ))}
             </div>
+          );
+        })()
+      )}
+
+      {tab === "bdx" && (
+        <>
+          {excelSel && (
+            <div className="hint" style={{ marginBottom: 10 }}>
+              Seleccionado «{excelSel}». La carga del Excel estará disponible en el próximo paso.
+            </div>
+          )}
+
+          {loading ? (
+            <div className="loading">Cargando…</div>
+          ) : !sel || sel.lineas.length === 0 ? (
+            <>
+              <div className="toolbar">
+                <button className="btn-primary" onClick={elegirExcel}>
+                  ⬆ Subir Excel
+                </button>
+                {!importado && (
+                  <button className="btn-secondary" onClick={abrirImport}>
+                    ⤓ Importar de SharePoint
+                  </button>
+                )}
+                {sel && (
+                  <button className="btn-secondary" onClick={() => setLinea("nueva")}>
+                    + Nueva línea
+                  </button>
+                )}
+              </div>
+              <div className="empty">
+                {!sel
+                  ? "Este binder no tiene BDX todavía. Impórtalo de SharePoint o sube el Excel."
+                  : "El BDX no tiene líneas."}
+              </div>
+            </>
+          ) : (
+            <BdxTabla
+              lineas={
+                selMeses.size > 0
+                  ? sel.lineas.filter((l) => selMeses.has(String(l.reporting_period_start ?? "").slice(0, 7)))
+                  : sel.lineas
+              }
+              onRowClick={(l) => setLinea(l)}
+              hayFiltroExterno={selMeses.size > 0}
+              onQuitarFiltros={() => setSelMeses(new Set())}
+              acciones={
+                <>
+                  <button className="btn-primary btn-sm" onClick={elegirExcel}>
+                    ⬆ Subir Excel
+                  </button>
+                  <button className="btn-secondary btn-sm" onClick={() => setLinea("nueva")}>
+                    + Nueva línea
+                  </button>
+                  {selMeses.size > 0 && (
+                    <span className="hint">
+                      Filtrado por Datos:{" "}
+                      {[...selMeses].sort().map((m) => { const [y, mo] = m.split("-"); return `${mo}/${y}`; }).join(", ")}
+                    </span>
+                  )}
+                </>
+              }
+            />
           )}
         </>
       )}
 
-      {/* Alta/edición de cabecera BDX */}
-      {bdxForm && (
-        <FormPanel
-          title={bdxForm.id ? "Editar BDX" : "Nuevo BDX"}
-          dirty={bdxDirty}
-          saving={saving}
-          error={error}
-          onSave={guardarBdx}
-          onClose={() => setBdxForm(null)}
-        >
-          <div className="field">
-            <label>Tipo</label>
-            <select value={bdxForm.tipo} onChange={(e) => setBdxForm({ ...bdxForm, tipo: e.target.value })}>
-              {TIPOS.map((t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="field">
-            <label>Periodo — inicio</label>
-            <input
-              type="date"
-              className="inp-fecha"
-              value={bdxForm.reporting_period_start}
-              onChange={(e) => setBdxForm({ ...bdxForm, reporting_period_start: e.target.value })}
-            />
-          </div>
-          <div className="field">
-            <label>Periodo — fin</label>
-            <input
-              type="date"
-              className="inp-fecha"
-              value={bdxForm.reporting_period_end}
-              onChange={(e) => setBdxForm({ ...bdxForm, reporting_period_end: e.target.value })}
-            />
-          </div>
-          <div className="field">
-            <label>Estado</label>
-            <select value={bdxForm.estado} onChange={(e) => setBdxForm({ ...bdxForm, estado: e.target.value })}>
-              {ESTADOS_BDX.map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="field">
-            <label>Notas</label>
-            <textarea rows={3} value={bdxForm.notas} onChange={(e) => setBdxForm({ ...bdxForm, notas: e.target.value })} />
-          </div>
-        </FormPanel>
+      {tab === "calculos" && (
+        (() => {
+          if (!binder.profit_commission)
+            return <div className="empty">Este binder no tiene Profit Commission.</div>;
+          // Secciones (1-based) sujetas a PC y primas (GWP) de sus líneas en el BDX.
+          const seccionesPC = new Set(
+            binder.secciones.map((s, i) => (s.sujeto_pc ? i + 1 : 0)).filter((x) => x > 0)
+          );
+          const nombresPC = binder.secciones
+            .map((s, i) => (s.sujeto_pc ? `Sección ${i + 1}${s.ramo ? ` (${s.ramo})` : ""}` : null))
+            .filter(Boolean)
+            .join(", ");
+          const lineas = (sel?.lineas ?? []).filter((l) => seccionesPC.has(l.section_no ?? 0));
+          // GWP = our line (es lo que usa el cálculo de PC), no el GWP al 100%.
+          const gwp = lineas.reduce((a, l) => a + n(l.total_gwp_our_line), 0);
+          // Comisiones = importes REALES de los BDX (media ponderada; pueden variar por operación).
+          const comCoverAmt = lineas.reduce((a, l) => a + n(l.commission_coverholder_amount), 0);
+          const comCoverPct = gwp > 0 ? (comCoverAmt / gwp) * 100 : 0;
+          const comMayritAmt = lineas.reduce((a, l) => a + n(l.brokerage_amount), 0);
+          const comMayritPct = gwp > 0 ? (comMayritAmt / gwp) * 100 : 0;
+          const comTotal = comCoverAmt + comMayritAmt;
+          const netToUws = gwp - comTotal;
+          // Siniestralidad (simulada): indemnización + fees, pagado + reservas.
+          const claims = n(indemPaid) + n(indemRes) + n(feesPaid) + n(feesRes);
+          // IBNR: % manual sobre la GWP (our line).
+          const ibnr = (gwp * n(ibnrPct)) / 100;
+          const uwPct = n(binder.pc_gastos);
+          const uwAmt = (gwp * uwPct) / 100;
+          const totalOutcome = comTotal + claims + ibnr + uwAmt;
+          const lossRatio = netToUws > 0 ? (claims / netToUws) * 100 : 0;
+          const resultado = gwp - totalOutcome;
+          const pcPct = n(binder.pc_porcentaje);
+          const pc = (resultado * pcPct) / 100;
+          const Money = ({ v }: { v: number }) => <td className="num">{imp(v)}</td>;
+          return (
+            <>
+              <h3 style={{ margin: "4px 0 8px" }}>Profit Commission</h3>
+              <div className="hint" style={{ marginBottom: 10 }}>
+                PC {fmtMiles(pcPct)} % · UW Expenses {fmtMiles(uwPct)} % · Sujetas a PC: {nombresPC || "—"}.
+                La siniestralidad es simulada (campos editables, aún sin datos reales).
+              </div>
+              <table className="compacto pc-tabla" style={{ maxWidth: 560 }}>
+                <tbody>
+                  <tr className="pc-fuerte"><td>GWP (our line)</td><Money v={gwp} /></tr>
+
+                  <tr className="pc-seccion"><td colSpan={2}>Comisiones</td></tr>
+                  <tr><td>Coverholder ({fmtMiles(comCoverPct)} %)</td><Money v={comCoverAmt} /></tr>
+                  <tr><td>Mayrit ({fmtMiles(comMayritPct)} %)</td><Money v={comMayritAmt} /></tr>
+                  <tr className="pc-subtotal"><td>Total comisiones</td><Money v={comTotal} /></tr>
+                  <tr className="pc-fuerte"><td>Net to UWs</td><Money v={netToUws} /></tr>
+
+                  <tr className="pc-seccion"><td colSpan={2}>Siniestralidad</td></tr>
+                  <tr><td>Indemnización — Pagado</td><td className="num"><NumberInput value={indemPaid} onChange={setIndemPaid} /></td></tr>
+                  <tr><td>Indemnización — Reservas</td><td className="num"><NumberInput value={indemRes} onChange={setIndemRes} /></td></tr>
+                  <tr><td>Fees — Pagado</td><td className="num"><NumberInput value={feesPaid} onChange={setFeesPaid} /></td></tr>
+                  <tr><td>Fees — Reservas</td><td className="num"><NumberInput value={feesRes} onChange={setFeesRes} /></td></tr>
+                  <tr className="pc-subtotal"><td>Total siniestralidad</td><Money v={claims} /></tr>
+                  <tr>
+                    <td>IBNR (<span style={{ display: "inline-block", width: 70 }}><NumberInput value={ibnrPct} onChange={setIbnrPct} suffix="%" thousands={false} className="input-completar" /></span> s/ GWP)</td>
+                    <Money v={ibnr} />
+                  </tr>
+
+                  <tr><td>UW Expenses ({fmtMiles(uwPct)} % s/ GWP)</td><Money v={uwAmt} /></tr>
+                  <tr className="pc-subtotal"><td>Total Outcome</td><Money v={totalOutcome} /></tr>
+                  <tr><td className="hint">Siniestralidad / Net to UWs</td><td className="num hint">{fmtMiles(lossRatio)} %</td></tr>
+
+                  <tr className="pc-fuerte" style={{ borderTop: "2px solid var(--borde)" }}><td>Resultado (GWP − Outcome)</td><Money v={resultado} /></tr>
+                  <tr className="pc-fuerte"><td>Profit Commission ({fmtMiles(pcPct)} %)</td><td className="num" style={{ color: "var(--naranja-osc)" }}>{imp(pc)}</td></tr>
+                </tbody>
+              </table>
+              {pc <= 0 && (
+                <div className="hint" style={{ marginTop: 8 }}>Resultado ≤ 0 → no se genera Profit Commission (importe negativo informativo).</div>
+              )}
+            </>
+          );
+        })()
+      )}
+
+      {tab === "siniestros" && (
+        <div className="empty">Siniestros — pendiente de definir el contenido.</div>
+      )}
+
+      {tab === "triangulacion" && (
+        <div className="empty">Triangulación — pendiente de definir el contenido.</div>
       )}
 
       {/* Ficha de línea */}
@@ -332,6 +485,153 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
           }}
           onClose={() => setLinea(null)}
         />
+      )}
+
+      {/* Selector de Excel (carpeta servida por el backend) */}
+      {excelOpen && (
+        <div className="overlay">
+          <div className="panel" role="dialog" aria-modal="true" aria-label="Seleccionar Excel">
+            <div className="panel-head">
+              <h2>Subir Excel</h2>
+              <button className="panel-close" onClick={() => setExcelOpen(false)} aria-label="Cerrar">
+                ✕
+              </button>
+            </div>
+            <div className="panel-body">
+              {excelErr && <div className="error">⚠ {excelErr}</div>}
+              <div className="hint" style={{ marginBottom: 8 }}>
+                📁 {excelDir ? (excelDir.sub ? excelDir.sub : "(carpeta base)") : "…"}
+              </div>
+              <div className="toolbar" style={{ marginBottom: 8 }}>
+                <button className="btn-secondary btn-sm" onClick={subirCarpeta} disabled={!excelDir?.sub}>
+                  ↑ Subir
+                </button>
+              </div>
+              {excelBusy ? (
+                <div className="loading">Leyendo carpeta…</div>
+              ) : excelDir ? (
+                <table className="compacto">
+                  <tbody>
+                    {excelDir.dirs.map((d) => (
+                      <tr
+                        key={"d:" + d}
+                        className="fila-click"
+                        onClick={() => cargarCarpeta(excelDir.sub ? `${excelDir.sub}/${d}` : d)}
+                      >
+                        <td>📁 {d}</td>
+                      </tr>
+                    ))}
+                    {excelDir.files.map((f) => (
+                      <tr
+                        key={"f:" + f.name}
+                        className="fila-click"
+                        onClick={() => {
+                          setExcelSel(f.name);
+                          setExcelOpen(false);
+                        }}
+                      >
+                        <td>📄 {f.name}</td>
+                      </tr>
+                    ))}
+                    {excelDir.dirs.length === 0 && excelDir.files.length === 0 && (
+                      <tr>
+                        <td className="hint">(carpeta vacía de Excel)</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              ) : null}
+            </div>
+            <div className="panel-actions">
+              <button className="btn-secondary" onClick={() => setExcelOpen(false)}>
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Importar BDX desde SharePoint: preview → importar → conciliación */}
+      {importAbierto && (
+        <div className="overlay">
+          <div className="panel" role="dialog" aria-modal="true" aria-label="Importar BDX de SharePoint">
+            <div className="panel-head">
+              <h2>Importar BDX de SharePoint</h2>
+              <button className="panel-close" onClick={cerrarImport} aria-label="Cerrar">
+                ✕
+              </button>
+            </div>
+            <div className="panel-body">
+              {importError && <div className="error">⚠ {importError}</div>}
+              {importBusy && !preview && <div className="loading">Leyendo SharePoint…</div>}
+
+              {preview && !importRes && (
+                <>
+                  <div className="hint" style={{ marginBottom: 12 }}>
+                    Lista de origen: <strong>{preview.list_title}</strong>
+                  </div>
+                  <div className="datos-grid">
+                    <Dato label="Líneas en SharePoint" valor={preview.total_lineas} />
+                    <Dato label="Periodos" valor={preview.periodos.length} />
+                    <Dato label="Suma GWP" valor={imp(preview.suma_gwp)} />
+                    <Dato label="Incluidas en Premium" valor={preview.incluidas_en_premium} />
+                  </div>
+                  <div className="hint" style={{ margin: "10px 0" }}>Periodos: {preview.periodos.join(" · ") || "—"}</div>
+                  <div className="hint" style={{ marginTop: 8 }}>
+                    Al importar se vuelca al BDX único del binder. Es <strong>idempotente</strong>: si ya
+                    estaban, se actualizan (no se duplican).
+                  </div>
+                </>
+              )}
+
+              {importRes && (
+                <>
+                  <div className="hint" style={{ marginBottom: 12 }}>
+                    Importación de <strong>{importRes.list_title}</strong> completada.
+                  </div>
+                  <div className="datos-grid">
+                    <Dato label="Insertadas" valor={importRes.insertadas} />
+                    <Dato label="Actualizadas" valor={importRes.actualizadas} />
+                    <Dato label="Sin _OldID" valor={importRes.sin_old_id} />
+                    <Dato label="Periodos" valor={importRes.periodos.length} />
+                  </div>
+                  <h3 style={{ marginTop: 16, marginBottom: 8 }}>Conciliación SharePoint ↔ base</h3>
+                  <div className="datos-grid">
+                    <Dato
+                      label="Líneas (SP / base)"
+                      valor={`${importRes.conciliacion.lineas_sharepoint} / ${importRes.conciliacion.lineas_postgres}`}
+                    />
+                    <Dato
+                      label="GWP (SP / base)"
+                      valor={`${imp(importRes.conciliacion.gwp_sharepoint)} / ${imp(importRes.conciliacion.gwp_postgres)}`}
+                    />
+                  </div>
+                  <div
+                    style={{
+                      marginTop: 12,
+                      color: importRes.conciliacion.lineas_ok && importRes.conciliacion.gwp_ok ? "#15803d" : "var(--rojo)",
+                      fontWeight: 600,
+                    }}
+                  >
+                    {importRes.conciliacion.lineas_ok && importRes.conciliacion.gwp_ok
+                      ? "✓ Todo cuadra (líneas y GWP)."
+                      : "✗ Hay descuadre — revísalo antes de continuar."}
+                  </div>
+                </>
+              )}
+            </div>
+            <div className="panel-actions">
+              <button className="btn-secondary" onClick={cerrarImport}>
+                Cerrar
+              </button>
+              {preview && !importRes && (
+                <button className="btn-primary" onClick={hacerImport} disabled={importBusy}>
+                  {importBusy ? "Importando…" : `Importar ${preview.total_lineas} líneas`}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
