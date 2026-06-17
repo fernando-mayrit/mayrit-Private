@@ -38,6 +38,7 @@ export default function TablaDatos<T extends { id: number }>({
   storageKey,
   onRowClick,
   acciones,
+  resetSignal,
 }: {
   filas: T[];
   columnas: Col<T>[];
@@ -45,6 +46,7 @@ export default function TablaDatos<T extends { id: number }>({
   storageKey: string;
   onRowClick?: (r: T) => void;
   acciones?: ReactNode;
+  resetSignal?: number;   // al cambiar, limpia los filtros por columna
 }) {
   const COLS_KEY = `${storageKey}.cols`;
   const SORT_KEY = `${storageKey}.sort`;
@@ -75,6 +77,12 @@ export default function TablaDatos<T extends { id: number }>({
   const [dragKey, setDragKey] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const filtroRef = useRef<HTMLDivElement | null>(null);
+
+  // Limpiar filtros por columna cuando el padre lo pide (botón "Limpiar filtros").
+  useEffect(() => {
+    if (resetSignal !== undefined) { setFiltros({}); setFiltro(null); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resetSignal]);
 
   useEffect(() => { try { localStorage.setItem(COLS_KEY, JSON.stringify(visibles)); } catch { /* */ } }, [visibles, COLS_KEY]);
   useEffect(() => { try { localStorage.setItem(SORT_KEY, JSON.stringify(sort)); } catch { /* */ } }, [sort, SORT_KEY]);

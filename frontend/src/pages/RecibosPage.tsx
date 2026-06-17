@@ -82,6 +82,14 @@ export default function RecibosPage() {
   const [sel, setSel] = useState<Recibo | null>(null);
   const [saving, setSaving] = useState(false);
   const [confBorrar, setConfBorrar] = useState(false);
+  const [resetSignal, setResetSignal] = useState(0);
+
+  function limpiarFiltros() {
+    setYoa("");
+    setUmr("");
+    setQ("");
+    setResetSignal((n) => n + 1); // limpia los filtros por columna de la tabla
+  }
 
   async function cargar() {
     setLoading(true);
@@ -141,15 +149,14 @@ export default function RecibosPage() {
   return (
     <div className="container">
       <PageHeader emoji="🧾" title="Recibos" />
-      <div className="toolbar" style={{ flexWrap: "wrap", gap: 10 }}>
-        <label className="filtro-inline">Año
-          <select value={anio} onChange={(e) => setAnio(e.target.value)}>
-            <option value="todos">Todos</option>
-            {anios.map((y) => <option key={y} value={y}>{y}</option>)}
-          </select>
-        </label>
-        <input type="text" placeholder="YOA" style={{ width: 80 }} value={yoa} onChange={(e) => setYoa(e.target.value)} />
-        <input type="search" placeholder="UMR…" style={{ width: 160 }} value={umr} onChange={(e) => setUmr(e.target.value)} />
+      <div className="toolbar" style={{ flexWrap: "wrap" }}>
+        <button className="btn-secondary" title="Limpiar todos los filtros" onClick={limpiarFiltros}>🧹</button>
+        <select className="filtro" value={anio} onChange={(e) => setAnio(e.target.value)}>
+          <option value="todos">Todos los años</option>
+          {anios.map((y) => <option key={y} value={y}>{y}</option>)}
+        </select>
+        <input type="search" placeholder="YOA" style={{ flex: "0 0 90px" }} value={yoa} onChange={(e) => setYoa(e.target.value)} />
+        <input type="search" placeholder="UMR…" style={{ flex: "0 0 180px" }} value={umr} onChange={(e) => setUmr(e.target.value)} />
         <input type="search" placeholder="Buscar nº / mercado / asegurado…" value={q} onChange={(e) => setQ(e.target.value)} />
         <span className="hint">
           Comisión: <b>{eur(totalComision)}</b> · Cobrada: <b>{eur(totalCobrada)}</b>
@@ -169,6 +176,7 @@ export default function RecibosPage() {
           defaultKeys={DEFAULT_KEYS}
           storageKey="mayrit.recibos.tabla.v1"
           onRowClick={(r) => setSel(r)}
+          resetSignal={resetSignal}
         />
       )}
 
