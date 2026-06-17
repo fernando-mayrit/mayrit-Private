@@ -540,12 +540,18 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
               alert((e as Error).message);
             }
           };
+          // Congelado por cierre del binder: Risk/Premium si producción cerrada; Claims si Cerrado total.
+          const congelada = (tipo: string) =>
+            tipo === "claims" ? cerradoTotal : produccionCerrada;
           return (
             <div className="bloqueo-cols">
-              {cols.map((c) => (
+              {cols.map((c) => {
+                const frozen = congelada(c.tipo);
+                return (
                 <div className="bloqueo-col" key={c.titulo}>
                   <h3>
                     <span className="page-title-emoji" style={{ fontSize: 20 }}>{c.emoji}</span> {c.titulo}
+                    {frozen && <span className="hint" style={{ marginLeft: 8 }}>🔒 cerrado</span>}
                   </h3>
                   {c.meses.length === 0 ? (
                     <div className="hint">— sin periodos —</div>
@@ -557,12 +563,12 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
                         <div
                           className={"bloqueo-fila" + (bloq ? " bloqueada" : "")}
                           key={m}
-                          onClick={() => toggle(c.tipo, m)}
-                          style={{ cursor: "pointer" }}
-                          title={bloq ? "Bloqueado (clic para desbloquear)" : "Clic para bloquear este periodo"}
+                          onClick={frozen ? undefined : () => toggle(c.tipo, m)}
+                          style={{ cursor: frozen ? "default" : "pointer", opacity: frozen ? 0.85 : 1 }}
+                          title={frozen ? "Binder cerrado: los bloqueos no se pueden modificar" : bloq ? "Bloqueado (clic para desbloquear)" : "Clic para bloquear este periodo"}
                         >
                           <input type="checkbox" checked={bloq} readOnly tabIndex={-1} />
-                          <button type="button" className="lock-btn" tabIndex={-1}>
+                          <button type="button" className="lock-btn" tabIndex={-1} disabled={frozen}>
                             {bloq ? "🔒" : "🔓"}
                           </button>
                           <span>{mesLargo(m)}</span>
@@ -578,7 +584,8 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
                     })
                   )}
                 </div>
-              ))}
+                );
+              })}
             </div>
           );
         })()

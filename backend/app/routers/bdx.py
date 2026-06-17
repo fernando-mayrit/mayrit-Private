@@ -256,12 +256,29 @@ def listar_bloqueos(binder_id: int, db: Session = Depends(get_db)):
     return [Bloqueo(tipo=b.tipo, periodo=b.periodo) for b in filas]
 
 
+def _exigir_no_cerrado(binder: Binder, tipo: str):
+    """Con el binder cerrado, los bloqueos quedan congelados: Risk/Premium si la producción está
+    cerrada (Cerrado Producción/Cerrado); Claims solo cuando el binder está 'Cerrado'."""
+    estado = binder.estado or ""
+    congelado = (
+        (tipo in ("risk", "premium") and estado.startswith("Cerrado"))
+        or (tipo == "claims" and estado == "Cerrado")
+    )
+    if congelado:
+        raise HTTPException(
+            status_code=409,
+            detail=f"El binder está «{estado}»: los bloqueos de {tipo} no se pueden modificar.",
+        )
+
+
 @router.post("/binders/{binder_id}/bloqueos", response_model=Bloqueo, status_code=201)
 def bloquear(binder_id: int, payload: Bloqueo, db: Session = Depends(get_db)):
-    if db.get(Binder, binder_id) is None:
+    binder = db.get(Binder, binder_id)
+    if binder is None:
         raise HTTPException(status_code=404, detail=f"Binder {binder_id} no encontrado")
     if payload.tipo not in TIPOS_BLOQUEO:
         raise HTTPException(status_code=422, detail=f"Tipo de bloqueo inválido: {payload.tipo}")
+    _exigir_no_cerrado(binder, payload.tipo)
     existe = db.scalar(
         select(BdxBloqueo).where(
             BdxBloqueo.binder_id == binder_id,
@@ -277,6 +294,9 @@ def bloquear(binder_id: int, payload: Bloqueo, db: Session = Depends(get_db)):
 
 @router.delete("/binders/{binder_id}/bloqueos", status_code=204)
 def desbloquear(binder_id: int, tipo: str, periodo: str, db: Session = Depends(get_db)):
+    binder = db.get(Binder, binder_id)
+    if binder is not None:
+        _exigir_no_cerrado(binder, tipo)
     db.execute(
         delete(BdxBloqueo).where(
             BdxBloqueo.binder_id == binder_id,
