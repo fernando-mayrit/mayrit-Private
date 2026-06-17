@@ -70,6 +70,7 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
   const [emitiendo, setEmitiendo] = useState(false);
   // Macheo de un Premium (Excel) seleccionado
   const [matchExcel, setMatchExcel] = useState<{ ruta: string; nombre: string } | null>(null);
+  const [excelModo, setExcelModo] = useState<"risk" | "premium">("risk");
   // Premiums del binder (grupos por mes) y fecha de pago por periodo (para el cobro)
   const [premiums, setPremiums] = useState<PremiumGrupo[]>([]);
   const [fechasPago, setFechasPago] = useState<Record<string, string>>({});
@@ -153,7 +154,8 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
       setExcelBusy(false);
     }
   }
-  function elegirExcel() {
+  function elegirExcel(modo: "risk" | "premium" = "risk") {
+    setExcelModo(modo);
     setExcelOpen(true);
     setExcelSel(null);
     setExcelDir(null);
@@ -264,14 +266,14 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
       </div>
 
       <div className="tabs detalle-tabs">
+        <button className={"tab" + (tab === "bdx" ? " active" : "")} onClick={() => setTab("bdx")}>
+          BDX
+        </button>
         <button className={"tab" + (tab === "bloqueo" ? " active" : "")} onClick={() => setTab("bloqueo")}>
           Bloqueo
         </button>
         <button className={"tab" + (tab === "datos" ? " active" : "")} onClick={() => setTab("datos")}>
-          Datos
-        </button>
-        <button className={"tab" + (tab === "bdx" ? " active" : "")} onClick={() => setTab("bdx")}>
-          BDX
+          Risk
         </button>
         <button className={"tab" + (tab === "premium" ? " active" : "")} onClick={() => setTab("premium")}>
           Premium
@@ -454,8 +456,8 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
           ) : !sel || sel.lineas.length === 0 ? (
             <>
               <div className="toolbar">
-                <button className="btn-primary" onClick={elegirExcel}>
-                  ⬆ Subir Excel
+                <button className="btn-primary" onClick={() => elegirExcel("risk")}>
+                  ⬆ Subir Excel (Risk)
                 </button>
                 {!importado && (
                   <button className="btn-secondary" onClick={abrirImport}>
@@ -482,8 +484,8 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
               onQuitarFiltros={() => setSelMeses(new Set())}
               acciones={
                 <>
-                  <button className="btn-primary btn-sm" onClick={elegirExcel}>
-                    ⬆ Subir Excel
+                  <button className="btn-primary btn-sm" onClick={() => elegirExcel("risk")}>
+                    ⬆ Subir Excel (Risk)
                   </button>
                   {selMeses.size > 0 && (
                     <span className="hint">
@@ -500,10 +502,15 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
 
       {tab === "premium" && (
         <>
-          <h3 style={{ margin: "4px 0 8px" }}>Premium BDX (cobro)</h3>
+          <div className="toolbar" style={{ marginBottom: 10 }}>
+            <h3 style={{ margin: 0 }}>Premium BDX (cobro)</h3>
+            <button className="btn-primary btn-sm" onClick={() => elegirExcel("premium")}>
+              ⬆ Subir Premium (Excel)
+            </button>
+          </div>
           {premiums.length === 0 ? (
             <div className="empty">
-              Aún no hay líneas incluidas en ningún Premium. Ve a la pestaña <b>BDX → «Subir Excel»</b> para
+              Aún no hay líneas incluidas en ningún Premium. Pulsa <b>«Subir Premium (Excel)»</b> para
               machear un Premium con el Risk.
             </div>
           ) : (
@@ -750,7 +757,7 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
         <div className="overlay">
           <div className="panel" role="dialog" aria-modal="true" aria-label="Seleccionar Excel">
             <div className="panel-head">
-              <h2>Subir Excel</h2>
+              <h2>{excelModo === "premium" ? "Subir Premium (Excel)" : "Subir Excel (Risk)"}</h2>
               <button className="panel-close" onClick={() => setExcelOpen(false)} aria-label="Cerrar">
                 ✕
               </button>
@@ -784,8 +791,13 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
                         key={"f:" + f.name}
                         className="fila-click"
                         onClick={() => {
-                          setMatchExcel({ ruta: excelDir.sub ? `${excelDir.sub}/${f.name}` : f.name, nombre: f.name });
+                          const ruta = excelDir.sub ? `${excelDir.sub}/${f.name}` : f.name;
                           setExcelOpen(false);
+                          if (excelModo === "premium") {
+                            setMatchExcel({ ruta, nombre: f.name });
+                          } else {
+                            setExcelSel(f.name); // Risk: carga pendiente (parser del Risk Excel)
+                          }
                         }}
                       >
                         <td>📄 {f.name}</td>
