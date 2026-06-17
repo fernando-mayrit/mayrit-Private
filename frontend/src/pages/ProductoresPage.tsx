@@ -4,12 +4,37 @@ import type { Productor, ProductorWrite } from "../types";
 import FormPanel from "../components/FormPanel";
 import PageHeader from "../components/PageHeader";
 import OptionButtons from "../components/OptionButtons";
+import TablaDatos, { type Col } from "../components/TablaDatos";
 import { PAISES } from "../data/paises";
 
 const api = crud<Productor, ProductorWrite>("/productores");
 
 const TIPOS = ["Corredor", "Agencia de Suscripción"];
 const PERSONAS = ["Persona física", "Persona jurídica"];
+
+// Catálogo de columnas (clic derecho en la cabecera para elegir/ocultar/mover).
+const CATALOGO: Col<Productor>[] = [
+  { key: "nombre", label: "Nombre", tipo: "text", width: 220 },
+  { key: "alias", label: "Alias", tipo: "text" },
+  { key: "tipo", label: "Tipo", tipo: "text" },
+  { key: "persona", label: "Persona", tipo: "text" },
+  { key: "cif", label: "CIF / NIF", tipo: "text" },
+  { key: "domicilio", label: "Domicilio", tipo: "text", width: 200 },
+  { key: "codigo_postal", label: "C.P.", tipo: "text" },
+  { key: "localidad", label: "Localidad", tipo: "text" },
+  { key: "provincia", label: "Provincia", tipo: "text" },
+  { key: "pais", label: "País", tipo: "text" },
+  {
+    key: "activa",
+    label: "Estado",
+    tipo: "text",
+    calc: (p) => (p.activa ? "Activo" : "Inactivo"),
+    render: (p) =>
+      p.activa ? <span className="pill pill-cobrado">Activo</span> : <span className="pill pill-anulado">Inactivo</span>,
+  },
+  { key: "notas", label: "Notas", tipo: "text" },
+];
+const DEFAULT_KEYS = ["nombre", "alias", "tipo", "persona", "pais", "localidad", "activa"];
 
 type FormState = {
   id?: number;
@@ -18,6 +43,7 @@ type FormState = {
   tipo: string;
   pais: string;
   persona: string;
+  activa: boolean;
   cif: string;
   domicilio: string;
   codigo_postal: string;
@@ -32,6 +58,7 @@ const VACIO: FormState = {
   tipo: "",
   pais: "España",
   persona: "",
+  activa: true,
   cif: "",
   domicilio: "",
   codigo_postal: "",
@@ -63,6 +90,7 @@ function formateaCif(raw: string, pais: string, persona: string): string {
 export default function ProductoresPage() {
   const [items, setItems] = useState<Productor[]>([]);
   const [q, setQ] = useState("");
+  const [mostrarInactivos, setMostrarInactivos] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -117,6 +145,7 @@ export default function ProductoresPage() {
       tipo: p.tipo ?? "",
       pais: p.pais ?? "España",
       persona: p.persona ?? "",
+      activa: p.activa !== false,
       cif: p.cif ?? "",
       domicilio: p.domicilio ?? "",
       codigo_postal: p.codigo_postal ?? "",
@@ -192,6 +221,7 @@ export default function ProductoresPage() {
       tipo: form.tipo,
       pais: form.pais,
       persona: form.persona,
+      activa: form.activa !== false,
       cif: form.cif.trim(),
       domicilio: form.domicilio.trim(),
       codigo_postal: form.codigo_postal.trim(),
@@ -246,8 +276,10 @@ export default function ProductoresPage() {
     ? "00000000-X"
     : "Elige antes Física/Jurídica";
 
+  const visibles = mostrarInactivos ? items : items.filter((p) => p.activa);
+
   return (
-    <div className="container">
+    <div className="container lista-page">
       <PageHeader emoji="🤝" title="Productores" />
       <div className="toolbar">
         <input
@@ -260,43 +292,31 @@ export default function ProductoresPage() {
         <button className="btn-primary" onClick={abrirNuevo}>
           + Nuevo productor
         </button>
+        <label className="check-inline" title="Incluir productores desactivados">
+          <input type="checkbox" checked={mostrarInactivos} onChange={(e) => setMostrarInactivos(e.target.checked)} />
+          Mostrar inactivos
+        </label>
       </div>
 
       {error && <div className="error">⚠ {error}</div>}
 
       {loading ? (
         <div className="loading">Cargando…</div>
-      ) : items.length === 0 ? (
-        <div className="empty">No hay productores. Crea el primero con «+ Nuevo productor».</div>
+      ) : visibles.length === 0 ? (
+        <div className="empty">No hay productores{mostrarInactivos ? "" : " activos"}.</div>
       ) : (
-        <table>
-          <thead>
-            <tr>
-              <th>Nombre</th>
-              <th>Alias</th>
-              <th>Tipo</th>
-              <th>País</th>
-              <th>Localidad</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((p) => (
-              <tr key={p.id}>
-                <td>{p.nombre}</td>
-                <td>{p.alias ?? "—"}</td>
-                <td>{p.tipo ?? "—"}</td>
-                <td>{p.pais ?? "—"}</td>
-                <td>{p.localidad ?? "—"}</td>
-                <td className="acciones">
-                  <button className="btn-link" onClick={() => abrirEdicion(p)}>
-                    Editar
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <TablaDatos
+          filas={visibles}
+          columnas={CATALOGO}
+          defaultKeys={DEFAULT_KEYS}
+          storageKey="mayrit.productores.tabla.v1"
+          rowClass={(p) => (p.activa ? undefined : "fila-inactiva")}
+          rowAction={(p) => (
+            <button className="btn-link" onClick={() => abrirEdicion(p)}>
+              Editar
+            </button>
+          )}
+        />
       )}
 
       {form && (
@@ -410,6 +430,15 @@ export default function ProductoresPage() {
               onChange={(e) => setForm({ ...form, provincia: e.target.value })}
             />
           </div>
+
+          <label className="check-inline" style={{ marginBottom: 14 }}>
+            <input
+              type="checkbox"
+              checked={form.activa !== false}
+              onChange={(e) => setForm({ ...form, activa: e.target.checked })}
+            />
+            Activo (desmárcalo para que deje de aparecer en listados y desplegables)
+          </label>
 
           <div className="field">
             <label>Notas</label>

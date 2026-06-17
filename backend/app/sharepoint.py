@@ -292,3 +292,24 @@ MAPEO_CLIENTES: dict[str, str] = {
 def leer_lista_tomadores(list_title: str = "Mayrit - TClientes") -> list[dict]:
     """Tomadores (clientes) mapeados a los campos de Tomador."""
     return leer_lista(list_title, MAPEO_CLIENTES, set())
+
+
+# ── Corredores (TCorredores) → campos del modelo Productor ──
+MAPEO_CORREDORES: dict[str, str] = {
+    "alias": "IdCorredor",
+    "nombre": "NombreCorredor",
+    "tipo_corredor": "TipoCorredor",  # 1 → Persona jurídica, 2 → Persona física
+    "coverholder": "Coverholder",   # True → Agencia de Suscripción, False → Corredor
+    "cif": "CIF",
+    "domicilio": "Domicilio",
+    "codigo_postal": "CodigoPostal",
+    "localidad": "Localidad",
+    "provincia": "Provincia",
+    "pais": "Pais",
+    "notas": "Notas",
+}
+
+
+def leer_lista_corredores(list_title: str = "Mayrit - TCorredores") -> list[dict]:
+    """Corredores mapeados a los campos de Productor."""
+    return leer_lista(list_title, MAPEO_CORREDORES, set())

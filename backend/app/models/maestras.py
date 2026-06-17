@@ -32,6 +32,7 @@ class Productor(Base):
     nombre: Mapped[str] = mapped_column(String(255), index=True)         # NombreCorredor
     tipo: Mapped[str | None] = mapped_column(String(40))                 # Corredor / Agencia de Suscripción
     persona: Mapped[str | None] = mapped_column(String(20))              # Persona física / jurídica
+    activa: Mapped[bool] = mapped_column(Boolean, server_default=text("true"), default=True)  # se desactiva al dejar de trabajar con él
 
     cif: Mapped[str | None] = mapped_column(String(50))
     domicilio: Mapped[str | None] = mapped_column(String(255))

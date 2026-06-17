@@ -8,6 +8,7 @@ export type Col<T> = {
   key: string;
   label: string;
   tipo: ColTipo;
+  width?: number;                 // ancho máx. en px; recorta el texto con "…" y tooltip
   calc?: (r: T) => unknown;       // valor calculado (si no es un campo directo)
   render?: (r: T) => ReactNode;   // celda personalizada (p. ej. pills); el filtro usa el texto
 };
@@ -38,6 +39,8 @@ export default function TablaDatos<T extends { id: number }>({
   storageKey,
   onRowClick,
   acciones,
+  rowAction,
+  rowClass,
   resetSignal,
 }: {
   filas: T[];
@@ -46,6 +49,8 @@ export default function TablaDatos<T extends { id: number }>({
   storageKey: string;
   onRowClick?: (r: T) => void;
   acciones?: ReactNode;
+  rowAction?: (r: T) => ReactNode;        // columna fija a la derecha (p. ej. botón "Editar")
+  rowClass?: (r: T) => string | undefined; // clase CSS por fila (p. ej. atenuar inactivos)
   resetSignal?: number;   // al cambiar, limpia los filtros por columna
 }) {
   const COLS_KEY = `${storageKey}.cols`;
@@ -200,7 +205,7 @@ export default function TablaDatos<T extends { id: number }>({
                   <th
                     key={c.key}
                     className={(numCol ? "num " : "") + "col-arrastrable" + (dragKey === c.key ? " arrastrando" : "")}
-                    style={{ whiteSpace: "nowrap" }}
+                    style={{ whiteSpace: "nowrap", ...(c.width ? { maxWidth: c.width } : {}) }}
                     draggable
                     onDragStart={(e) => { setDragKey(c.key); e.dataTransfer.effectAllowed = "move"; }}
                     onDragOver={(e) => e.preventDefault()}
@@ -215,19 +220,34 @@ export default function TablaDatos<T extends { id: number }>({
                   </th>
                 );
               })}
+              {rowAction && <th></th>}
             </tr>
           </thead>
           <tbody>
             {datos.map((r) => (
-              <tr key={r.id} className={onRowClick ? "fila-click" : undefined} onClick={() => onRowClick?.(r)}>
+              <tr
+                key={r.id}
+                className={[onRowClick ? "fila-click" : "", rowClass?.(r) ?? ""].join(" ").trim() || undefined}
+                onClick={() => onRowClick?.(r)}
+              >
                 {cols.map((c) => {
                   const numCol = c.tipo === "num" || c.tipo === "pct" || c.tipo === "int";
                   return (
-                    <td key={c.key} className={numCol ? "num" : c.tipo === "bool" ? "celda-centro" : undefined}>
-                      {celda(r, c)}
+                    <td
+                      key={c.key}
+                      className={numCol ? "num" : c.tipo === "bool" ? "celda-centro" : undefined}
+                      style={c.width ? { maxWidth: c.width } : undefined}
+                      title={c.width && !c.render ? fmtValor(r, c) : undefined}
+                    >
+                      {c.width ? <span className="celda-recorte">{celda(r, c)}</span> : celda(r, c)}
                     </td>
                   );
                 })}
+                {rowAction && (
+                  <td className="acciones" onClick={(e) => e.stopPropagation()}>
+                    {rowAction(r)}
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>

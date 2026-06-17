@@ -269,7 +269,11 @@ export default function TomadoresPage() {
           columnas={CATALOGO}
           defaultKeys={DEFAULT_KEYS}
           storageKey="mayrit.tomadores.tabla.v1"
-          onRowClick={(t) => abrirEdicion(t)}
+          rowAction={(t) => (
+            <button className="btn-link" onClick={() => abrirEdicion(t)}>
+              Editar
+            </button>
+          )}
         />
       )}
 

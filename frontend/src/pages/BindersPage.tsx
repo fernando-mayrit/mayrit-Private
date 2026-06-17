@@ -1090,7 +1090,9 @@ export default function BindersPage() {
             </label>
             <select value={form.productor_id} onChange={(e) => setForm({ ...form, productor_id: e.target.value })}>
               <option value="">— Elige agencia —</option>
-              {agencias.map((a) => (
+              {agencias
+                .filter((a) => a.activa || String(a.id) === form.productor_id)
+                .map((a) => (
                 <option key={a.id} value={a.id}>
                   {a.nombre}
                 </option>

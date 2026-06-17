@@ -14,7 +14,7 @@ const seguroLabel = (s: string | null) => (s === "1" ? "Seguro Directo" : s === 
 const CATALOGO: Col<Poliza>[] = [
   { key: "numero_poliza", label: "Nº Póliza", tipo: "text" },
   { key: "referencia", label: "Referencia", tipo: "text" },
-  { key: "asegurado", label: "Asegurado", tipo: "text" },
+  { key: "asegurado", label: "Asegurado", tipo: "text", width: 160 },
   { key: "corredor", label: "Corredor", tipo: "text" },
   { key: "ramo", label: "Ramo", tipo: "text" },
   { key: "mercado", label: "Mercado", tipo: "text" },
@@ -41,7 +41,7 @@ const CATALOGO: Col<Poliza>[] = [
   { key: "prima_participacion", label: "Prima Part.", tipo: "num" },
 ];
 const DEFAULT_KEYS = [
-  "numero_poliza", "asegurado", "ramo", "mercado", "seguro",
+  "numero_poliza", "asegurado", "corredor", "ramo", "mercado", "seguro",
   "prima_neta", "comision_total", "num_recibos", "estado", "fecha_efecto", "fecha_vencimiento",
 ];
 
@@ -126,7 +126,7 @@ export default function PolizasPage() {
           filas={filtrados}
           columnas={columnas}
           defaultKeys={DEFAULT_KEYS}
-          storageKey="mayrit.polizas.tabla.v2"
+          storageKey="mayrit.polizas.tabla.v3"
           onRowClick={(p) => setForm(p)}
         />
       )}

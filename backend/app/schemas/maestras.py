@@ -19,6 +19,7 @@ class ProductorBase(BaseModel):
     alias: str | None = None
     tipo: str | None = None
     persona: str | None = None
+    activa: bool = True
     cif: str | None = None
     domicilio: str | None = None
     codigo_postal: str | None = None
@@ -38,6 +39,7 @@ class ProductorUpdate(BaseModel):
     alias: str | None = None
     tipo: str | None = None
     persona: str | None = None
+    activa: bool | None = None
     cif: str | None = None
     domicilio: str | None = None
     codigo_postal: str | None = None

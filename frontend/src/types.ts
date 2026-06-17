@@ -32,6 +32,7 @@ export interface Productor {
   alias: string | null;
   tipo: string | null;
   persona: string | null;
+  activa: boolean;
   cif: string | null;
   domicilio: string | null;
   codigo_postal: string | null;
@@ -479,6 +480,7 @@ export interface ProductorWrite {
   alias?: string | null;
   tipo?: string | null;
   persona?: string | null;
+  activa?: boolean;
   cif?: string | null;
   domicilio?: string | null;
   codigo_postal?: string | null;
