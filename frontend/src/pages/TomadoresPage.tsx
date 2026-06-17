@@ -4,11 +4,26 @@ import type { Tomador, TomadorWrite } from "../types";
 import FormPanel from "../components/FormPanel";
 import PageHeader from "../components/PageHeader";
 import OptionButtons from "../components/OptionButtons";
+import TablaDatos, { type Col } from "../components/TablaDatos";
 import { PAISES } from "../data/paises";
 
 const api = crud<Tomador, TomadorWrite>("/tomadores");
 
 const TIPOS = ["Persona física", "Persona jurídica"];
+
+// Catálogo de columnas (clic derecho en la cabecera para elegir/ocultar/mover).
+const CATALOGO: Col<Tomador>[] = [
+  { key: "nombre", label: "Nombre", tipo: "text" },
+  { key: "tipo", label: "Tipo", tipo: "text" },
+  { key: "cif", label: "CIF / NIF", tipo: "text" },
+  { key: "domicilio", label: "Domicilio", tipo: "text" },
+  { key: "codigo_postal", label: "C.P.", tipo: "text" },
+  { key: "localidad", label: "Localidad", tipo: "text" },
+  { key: "provincia", label: "Provincia", tipo: "text" },
+  { key: "pais", label: "País", tipo: "text" },
+  { key: "notas", label: "Notas", tipo: "text" },
+];
+const DEFAULT_KEYS = ["nombre", "tipo", "pais", "cif", "localidad"];
 
 type FormState = {
   id?: number;
@@ -227,7 +242,7 @@ export default function TomadoresPage() {
     : "Elige antes Física/Jurídica";
 
   return (
-    <div className="container">
+    <div className="container lista-page">
       <PageHeader emoji="👥" title="Tomadores" />
       <div className="toolbar">
         <input
@@ -249,34 +264,13 @@ export default function TomadoresPage() {
       ) : items.length === 0 ? (
         <div className="empty">No hay tomadores. Crea el primero con «+ Nuevo tomador».</div>
       ) : (
-        <table>
-          <thead>
-            <tr>
-              <th>Nombre</th>
-              <th>Tipo</th>
-              <th>País</th>
-              <th>CIF</th>
-              <th>Localidad</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((t) => (
-              <tr key={t.id}>
-                <td>{t.nombre}</td>
-                <td>{t.tipo ?? "—"}</td>
-                <td>{t.pais ?? "—"}</td>
-                <td>{t.cif ?? "—"}</td>
-                <td>{t.localidad ?? "—"}</td>
-                <td className="acciones">
-                  <button className="btn-link" onClick={() => abrirEdicion(t)}>
-                    Editar
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <TablaDatos
+          filas={items}
+          columnas={CATALOGO}
+          defaultKeys={DEFAULT_KEYS}
+          storageKey="mayrit.tomadores.tabla.v1"
+          onRowClick={(t) => abrirEdicion(t)}
+        />
       )}
 
       {form && (

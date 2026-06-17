@@ -274,3 +274,21 @@ def leer_lista_bdx(list_title: str) -> list[dict]:
 def leer_lista_polizas(list_title: str = "Mayrit - TPolizas") -> list[dict]:
     """Pólizas (Open Market) mapeadas a los campos de Poliza."""
     return leer_lista(list_title, MAPEO_POLIZAS, DATE_FIELDS_POLIZAS)
+
+
+# ── Tomadores (TClientes) → campos del modelo Tomador ──
+MAPEO_CLIENTES: dict[str, str] = {
+    "nombre": "NombreCliente",
+    "tipo": "TipoCliente",
+    "cif": "CIF",
+    "domicilio": "Domicilio",
+    "codigo_postal": "CodigoPostal",
+    "localidad": "Localidad",
+    "provincia": "Provincia",
+    "pais": "Pais",
+}
+
+
+def leer_lista_tomadores(list_title: str = "Mayrit - TClientes") -> list[dict]:
+    """Tomadores (clientes) mapeados a los campos de Tomador."""
+    return leer_lista(list_title, MAPEO_CLIENTES, set())
