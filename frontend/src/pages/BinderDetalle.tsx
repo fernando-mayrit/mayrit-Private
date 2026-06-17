@@ -229,6 +229,29 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
       },
     });
   }
+  // Tras machear/subir un Premium, ofrecer bloquearlo (cerrar ese Premium).
+  function pedirBloquearPremium(periodo: string) {
+    setConfirmar({
+      titulo: "¿Bloquear este Premium?",
+      mensaje: (
+        <>
+          Premium <b>{mesLargo(periodo)}</b> macheado. ¿Quieres <b>bloquearlo</b> ahora?
+        </>
+      ),
+      detalle: "Un Premium bloqueado no admite más cambios ni se puede deshacer su cobro. Podrás desbloquearlo en la pestaña Bloqueo.",
+      confirmLabel: "Sí, bloquear",
+      accion: async () => {
+        setConfirmar(null);
+        setError(null);
+        try {
+          await bdxApi.bloquear(binder.id, "premium", periodo);
+          await cargar();
+        } catch (e) {
+          setError((e as Error).message);
+        }
+      },
+    });
+  }
   function pedirDescobrarPremium(periodo: string) {
     setConfirmar({
       titulo: "DESHACER el cobro del Premium",
@@ -823,9 +846,10 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
           ruta={matchExcel.ruta}
           nombre={matchExcel.nombre}
           onClose={() => setMatchExcel(null)}
-          onApplied={async () => {
+          onApplied={async (periodo) => {
             setMatchExcel(null);
             await cargar();
+            pedirBloquearPremium(periodo);
           }}
         />
       )}

@@ -222,6 +222,15 @@ def incluir_en_premium(payload: IncluirPremium, db: Session = Depends(get_db)):
             incluido = True
         except (ValueError, TypeError):
             raise HTTPException(status_code=422, detail=f"Periodo inválido: {payload.periodo!r} (use 'YYYY-MM').")
+        # No permitir machear contra un Premium bloqueado.
+        primera = db.get(BdxLinea, payload.linea_ids[0])
+        binder_id = db.get(Bdx, primera.bdx_id).binder_id if primera else None
+        if binder_id and db.scalar(
+            select(BdxBloqueo).where(
+                BdxBloqueo.binder_id == binder_id, BdxBloqueo.tipo == "premium", BdxBloqueo.periodo == payload.periodo
+            )
+        ) is not None:
+            raise HTTPException(status_code=409, detail=f"El Premium {payload.periodo} está bloqueado: no admite cambios.")
     db.execute(
         update(BdxLinea)
         .where(BdxLinea.id.in_(payload.linea_ids))

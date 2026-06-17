@@ -9,6 +9,9 @@ from sqlalchemy.orm import Session
 
 from ..db import get_db
 from ..models.maestras import (
+    Bdx,
+    BdxBloqueo,
+    BdxLinea,
     Binder,
     BinderLimite,
     BinderSeccion,
@@ -17,6 +20,19 @@ from ..models.maestras import (
     SeccionRiskCode,
 )
 from ..schemas import maestras as sch
+
+
+def _bdx_sin_bloquear(db: Session, binder_id: int) -> tuple[list[str], list[str]]:
+    """Periodos (YYYY-MM) de Risk y de Premium del binder que NO están bloqueados."""
+    lineas = db.scalars(
+        select(BdxLinea).join(Bdx, BdxLinea.bdx_id == Bdx.id).where(Bdx.binder_id == binder_id)
+    ).all()
+    risk = {l.reporting_period_start.strftime("%Y-%m") for l in lineas if l.reporting_period_start}
+    prem = {l.premium_bdx.strftime("%Y-%m") for l in lineas if l.incluido_en_premium and l.premium_bdx}
+    locks = db.execute(select(BdxBloqueo.tipo, BdxBloqueo.periodo).where(BdxBloqueo.binder_id == binder_id)).all()
+    risk_lock = {p for t, p in locks if t == "risk"}
+    prem_lock = {p for t, p in locks if t == "premium"}
+    return sorted(risk - risk_lock), sorted(prem - prem_lock)
 
 router = APIRouter(prefix="/binders", tags=["Binders"])
 
@@ -209,6 +225,20 @@ def editar(binder_id: int, payload: sch.BinderUpdate, db: Session = Depends(get_
     if b is None:
         raise HTTPException(status_code=404, detail=f"Binder {binder_id} no encontrado")
     data = payload.model_dump(exclude={"secciones", "limites"}, exclude_unset=True)
+    # No se puede cerrar un binder si quedan Risk o Premium sin bloquear.
+    nuevo_estado = data.get("estado")
+    if nuevo_estado and nuevo_estado.startswith("Cerrado") and not (b.estado or "").startswith("Cerrado"):
+        risk_p, prem_p = _bdx_sin_bloquear(db, binder_id)
+        if risk_p or prem_p:
+            partes = []
+            if risk_p:
+                partes.append(f"Risk sin bloquear: {', '.join(risk_p)}")
+            if prem_p:
+                partes.append(f"Premium sin bloquear: {', '.join(prem_p)}")
+            raise HTTPException(
+                status_code=409,
+                detail="No se puede cerrar el binder con BDX sin bloquear. " + " · ".join(partes),
+            )
     for k, v in data.items():
         setattr(b, k, v)
     if payload.secciones is not None:

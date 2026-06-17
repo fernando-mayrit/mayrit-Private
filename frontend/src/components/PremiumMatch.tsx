@@ -19,7 +19,7 @@ export default function PremiumMatch({
   ruta: string;
   nombre: string;
   onClose: () => void;
-  onApplied: () => void;
+  onApplied: (periodo: string) => void;
 }) {
   const [prev, setPrev] = useState<ExcelPreview | null>(null);
   const [hoja, setHoja] = useState<string>("");
@@ -72,7 +72,7 @@ export default function PremiumMatch({
     setError(null);
     try {
       await bdxApi.incluirPremium(match.matched_ids, periodo);
-      onApplied();
+      onApplied(periodo);
     } catch (e) {
       setError((e as Error).message);
       setBusy(false);

@@ -20,6 +20,7 @@ from ..config import settings
 from ..db import get_db
 from ..models.maestras import (
     Bdx,
+    BdxBloqueo,
     BdxLinea,
     Binder,
     BinderSeccion,
@@ -375,6 +376,22 @@ def _recalcular_cobro_recibo(db: Session, recibo: Recibo) -> None:
     _recompute(recibo)
 
 
+def _premium_bloqueado(db: Session, binder_id: int, periodo: str) -> bool:
+    return db.scalar(
+        select(BdxBloqueo).where(
+            BdxBloqueo.binder_id == binder_id, BdxBloqueo.tipo == "premium", BdxBloqueo.periodo == periodo
+        )
+    ) is not None
+
+
+def _exigir_premium_no_bloqueado(db: Session, binder_id: int, periodo: str):
+    if _premium_bloqueado(db, binder_id, periodo):
+        raise HTTPException(
+            status_code=409,
+            detail=f"El Premium {periodo} está bloqueado: no se puede modificar ni cambiar su cobro.",
+        )
+
+
 def _lineas_premium(db: Session, binder_id: int, periodo: str):
     ini, fin = _rango_mes(periodo)
     return db.scalars(
@@ -439,6 +456,7 @@ def listar_premium(binder_id: int, db: Session = Depends(get_db)):
 @router.post("/binders/{binder_id}/premium/cobrar")
 def cobrar_premium(binder_id: int, payload: CobrarPremium, db: Session = Depends(get_db)):
     """Da por cobrado el Premium entero (con la fecha real) y deriva el cobro a los recibos afectados."""
+    _exigir_premium_no_bloqueado(db, binder_id, payload.periodo)
     lineas = _lineas_premium(db, binder_id, payload.periodo)
     if not lineas:
         raise HTTPException(status_code=400, detail=f"No hay líneas en el Premium {payload.periodo}.")
@@ -457,6 +475,7 @@ def cobrar_premium(binder_id: int, payload: CobrarPremium, db: Session = Depends
 @router.post("/binders/{binder_id}/premium/descobrar")
 def descobrar_premium(binder_id: int, payload: CobrarPremium, db: Session = Depends(get_db)):
     """Deshace el cobro de un Premium (vuelve a pendiente) y recalcula los recibos."""
+    _exigir_premium_no_bloqueado(db, binder_id, payload.periodo)
     lineas = _lineas_premium(db, binder_id, payload.periodo)
     if not lineas:
         raise HTTPException(status_code=400, detail=f"No hay líneas en el Premium {payload.periodo}.")
