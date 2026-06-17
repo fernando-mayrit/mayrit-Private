@@ -177,7 +177,6 @@ class PolizaBase(BaseModel):
     moneda: str | None = None
     fecha_efecto: dt.date | None = None
     fecha_vencimiento: dt.date | None = None
-    yoa: int | None = None
     renovacion_automatica: bool = False
     coaseguro: bool = False
     limite: Decimal | None = None
@@ -214,7 +213,6 @@ class PolizaUpdate(BaseModel):
     moneda: str | None = None
     fecha_efecto: dt.date | None = None
     fecha_vencimiento: dt.date | None = None
-    yoa: int | None = None
     renovacion_automatica: bool | None = None
     coaseguro: bool | None = None
     limite: Decimal | None = None

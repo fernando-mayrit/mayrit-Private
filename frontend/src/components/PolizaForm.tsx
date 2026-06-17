@@ -101,7 +101,6 @@ export default function PolizaForm({
       return setError("Indica al menos el Asegurado o el Nº de Póliza.");
     setSaving(true);
     setError(null);
-    const yoa = form.fecha_efecto ? Number(form.fecha_efecto.slice(0, 4)) : null;
     const payload: PolizaWrite = {
       numero_poliza: form.numero_poliza.trim() || null,
       referencia: form.referencia.trim() || null,
@@ -116,7 +115,6 @@ export default function PolizaForm({
       moneda: form.moneda || null,
       fecha_efecto: form.fecha_efecto || null,
       fecha_vencimiento: form.fecha_vencimiento || null,
-      yoa,
       renovacion_automatica: form.renovacion_automatica,
       coaseguro: form.coaseguro,
       limite: form.limite ? num(form.limite) : null,

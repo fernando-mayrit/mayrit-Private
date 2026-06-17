@@ -23,7 +23,7 @@ TEXTO = {"numero_poliza", "referencia", "asegurado", "corredor", "ramo", "mercad
          "tipo_documento", "estado", "seguro", "pago", "moneda"}
 FECHAS = {"fecha_efecto", "fecha_vencimiento"}
 BOOL = {"renovacion_automatica", "coaseguro"}
-INT = {"yoa"}
+INT: set[str] = set()
 PORC = {"impuestos_porc", "comision_porc"}  # en SharePoint vienen como fracción → ×100
 NUM = {"limite", "franquicia", "capacidad", "prima_neta", "impuestos", "recargos",
        "prima_total", "comision_total", "prima_participacion"}
@@ -106,7 +106,7 @@ def main():
     print("Muestra de nuevas:")
     for d in muestra:
         print(f"   · {d.get('numero_poliza')} | {d.get('asegurado')} | seguro={d.get('seguro')} | "
-              f"prima_neta={d.get('prima_neta')} | com%={d.get('comision_porc')} | yoa={d.get('yoa')}")
+              f"prima_neta={d.get('prima_neta')} | com%={d.get('comision_porc')}")
 
     if not args.apply:
         db.rollback()

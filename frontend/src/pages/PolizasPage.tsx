@@ -26,7 +26,6 @@ const CATALOGO: Col<Poliza>[] = [
   { key: "moneda", label: "Moneda", tipo: "text" },
   { key: "fecha_efecto", label: "F. Efecto", tipo: "date" },
   { key: "fecha_vencimiento", label: "F. Vto.", tipo: "date" },
-  { key: "yoa", label: "YOA", tipo: "int" },
   { key: "renovacion_automatica", label: "Ren. Auto.", tipo: "bool" },
   { key: "coaseguro", label: "Coaseguro", tipo: "bool" },
   { key: "limite", label: "Límite 100%", tipo: "num" },
@@ -43,7 +42,7 @@ const CATALOGO: Col<Poliza>[] = [
 ];
 const DEFAULT_KEYS = [
   "numero_poliza", "asegurado", "ramo", "mercado", "seguro",
-  "prima_neta", "comision_total", "estado", "fecha_efecto", "fecha_vencimiento", "yoa",
+  "prima_neta", "comision_total", "estado", "fecha_efecto", "fecha_vencimiento",
 ];
 
 export default function PolizasPage() {
@@ -51,7 +50,6 @@ export default function PolizasPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [q, setQ] = useState("");
-  const [fYoa, setFYoa] = useState("");
   const [form, setForm] = useState<Poliza | "nueva" | null>(null);
 
   async function cargar() {
@@ -69,14 +67,12 @@ export default function PolizasPage() {
     cargar();
   }, []);
 
-  const yoas = [...new Set(items.map((p) => p.yoa).filter((y): y is number => y != null))].sort((a, b) => b - a);
   const filtrados = items.filter(
     (p) =>
-      (!fYoa || String(p.yoa) === fYoa) &&
-      (!q ||
-        `${p.numero_poliza ?? ""} ${p.asegurado ?? ""} ${p.corredor ?? ""} ${p.referencia ?? ""}`
-          .toLowerCase()
-          .includes(q.toLowerCase()))
+      !q ||
+      `${p.numero_poliza ?? ""} ${p.asegurado ?? ""} ${p.corredor ?? ""} ${p.referencia ?? ""}`
+        .toLowerCase()
+        .includes(q.toLowerCase())
   );
   const totalPrima = filtrados.reduce((a, p) => a + num(p.prima_neta), 0);
   const totalComision = filtrados.reduce((a, p) => a + num(p.comision_total), 0);
@@ -85,12 +81,6 @@ export default function PolizasPage() {
     <div className="container lista-page">
       <PageHeader emoji="📄" title="Pólizas (OM)" />
       <div className="toolbar" style={{ flexWrap: "wrap" }}>
-        <select className="filtro" value={fYoa} onChange={(e) => setFYoa(e.target.value)}>
-          <option value="">YOA: todos</option>
-          {yoas.map((y) => (
-            <option key={y} value={y}>{y}</option>
-          ))}
-        </select>
         <input
           type="search"
           placeholder="Buscar nº póliza / asegurado / corredor…"

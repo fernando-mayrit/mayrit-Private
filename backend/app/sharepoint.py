@@ -208,7 +208,6 @@ MAPEO_POLIZAS: dict[str, str] = {
     "moneda": "Moneda",
     "fecha_efecto": "FechaEfecto",
     "fecha_vencimiento": "FechaVencimiento",
-    "yoa": "YOA",
     "renovacion_automatica": "RenovacionAutomatica",
     "coaseguro": "Coaseguro",
     "limite": "Limite",

@@ -502,7 +502,6 @@ class Poliza(Base):
     moneda: Mapped[str | None] = mapped_column(String(10), server_default="EUR", default="EUR")
     fecha_efecto: Mapped[dt.date | None] = mapped_column(Date)
     fecha_vencimiento: Mapped[dt.date | None] = mapped_column(Date)
-    yoa: Mapped[int | None] = mapped_column(Integer, index=True)
     renovacion_automatica: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
     coaseguro: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
 

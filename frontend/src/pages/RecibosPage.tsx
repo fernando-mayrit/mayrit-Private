@@ -18,7 +18,7 @@ const periodoFmt = (p: string | null | undefined) => {
 // Catálogo de TODAS las columnas (clic derecho en la cabecera para elegir).
 const CATALOGO: Col<Recibo>[] = [
   { key: "numero", label: "Número", tipo: "text" },
-  { key: "binder_umr", label: "Binder (UMR)", tipo: "text" },
+  { key: "umr_poliza", label: "UMR / Nº Póliza", tipo: "text", calc: (r) => r.numero_poliza ?? r.binder_umr },
   { key: "periodo", label: "Risk BDX", tipo: "text", calc: (r) => periodoFmt(r.periodo) },
   { key: "anio", label: "Año", tipo: "int" },
   { key: "yoa", label: "YOA", tipo: "int" },
@@ -33,7 +33,6 @@ const CATALOGO: Col<Recibo>[] = [
   { key: "estado", label: "Estado", tipo: "text" },
   { key: "nombre_mercado", label: "Mercado", tipo: "text" },
   { key: "mercado", label: "Mercado (alias)", tipo: "text" },
-  { key: "numero_poliza", label: "Nº Póliza / UMR", tipo: "text" },
   { key: "asegurado", label: "Asegurado", tipo: "text" },
   { key: "corredor", label: "Corredor", tipo: "text" },
   { key: "ramo", label: "Ramo", tipo: "text" },
@@ -64,7 +63,7 @@ const CATALOGO: Col<Recibo>[] = [
   { key: "honorarios", label: "Honorarios", tipo: "num" },
 ];
 const DEFAULT_KEYS = [
-  "numero", "binder_umr", "periodo", "nombre_mercado", "comision_retenida",
+  "numero", "umr_poliza", "periodo", "nombre_mercado", "comision_retenida",
   "comision_retenida_cobrada", "comision_pendiente_cobro", "estado_cobro", "fecha_contable",
 ];
 
@@ -134,10 +133,11 @@ export default function RecibosPage() {
     }
   }
 
-  const umrs = [...new Set(items.map((r) => r.binder_umr).filter(Boolean) as string[])].sort();
+  const refDe = (r: Recibo) => r.numero_poliza ?? r.binder_umr ?? null;
+  const umrs = [...new Set(items.map(refDe).filter(Boolean) as string[])].sort();
   const filtrados = items.filter(
     (r) =>
-      (!umr || r.binder_umr === umr) &&
+      (!umr || refDe(r) === umr) &&
       (!q || `${r.numero} ${r.nombre_mercado ?? ""} ${r.asegurado ?? ""}`.toLowerCase().includes(q.toLowerCase()))
   );
   const totalComision = filtrados.reduce((a, r) => a + num(r.comision_retenida), 0);
@@ -154,7 +154,7 @@ export default function RecibosPage() {
           {anios.map((y) => <option key={y} value={y}>{y}</option>)}
         </select>
         <select className="filtro" value={umr} onChange={(e) => setUmr(e.target.value)}>
-          <option value="">UMR: todos</option>
+          <option value="">UMR/Póliza: todos</option>
           {umrs.map((u) => <option key={u} value={u}>{u}</option>)}
         </select>
         <input type="search" placeholder="Buscar nº / mercado / asegurado…" value={q} onChange={(e) => setQ(e.target.value)} />

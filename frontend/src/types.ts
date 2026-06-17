@@ -422,7 +422,6 @@ export interface Poliza {
   moneda: string | null;
   fecha_efecto: string | null;
   fecha_vencimiento: string | null;
-  yoa: number | null;
   renovacion_automatica: boolean;
   coaseguro: boolean;
   limite: string | number | null;

@@ -152,6 +152,35 @@ def _read(db: Session, r: Recibo) -> sch.ReciboRead:
     return data
 
 
+def _read_lote(db: Session, recibos: list[Recibo]) -> list[sch.ReciboRead]:
+    """Como _read pero para una lista, cargando binders, pólizas y conteos EN LOTE (evita N+1)."""
+    if not recibos:
+        return []
+    bids = {r.binder_id for r in recibos if r.binder_id}
+    pids = {r.poliza_id for r in recibos if r.poliza_id}
+    binders = {b.id: b for b in db.scalars(select(Binder).where(Binder.id.in_(bids))).all()} if bids else {}
+    polizas = {p.id: p for p in db.scalars(select(Poliza).where(Poliza.id.in_(pids))).all()} if pids else {}
+    rids = [r.id for r in recibos]
+    counts = {
+        rid: c
+        for rid, c in db.execute(
+            select(BdxLinea.recibo_id, func.count(BdxLinea.id))
+            .where(BdxLinea.recibo_id.in_(rids))
+            .group_by(BdxLinea.recibo_id)
+        ).all()
+    }
+    out: list[sch.ReciboRead] = []
+    for r in recibos:
+        data = sch.ReciboRead.model_validate(r)
+        b = binders.get(r.binder_id) if r.binder_id else None
+        p = polizas.get(r.poliza_id) if r.poliza_id else None
+        data.binder_umr = (b.umr or b.agreement_number) if b else None
+        data.poliza_numero = p.numero_poliza if p else None
+        data.num_lineas = counts.get(r.id, 0)
+        out.append(data)
+    return out
+
+
 # ──────────────────────────────── Listados ──────────────────────────────────
 @router.get("/recibos", response_model=list[sch.ReciboRead])
 def listar(anio: int | None = None, binder_id: int | None = None, q: str | None = None, db: Session = Depends(get_db)):
@@ -166,7 +195,7 @@ def listar(anio: int | None = None, binder_id: int | None = None, q: str | None 
             Recibo.numero.ilike(like) | Recibo.nombre_mercado.ilike(like) | Recibo.asegurado.ilike(like)
         )
     stmt = stmt.order_by(Recibo.anio.desc(), Recibo.numero.desc())
-    return [_read(db, r) for r in db.scalars(stmt).all()]
+    return _read_lote(db, list(db.scalars(stmt).all()))
 
 
 @router.get("/binders/{binder_id}/recibos", response_model=list[sch.ReciboRead])
@@ -174,7 +203,7 @@ def listar_de_binder(binder_id: int, db: Session = Depends(get_db)):
     filas = db.scalars(
         select(Recibo).where(Recibo.binder_id == binder_id).order_by(Recibo.periodo.desc())
     ).all()
-    return [_read(db, r) for r in filas]
+    return _read_lote(db, list(filas))
 
 
 @router.get("/recibos/{recibo_id}", response_model=sch.ReciboRead)
