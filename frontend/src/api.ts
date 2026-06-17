@@ -154,10 +154,14 @@ export const recibosApi = {
   borrar: (id: number) => request<void>(`/recibos/${id}`, { method: "DELETE" }),
   // ── Premium: grupos, cobro y macheo desde Excel ──
   listarPremium: (binderId: number) => request<PremiumGrupo[]>(`/binders/${binderId}/premium`),
-  cobrarPremium: (binderId: number, periodo: string, fechaPago: string) =>
-    request(`/binders/${binderId}/premium/cobrar`, { method: "POST", body: JSON.stringify({ periodo, fecha_pago: fechaPago }) }),
-  descobrarPremium: (binderId: number, periodo: string, fechaPago: string) =>
-    request(`/binders/${binderId}/premium/descobrar`, { method: "POST", body: JSON.stringify({ periodo, fecha_pago: fechaPago }) }),
+  cobrarPremium: (binderId: number, periodo: string, fecha: string) =>
+    request(`/binders/${binderId}/premium/cobrar`, { method: "POST", body: JSON.stringify({ periodo, fecha }) }),
+  descobrarPremium: (binderId: number, periodo: string, fecha: string) =>
+    request(`/binders/${binderId}/premium/descobrar`, { method: "POST", body: JSON.stringify({ periodo, fecha }) }),
+  traspasarPremium: (binderId: number, periodo: string, fecha: string) =>
+    request(`/binders/${binderId}/premium/traspasar`, { method: "POST", body: JSON.stringify({ periodo, fecha }) }),
+  liquidarPremium: (binderId: number, periodo: string, fecha: string) =>
+    request(`/binders/${binderId}/premium/liquidar`, { method: "POST", body: JSON.stringify({ periodo, fecha }) }),
   excelPreview: (binderId: number, ruta: string, hoja?: string) =>
     request<ExcelPreview>(`/binders/${binderId}/premium/excel-preview`, { method: "POST", body: JSON.stringify({ ruta, hoja: hoja ?? null }) }),
   matchExcel: (binderId: number, data: { ruta: string; hoja: string; certificado: string; importe: string | null; periodo: string }) =>
@@ -169,8 +173,13 @@ export interface PremiumGrupo {
   num_lineas: number;
   prima: string;
   comision: string;
+  a_liquidar: string;
   cobrado: boolean;
+  traspasado: boolean;
+  liquidado: boolean;
   fecha_pago: string | null;
+  fecha_traspaso: string | null;
+  fecha_liquidacion: string | null;
 }
 export interface ExcelPreview {
   hojas: string[];

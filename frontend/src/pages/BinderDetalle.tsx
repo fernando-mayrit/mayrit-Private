@@ -204,24 +204,33 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
   const premPrima = premiums.reduce((a, p) => a + n(p.prima), 0);
   const premComision = premiums.reduce((a, p) => a + n(p.comision), 0);
 
-  // Cobro de un Premium entero (marca líneas pagadas con la fecha real → deriva el cobro a los recibos).
-  function pedirCobrarPremium(periodo: string) {
-    const fecha = fechasPago[periodo] || new Date().toISOString().slice(0, 10);
+  // Fecha por (periodo, etapa) para las acciones del ciclo de cobro (cobro/traspaso/liquidación).
+  const hoyISO = () => new Date().toISOString().slice(0, 10);
+  const fechaDe = (periodo: string, etapa: string) => fechasPago[`${periodo}:${etapa}`] ?? hoyISO();
+  const setFecha = (periodo: string, etapa: string, v: string) =>
+    setFechasPago((s) => ({ ...s, [`${periodo}:${etapa}`]: v }));
+
+  // Ejecuta una acción del ciclo (cobrar/traspasar/liquidar) sobre un Premium y recarga.
+  function pedirAccionPremium(
+    periodo: string,
+    etapa: "cobro" | "traspaso" | "liquidacion",
+    cfg: { titulo: string; verbo: ReactNode; detalle: string; confirmLabel: string; api: (b: number, p: string, f: string) => Promise<unknown> }
+  ) {
+    const fecha = fechaDe(periodo, etapa);
     setConfirmar({
-      titulo: "Marcar Premium como COBRADO",
+      titulo: cfg.titulo,
       mensaje: (
         <>
-          Vas a dar por <b>cobrado</b> el Premium <b>{mesLargo(periodo)}</b> con fecha de pago{" "}
-          <b>{fmtFechaES(fecha)}</b>.
+          {cfg.verbo} el Premium <b>{mesLargo(periodo)}</b> con fecha <b>{fmtFechaES(fecha)}</b>.
         </>
       ),
-      detalle: "Se marcarán sus líneas como pagadas y el cobro se repartirá automáticamente entre los recibos afectados.",
-      confirmLabel: "Sí, marcar cobrado",
+      detalle: cfg.detalle,
+      confirmLabel: cfg.confirmLabel,
       accion: async () => {
         setConfirmar(null);
         setError(null);
         try {
-          await recibosApi.cobrarPremium(binder.id, periodo, fecha);
+          await cfg.api(binder.id, periodo, fecha);
           await cargar();
         } catch (e) {
           setError((e as Error).message);
@@ -229,6 +238,30 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
       },
     });
   }
+  const pedirCobrarPremium = (periodo: string) =>
+    pedirAccionPremium(periodo, "cobro", {
+      titulo: "💰 Marcar Premium como COBRADO",
+      verbo: <>Vas a dar por <b>cobrado</b></>,
+      detalle: "Se marcan las líneas como cobradas y se actualiza Cantidad Cobrada / Pdte. Cobro en los recibos.",
+      confirmLabel: "💰 Sí, cobrar",
+      api: recibosApi.cobrarPremium,
+    });
+  const pedirTraspasarPremium = (periodo: string) =>
+    pedirAccionPremium(periodo, "traspaso", {
+      titulo: "🔁 Traspasar la comisión",
+      verbo: <>Vas a <b>traspasar nuestra comisión</b> (de la cuenta de primas a la de gastos) de</>,
+      detalle: "Marca la comisión como traspasada y actualiza Traspasada / Pdte. Traspaso en los recibos.",
+      confirmLabel: "🔁 Sí, traspasar",
+      api: recibosApi.traspasarPremium,
+    });
+  const pedirLiquidarPremium = (periodo: string) =>
+    pedirAccionPremium(periodo, "liquidacion", {
+      titulo: "🏦 Liquidar a la compañía",
+      verbo: <>Vas a <b>liquidar a la compañía / Lloyd's</b> el importe a liquidar de</>,
+      detalle: "Marca como liquidado y actualiza Liquidado / Pdte. Liquidación en los recibos.",
+      confirmLabel: "🏦 Sí, liquidar",
+      api: recibosApi.liquidarPremium,
+    });
   // Tras machear/subir un Premium, ofrecer bloquearlo (cerrar ese Premium).
   function pedirBloquearPremium(periodo: string) {
     setConfirmar({
@@ -274,6 +307,44 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
         }
       },
     });
+  }
+
+  // Celda de una etapa del ciclo (cobro/traspaso/liquidación) en el listado de Premium.
+  function celdaEtapa(p: PremiumGrupo, etapa: "cobro" | "traspaso" | "liquidacion", bloq: boolean): ReactNode {
+    const done = etapa === "cobro" ? p.cobrado : etapa === "traspaso" ? p.traspasado : p.liquidado;
+    const fecha = etapa === "cobro" ? p.fecha_pago : etapa === "traspaso" ? p.fecha_traspaso : p.fecha_liquidacion;
+    if (etapa !== "cobro" && !p.cobrado) return <span className="hint">—</span>;
+    if (done) {
+      const puedeDeshacer = etapa === "cobro" && !bloq && !p.traspasado && !p.liquidado;
+      return (
+        <span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>
+          <span className="pill pill-cobrado">✓ {fecha ? fmtFechaES(fecha) : ""}</span>
+          {puedeDeshacer && (
+            <button className="btn-link" onClick={() => pedirDescobrarPremium(p.periodo)}>Deshacer</button>
+          )}
+        </span>
+      );
+    }
+    if (bloq) return <span className="hint">🔒</span>;
+    const cfg =
+      etapa === "cobro"
+        ? { emoji: "💰", label: "Cobrar", pedir: pedirCobrarPremium }
+        : etapa === "traspaso"
+        ? { emoji: "🔁", label: "Traspasar", pedir: pedirTraspasarPremium }
+        : { emoji: "🏦", label: "Liquidar", pedir: pedirLiquidarPremium };
+    return (
+      <span style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
+        <input
+          type="date"
+          className="inp-fecha"
+          value={fechaDe(p.periodo, etapa)}
+          onChange={(e) => setFecha(p.periodo, etapa, e.target.value)}
+        />
+        <button className="btn-primary btn-sm" onClick={() => cfg.pedir(p.periodo)}>
+          {cfg.emoji} {cfg.label}
+        </button>
+      </span>
+    );
   }
 
   // Paso 1: NO crea el recibo; calcula el borrador (preview) y abre el formulario de emisión.
@@ -580,65 +651,48 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
               <b> «Subir Premium»</b> para machear un Premium con el Risk.
             </div>
           ) : (
-            <table className="compacto" style={{ maxWidth: 900 }}>
+            <table className="compacto" style={{ maxWidth: 1120 }}>
               <thead>
                 <tr>
                   <th>Mes Premium</th>
                   <th className="num">Líneas</th>
                   <th className="num">Prima</th>
                   <th className="num">Comisión</th>
-                  <th>Estado</th>
-                  <th>Cobro</th>
+                  <th className="num">A liquidar</th>
+                  <th>💰 Cobro</th>
+                  <th>🔁 Traspaso</th>
+                  <th>🏦 Liquidación</th>
                 </tr>
               </thead>
               <tbody>
-                {premiums.map((p) => (
-                  <tr key={p.periodo}>
-                    <td>{mesLargo(p.periodo)}</td>
-                    <td className="num">{p.num_lineas}</td>
-                    <td className="num">{imp(n(p.prima))}</td>
-                    <td className="num">{imp(n(p.comision))}</td>
-                    <td>
-                      {p.cobrado ? (
-                        <span className="pill pill-cobrado">Cobrado {p.fecha_pago ? fmtFechaES(p.fecha_pago) : ""}</span>
-                      ) : (
-                        <span className="pill pill-pendiente">Pendiente</span>
-                      )}
-                    </td>
-                    <td>
-                      {p.cobrado ? (
-                        bloqueos.has(`premium:${p.periodo}`) ? (
-                          <span className="hint" title="Premium bloqueado: no se puede deshacer">🔒 bloqueado</span>
-                        ) : (
-                          <button className="btn-link" onClick={() => pedirDescobrarPremium(p.periodo)}>Deshacer</button>
-                        )
-                      ) : (
-                        <span style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
-                          <input
-                            type="date"
-                            className="inp-fecha"
-                            value={fechasPago[p.periodo] ?? new Date().toISOString().slice(0, 10)}
-                            onChange={(e) => setFechasPago((s) => ({ ...s, [p.periodo]: e.target.value }))}
-                          />
-                          <button className="btn-primary btn-sm" onClick={() => pedirCobrarPremium(p.periodo)}>Cobrado</button>
-                        </span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
+                {premiums.map((p) => {
+                  const bloq = bloqueos.has(`premium:${p.periodo}`);
+                  return (
+                    <tr key={p.periodo}>
+                      <td>{mesLargo(p.periodo)}</td>
+                      <td className="num">{p.num_lineas}</td>
+                      <td className="num">{imp(n(p.prima))}</td>
+                      <td className="num">{imp(n(p.comision))}</td>
+                      <td className="num">{imp(n(p.a_liquidar))}</td>
+                      <td>{celdaEtapa(p, "cobro", bloq)}</td>
+                      <td>{celdaEtapa(p, "traspaso", bloq)}</td>
+                      <td>{celdaEtapa(p, "liquidacion", bloq)}</td>
+                    </tr>
+                  );
+                })}
                 <tr style={{ fontWeight: 600, borderTop: "2px solid var(--borde)" }}>
                   <td>Total Premium</td>
                   <td className="num">{premLineas}</td>
                   <td className="num">{imp(premPrima)}</td>
                   <td className="num">{imp(premComision)}</td>
-                  <td colSpan={2}></td>
+                  <td colSpan={4}></td>
                 </tr>
                 <tr className="hint">
                   <td>Total Risk</td>
                   <td className="num">{riskLineas}</td>
                   <td className="num">{imp(riskPrima)}</td>
                   <td className="num">{imp(riskComision)}</td>
-                  <td colSpan={2}>
+                  <td colSpan={4}>
                     {premLineas === riskLineas
                       ? "✓ todo el Risk macheado"
                       : `faltan ${riskLineas - premLineas} línea(s) por machear`}
@@ -648,8 +702,8 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
             </table>
           )}
           <div className="hint" style={{ marginTop: 8 }}>
-            El <b>Total Premium</b> debe igualar al <b>Total Risk</b> cuando todo está macheado. Al marcar un
-            Premium como cobrado, el cobro se reparte automáticamente entre los recibos de esas líneas.
+            💰 Cobrar (la agencia nos paga) · 🔁 Traspasar (nuestra comisión, de primas a gastos) ·
+            🏦 Liquidar (pagar a la compañía/Lloyd's). Cada acción pide fecha y actualiza los recibos.
           </div>
         </>
       )}

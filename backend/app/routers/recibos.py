@@ -356,23 +356,34 @@ def _comp_linea(l: BdxLinea):
 
 
 def _recalcular_cobro_recibo(db: Session, recibo: Recibo) -> None:
-    """El cobro del recibo se DERIVA de sus líneas pagadas (incluidas en un Premium ya cobrado)."""
+    """El cobro/traspaso/liquidación del recibo se DERIVAN de sus líneas (vía Premium)."""
     lineas = db.scalars(select(BdxLinea).where(BdxLinea.recibo_id == recibo.id)).all()
-    adeu = ret = liq = D0
-    fechas = []
+    adeu = ret = liq = ret_tras = liq_liq = D0
+    f_cobro, f_tras, f_liq = [], [], []
     for l in lineas:
-        if not l.prima_cobrada:
-            continue
         a, r, q = _comp_linea(l)
-        adeu += a
-        ret += r
-        liq += q
-        if l.premium_payment_date:
-            fechas.append(l.premium_payment_date)
+        if l.prima_cobrada:
+            adeu += a
+            ret += r
+            liq += q
+            if l.premium_payment_date:
+                f_cobro.append(l.premium_payment_date)
+        if l.traspaso:
+            ret_tras += r
+            if l.fecha_traspaso:
+                f_tras.append(l.fecha_traspaso)
+        if l.liquidado:
+            liq_liq += q
+            if l.fecha_liquidacion:
+                f_liq.append(l.fecha_liquidacion)
     recibo.prima_cobrada = _q2(adeu)
     recibo.comision_retenida_cobrada = _q2(ret)
     recibo.liquidar_cobrado = _q2(liq)
-    recibo.prima_fecha_cobro = max(fechas) if fechas else None
+    recibo.comision_retenida_traspasada = _q2(ret_tras)
+    recibo.liquidar_liquidado = _q2(liq_liq)
+    recibo.prima_fecha_cobro = max(f_cobro) if f_cobro else None
+    recibo.comision_fecha_traspaso = max(f_tras) if f_tras else None
+    recibo.liquidar_fecha_liquidacion = max(f_liq) if f_liq else None
     _recompute(recibo)
 
 
@@ -411,13 +422,18 @@ class PremiumGrupo(BaseModel):
     num_lineas: int
     prima: Decimal          # Σ adeudada de sus líneas
     comision: Decimal       # Σ comisión retenida (brokerage)
-    cobrado: bool           # todas sus líneas pagadas
+    a_liquidar: Decimal     # Σ (adeudada − retenida)
+    cobrado: bool           # todas sus líneas cobradas
+    traspasado: bool        # todas sus líneas traspasadas
+    liquidado: bool         # todas sus líneas liquidadas
     fecha_pago: dt.date | None = None
+    fecha_traspaso: dt.date | None = None
+    fecha_liquidacion: dt.date | None = None
 
 
-class CobrarPremium(BaseModel):
+class AccionPremium(BaseModel):
     periodo: str
-    fecha_pago: dt.date
+    fecha: dt.date
 
 
 @router.get("/binders/{binder_id}/premium", response_model=list[PremiumGrupo])
@@ -431,38 +447,50 @@ def listar_premium(binder_id: int, db: Session = Depends(get_db)):
     grupos: dict[str, dict] = {}
     for l in lineas:
         per = l.premium_bdx.strftime("%Y-%m")
-        g = grupos.setdefault(per, {"num": 0, "prima": D0, "com": D0, "pagadas": 0, "fechas": []})
-        a, r, _ = _comp_linea(l)
+        g = grupos.setdefault(per, {"num": 0, "prima": D0, "com": D0, "liq": D0, "cob": 0, "tra": 0, "liqd": 0, "fc": [], "ft": [], "fl": []})
+        a, r, q = _comp_linea(l)
         g["num"] += 1
         g["prima"] += a
         g["com"] += r
+        g["liq"] += q
         if l.prima_cobrada:
-            g["pagadas"] += 1
-        if l.premium_payment_date:
-            g["fechas"].append(l.premium_payment_date)
+            g["cob"] += 1
+            if l.premium_payment_date:
+                g["fc"].append(l.premium_payment_date)
+        if l.traspaso:
+            g["tra"] += 1
+            if l.fecha_traspaso:
+                g["ft"].append(l.fecha_traspaso)
+        if l.liquidado:
+            g["liqd"] += 1
+            if l.fecha_liquidacion:
+                g["fl"].append(l.fecha_liquidacion)
     return [
         PremiumGrupo(
             periodo=per,
             num_lineas=g["num"],
             prima=_q2(g["prima"]),
             comision=_q2(g["com"]),
-            cobrado=g["num"] > 0 and g["pagadas"] == g["num"],
-            fecha_pago=max(g["fechas"]) if g["fechas"] else None,
+            a_liquidar=_q2(g["liq"]),
+            cobrado=g["num"] > 0 and g["cob"] == g["num"],
+            traspasado=g["num"] > 0 and g["tra"] == g["num"],
+            liquidado=g["num"] > 0 and g["liqd"] == g["num"],
+            fecha_pago=max(g["fc"]) if g["fc"] else None,
+            fecha_traspaso=max(g["ft"]) if g["ft"] else None,
+            fecha_liquidacion=max(g["fl"]) if g["fl"] else None,
         )
         for per, g in sorted(grupos.items())
     ]
 
 
-@router.post("/binders/{binder_id}/premium/cobrar")
-def cobrar_premium(binder_id: int, payload: CobrarPremium, db: Session = Depends(get_db)):
-    """Da por cobrado el Premium entero (con la fecha real) y deriva el cobro a los recibos afectados."""
-    _exigir_premium_no_bloqueado(db, binder_id, payload.periodo)
-    lineas = _lineas_premium(db, binder_id, payload.periodo)
+def _accion_premium(db: Session, binder_id: int, periodo: str, setter) -> dict:
+    """Aplica una acción (setter) a todas las líneas del Premium y recalcula los recibos."""
+    _exigir_premium_no_bloqueado(db, binder_id, periodo)
+    lineas = _lineas_premium(db, binder_id, periodo)
     if not lineas:
-        raise HTTPException(status_code=400, detail=f"No hay líneas en el Premium {payload.periodo}.")
+        raise HTTPException(status_code=400, detail=f"No hay líneas en el Premium {periodo}.")
     for l in lineas:
-        l.prima_cobrada = True
-        l.premium_payment_date = payload.fecha_pago
+        setter(l)
     db.flush()
     rids = {l.recibo_id for l in lineas if l.recibo_id}
     recibos = db.scalars(select(Recibo).where(Recibo.id.in_(rids))).all() if rids else []
@@ -470,25 +498,45 @@ def cobrar_premium(binder_id: int, payload: CobrarPremium, db: Session = Depends
         _recalcular_cobro_recibo(db, r)
     db.commit()
     return {"lineas": len(lineas), "recibos_actualizados": len(recibos)}
+
+
+@router.post("/binders/{binder_id}/premium/cobrar")
+def cobrar_premium(binder_id: int, payload: AccionPremium, db: Session = Depends(get_db)):
+    """💰 Cobrar: marca las líneas como cobradas (fecha real) → Cantidad Cobrada y Pdte. Cobro en los recibos."""
+    def setter(l):
+        l.prima_cobrada = True
+        l.premium_payment_date = payload.fecha
+    return _accion_premium(db, binder_id, payload.periodo, setter)
 
 
 @router.post("/binders/{binder_id}/premium/descobrar")
-def descobrar_premium(binder_id: int, payload: CobrarPremium, db: Session = Depends(get_db)):
-    """Deshace el cobro de un Premium (vuelve a pendiente) y recalcula los recibos."""
-    _exigir_premium_no_bloqueado(db, binder_id, payload.periodo)
-    lineas = _lineas_premium(db, binder_id, payload.periodo)
-    if not lineas:
-        raise HTTPException(status_code=400, detail=f"No hay líneas en el Premium {payload.periodo}.")
-    for l in lineas:
+def descobrar_premium(binder_id: int, payload: AccionPremium, db: Session = Depends(get_db)):
+    """Deshace el cobro de un Premium (vuelve a pendiente)."""
+    def setter(l):
         l.prima_cobrada = False
         l.premium_payment_date = None
-    db.flush()
-    rids = {l.recibo_id for l in lineas if l.recibo_id}
-    recibos = db.scalars(select(Recibo).where(Recibo.id.in_(rids))).all() if rids else []
-    for r in recibos:
-        _recalcular_cobro_recibo(db, r)
-    db.commit()
-    return {"lineas": len(lineas), "recibos_actualizados": len(recibos)}
+    return _accion_premium(db, binder_id, payload.periodo, setter)
+
+
+@router.post("/binders/{binder_id}/premium/traspasar")
+def traspasar_premium(binder_id: int, payload: AccionPremium, db: Session = Depends(get_db)):
+    """🔁 Traspasar: lleva NUESTRA comisión de la cuenta de primas a la de gastos."""
+    def setter(l):
+        l.traspaso = True
+        l.fecha_traspaso = payload.fecha
+        l.traspasado = l.brokerage_amount
+    return _accion_premium(db, binder_id, payload.periodo, setter)
+
+
+@router.post("/binders/{binder_id}/premium/liquidar")
+def liquidar_premium(binder_id: int, payload: AccionPremium, db: Session = Depends(get_db)):
+    """🏦 Liquidar: paga a la compañía/Lloyd's la parte a liquidar (adeudada − comisión retenida)."""
+    def setter(l):
+        a, r, q = _comp_linea(l)
+        l.liquidado = True
+        l.fecha_liquidacion = payload.fecha
+        l.liquidado_uw = _q2(q)
+    return _accion_premium(db, binder_id, payload.periodo, setter)
 
 
 # ─────────────── Macheo automático desde Excel (cualquier formato) ───────────────
