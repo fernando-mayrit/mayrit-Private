@@ -192,20 +192,53 @@ def get_context():
     )
 
 
-def leer_lista_bdx(list_title: str) -> list[dict]:
-    """Lee TODAS las líneas de la lista `list_title` y las devuelve mapeadas a los campos
-    de BdxLinea (claves del MAPEO). Valores tal cual los da SharePoint (fechas en ISO,
-    números como int/float); la coerción de tipos se hará en el paso de importación."""
+# ── Pólizas (Open Market): lista única `Mayrit - TPolizas` → campos del modelo Poliza ──
+MAPEO_POLIZAS: dict[str, str] = {
+    "numero_poliza": "NumeroPoliza",
+    "referencia": "Referencia",
+    "asegurado": "Asegurado",
+    "corredor": "Corredor",
+    "ramo": "Ramo",
+    "mercado": "Mercado",
+    "produccion": "Produccion",
+    "tipo_documento": "TipoDocumento",
+    "estado": "Estado",
+    "seguro": "Seguro",
+    "pago": "Pago",
+    "moneda": "Moneda",
+    "fecha_efecto": "FechaEfecto",
+    "fecha_vencimiento": "FechaVencimiento",
+    "yoa": "YOA",
+    "renovacion_automatica": "RenovacionAutomatica",
+    "coaseguro": "Coaseguro",
+    "limite": "Limite",
+    "franquicia": "Franquicia",
+    "capacidad": "Capacidad",
+    "prima_neta": "PrimaNeta",
+    "impuestos_porc": "ImpuestosPerc",
+    "impuestos": "Impuestos",
+    "recargos": "Recargos",
+    "prima_total": "PrimaTotal",
+    "comision_porc": "ComisionPerc",
+    "comision_total": "ComisionTotal",
+    "prima_participacion": "PrimaParticipacion",
+}
+DATE_FIELDS_POLIZAS = {"fecha_efecto", "fecha_vencimiento"}
+
+
+def leer_lista(list_title: str, mapeo: dict, date_fields: set[str]) -> list[dict]:
+    """Lee TODAS las filas de `list_title` y las devuelve mapeadas a los campos de `mapeo`
+    (campo_modelo → título/alias de columna). Empareja por TÍTULO visible (estable entre listas;
+    el InternalName varía). Cada fila incluye `_sp_id` (Id del elemento en SharePoint).
+    Valores tal cual los da SharePoint; la coerción de tipos se hace al importar."""
     ctx = get_context()
     lst = ctx.web.lists.get_by_title(list_title)
     campos = lst.fields
     ctx.load(campos)
     ctx.execute_query()
-    # Pares (título normalizado en minúsculas, InternalName) preservando el orden de las columnas.
     titulos = [(_norm(f.properties.get("Title")).lower(), f.properties.get("InternalName")) for f in campos]
 
     def resolver(aliases) -> str | None:
-        """InternalName de la 1ª columna que case con algún alias (1º por igualdad, luego prefijo)."""
         opts = [aliases] if isinstance(aliases, str) else aliases
         normados = [_norm(a).lower() for a in opts]
         for a in normados:
@@ -218,19 +251,27 @@ def leer_lista_bdx(list_title: str) -> list[dict]:
                     return intn
         return None
 
-    # Resolver una sola vez el InternalName de cada campo del modelo.
-    internal_de = {campo: resolver(aliases) for campo, aliases in MAPEO.items()}
+    internal_de = {campo: resolver(aliases) for campo, aliases in mapeo.items()}
 
     items = lst.items.get_all().execute_query()
     filas: list[dict] = []
     for it in items:
         props = it.properties
-        fila: dict = {}
+        fila: dict = {"_sp_id": props.get("Id")}
         for campo, internal in internal_de.items():
             valor = props.get(internal) if internal else None
-            # Los campos cuyo InternalName empieza por '_' se exponen como 'OData_<internal>'.
             if valor is None and internal and internal.startswith("_"):
                 valor = props.get("OData_" + internal)
-            fila[campo] = _solo_fecha(valor) if campo in DATE_FIELDS else valor
+            fila[campo] = _solo_fecha(valor) if campo in date_fields else valor
         filas.append(fila)
     return filas
+
+
+def leer_lista_bdx(list_title: str) -> list[dict]:
+    """Líneas de un BDX (`Mayrit - <UMR>`) mapeadas a los campos de BdxLinea."""
+    return leer_lista(list_title, MAPEO, DATE_FIELDS)
+
+
+def leer_lista_polizas(list_title: str = "Mayrit - TPolizas") -> list[dict]:
+    """Pólizas (Open Market) mapeadas a los campos de Poliza."""
+    return leer_lista(list_title, MAPEO_POLIZAS, DATE_FIELDS_POLIZAS)

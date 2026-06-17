@@ -466,6 +466,29 @@ GWP origen=bd OK; comprobación columna a columna + recibos por periodo):
 **Pendiente relacionado:** migrar recibos **2020-2022** para cuadrar los periodos de run-off; módulo de
 Pólizas (OM) para los 14 recibos de póliza.
 
+## Pólizas (Open Market) — datos + cuadre de recibos (17/06/2026)
+Negocio directo de Mayrit (no de binder). Arrancado para **cuadrar los recibos OM** (decisión:
+"datos + cuadre primero"; la pantalla de Pólizas, después).
+- **Modelo `polizas`** (`models/maestras.py`, sobre `Mayrit - TPolizas`): numero_poliza (clave de
+  casado), referencia, asegurado, corredor, ramo, mercado, produccion, tipo_documento, estado,
+  **seguro** (1=Seguro Directo / 2=Reaseguro), pago, moneda, fechas, yoa, renovacion_automatica,
+  coaseguro, limite, franquicia, capacidad, prima_neta, impuestos_porc/impuestos, recargos,
+  prima_total, comision_porc/comision_total, prima_participacion, sp_old_id. Migración `e4f5a6b7c8d9`.
+- **Recibo**: `binder_id` pasa a **opcional** y se añade **`poliza_id`** (un recibo es de Binder O de
+  Póliza). La API (`ReciboRead`) expone `poliza_id` + `poliza_numero`.
+- **Importadores (en vivo de SharePoint, idempotentes):** `tools/migrar_polizas.py` (TPolizas → 115
+  pólizas; % ×100) y `tools/migrar_recibos_om.py` (TRecibos, tipo Póliza/Slip → enlaza por
+  NumeroPoliza). El lector `app/sharepoint.py` se generalizó (`leer_lista(mapeo, date_fields)` +
+  `MAPEO_POLIZAS`/`leer_lista_polizas`).
+- **Resultado:** 115 pólizas migradas; **209 recibos OM** creados (2017-2026, todos casados a su
+  póliza), **0 colgados**. Total recibos en BD: **260** (51 Binder + 209 OM). Los recibos de tipo
+  **Consultoría/Comisiones** quedan fuera (no tienen póliza; son otras fuentes de negocio, módulos aparte).
+- **⏳ Pendiente:** **pantalla de Pólizas** (listado + alta/edición CRUD según el formulario de Access:
+  Referencia[auto] · Asegurado · Corredor · Ramo · Mercado · Límite 100% · Franquicia · Prima Neta ·
+  Seguro Directo/Reaseguro · Producción · Nº Póliza · F.Efecto/Vto · Ren.Automática · Capacidad ·
+  Coaseguro · Pago · Moneda · Prima Part.[calc] · Impuestos %+importe · Recargos · Prima Total[calc] ·
+  Comisión %+importe[calc]); mostrar los recibos OM en `RecibosPage`/ficha de póliza.
+
 ## Decisión abierta (para más adelante)
 Hay `TLiquidaciones` (4330) y `TLiquidaciones1` (4018): decidir cuál es la buena. Relevante en
 la Fase 3 (Liquidaciones+LPAN), no ahora.

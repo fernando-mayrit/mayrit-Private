@@ -26,6 +26,7 @@ from ..models.maestras import (
     BinderSeccion,
     CuentaBancaria,
     Mercado,
+    Poliza,
     Productor,
     Recibo,
     SeccionMercado,
@@ -140,11 +141,13 @@ def _recompute(r: Recibo) -> None:
 
 
 def _read(db: Session, r: Recibo) -> sch.ReciboRead:
-    """ReciboRead enriquecido con UMR del binder y nº de líneas enlazadas."""
+    """ReciboRead enriquecido con UMR del binder (o nº de póliza en OM) y nº de líneas enlazadas."""
     binder = db.get(Binder, r.binder_id) if r.binder_id else None
+    poliza = db.get(Poliza, r.poliza_id) if r.poliza_id else None
     num_lineas = db.scalar(select(func.count(BdxLinea.id)).where(BdxLinea.recibo_id == r.id)) or 0
     data = sch.ReciboRead.model_validate(r)
     data.binder_umr = (binder.umr or binder.agreement_number) if binder else None
+    data.poliza_numero = poliza.numero_poliza if poliza else None
     data.num_lineas = num_lineas
     return data
 

@@ -479,6 +479,52 @@ class BdxBloqueo(Base):
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class Poliza(Base):
+    """Póliza de Open Market (OM): negocio directo de Mayrit (no de binder). Modelada sobre la
+    lista de SharePoint `Mayrit - TPolizas`. De ella cuelgan recibos (1..N por fraccionamiento)."""
+
+    __tablename__ = "polizas"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    sp_old_id: Mapped[int | None] = mapped_column(Integer, index=True)
+
+    numero_poliza: Mapped[str | None] = mapped_column(String(120), index=True)  # clave de casado con recibos
+    referencia: Mapped[str | None] = mapped_column(String(200))
+    asegurado: Mapped[str | None] = mapped_column(String(300))
+    corredor: Mapped[str | None] = mapped_column(String(200))
+    ramo: Mapped[str | None] = mapped_column(String(120))
+    mercado: Mapped[str | None] = mapped_column(String(300))
+    produccion: Mapped[str | None] = mapped_column(String(120))
+    tipo_documento: Mapped[str | None] = mapped_column(String(80))
+    estado: Mapped[str | None] = mapped_column(String(40))
+    seguro: Mapped[str | None] = mapped_column(String(120))
+    pago: Mapped[str | None] = mapped_column(String(40))
+    moneda: Mapped[str | None] = mapped_column(String(10), server_default="EUR", default="EUR")
+    fecha_efecto: Mapped[dt.date | None] = mapped_column(Date)
+    fecha_vencimiento: Mapped[dt.date | None] = mapped_column(Date)
+    yoa: Mapped[int | None] = mapped_column(Integer, index=True)
+    renovacion_automatica: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
+    coaseguro: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
+
+    limite: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    franquicia: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    capacidad: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    prima_neta: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    impuestos_porc: Mapped[Decimal | None] = mapped_column(Numeric(7, 4))
+    impuestos: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    recargos: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    prima_total: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    comision_porc: Mapped[Decimal | None] = mapped_column(Numeric(7, 4))
+    comision_total: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    prima_participacion: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+
+    notas: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
 class Recibo(Base):
     """Recibo (núcleo de facturación/contabilidad). Modelado sobre la lista de SharePoint
     `Mayrit - TRecibos`: ciclo completo prima → impuestos → comisiones (cedida/retenida) →
@@ -497,9 +543,10 @@ class Recibo(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     sp_old_id: Mapped[int | None] = mapped_column(Integer, index=True)   # _OldID de SharePoint (migración)
-    # ── Enlace en la app ──
-    binder_id: Mapped[int] = mapped_column(ForeignKey("binders.id", ondelete="CASCADE"), index=True)
-    periodo: Mapped[str] = mapped_column(String(7))               # 'YYYY-MM' del Risk BDX
+    # ── Enlace en la app ── (un recibo es de un Binder O de una Póliza OM)
+    binder_id: Mapped[int | None] = mapped_column(ForeignKey("binders.id", ondelete="CASCADE"), index=True)
+    poliza_id: Mapped[int | None] = mapped_column(ForeignKey("polizas.id", ondelete="CASCADE"), index=True)
+    periodo: Mapped[str] = mapped_column(String(7))               # 'YYYY-MM' del Risk BDX (vacío en OM puntuales)
     anio: Mapped[int] = mapped_column(Integer, index=True)        # año contable
     estado: Mapped[str] = mapped_column(String(30), server_default="Emitido", default="Emitido")  # Emitido | Anulado
 

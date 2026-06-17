@@ -541,6 +541,7 @@ class ReciboRead(ReciboCampos):
     model_config = ConfigDict(from_attributes=True)
     id: int
     binder_id: int | None = None
+    poliza_id: int | None = None
     periodo: str | None = None
     anio: int
     numero: str
@@ -550,6 +551,7 @@ class ReciboRead(ReciboCampos):
     created_at: dt.datetime
     updated_at: dt.datetime
     binder_umr: str | None = None
+    poliza_numero: str | None = None     # OM: nº de póliza enlazada
     num_lineas: int = 0
 
 
