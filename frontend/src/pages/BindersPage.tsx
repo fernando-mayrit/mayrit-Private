@@ -711,6 +711,34 @@ export default function BindersPage() {
     const b = items.find((x) => x.id === form?.id);
     if (b) abrirHistorial(b);
   }
+  // Renovar: nuevo binder con los datos del actual + 1 año en las fechas/YOA; Agreement Number en blanco.
+  function renovar() {
+    if (!form) return;
+    const masUnAnio = (iso: string) => {
+      if (!iso) return "";
+      const [y, m, d] = iso.slice(0, 10).split("-");
+      return y && m && d ? `${Number(y) + 1}-${m}-${d}` : "";
+    };
+    const nuevoYoa = /^\d+$/.test(form.yoa.trim()) ? String(Number(form.yoa.trim()) + 1) : "";
+    setModo("edicion");
+    setCorrigiendo(false);
+    setSupEfecto("");
+    setSupMotivo("");
+    abrir(
+      JSON.parse(
+        JSON.stringify({
+          ...form,
+          id: undefined,
+          agreement_number: "",
+          umr: "",
+          estado: "En Vigor",
+          fecha_efecto: masUnAnio(form.fecha_efecto),
+          fecha_vencimiento: masUnAnio(form.fecha_vencimiento),
+          yoa: nuevoYoa,
+        })
+      )
+    );
+  }
 
   // Mercado con mayor participación del binder (entre todas las secciones) → su Código (IdMercado).
   function mercadoPrincipal(b: Binder): string {
@@ -898,6 +926,9 @@ export default function BindersPage() {
                 </button>
                 <button className="btn-secondary btn-sm" onClick={() => setCorrigiendo(true)}>
                   Corregir
+                </button>
+                <button className="btn-secondary btn-sm" onClick={renovar}>
+                  🔄 Renovar
                 </button>
               </div>
               <div className="hint" style={{ margin: "2px 0 12px" }}>
