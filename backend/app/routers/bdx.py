@@ -8,7 +8,7 @@ import os
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
 
 from ..config import settings
@@ -199,6 +199,36 @@ def borrar_linea(linea_id: int, db: Session = Depends(get_db)):
     _exigir_no_bloqueada(db, linea.bdx_id, linea)
     db.delete(linea)
     db.commit()
+
+
+# ───────────── Macheo Risk ↔ Premium: incluir/quitar líneas de un Premium ─────────────
+class IncluirPremium(BaseModel):
+    linea_ids: list[int]
+    periodo: str | None = None   # 'YYYY-MM' del Premium; None = quitar del Premium
+
+
+@router.post("/bdx/lineas/premium")
+def incluir_en_premium(payload: IncluirPremium, db: Session = Depends(get_db)):
+    """Marca líneas como incluidas (o no) en un Premium BDX y les fija el mes del Premium
+    (premium_bdx = día 1 de ese mes)."""
+    if not payload.linea_ids:
+        return {"actualizadas": 0}
+    fecha = None
+    incluido = False
+    if payload.periodo:
+        try:
+            y, m = (int(x) for x in payload.periodo.split("-"))
+            fecha = dt.date(y, m, 1)
+            incluido = True
+        except (ValueError, TypeError):
+            raise HTTPException(status_code=422, detail=f"Periodo inválido: {payload.periodo!r} (use 'YYYY-MM').")
+    db.execute(
+        update(BdxLinea)
+        .where(BdxLinea.id.in_(payload.linea_ids))
+        .values(incluido_en_premium=incluido, premium_bdx=fecha)
+    )
+    db.commit()
+    return {"actualizadas": len(payload.linea_ids), "incluido": incluido, "periodo": payload.periodo}
 
 
 # ─────────────────── Bloqueo de periodos del BDX (presentado) ────────────────

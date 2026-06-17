@@ -10,6 +10,7 @@ import datetime as dt
 from decimal import Decimal, ROUND_HALF_UP
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
 
@@ -336,3 +337,132 @@ def borrar(recibo_id: int, db: Session = Depends(get_db)):
     )
     db.execute(delete(Recibo).where(Recibo.id == recibo_id))
     db.commit()
+
+
+# ─────────────────── Cobro vía Premium BDX (deriva el cobro del recibo) ───────────────────
+def _comp_linea(l: BdxLinea):
+    """(adeudada, retenida, a_liquidar) de una línea, sobre our line (igual que en la emisión)."""
+    neta = l.total_gwp_our_line or D0
+    imp = l.total_taxes_levies or D0
+    cedida = l.commission_coverholder_amount or D0
+    retenida = l.brokerage_amount or D0
+    adeudada = (neta + imp) - cedida
+    return adeudada, retenida, adeudada - retenida
+
+
+def _recalcular_cobro_recibo(db: Session, recibo: Recibo) -> None:
+    """El cobro del recibo se DERIVA de sus líneas pagadas (incluidas en un Premium ya cobrado)."""
+    lineas = db.scalars(select(BdxLinea).where(BdxLinea.recibo_id == recibo.id)).all()
+    adeu = ret = liq = D0
+    fechas = []
+    for l in lineas:
+        if not l.prima_cobrada:
+            continue
+        a, r, q = _comp_linea(l)
+        adeu += a
+        ret += r
+        liq += q
+        if l.premium_payment_date:
+            fechas.append(l.premium_payment_date)
+    recibo.prima_cobrada = _q2(adeu)
+    recibo.comision_retenida_cobrada = _q2(ret)
+    recibo.liquidar_cobrado = _q2(liq)
+    recibo.prima_fecha_cobro = max(fechas) if fechas else None
+    _recompute(recibo)
+
+
+def _lineas_premium(db: Session, binder_id: int, periodo: str):
+    ini, fin = _rango_mes(periodo)
+    return db.scalars(
+        select(BdxLinea)
+        .join(Bdx, BdxLinea.bdx_id == Bdx.id)
+        .where(
+            Bdx.binder_id == binder_id,
+            BdxLinea.incluido_en_premium.is_(True),
+            BdxLinea.premium_bdx >= ini,
+            BdxLinea.premium_bdx < fin,
+        )
+    ).all()
+
+
+class PremiumGrupo(BaseModel):
+    periodo: str            # 'YYYY-MM' del Premium
+    num_lineas: int
+    prima: Decimal          # Σ adeudada de sus líneas
+    comision: Decimal       # Σ comisión retenida (brokerage)
+    cobrado: bool           # todas sus líneas pagadas
+    fecha_pago: dt.date | None = None
+
+
+class CobrarPremium(BaseModel):
+    periodo: str
+    fecha_pago: dt.date
+
+
+@router.get("/binders/{binder_id}/premium", response_model=list[PremiumGrupo])
+def listar_premium(binder_id: int, db: Session = Depends(get_db)):
+    """Grupos de Premium del binder (líneas incluidas en premium, agrupadas por mes)."""
+    lineas = db.scalars(
+        select(BdxLinea)
+        .join(Bdx, BdxLinea.bdx_id == Bdx.id)
+        .where(Bdx.binder_id == binder_id, BdxLinea.incluido_en_premium.is_(True), BdxLinea.premium_bdx.is_not(None))
+    ).all()
+    grupos: dict[str, dict] = {}
+    for l in lineas:
+        per = l.premium_bdx.strftime("%Y-%m")
+        g = grupos.setdefault(per, {"num": 0, "prima": D0, "com": D0, "pagadas": 0, "fechas": []})
+        a, r, _ = _comp_linea(l)
+        g["num"] += 1
+        g["prima"] += a
+        g["com"] += r
+        if l.prima_cobrada:
+            g["pagadas"] += 1
+        if l.premium_payment_date:
+            g["fechas"].append(l.premium_payment_date)
+    return [
+        PremiumGrupo(
+            periodo=per,
+            num_lineas=g["num"],
+            prima=_q2(g["prima"]),
+            comision=_q2(g["com"]),
+            cobrado=g["num"] > 0 and g["pagadas"] == g["num"],
+            fecha_pago=max(g["fechas"]) if g["fechas"] else None,
+        )
+        for per, g in sorted(grupos.items())
+    ]
+
+
+@router.post("/binders/{binder_id}/premium/cobrar")
+def cobrar_premium(binder_id: int, payload: CobrarPremium, db: Session = Depends(get_db)):
+    """Da por cobrado el Premium entero (con la fecha real) y deriva el cobro a los recibos afectados."""
+    lineas = _lineas_premium(db, binder_id, payload.periodo)
+    if not lineas:
+        raise HTTPException(status_code=400, detail=f"No hay líneas en el Premium {payload.periodo}.")
+    for l in lineas:
+        l.prima_cobrada = True
+        l.premium_payment_date = payload.fecha_pago
+    db.flush()
+    rids = {l.recibo_id for l in lineas if l.recibo_id}
+    recibos = db.scalars(select(Recibo).where(Recibo.id.in_(rids))).all() if rids else []
+    for r in recibos:
+        _recalcular_cobro_recibo(db, r)
+    db.commit()
+    return {"lineas": len(lineas), "recibos_actualizados": len(recibos)}
+
+
+@router.post("/binders/{binder_id}/premium/descobrar")
+def descobrar_premium(binder_id: int, payload: CobrarPremium, db: Session = Depends(get_db)):
+    """Deshace el cobro de un Premium (vuelve a pendiente) y recalcula los recibos."""
+    lineas = _lineas_premium(db, binder_id, payload.periodo)
+    if not lineas:
+        raise HTTPException(status_code=400, detail=f"No hay líneas en el Premium {payload.periodo}.")
+    for l in lineas:
+        l.prima_cobrada = False
+        l.premium_payment_date = None
+    db.flush()
+    rids = {l.recibo_id for l in lineas if l.recibo_id}
+    recibos = db.scalars(select(Recibo).where(Recibo.id.in_(rids))).all() if rids else []
+    for r in recibos:
+        _recalcular_cobro_recibo(db, r)
+    db.commit()
+    return {"lineas": len(lineas), "recibos_actualizados": len(recibos)}
