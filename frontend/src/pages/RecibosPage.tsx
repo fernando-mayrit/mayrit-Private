@@ -75,7 +75,6 @@ export default function RecibosPage() {
 
   // Filtros: Año (servidor, por defecto el actual), YOA / UMR / búsqueda (cliente).
   const [anio, setAnio] = useState<string>(String(new Date().getFullYear()));
-  const [yoa, setYoa] = useState("");
   const [umr, setUmr] = useState("");
   const [q, setQ] = useState("");
 
@@ -85,7 +84,6 @@ export default function RecibosPage() {
   const [resetSignal, setResetSignal] = useState(0);
 
   function limpiarFiltros() {
-    setYoa("");
     setUmr("");
     setQ("");
     setResetSignal((n) => n + 1); // limpia los filtros por columna de la tabla
@@ -136,10 +134,10 @@ export default function RecibosPage() {
     }
   }
 
+  const umrs = [...new Set(items.map((r) => r.binder_umr).filter(Boolean) as string[])].sort();
   const filtrados = items.filter(
     (r) =>
-      (!yoa || String(r.yoa ?? "") === yoa.trim()) &&
-      (!umr || (r.binder_umr ?? "").toLowerCase().includes(umr.toLowerCase())) &&
+      (!umr || r.binder_umr === umr) &&
       (!q || `${r.numero} ${r.nombre_mercado ?? ""} ${r.asegurado ?? ""}`.toLowerCase().includes(q.toLowerCase()))
   );
   const totalComision = filtrados.reduce((a, r) => a + num(r.comision_retenida), 0);
@@ -155,8 +153,10 @@ export default function RecibosPage() {
           <option value="todos">Todos los años</option>
           {anios.map((y) => <option key={y} value={y}>{y}</option>)}
         </select>
-        <input type="search" placeholder="YOA" style={{ flex: "0 0 90px" }} value={yoa} onChange={(e) => setYoa(e.target.value)} />
-        <input type="search" placeholder="UMR…" style={{ flex: "0 0 180px" }} value={umr} onChange={(e) => setUmr(e.target.value)} />
+        <select className="filtro" value={umr} onChange={(e) => setUmr(e.target.value)}>
+          <option value="">UMR: todos</option>
+          {umrs.map((u) => <option key={u} value={u}>{u}</option>)}
+        </select>
         <input type="search" placeholder="Buscar nº / mercado / asegurado…" value={q} onChange={(e) => setQ(e.target.value)} />
         <span className="hint">
           Comisión: <b>{eur(totalComision)}</b> · Cobrada: <b>{eur(totalCobrada)}</b>
