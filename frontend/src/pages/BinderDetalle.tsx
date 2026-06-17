@@ -5,6 +5,7 @@ import BdxLineaPanel from "../components/BdxLineaPanel";
 import BdxTabla from "../components/BdxTabla";
 import NumberInput from "../components/NumberInput";
 import ReciboModal from "../components/ReciboModal";
+import PremiumMatch from "../components/PremiumMatch";
 import type { ReciboPreview, ReciboUpdate } from "../types";
 import { fmtMiles, fmtFechaES, estadoCobro } from "../format";
 
@@ -67,6 +68,8 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
   const [generando, setGenerando] = useState<string | null>(null); // periodo cuyo preview se está pidiendo
   const [borrador, setBorrador] = useState<ReciboPreview | null>(null); // recibo precalculado a emitir
   const [emitiendo, setEmitiendo] = useState(false);
+  // Macheo de un Premium (Excel) seleccionado
+  const [matchExcel, setMatchExcel] = useState<{ ruta: string; nombre: string } | null>(null);
 
   // ── Importación desde SharePoint ──
   const [importAbierto, setImportAbierto] = useState(false);
@@ -638,6 +641,20 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
         />
       )}
 
+      {/* Macheo de un Premium (Excel) con el Risk */}
+      {matchExcel && (
+        <PremiumMatch
+          binderId={binder.id}
+          ruta={matchExcel.ruta}
+          nombre={matchExcel.nombre}
+          onClose={() => setMatchExcel(null)}
+          onApplied={async () => {
+            setMatchExcel(null);
+            await cargar();
+          }}
+        />
+      )}
+
       {/* Selector de Excel (carpeta servida por el backend) */}
       {excelOpen && (
         <div className="overlay">
@@ -677,7 +694,7 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
                         key={"f:" + f.name}
                         className="fila-click"
                         onClick={() => {
-                          setExcelSel(f.name);
+                          setMatchExcel({ ruta: excelDir.sub ? `${excelDir.sub}/${f.name}` : f.name, nombre: f.name });
                           setExcelOpen(false);
                         }}
                       >

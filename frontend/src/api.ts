@@ -78,6 +78,12 @@ export const bdxApi = {
       `/binders/${binderId}/bloqueos?tipo=${encodeURIComponent(tipo)}&periodo=${encodeURIComponent(periodo)}`,
       { method: "DELETE" }
     ),
+  // Macheo Risk ↔ Premium: incluir/quitar líneas de un Premium (periodo null = quitar).
+  incluirPremium: (lineaIds: number[], periodo: string | null) =>
+    request<{ actualizadas: number }>(`/bdx/lineas/premium`, {
+      method: "POST",
+      body: JSON.stringify({ linea_ids: lineaIds, periodo }),
+    }),
   // Importación desde SharePoint (solo lectura el preview; el import escribe).
   sharepointPreview: (binderId: number) =>
     request<BdxPreview>(`/binders/${binderId}/bdx/sharepoint-preview`),
@@ -146,7 +152,46 @@ export const recibosApi = {
   editar: (id: number, data: ReciboUpdate) =>
     request<Recibo>(`/recibos/${id}`, { method: "PUT", body: JSON.stringify(data) }),
   borrar: (id: number) => request<void>(`/recibos/${id}`, { method: "DELETE" }),
+  // ── Premium: grupos, cobro y macheo desde Excel ──
+  listarPremium: (binderId: number) => request<PremiumGrupo[]>(`/binders/${binderId}/premium`),
+  cobrarPremium: (binderId: number, periodo: string, fechaPago: string) =>
+    request(`/binders/${binderId}/premium/cobrar`, { method: "POST", body: JSON.stringify({ periodo, fecha_pago: fechaPago }) }),
+  descobrarPremium: (binderId: number, periodo: string, fechaPago: string) =>
+    request(`/binders/${binderId}/premium/descobrar`, { method: "POST", body: JSON.stringify({ periodo, fecha_pago: fechaPago }) }),
+  excelPreview: (binderId: number, ruta: string, hoja?: string) =>
+    request<ExcelPreview>(`/binders/${binderId}/premium/excel-preview`, { method: "POST", body: JSON.stringify({ ruta, hoja: hoja ?? null }) }),
+  matchExcel: (binderId: number, data: { ruta: string; hoja: string; certificado: string; importe: string | null; periodo: string }) =>
+    request<MatchResult>(`/binders/${binderId}/premium/match-excel`, { method: "POST", body: JSON.stringify(data) }),
 };
+
+export interface PremiumGrupo {
+  periodo: string;
+  num_lineas: number;
+  prima: string;
+  comision: string;
+  cobrado: boolean;
+  fecha_pago: string | null;
+}
+export interface ExcelPreview {
+  hojas: string[];
+  hoja: string;
+  columnas: string[];
+  muestra: Record<string, string>[];
+  mapeo: { certificado: string | null; importe: string | null };
+}
+export interface MatchRow {
+  certificate_ref: string;
+  importe_excel: string | null;
+  estado: "match" | "importe_distinto" | "no_encontrada";
+  linea_id: number | null;
+  importe_risk: string | null;
+}
+export interface MatchResult {
+  periodo: string;
+  filas: MatchRow[];
+  matched_ids: number[];
+  resumen: { total: number; match: number; importe_distinto: number; no_encontrada: number };
+}
 
 // CRUD genérico para una colección (p. ej. "/mercados").
 export function crud<TRead, TWrite>(collection: string) {
