@@ -141,7 +141,7 @@ def _recompute(r: Recibo) -> None:
 
 def _read(db: Session, r: Recibo) -> sch.ReciboRead:
     """ReciboRead enriquecido con UMR del binder y nº de líneas enlazadas."""
-    binder = db.get(Binder, r.binder_id)
+    binder = db.get(Binder, r.binder_id) if r.binder_id else None
     num_lineas = db.scalar(select(func.count(BdxLinea.id)).where(BdxLinea.recibo_id == r.id)) or 0
     data = sch.ReciboRead.model_validate(r)
     data.binder_umr = (binder.umr or binder.agreement_number) if binder else None

@@ -522,8 +522,8 @@ class ReciboGenerar(ReciboCampos):
 class ReciboRead(ReciboCampos):
     model_config = ConfigDict(from_attributes=True)
     id: int
-    binder_id: int
-    periodo: str
+    binder_id: int | None = None
+    periodo: str | None = None
     anio: int
     numero: str
     # Pendientes (recalculados por el backend) y enriquecidos:

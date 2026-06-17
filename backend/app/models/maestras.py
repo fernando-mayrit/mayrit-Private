@@ -488,12 +488,14 @@ class Recibo(Base):
     """
 
     __tablename__ = "recibos"
+    # 1 recibo por Risk BDX = único (binder, periodo). Un binder tiene MUCHOS (uno por periodo).
     __table_args__ = (UniqueConstraint("binder_id", "periodo", name="uq_recibo_binder_periodo"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    sp_old_id: Mapped[int | None] = mapped_column(Integer, index=True)   # _OldID de SharePoint (migración)
     # ── Enlace en la app ──
     binder_id: Mapped[int] = mapped_column(ForeignKey("binders.id", ondelete="CASCADE"), index=True)
-    periodo: Mapped[str] = mapped_column(String(7))               # 'YYYY-MM' del Risk BDX (enlace)
+    periodo: Mapped[str] = mapped_column(String(7))               # 'YYYY-MM' del Risk BDX
     anio: Mapped[int] = mapped_column(Integer, index=True)        # año contable
     estado: Mapped[str] = mapped_column(String(30), server_default="Emitido", default="Emitido")  # Emitido | Anulado
 
