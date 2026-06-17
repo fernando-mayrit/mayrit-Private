@@ -208,10 +208,12 @@ class SeccionMercadoOut(BaseModel):
 class BinderLimiteIn(BaseModel):
     limite_primas: Decimal | None = None
     notificacion: Decimal | None = None
+    fecha_notificacion: dt.date | None = None  # fecha en que se notificó el exceso de este límite
 
 
 class BinderLimiteOut(BinderLimiteIn):
-    pass
+    estado: str | None = None        # 'verde' | 'ambar' | 'rojo' (consumo de este límite)
+    consumo_pct: float | None = None  # % de consumo de este límite
 
 
 # Código de riesgo de una sección, con su comisión Mayrit opcional (override de la sección).
@@ -290,6 +292,9 @@ class BinderRead(BinderBase):
     coverholder_nombre: str | None = None
     coverholder_alias: str | None = None
     cuenta_bancaria_nombre: str | None = None
+    gwp_our_line: float | None = None  # Σ total_gwp_our_line del Risk BDX (calculado)
+    notif_estado: str | None = None       # semáforo: 'verde' | 'ambar' | 'rojo' (límite más crítico)
+    notif_consumo_pct: float | None = None  # % de consumo del límite más crítico
     limites: list[BinderLimiteOut] = []
     secciones: list[BinderSeccionOut] = []
     created_at: dt.datetime

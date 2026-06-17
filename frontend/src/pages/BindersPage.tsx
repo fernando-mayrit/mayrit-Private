@@ -32,7 +32,14 @@ const AMBITO_POR_LABEL: Record<string, LimiteAmbito> = {
 };
 
 type LineaForm = { mercado_id: string; participacion: string };
-type LimiteGrupo = { limite_primas: string; notificacion: string };
+type LimiteGrupo = {
+  limite_primas: string;
+  notificacion: string;
+  fecha_notificacion: string;
+  // Consumo de este límite (solo lectura, viene del backend; no se envía en el payload).
+  estado?: "verde" | "ambar" | "rojo" | null;
+  consumo_pct?: number | null;
+};
 type RiskCodeForm = { codigo: string; comision_mayrit: string };
 type SeccionForm = {
   ramo: string;
@@ -72,7 +79,13 @@ type FormState = {
   secciones: SeccionForm[];
 };
 
-const LIMITE_VACIO: LimiteGrupo = { limite_primas: "", notificacion: "" };
+const LIMITE_VACIO: LimiteGrupo = {
+  limite_primas: "",
+  notificacion: "",
+  fecha_notificacion: "",
+  estado: null,
+  consumo_pct: null,
+};
 
 const SECCION_VACIA: SeccionForm = {
   ramo: "",
@@ -166,6 +179,22 @@ function fechaCorta(iso: string | null): string {
   if (!iso) return "—";
   const [y, m, d] = iso.split("-");
   return d && m && y ? `${d}/${m}/${y}` : iso;
+}
+
+// Semáforo de notificación: consumo del GWP our line frente al umbral de notificación del
+// límite MÁS CRÍTICO del binder. 🟢 lejos · 🟡 a <10 puntos del umbral · 🔴 umbral alcanzado.
+const NOTIF_ICONO: Record<string, string> = { verde: "🟢", ambar: "🟡", rojo: "🔴" };
+function NotifCelda({ b }: { b: Binder }) {
+  if (!b.notif_estado) return <>—</>;
+  const umbral = b.limites?.[0]?.notificacion;
+  const titulo =
+    `Consumo ${fmtMiles(b.notif_consumo_pct ?? 0)} %` +
+    (umbral != null ? ` · umbral de notificación ${fmtMiles(umbral)} %` : "");
+  return (
+    <span className={`notif notif-${b.notif_estado}`} title={titulo}>
+      {NOTIF_ICONO[b.notif_estado]} {fmtMiles(b.notif_consumo_pct ?? 0)} %
+    </span>
+  );
 }
 
 // Ramos distintos de un binder (de sus secciones), unidos por coma.
@@ -357,6 +386,9 @@ export default function BindersPage() {
         ? b.limites.map((l) => ({
             limite_primas: l.limite_primas != null ? String(l.limite_primas) : "",
             notificacion: l.notificacion != null ? String(l.notificacion) : "",
+            fecha_notificacion: l.fecha_notificacion ?? "",
+            estado: l.estado ?? null,
+            consumo_pct: l.consumo_pct ?? null,
           }))
         : [{ ...LIMITE_VACIO }];
     const secciones: SeccionForm[] =
@@ -614,6 +646,7 @@ export default function BindersPage() {
     const limitesPayload = gruposUsados.map((g) => ({
       limite_primas: num(form.limites[g].limite_primas),
       notificacion: num(form.limites[g].notificacion),
+      fecha_notificacion: form.limites[g].fecha_notificacion || null,
     }));
     const payload: BinderWrite = {
       agreement_number: form.agreement_number.trim(),
@@ -735,6 +768,13 @@ export default function BindersPage() {
           fecha_efecto: masUnAnio(form.fecha_efecto),
           fecha_vencimiento: masUnAnio(form.fecha_vencimiento),
           yoa: nuevoYoa,
+          // Binder nuevo: el consumo arranca de cero, sin fechas de notificación heredadas.
+          limites: form.limites.map((l) => ({
+            ...l,
+            fecha_notificacion: "",
+            estado: null,
+            consumo_pct: null,
+          })),
         })
       )
     );
@@ -765,6 +805,32 @@ export default function BindersPage() {
     .filter((b) => !fEstado || b.estado === fEstado)
     .slice()
     .sort((a, b) => (Number(b.yoa) || 0) - (Number(a.yoa) || 0));
+
+  // Campo "Notificado (fecha)" de un grupo de límite. Si el límite está en rojo (umbral de
+  // notificación superado) y aún no tiene fecha, se DESTACA: es el que hay que rellenar.
+  function campoNotificado(gi: number) {
+    if (!form) return null;
+    const g = form.limites[gi];
+    if (!g) return null;
+    const pendiente = g.estado === "rojo" && !g.fecha_notificacion;
+    return (
+      <div className={`field${pendiente ? " notif-pend" : ""}`}>
+        <label>
+          Notificado (fecha)
+          {pendiente && <span className="notif-pend-badge">⚠ a notificar</span>}
+        </label>
+        <input
+          type="date"
+          className="inp-fecha"
+          value={g.fecha_notificacion ?? ""}
+          onChange={(e) => setGrupoCampo(gi, "fecha_notificacion", e.target.value)}
+        />
+        {g.consumo_pct != null && (
+          <span className="hint">Consumo {fmtMiles(g.consumo_pct)} %{pendiente ? " — supera el umbral" : ""}</span>
+        )}
+      </div>
+    );
+  }
 
   if (detalle) {
     return (
@@ -851,7 +917,6 @@ export default function BindersPage() {
                 <th>Vencimiento</th>
                 <th className="num">GWP</th>
                 <th className="num">Notificación</th>
-                <th>Notificado</th>
                 <th></th>
               </tr>
             </thead>
@@ -866,9 +931,8 @@ export default function BindersPage() {
                   <td>{ramosDe(b)}</td>
                   <td>{fechaCorta(b.fecha_efecto)}</td>
                   <td>{fechaCorta(b.fecha_vencimiento)}</td>
-                  <td className="num">—</td>
-                  <td className="num">—</td>
-                  <td>—</td>
+                  <td className="num">{eur(b.gwp_our_line)}</td>
+                  <td className="num"><NotifCelda b={b} /></td>
                   <td className="acciones">
                     <button className="btn-link" onClick={() => setDetalle(b)}>
                       Abrir
@@ -918,13 +982,31 @@ export default function BindersPage() {
                 </select>
               </div>
               <div className="binder-botones">
-                <button className="btn-secondary btn-sm" onClick={pasarASuplemento}>
+                <button
+                  className="btn-secondary btn-sm"
+                  onClick={pasarASuplemento}
+                  disabled={(form.estado ?? "").startsWith("Cerrado")}
+                  title={
+                    (form.estado ?? "").startsWith("Cerrado")
+                      ? "Binder cerrado: no se pueden emitir suplementos"
+                      : undefined
+                  }
+                >
                   + Suplemento
                 </button>
                 <button className="btn-secondary btn-sm" onClick={historialDesdeForm}>
                   Historial
                 </button>
-                <button className="btn-secondary btn-sm" onClick={() => setCorrigiendo(true)}>
+                <button
+                  className="btn-secondary btn-sm"
+                  onClick={() => setCorrigiendo(true)}
+                  disabled={(form.estado ?? "").startsWith("Cerrado")}
+                  title={
+                    (form.estado ?? "").startsWith("Cerrado")
+                      ? "Binder cerrado: no se puede corregir"
+                      : undefined
+                  }
+                >
                   Corregir
                 </button>
                 <button className="btn-secondary btn-sm" onClick={renovar}>
@@ -934,6 +1016,8 @@ export default function BindersPage() {
               <div className="hint" style={{ margin: "2px 0 12px" }}>
                 El binder es un documento fijo: aquí solo se cambia el Estado. Para un cambio real de
                 términos usa «+ Suplemento»; «Corregir» es solo para errores de grabación.
+                {(form.estado ?? "").startsWith("Cerrado") &&
+                  " En un binder cerrado no se pueden emitir suplementos ni corregir."}
               </div>
             </>
           )}
@@ -1258,6 +1342,7 @@ export default function BindersPage() {
                   thousands={false}
                 />
               </div>
+              {campoNotificado(0)}
             </div>
           )}
 
@@ -1285,6 +1370,7 @@ export default function BindersPage() {
                     thousands={false}
                   />
                 </div>
+                {campoNotificado(s.limite_grupo)}
               </div>
             ))}
 
@@ -1318,6 +1404,7 @@ export default function BindersPage() {
                         thousands={false}
                       />
                     </div>
+                    {campoNotificado(gi)}
                   </div>
                   <label className="mini-label">Secciones de este grupo</label>
                   <div className="rc-checks">

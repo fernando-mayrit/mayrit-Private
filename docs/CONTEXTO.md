@@ -421,6 +421,51 @@ Para la conexión de Power BI a Postgres (cuando se haga): **rol de solo lectura
 ya aplanados/calculados (desacoplar el esquema interno de los informes), abrir firewall de Azure a las
 IPs de Power BI, y para refresco automático en Power BI Service un On-premises Data Gateway.
 
+## Sesión 17/06/2026 (tarde) — listado de binders: GWP, semáforo de notificación y migraciones
+- **Columna GWP en el listado de binders** = **Σ `total_gwp_our_line`** del Risk BDX (our line, siempre),
+  calculada al vuelo en una sola consulta (`_metricas_binders` en `routers/binders.py`, evita N+1). No
+  se persiste: se mantiene al día sola tras cada Risk BDX. Expuesta como `gwp_our_line` en `BinderRead`
+  (tipo **float**, no Decimal, para evitar la cola de coma flotante al serializar).
+- **Columna Notificación = semáforo de consumo de primas** vs el umbral de notificación del **límite más
+  crítico** del binder. Regla (decisión 17/06): umbral = `notificacion`% del límite; 🟢 verde si consumo <
+  umbral−10 puntos · 🟡 ámbar a <10 puntos del umbral (p.ej. 65–75% si umbral 75%) · 🔴 rojo al alcanzar el
+  umbral. `MARGEN_AVISO_PUNTOS = 10`. Multi-límite: cada línea se asigna a su límite por **`section_no`**
+  (línea con section_no=N → N-ésima sección del binder → su límite); si hay un único límite efectivo, todo
+  el GWP suma a ese límite. **Binder cerrado** (estado empieza por "Cerrado") → **sin semáforo** (el GWP se
+  mantiene como histórico). Serializado: `notif_estado`/`notif_consumo_pct` (agregado) y por cada límite
+  `estado`/`consumo_pct` (en `BinderLimiteOut`).
+- **Fecha de notificación POR LÍMITE.** Campo `fecha_notificacion` (Date) en **`binder_limites`** (no en el
+  binder): es la fecha en que se notificó al mercado el exceso de ESE límite. Dato operativo (no es término;
+  pero como los límites se reescriben en cada guardado, viaja en el payload y se conserva). Migración
+  `c0d1e2f3a4b5` (añade la col al límite y **elimina** la `binders.fecha_notificacion` que se había añadido
+  antes en `b9c0d1e2f3a4`). UI: input **"Notificado (fecha)"** en la sección **Límite de Primas** del
+  formulario (en los 3 ámbitos). Al editar el binder, si un límite está en 🔴 y sin fecha, su campo se
+  **DESTACA** (recuadro rojo + badge "⚠ a notificar" + "Consumo X% — supera el umbral"); `campoNotificado(gi)`
+  en `BindersPage.tsx`. Como dijo el usuario, a veces toca hacer suplemento y otras corregir → el realce sale
+  en ambos modos. `Renovar` limpia fecha/estado de los límites clonados.
+- **Binder cerrado: no se emiten suplementos ni se corrige.** Botones "+ Suplemento" y "Corregir" **visibles
+  pero desactivados** (semitransparentes, `.btn-secondary:disabled`) cuando el estado empieza por "Cerrado".
+  Refuerzo backend: `POST /binders/{id}/suplementos` devuelve **409** si el binder está cerrado.
+- **Importador de BDX por Excel — alias nuevo.** Algunas plantillas no traen "Gross Written Premium" (100%);
+  usan **"Gross Premium paid this time"** (cuando la línea suscrita es el 100%, coincide con Our Line). Se
+  añadió como **alias de respaldo** de `gross_written_premium` en `sharepoint.py` (se prueba solo si falta el
+  principal; no afecta a los demás binders). Esos Excel tampoco traen "Written Line (%)" (línea 100%).
+
+**Migraciones de Risk BDX hechas y verificadas esta sesión** (vía `tools.migrar_bdx_excel`, conciliación
+GWP origen=bd OK; comprobación columna a columna + recibos por periodo):
+- CY0118ALE (93), MYTCCY2017 (25, tras borrar 1 línea Ayto. Toledo), CY0118ALE ya estaba.
+- **CY0118ALE 93 · MYTCCY2017 25 · PI0119CRO 401 · PI0219CRO 30 · PI0319IBE 377 · PA0119VAM 37 · GL0219ALE 23**.
+- Conciliación recibos↔brokerage **al céntimo en 2019**; los periodos **2020-2022** de varios binders tienen
+  BDX pero aún **sin recibo** (esperado: solo se han migrado recibos hasta 2019). GL0219ALE queda **100%
+  cuadrado** (11 periodos = 11 recibos, todo 2019). Líneas a 0 detectadas = **Endorsements/compensaciones**
+  legítimos (sin prima), no errores.
+- **Recibos 2019 completados:** tras cargar los binders PI/PA, re-ejecutado `migrar_recibos_excel --anios 2019`
+  → **+20 recibos** (binders 24/25/26/27). Total recibos: **51**, **0 colgados**; 2017-2019 (tipo Binder)
+  enlazados. Quedan 14 recibos tipo **Póliza (OM)** sin migrar (esperan el módulo de Pólizas).
+
+**Pendiente relacionado:** migrar recibos **2020-2022** para cuadrar los periodos de run-off; módulo de
+Pólizas (OM) para los 14 recibos de póliza.
+
 ## Decisión abierta (para más adelante)
 Hay `TLiquidaciones` (4330) y `TLiquidaciones1` (4018): decidir cuál es la buena. Relevante en
 la Fase 3 (Liquidaciones+LPAN), no ahora.

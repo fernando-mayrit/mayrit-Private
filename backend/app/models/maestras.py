@@ -190,6 +190,8 @@ class BinderLimite(Base):
     binder_id: Mapped[int] = mapped_column(ForeignKey("binders.id", ondelete="CASCADE"), index=True)
     limite_primas: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
     notificacion: Mapped[Decimal | None] = mapped_column(Numeric(7, 4))   # % de notificación
+    # Dato operativo: fecha en que se notificó al mercado el exceso de este límite.
+    fecha_notificacion: Mapped[dt.date | None] = mapped_column(Date)
 
     binder: Mapped["Binder"] = relationship(back_populates="limites")
     secciones: Mapped[list["BinderSeccion"]] = relationship(back_populates="limite")

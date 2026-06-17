@@ -67,6 +67,9 @@ export interface SeccionMercadoLinea {
 export interface BinderLimite {
   limite_primas: number | null;
   notificacion: number | null;
+  fecha_notificacion?: string | null; // fecha en que se notificó el exceso de este límite
+  estado?: "verde" | "ambar" | "rojo" | null; // consumo de este límite (solo lectura)
+  consumo_pct?: number | null; // % de consumo de este límite (solo lectura)
 }
 export interface RiskCodeSeccion {
   codigo: string;
@@ -112,6 +115,9 @@ export interface Binder extends BinderComun {
   moneda: string | null;
   yoa: string | null;
   notas: string | null;
+  gwp_our_line: number | null; // Σ total_gwp_our_line del Risk BDX (calculado)
+  notif_estado: "verde" | "ambar" | "rojo" | null; // semáforo del límite más crítico
+  notif_consumo_pct: number | null; // % de consumo del límite más crítico
   limites: BinderLimite[];
   secciones: BinderSeccion[];
   created_at: string;

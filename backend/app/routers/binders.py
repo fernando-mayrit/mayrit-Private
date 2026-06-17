@@ -3,8 +3,10 @@ Endpoints de Binders. Estructura anidada:
   Binder → Secciones → (Mercado + participación %).
 Por eso lleva lógica propia (no el CRUD genérico de las maestras).
 """
+from collections import defaultdict
+
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from ..db import get_db
@@ -69,7 +71,11 @@ def _terminos(b: Binder) -> dict:
         "cuenta_bancaria_id": b.cuenta_bancaria_id,
         "notas": b.notas,
         "limites": [
-            {"limite_primas": _f(lim.limite_primas), "notificacion": _f(lim.notificacion)}
+            {
+                "limite_primas": _f(lim.limite_primas),
+                "notificacion": _f(lim.notificacion),
+                "fecha_notificacion": lim.fecha_notificacion.isoformat() if lim.fecha_notificacion else None,
+            }
             for lim in b.limites
         ],
         "secciones": [
@@ -102,10 +108,98 @@ def _suplemento_dict(s: BinderSuplemento) -> dict:
     }
 
 
-def _serializar(b: Binder) -> dict:
+# Aviso (ámbar) cuando faltan <= estos puntos porcentuales para el umbral de notificación.
+MARGEN_AVISO_PUNTOS = 10.0
+_SEV_RANK = {"verde": 0, "ambar": 1, "rojo": 2}
+
+
+def _severidad(consumo_pct: float, umbral_pct: float | None) -> str:
+    """Color del semáforo según el consumo (% del límite de primas) frente al umbral de
+    notificación: rojo al alcanzarlo, ámbar a menos de MARGEN_AVISO_PUNTOS de él, verde si no."""
+    if umbral_pct is None:
+        return "verde"
+    if consumo_pct >= umbral_pct:
+        return "rojo"
+    if consumo_pct >= umbral_pct - MARGEN_AVISO_PUNTOS:
+        return "ambar"
+    return "verde"
+
+
+def _metricas_binders(db: Session, binders: list[Binder]) -> dict[int, dict]:
+    """Por binder: Σ GWP our line (total) y estado de notificación del límite MÁS CRÍTICO.
+    Calculado al vuelo (sin persistir): se mantiene siempre al día tras cada Risk BDX.
+
+    Mapeo a límites: si el binder tiene un único límite efectivo (nivel binder), todo el GWP
+    suma a ese límite; si hay varios (por sección/grupos), la línea con `section_no`=N va a la
+    N-ésima sección del binder → su límite (las de section_no fuera de rango quedan sin asignar)."""
+    ids = [b.id for b in binders]
+    por_seccion: dict[int, dict[int | None, float]] = defaultdict(dict)
+    if ids:
+        rows = db.execute(
+            select(Bdx.binder_id, BdxLinea.section_no, func.sum(BdxLinea.total_gwp_our_line))
+            .join(BdxLinea, BdxLinea.bdx_id == Bdx.id)
+            .where(Bdx.tipo == "Risk", Bdx.binder_id.in_(ids))
+            .group_by(Bdx.binder_id, BdxLinea.section_no)
+        ).all()
+        for bid, sec_no, total in rows:
+            if bid is not None:
+                por_seccion[bid][sec_no] = _f(total) or 0.0
+
+    out: dict[int, dict] = {}
+    for b in binders:
+        secs = por_seccion.get(b.id, {})
+        total = sum(secs.values()) if secs else 0.0
+        # `por_limite`: estado y % de consumo de CADA límite (por id), para destacar en la ficha
+        # el campo de fecha del límite que toca notificar. `notif_*`: el límite más crítico (listado).
+        m = {
+            "gwp_our_line": round(total, 2) if secs else None,
+            "notif_estado": None,
+            "notif_consumo_pct": None,
+            "por_limite": {},
+        }
+
+        # Binder cerrado (Cerrado Producción / Cerrado): el GWP se mantiene (histórico),
+        # pero el semáforo de notificación deja de tener sentido y desaparece.
+        cerrado = (b.estado or "").startswith("Cerrado")
+        if b.limites and secs and not cerrado:
+            consumo: dict[int, float] = defaultdict(float)
+            distintos = {s.limite_id for s in b.secciones if s.limite_id is not None}
+            if len(distintos) <= 1:
+                destino = next(iter(distintos), None) or b.limites[0].id
+                consumo[destino] = total
+            else:
+                secciones = list(b.secciones)  # orden por id (relationship order_by)
+                for sec_no, gwp in secs.items():
+                    if sec_no is not None and 1 <= sec_no <= len(secciones):
+                        lid = secciones[sec_no - 1].limite_id
+                        if lid is not None:
+                            consumo[lid] += gwp
+            mejor = None  # ((rank, consumo_pct), estado, consumo_pct)
+            for lim in b.limites:
+                cap = _f(lim.limite_primas)
+                if not cap:
+                    continue
+                pct = consumo.get(lim.id, 0.0) / cap * 100.0
+                estado = _severidad(pct, _f(lim.notificacion))
+                m["por_limite"][lim.id] = {"estado": estado, "consumo_pct": round(pct, 1)}
+                clave = (_SEV_RANK[estado], pct)
+                if mejor is None or clave > mejor[0]:
+                    mejor = (clave, estado, pct)
+            if mejor is not None:
+                m["notif_estado"] = mejor[1]
+                m["notif_consumo_pct"] = round(mejor[2], 1)
+        out[b.id] = m
+    return out
+
+
+def _serializar(b: Binder, met: dict | None = None) -> dict:
+    met = met or {}
     idx = _grupo_idx(b)
     return {
         "id": b.id,
+        "gwp_our_line": met.get("gwp_our_line"),
+        "notif_estado": met.get("notif_estado"),
+        "notif_consumo_pct": met.get("notif_consumo_pct"),
         "umr": b.umr,
         "agreement_number": b.agreement_number,
         "productor_id": b.productor_id,
@@ -132,7 +226,13 @@ def _serializar(b: Binder) -> dict:
         "created_at": b.created_at,
         "updated_at": b.updated_at,
         "limites": [
-            {"limite_primas": lim.limite_primas, "notificacion": lim.notificacion}
+            {
+                "limite_primas": lim.limite_primas,
+                "notificacion": lim.notificacion,
+                "fecha_notificacion": lim.fecha_notificacion,
+                "estado": met.get("por_limite", {}).get(lim.id, {}).get("estado"),
+                "consumo_pct": met.get("por_limite", {}).get(lim.id, {}).get("consumo_pct"),
+            }
             for lim in b.limites
         ],
         "secciones": [
@@ -169,7 +269,11 @@ def _aplicar(
     b.secciones.clear()
     grupos: list[BinderLimite] = []
     for lim in limites:
-        g = BinderLimite(limite_primas=lim.limite_primas, notificacion=lim.notificacion)
+        g = BinderLimite(
+            limite_primas=lim.limite_primas,
+            notificacion=lim.notificacion,
+            fecha_notificacion=lim.fecha_notificacion,
+        )
         b.limites.append(g)
         grupos.append(g)
     for s in secciones:
@@ -197,7 +301,9 @@ def listar(q: str | None = None, db: Session = Depends(get_db)):
     if q:
         like = f"%{q}%"
         stmt = stmt.where(or_(Binder.umr.ilike(like), Binder.agreement_number.ilike(like)))
-    return [_serializar(b) for b in db.scalars(stmt).all()]
+    binders = db.scalars(stmt).all()
+    met = _metricas_binders(db, binders)
+    return [_serializar(b, met.get(b.id)) for b in binders]
 
 
 @router.get("/{binder_id}", response_model=sch.BinderRead)
@@ -205,7 +311,7 @@ def obtener(binder_id: int, db: Session = Depends(get_db)):
     b = db.get(Binder, binder_id)
     if b is None:
         raise HTTPException(status_code=404, detail=f"Binder {binder_id} no encontrado")
-    return _serializar(b)
+    return _serializar(b, _metricas_binders(db, [b]).get(b.id))
 
 
 @router.post("", response_model=sch.BinderRead, status_code=201)
@@ -220,7 +326,7 @@ def crear(payload: sch.BinderCreate, db: Session = Depends(get_db)):
     db.add(b)
     db.commit()
     db.refresh(b)
-    return _serializar(b)
+    return _serializar(b, _metricas_binders(db, [b]).get(b.id))
 
 
 @router.put("/{binder_id}", response_model=sch.BinderRead)
@@ -259,7 +365,7 @@ def editar(binder_id: int, payload: sch.BinderUpdate, db: Session = Depends(get_
         )
     db.commit()
     db.refresh(b)
-    return _serializar(b)
+    return _serializar(b, _metricas_binders(db, [b]).get(b.id))
 
 
 @router.get("/{binder_id}/suplementos")
@@ -289,6 +395,12 @@ def crear_suplemento(binder_id: int, payload: sch.SuplementoCreate, db: Session 
     b = db.get(Binder, binder_id)
     if b is None:
         raise HTTPException(status_code=404, detail=f"Binder {binder_id} no encontrado")
+    # En un binder cerrado (Cerrado Producción / Cerrado) no se pueden emitir suplementos.
+    if (b.estado or "").startswith("Cerrado"):
+        raise HTTPException(
+            status_code=409,
+            detail=f"El binder está {b.estado}: no se pueden emitir suplementos.",
+        )
     # Si es un binder antiguo sin historial, congelamos primero su estado actual como versión 0.
     if not b.suplementos:
         b.suplementos.append(
@@ -311,7 +423,7 @@ def crear_suplemento(binder_id: int, payload: sch.SuplementoCreate, db: Session 
     )
     db.commit()
     db.refresh(b)
-    return _serializar(b)
+    return _serializar(b, _metricas_binders(db, [b]).get(b.id))
 
 
 @router.delete("/{binder_id}", status_code=204)

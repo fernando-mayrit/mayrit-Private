@@ -45,7 +45,9 @@ MAPEO: dict[str, str] = {
     "expiry_date_transaction": "Expiry Date of Transaction",
     # Prima
     "original_currency": "Original Currency Premium",  # en el origen esta columna trae la MONEDA (EUR)
-    "gross_written_premium": "Gross Written Premium",
+    # Algunas plantillas no traen "Gross Written Premium" (100%); en su lugar usan
+    # "Gross Premium paid this time" (cuando la línea suscrita es el 100%, coincide con Our Line).
+    "gross_written_premium": ["Gross Written Premium", "Gross Premium paid this time"],
     "written_line_pct": "Written Line (%)",
     "total_gwp_our_line": "Total Gross Written Premium (Our line)",
     "fees": ["Fees"],

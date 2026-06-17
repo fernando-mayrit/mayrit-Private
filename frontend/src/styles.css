@@ -116,6 +116,8 @@ button {
 .btn-primary:disabled { background: #e3a892; cursor: default; }
 .btn-secondary { background: #fff; color: var(--gris); border-color: var(--borde); }
 .btn-secondary:hover { background: var(--gris-claro); }
+.btn-secondary:disabled { opacity: 0.45; cursor: not-allowed; background: #fff; }
+.btn-secondary:disabled:hover { background: #fff; }
 .btn-danger { background: #fff; color: var(--rojo); border-color: #f1c6c1; }
 .btn-danger:hover { background: #fdecea; }
 .btn-link { background: none; border: none; color: var(--naranja); padding: 4px 8px; }
@@ -396,6 +398,20 @@ td.num, th.num { text-align: right; }
 .estado-badge.eb-cerrado-prod { background: #fef9c3; color: #a16207; }   /* amarillo */
 .estado-badge.eb-cerrado { background: #fde2dd; color: #b42318; }        /* rojo */
 .estado-badge.eb-otro { background: var(--gris-claro); color: var(--gris-medio); }
+
+/* Semáforo de notificación (consumo de primas vs umbral) en el listado de binders */
+.notif { font-weight: 700; white-space: nowrap; }
+.notif-verde { color: #1a7f37; }
+.notif-ambar { color: #a16207; }
+.notif-rojo  { color: #b42318; }
+
+/* Campo "Notificado (fecha)" pendiente de rellenar (límite que supera el umbral) */
+.field.notif-pend { background: #fde2dd; border: 1px solid #f1b0a7; border-radius: 8px; padding: 8px 10px; }
+.field.notif-pend .inp-fecha { border-color: #b42318; }
+.notif-pend-badge {
+  margin-left: 8px; font-size: 12px; font-weight: 700; color: #b42318;
+  background: #fff; border: 1px solid #f1b0a7; border-radius: 999px; padding: 1px 8px;
+}
 
 /* Diálogo de confirmación contundente (acciones sensibles) */
 .panel-confirm { max-width: 460px; width: 92vw; border-top: 6px solid var(--rojo); }
