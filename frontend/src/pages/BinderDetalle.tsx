@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { bdxApi, recibosApi, type BdxDetalle, type BdxPreview, type BdxImportResult, type ExcelDir } from "../api";
+import { bdxApi, recibosApi, type BdxDetalle, type BdxPreview, type BdxImportResult, type ExcelDir, type PremiumGrupo } from "../api";
 import type { Binder, Bdx, BdxLinea, Recibo } from "../types";
 import BdxLineaPanel from "../components/BdxLineaPanel";
 import BdxTabla from "../components/BdxTabla";
@@ -38,7 +38,7 @@ function imp(v: string | number | null | undefined): string {
 }
 
 export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBack: () => void }) {
-  const [tab, setTab] = useState<"datos" | "bloqueo" | "bdx" | "calculos" | "recibos" | "siniestros" | "triangulacion">("bdx");
+  const [tab, setTab] = useState<"datos" | "bloqueo" | "bdx" | "premium" | "calculos" | "recibos" | "siniestros" | "triangulacion">("bdx");
 
   // ── BDX (uno por binder) ──
   const [bdxs, setBdxs] = useState<Bdx[]>([]);
@@ -70,6 +70,9 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
   const [emitiendo, setEmitiendo] = useState(false);
   // Macheo de un Premium (Excel) seleccionado
   const [matchExcel, setMatchExcel] = useState<{ ruta: string; nombre: string } | null>(null);
+  // Premiums del binder (grupos por mes) y fecha de pago por periodo (para el cobro)
+  const [premiums, setPremiums] = useState<PremiumGrupo[]>([]);
+  const [fechasPago, setFechasPago] = useState<Record<string, string>>({});
 
   // ── Importación desde SharePoint ──
   const [importAbierto, setImportAbierto] = useState(false);
@@ -90,6 +93,7 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
       const bl = await bdxApi.listarBloqueos(binder.id);
       setBloqueos(new Set(bl.map((b) => `${b.tipo}:${b.periodo}`)));
       setRecibos(await recibosApi.deBinder(binder.id));
+      setPremiums(await recibosApi.listarPremium(binder.id));
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -182,6 +186,28 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
   // Recibo ya generado de cada periodo (1 por Risk BDX).
   const reciboDe = new Map(recibos.map((r) => [r.periodo, r]));
 
+  // Cobro de un Premium entero (marca líneas pagadas con la fecha real → deriva el cobro a los recibos).
+  async function cobrarPremium(periodo: string) {
+    const fecha = fechasPago[periodo] || new Date().toISOString().slice(0, 10);
+    setError(null);
+    try {
+      await recibosApi.cobrarPremium(binder.id, periodo, fecha);
+      await cargar();
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
+  async function descobrarPremium(periodo: string) {
+    if (!confirm(`¿Deshacer el cobro del Premium ${periodo}?`)) return;
+    setError(null);
+    try {
+      await recibosApi.descobrarPremium(binder.id, periodo, new Date().toISOString().slice(0, 10));
+      await cargar();
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
+
   // Paso 1: NO crea el recibo; calcula el borrador (preview) y abre el formulario de emisión.
   async function generarRecibo(periodo: string) {
     setGenerando(periodo);
@@ -246,6 +272,9 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
         </button>
         <button className={"tab" + (tab === "bdx" ? " active" : "")} onClick={() => setTab("bdx")}>
           BDX
+        </button>
+        <button className={"tab" + (tab === "premium" ? " active" : "")} onClick={() => setTab("premium")}>
+          Premium
         </button>
         <button className={"tab" + (tab === "calculos" ? " active" : "")} onClick={() => setTab("calculos")}>
           Cálculos
@@ -466,6 +495,67 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
               }
             />
           )}
+        </>
+      )}
+
+      {tab === "premium" && (
+        <>
+          <h3 style={{ margin: "4px 0 8px" }}>Premium BDX (cobro)</h3>
+          {premiums.length === 0 ? (
+            <div className="empty">
+              Aún no hay líneas incluidas en ningún Premium. Ve a la pestaña <b>BDX → «Subir Excel»</b> para
+              machear un Premium con el Risk.
+            </div>
+          ) : (
+            <table className="compacto" style={{ maxWidth: 900 }}>
+              <thead>
+                <tr>
+                  <th>Mes Premium</th>
+                  <th className="num">Líneas</th>
+                  <th className="num">Prima</th>
+                  <th className="num">Comisión</th>
+                  <th>Estado</th>
+                  <th>Cobro</th>
+                </tr>
+              </thead>
+              <tbody>
+                {premiums.map((p) => (
+                  <tr key={p.periodo}>
+                    <td>{mesLargo(p.periodo)}</td>
+                    <td className="num">{p.num_lineas}</td>
+                    <td className="num">{imp(n(p.prima))}</td>
+                    <td className="num">{imp(n(p.comision))}</td>
+                    <td>
+                      {p.cobrado ? (
+                        <span className="pill pill-cobrado">Cobrado {p.fecha_pago ? fmtFechaES(p.fecha_pago) : ""}</span>
+                      ) : (
+                        <span className="pill pill-pendiente">Pendiente</span>
+                      )}
+                    </td>
+                    <td>
+                      {p.cobrado ? (
+                        <button className="btn-link" onClick={() => descobrarPremium(p.periodo)}>Deshacer</button>
+                      ) : (
+                        <span style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
+                          <input
+                            type="date"
+                            className="inp-fecha"
+                            value={fechasPago[p.periodo] ?? new Date().toISOString().slice(0, 10)}
+                            onChange={(e) => setFechasPago((s) => ({ ...s, [p.periodo]: e.target.value }))}
+                          />
+                          <button className="btn-primary btn-sm" onClick={() => cobrarPremium(p.periodo)}>Cobrado</button>
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+          <div className="hint" style={{ marginTop: 8 }}>
+            Al marcar un Premium como cobrado, el cobro se reparte automáticamente entre los recibos de esas
+            líneas (Prima / Comisión retenida / A liquidar cobrados).
+          </div>
         </>
       )}
 

@@ -389,10 +389,18 @@ La **BD más importante**. Flujo: subir/importar un Risk BDX → **generar su re
   Premium BDX**, que **rara vez coinciden** con el Risk BDX → cobro parcial. Estado de cobro derivado
   (`estadoCobro` en format.ts): Pendiente / Parcial / Cobrado / Anulado (pills de color), sobre
   comision_retenida vs comision_retenida_cobrada. `estado` manual = Emitido/Anulado.
-- **Pendiente:** **automatizar el cobro desde los Premium BDX** (acumular comision_retenida_cobrada y
-  liquidación a medida que las líneas entran en Premium BDX y se pagan; hoy se editan a mano en el modal);
-  rellenar el resto de campos contables; Fase 3 = **parser del Excel** del Risk BDX («Subir Excel»,
-  placeholder); enlazar a Contabilidad.
+- **Cobro vía Premium BDX (AUTOMATIZADO, 17/06):** el cobro del recibo se **deriva** de sus líneas
+  pagadas. Flujo: (1) **machear** un Premium con el Risk — en BDX → «Subir Excel» se abre `PremiumMatch`
+  (lee el Excel de cualquier formato, mapeas columna Certificado + Importe + mes, casa por Certificate
+  Ref con el importe como comprobación, recuerda el mapeo en la agencia `productores.premium_col_*`), al
+  aplicar marca `incluido_en_premium` + `premium_bdx` (día 1 del mes). (2) Pestaña **Premium** del
+  binder: lista los Premium por mes y «Cobrado» con la fecha real → marca las líneas pagadas y
+  **recalcula el cobro de los recibos afectados** (prima/comisión retenida/a liquidar cobrados = Σ
+  líneas pagadas; pendientes recalculados). Backend: `_recalcular_cobro_recibo`, endpoints
+  `/bdx/lineas/premium`, `/binders/{id}/premium`, `.../premium/cobrar|descobrar|excel-preview|match-excel`.
+  Verificado e2e con el Premium real de Dale (6/6 match). openpyxl en requirements.
+- **Pendiente:** rellenar el resto de campos contables del recibo; el paso de **traspaso** de comisión;
+  enlazar a Contabilidad; soportar `.xls` (hoy solo `.xlsx`).
 
 ## Estrategia BI / reporting (decidido 2026-06-17)
 Dos capas **separadas**, no Power BI como motor de toda la app:
