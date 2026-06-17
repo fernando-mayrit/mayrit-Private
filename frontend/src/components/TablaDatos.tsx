@@ -41,6 +41,7 @@ export default function TablaDatos<T extends { id: number }>({
   acciones,
   rowAction,
   rowClass,
+  defaultSort,
   resetSignal,
 }: {
   filas: T[];
@@ -51,6 +52,7 @@ export default function TablaDatos<T extends { id: number }>({
   acciones?: ReactNode;
   rowAction?: (r: T) => ReactNode;        // columna fija a la derecha (p. ej. botón "Editar")
   rowClass?: (r: T) => string | undefined; // clase CSS por fila (p. ej. atenuar inactivos)
+  defaultSort?: { key: string; dir: 1 | -1 }; // orden inicial si no hay uno guardado
   resetSignal?: number;   // al cambiar, limpia los filtros por columna
 }) {
   const COLS_KEY = `${storageKey}.cols`;
@@ -70,9 +72,12 @@ export default function TablaDatos<T extends { id: number }>({
   const [sort, setSort] = useState<SortState>(() => {
     try {
       const raw = localStorage.getItem(SORT_KEY);
-      if (raw) return JSON.parse(raw) as SortState;
+      if (raw) {
+        const parsed = JSON.parse(raw) as SortState;
+        if (parsed) return parsed; // un "null" guardado no debe tapar el orden por defecto
+      }
     } catch { /* ignora */ }
-    return null;
+    return defaultSort ?? null;
   });
   const [filtros, setFiltros] = useState<Record<string, Set<string>>>({});
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);

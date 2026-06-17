@@ -9,7 +9,7 @@ import { PAISES } from "../data/paises";
 
 const api = crud<Tomador, TomadorWrite>("/tomadores");
 
-const TIPOS = ["Persona física", "Persona jurídica"];
+const TIPOS = ["Persona física", "Persona jurídica", "Otros"];
 
 // Catálogo de columnas (clic derecho en la cabecera para elegir/ocultar/mover).
 const CATALOGO: Col<Tomador>[] = [
@@ -239,7 +239,9 @@ export default function TomadoresPage() {
     ? "X-00000000"
     : form?.tipo === "Persona física"
     ? "00000000-X"
-    : "Elige antes Física/Jurídica";
+    : form?.tipo === "Otros"
+    ? "Identificación fiscal (libre)"
+    : "Elige antes el tipo";
 
   return (
     <div className="container lista-page">

@@ -126,8 +126,13 @@ export default function PolizasPage() {
           filas={filtrados}
           columnas={columnas}
           defaultKeys={DEFAULT_KEYS}
-          storageKey="mayrit.polizas.tabla.v3"
-          onRowClick={(p) => setForm(p)}
+          storageKey="mayrit.polizas.tabla.v5"
+          defaultSort={{ key: "fecha_efecto", dir: -1 }}
+          rowAction={(p) => (
+            <button className="btn-link" onClick={() => setForm(p)}>
+              Editar
+            </button>
+          )}
         />
       )}
 
