@@ -93,10 +93,10 @@ export default function ReciboModal({
   const comPdteTraspaso = n(f.comision_retenida_cobrada) - n(f.comision_retenida_traspasada);
 
   // Campos reutilizables (en emisión, soloLectura → todos deshabilitados)
-  const Money = ({ k, label }: { k: string; label: string }) => (
+  const Money = ({ k, label, full }: { k: string; label: string; full?: boolean }) => (
     <div className="field">
       <label>{label}</label>
-      <NumberInput value={f[k] ?? ""} onChange={(v) => set(k, v)} suffix="€" disabled={soloLectura} />
+      <NumberInput value={f[k] ?? ""} onChange={(v) => set(k, v)} suffix="€" disabled={soloLectura} className={full ? "full-w" : undefined} />
     </div>
   );
   const Pct = ({ k, label }: { k: string; label: string }) => (
@@ -118,10 +118,10 @@ export default function ReciboModal({
     </div>
   );
   // Solo lectura, con el MISMO formato que NumberInput (cifra a la derecha, € como sufijo fuera).
-  const RO = ({ label, v }: { label: string; v: number }) => (
+  const RO = ({ label, v, full }: { label: string; v: number; full?: boolean }) => (
     <div className="field">
       <label>{label}</label>
-      <div className="num-input">
+      <div className={"num-input" + (full ? " full-w" : "")}>
         <input className="inp-num" type="text" value={fmtMiles(v)} disabled />
         <span className="num-suffix">€</span>
       </div>
@@ -212,7 +212,7 @@ export default function ReciboModal({
         <div className="recibo-col">
           <div className="recibo-box">
             <h4>Cobro de primas</h4>
-            <Money k="prima_adeudada" label="Prima Adeudada" />
+            <Money k="prima_adeudada" label="Prima Adeudada" full />
             <div className="campos-grid" style={{ gridTemplateColumns: "1fr 1fr" }}>
               <Money k="prima_cobrada" label="Prima Cobrada" />
               <RO label="Pendiente de Cobro" v={primaPdteCobro} />
@@ -221,7 +221,7 @@ export default function ReciboModal({
 
           <div className="recibo-box">
             <h4>Liquidación a la Cía</h4>
-            <Money k="liquidar" label="A Liquidar" />
+            <Money k="liquidar" label="A Liquidar" full />
             <div className="campos-grid" style={{ gridTemplateColumns: "1fr 1fr" }}>
               <Money k="liquidar_cobrado" label="A Liquidar Cobrado" />
               <RO label="A Liquidar Pdte. Cobro" v={liqPdteCobro} />
@@ -234,11 +234,15 @@ export default function ReciboModal({
 
           <div className="recibo-box">
             <h4>Comisiones</h4>
-            <RO label="Retenida" v={n(f.comision_retenida)} />
-            <Money k="comision_retenida_cobrada" label="Cobrada" />
-            <RO label="Pdte. Cobro" v={comPdteCobro} />
-            <Money k="comision_retenida_traspasada" label="Traspasada" />
-            <RO label="Pdte. Traspaso" v={comPdteTraspaso} />
+            <RO label="Retenida" v={n(f.comision_retenida)} full />
+            <div className="campos-grid" style={{ gridTemplateColumns: "1fr 1fr" }}>
+              <Money k="comision_retenida_cobrada" label="Cobrada" />
+              <RO label="Pdte. Cobro" v={comPdteCobro} />
+            </div>
+            <div className="campos-grid" style={{ gridTemplateColumns: "1fr 1fr" }}>
+              <Money k="comision_retenida_traspasada" label="Traspasada" />
+              <RO label="Pdte. Traspaso" v={comPdteTraspaso} />
+            </div>
           </div>
         </div>
       </div>

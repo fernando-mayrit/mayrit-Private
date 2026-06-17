@@ -361,6 +361,9 @@ td.num, th.num { text-align: right; }
 .recibo-modal .field .num-input { max-width: 200px; }
 .recibo-modal .field input[type="date"] { max-width: 150px; }
 .recibo-modal .field textarea { max-width: 100%; }
+/* Importes que ocupan el ancho completo de su caja (Prima Adeudada, A Liquidar, Retenida) = las dos de debajo juntas */
+.recibo-modal .field .num-input.full-w,
+.recibo-modal .field .num-input.full-w .inp-num { max-width: 100%; }
 .recibo-mas { margin-top: 6px; }
 .recibo-mas summary { cursor: pointer; color: var(--gris-medio); font-size: 13px; padding: 4px 0; }
 @media (max-width: 760px) { .recibo-modal { grid-template-columns: 1fr; } }
