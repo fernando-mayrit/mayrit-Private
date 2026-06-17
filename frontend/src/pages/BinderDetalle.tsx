@@ -630,6 +630,7 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
           saveLabel="Emitir recibo"
           recibo={borrador}
           numeroProvisional
+          soloLectura
           saving={emitiendo}
           error={error}
           onSave={emitirRecibo}

@@ -7,9 +7,10 @@ type Props = {
   options: string[];
   onChange: (v: string) => void;
   vertical?: boolean;
+  disabled?: boolean;
 };
 
-export default function OptionButtons({ value, options, onChange, vertical = false }: Props) {
+export default function OptionButtons({ value, options, onChange, vertical = false, disabled = false }: Props) {
   return (
     <div className={"optbtns" + (vertical ? " vertical" : "")} role="radiogroup">
       {options.map((o) => (
@@ -20,6 +21,7 @@ export default function OptionButtons({ value, options, onChange, vertical = fal
           aria-checked={value === o}
           className={"optbtn" + (value === o ? " sel" : "")}
           onClick={() => onChange(o)}
+          disabled={disabled}
         >
           {o}
         </button>

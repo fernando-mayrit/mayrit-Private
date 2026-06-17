@@ -351,11 +351,16 @@ td.num, th.num { text-align: right; }
 .lock-btn { background: none; border: none; cursor: pointer; font-size: 16px; padding: 0; line-height: 1; }
 /* Recibos: modal ancho estilo Access (izquierda + 3 cajas) */
 .panel-wide { max-width: 920px; width: 94vw; }
-.recibo-modal { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; align-items: start; }
+.recibo-modal { display: grid; grid-template-columns: 2fr 1fr; gap: 22px; align-items: start; }
 .recibo-col { display: flex; flex-direction: column; gap: 8px; }
 .recibo-box { border: 1px solid var(--borde); border-radius: 10px; padding: 8px 14px 12px; }
 .recibo-box h4 { margin: 4px 0 8px; color: var(--naranja-osc); font-size: 13px; letter-spacing: .04em; text-transform: uppercase; border-bottom: 1px solid var(--borde); padding-bottom: 6px; }
 .recibo-box .field { margin-bottom: 6px; }
+/* Campos compactos: los importes/fechas no necesitan ocupar todo el ancho de la columna */
+.recibo-modal .field input,
+.recibo-modal .field .num-input { max-width: 200px; }
+.recibo-modal .field input[type="date"] { max-width: 150px; }
+.recibo-modal .field textarea { max-width: 100%; }
 .recibo-mas { margin-top: 6px; }
 .recibo-mas summary { cursor: pointer; color: var(--gris-medio); font-size: 13px; padding: 4px 0; }
 @media (max-width: 760px) { .recibo-modal { grid-template-columns: 1fr; } }

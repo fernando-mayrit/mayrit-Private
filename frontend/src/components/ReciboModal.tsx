@@ -55,13 +55,13 @@ const n = (s: string) => {
   const x = Number(s);
   return isNaN(x) ? 0 : x;
 };
-const eur = (v: number) => `${fmtMiles(v)} €`;
 
 export default function ReciboModal({
   titulo,
   saveLabel,
   recibo,
   numeroProvisional = false,
+  soloLectura = false,
   saving,
   error,
   onSave,
@@ -72,6 +72,7 @@ export default function ReciboModal({
   saveLabel: string;
   recibo: Partial<Recibo> | ReciboPreview;
   numeroProvisional?: boolean;
+  soloLectura?: boolean; // emisión: todo viene del Risk BDX, ningún campo editable
   saving: boolean;
   error: string | null;
   onSave: (payload: ReciboUpdate) => void;
@@ -91,35 +92,39 @@ export default function ReciboModal({
   const comPdteCobro = n(f.comision_retenida) - n(f.comision_retenida_cobrada);
   const comPdteTraspaso = n(f.comision_retenida_cobrada) - n(f.comision_retenida_traspasada);
 
-  // Campos reutilizables
+  // Campos reutilizables (en emisión, soloLectura → todos deshabilitados)
   const Money = ({ k, label }: { k: string; label: string }) => (
     <div className="field">
       <label>{label}</label>
-      <NumberInput value={f[k] ?? ""} onChange={(v) => set(k, v)} suffix="€" />
+      <NumberInput value={f[k] ?? ""} onChange={(v) => set(k, v)} suffix="€" disabled={soloLectura} />
     </div>
   );
   const Pct = ({ k, label }: { k: string; label: string }) => (
     <div className="field">
       <label>{label}</label>
-      <NumberInput value={f[k] ?? ""} onChange={(v) => set(k, v)} suffix="%" thousands={false} />
+      <NumberInput value={f[k] ?? ""} onChange={(v) => set(k, v)} suffix="%" thousands={false} disabled={soloLectura} />
     </div>
   );
   const Fecha = ({ k, label }: { k: string; label: string }) => (
     <div className="field">
       <label>{label}</label>
-      <input type="date" className="inp-fecha" value={f[k] ?? ""} onChange={(e) => set(k, e.target.value)} />
+      <input type="date" className="inp-fecha" value={f[k] ?? ""} onChange={(e) => set(k, e.target.value)} disabled={soloLectura} />
     </div>
   );
   const Texto = ({ k, label }: { k: string; label: string }) => (
     <div className="field">
       <label>{label}</label>
-      <input type="text" value={f[k] ?? ""} onChange={(e) => set(k, e.target.value)} />
+      <input type="text" value={f[k] ?? ""} onChange={(e) => set(k, e.target.value)} disabled={soloLectura} />
     </div>
   );
+  // Solo lectura, con el MISMO formato que NumberInput (cifra a la derecha, € como sufijo fuera).
   const RO = ({ label, v }: { label: string; v: number }) => (
     <div className="field">
       <label>{label}</label>
-      <input type="text" value={eur(v)} disabled />
+      <div className="num-input">
+        <input className="inp-num" type="text" value={fmtMiles(v)} disabled />
+        <span className="num-suffix">€</span>
+      </div>
     </div>
   );
 
@@ -145,7 +150,7 @@ export default function ReciboModal({
           <div className="campos-grid" style={{ gridTemplateColumns: "1fr 1fr" }}>
             <div className="field">
               <label>Recibo Número</label>
-              <NumberInput value={f.recibo_num ?? ""} onChange={(v) => set("recibo_num", v)} decimals={0} thousands={false} />
+              <NumberInput value={f.recibo_num ?? ""} onChange={(v) => set("recibo_num", v)} decimals={0} thousands={false} disabled={soloLectura} />
             </div>
             <Texto k="recibos_totales" label="de (nº total)" />
           </div>
@@ -176,7 +181,7 @@ export default function ReciboModal({
 
           <div className="field">
             <label>Pagador</label>
-            <OptionButtons value={f.pagador ?? ""} options={PAGADORES} onChange={(v) => set("pagador", v)} vertical />
+            <OptionButtons value={f.pagador ?? ""} options={PAGADORES} onChange={(v) => set("pagador", v)} vertical disabled={soloLectura} />
           </div>
           <Texto k="cuenta" label="Cuenta" />
 
@@ -194,11 +199,11 @@ export default function ReciboModal({
             </div>
             <div className="field">
               <label>Estado</label>
-              <OptionButtons value={f.estado ?? ""} options={ESTADOS} onChange={(v) => set("estado", v)} />
+              <OptionButtons value={f.estado ?? ""} options={ESTADOS} onChange={(v) => set("estado", v)} disabled={soloLectura} />
             </div>
             <div className="field">
               <label>Notas</label>
-              <textarea rows={2} value={f.notas ?? ""} onChange={(e) => set("notas", e.target.value)} />
+              <textarea rows={2} value={f.notas ?? ""} onChange={(e) => set("notas", e.target.value)} disabled={soloLectura} />
             </div>
           </details>
         </div>
