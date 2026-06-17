@@ -98,10 +98,16 @@ export default function ReciboModal({
       <NumberInput value={f[k] ?? ""} onChange={(v) => set(k, v)} suffix="€" disabled={soloLectura} className={full ? "full-w" : undefined} />
     </div>
   );
-  const Pct = ({ k, label }: { k: string; label: string }) => (
-    <div className="field">
-      <label>{label}</label>
-      <NumberInput value={f[k] ?? ""} onChange={(v) => set(k, v)} suffix="%" thousands={false} disabled={soloLectura} />
+  // Fila tipo Access: etiqueta · % (opcional) · € — con los importes alineados en columna.
+  const Linea = ({ label, kEur, kPct }: { label: string; kEur: string; kPct?: string }) => (
+    <div className="recibo-linea">
+      <span className="recibo-linea-lbl">{label}</span>
+      {kPct ? (
+        <NumberInput value={f[kPct] ?? ""} onChange={(v) => set(kPct, v)} suffix="%" thousands={false} disabled={soloLectura} />
+      ) : (
+        <span />
+      )}
+      <NumberInput value={f[kEur] ?? ""} onChange={(v) => set(kEur, v)} suffix="€" disabled={soloLectura} />
     </div>
   );
   const Fecha = ({ k, label }: { k: string; label: string }) => (
@@ -162,24 +168,13 @@ export default function ReciboModal({
             <Fecha k="fecha_vcto_recibo" label="Fecha Vto. Recibo" />
           </div>
 
-          <Money k="prima_neta_recibo" label="Prima Neta Bordereau" />
-          <Money k="impuestos_recibo" label="Impuestos" />
-          <Money k="prima_bruta_recibo" label="Prima Total Bordereau" />
-
-          <div className="campos-grid" style={{ gridTemplateColumns: "1fr 1fr" }}>
-            <Pct k="deduccion_total_porc" label="Deducción Total %" />
-            <Money k="deduccion_total" label="Deducción Total" />
-          </div>
-          <div className="campos-grid" style={{ gridTemplateColumns: "1fr 1fr" }}>
-            <Pct k="comision_cedida_porc" label="Comisión Cedida %" />
-            <Money k="comision_cedida" label="Comisión Cedida" />
-          </div>
-          <div className="campos-grid" style={{ gridTemplateColumns: "1fr 1fr" }}>
-            <Pct k="comision_retenida_porc" label="Comisión Retenida %" />
-            <Money k="comision_retenida" label="Comisión Retenida" />
-          </div>
-
-          <Money k="honorarios" label="Honorarios" />
+          <Linea label="Prima Neta Bordereau" kEur="prima_neta_recibo" />
+          <Linea label="Impuestos" kEur="impuestos_recibo" />
+          <Linea label="Prima Total Bordereau" kEur="prima_bruta_recibo" />
+          <Linea label="Deducción Total" kPct="deduccion_total_porc" kEur="deduccion_total" />
+          <Linea label="Comisión Cedida" kPct="comision_cedida_porc" kEur="comision_cedida" />
+          <Linea label="Comisión Retenida" kPct="comision_retenida_porc" kEur="comision_retenida" />
+          <Linea label="Honorarios" kEur="honorarios" />
 
           <Texto k="cuenta" label="Cuenta" />
 

@@ -373,6 +373,10 @@ td.num, th.num { text-align: right; }
 .recibo-modal .recibo-num-row .recibo-mini .num-input { max-width: 54px; }
 .recibo-num-row .recibo-mini input,
 .recibo-num-row .recibo-mini .inp-num { text-align: center; }
+/* Filas etiqueta · % · € (estilo Access), con los importes alineados en columna */
+.recibo-linea { display: grid; grid-template-columns: 1fr 76px 140px; gap: 8px; align-items: center; margin-bottom: 6px; }
+.recibo-linea-lbl { font-size: 14px; color: var(--gris); }
+.recibo-linea .num-input { max-width: 100%; }
 .recibo-mas { margin-top: 6px; }
 .recibo-mas summary { cursor: pointer; color: var(--gris-medio); font-size: 13px; padding: 4px 0; }
 @media (max-width: 760px) { .recibo-modal { grid-template-columns: 1fr; } }
