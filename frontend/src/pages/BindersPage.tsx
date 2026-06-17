@@ -14,7 +14,7 @@ const apiMercados = crud<Mercado, unknown>("/mercados");
 const apiRamos = crud<Ramo, { nombre: string }>("/ramos");
 const apiCuentas = crud<CuentaBancaria, unknown>("/cuentas-bancarias");
 
-const ESTADOS = ["En Vigor", "Cancelado", "Renovado", "No Renovado", "Cerrado"];
+const ESTADOS = ["En Vigor", "Cancelado", "Renovado", "No Renovado", "Cerrado Producción", "Cerrado"];
 const INTERVALOS = ["Mensual", "Trimestral", "Semestral", "Anual"];
 const PREFIJO_UMR = "B1634";
 
@@ -181,6 +181,8 @@ function claseEstado(estado: string | null): string {
       return "estado-en-vigor";
     case "Renovado":
       return "estado-renovado";
+    case "Cerrado Producción":
+      return "estado-cerrado-prod";
     case "Cerrado":
       return "estado-cerrado";
     default:

@@ -130,7 +130,9 @@ tr.estado-en-vigor td { background: #f7d9d0; }            /* rojo pastel (marca)
 tr.estado-en-vigor:hover td { background: #f2cabd; }
 tr.estado-renovado td { background: #dcebe0; }            /* verde pastel — renovado */
 tr.estado-renovado:hover td { background: #cee2d4; }
-tr.estado-cerrado td { background: var(--gris); color: #ededed; }   /* gris oscuro — cerrado */
+tr.estado-cerrado-prod td { background: #c9ccd1; }        /* gris medio — producción cerrada (siniestros abierto) */
+tr.estado-cerrado-prod:hover td { background: #bcc0c6; }
+tr.estado-cerrado td { background: var(--gris); color: #ededed; }   /* gris oscuro — cerrado (todo) */
 tr.estado-cerrado:hover td { background: #595959; }
 tr.estado-cerrado .btn-link { color: #ffd9cc; }          /* enlaces legibles sobre gris oscuro */
 /* Contenedor con scroll horizontal para tablas anchas (p. ej. binders) */
