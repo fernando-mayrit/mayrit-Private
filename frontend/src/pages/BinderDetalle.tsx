@@ -369,11 +369,6 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
                     ⤓ Importar de SharePoint
                   </button>
                 )}
-                {sel && (
-                  <button className="btn-secondary" onClick={() => setLinea("nueva")}>
-                    + Nueva línea
-                  </button>
-                )}
               </div>
               <div className="empty">
                 {!sel
@@ -396,9 +391,6 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
                 <>
                   <button className="btn-primary btn-sm" onClick={elegirExcel}>
                     ⬆ Subir Excel
-                  </button>
-                  <button className="btn-secondary btn-sm" onClick={() => setLinea("nueva")}>
-                    + Nueva línea
                   </button>
                   {selMeses.size > 0 && (
                     <span className="hint">
