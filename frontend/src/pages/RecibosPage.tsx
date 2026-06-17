@@ -4,9 +4,11 @@ import type { Recibo } from "../types";
 import FormPanel from "../components/FormPanel";
 import PageHeader from "../components/PageHeader";
 import OptionButtons from "../components/OptionButtons";
-import { fmtMiles, fmtFechaES } from "../format";
+import NumberInput from "../components/NumberInput";
+import { fmtMiles, fmtFechaES, estadoCobro } from "../format";
 
-const ESTADOS = ["Emitido", "Cobrado", "Anulado"];
+// El cobro real se deriva de cobrado vs importe; el estado manual solo marca Emitido/Anulado.
+const ESTADOS = ["Emitido", "Anulado"];
 
 const eur = (v: unknown) => `${fmtMiles(v)} €`;
 // 'YYYY-MM' → 'MM/YYYY'
@@ -18,6 +20,7 @@ const periodoFmt = (p: string) => {
 type FormState = {
   id: number;
   estado: string;
+  cobrado: string;
   fecha_emision: string;
   fecha_cobro: string;
   notas: string;
@@ -59,6 +62,7 @@ export default function RecibosPage() {
     const estado: FormState = {
       id: r.id,
       estado: r.estado,
+      cobrado: r.cobrado ?? "0",
       fecha_emision: r.fecha_emision ?? "",
       fecha_cobro: r.fecha_cobro ?? "",
       notas: r.notas ?? "",
@@ -81,6 +85,7 @@ export default function RecibosPage() {
     try {
       await recibosApi.editar(form.id, {
         estado: form.estado,
+        cobrado: form.cobrado || "0",
         fecha_emision: form.fecha_emision || null,
         fecha_cobro: form.fecha_cobro || null,
         notas: form.notas.trim() || null,
@@ -140,20 +145,27 @@ export default function RecibosPage() {
               <th>Risk BDX</th>
               <th>Contraparte</th>
               <th className="num">Comisión</th>
-              <th>Estado</th>
+              <th className="num">Cobrado</th>
+              <th className="num">Pendiente</th>
+              <th>Cobro</th>
               <th>Emisión</th>
               <th></th>
             </tr>
           </thead>
           <tbody>
-            {items.map((r) => (
+            {items.map((r) => {
+              const ec = estadoCobro(r.importe, r.cobrado, r.estado);
+              const pend = (Number(r.importe) || 0) - (Number(r.cobrado) || 0);
+              return (
               <tr key={r.id}>
                 <td><b>{r.numero}</b></td>
                 <td>{r.binder_umr ?? `Binder ${r.binder_id}`}</td>
                 <td>{periodoFmt(r.periodo)}</td>
                 <td>{r.contraparte ?? "—"}</td>
                 <td className="num">{eur(r.importe)}</td>
-                <td>{r.estado}</td>
+                <td className="num">{eur(r.cobrado)}</td>
+                <td className="num">{eur(pend)}</td>
+                <td><span className={`pill pill-${ec.clase}`}>{ec.label}</span></td>
                 <td>{fmtFechaES(r.fecha_emision)}</td>
                 <td className="acciones">
                   <button className="btn-link" onClick={() => abrir(r)}>
@@ -161,7 +173,8 @@ export default function RecibosPage() {
                   </button>
                 </td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       )}
@@ -199,6 +212,27 @@ export default function RecibosPage() {
               <label>Moneda</label>
               <input type="text" value={sel.moneda ?? "EUR"} disabled />
             </div>
+          </div>
+
+          <div className="campos-grid" style={{ gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}>
+            <div className="field">
+              <label>Cobrado (parcial)</label>
+              <NumberInput value={form.cobrado} onChange={(v) => setForm({ ...form, cobrado: v })} suffix="€" />
+            </div>
+            <div className="field">
+              <label>Pendiente</label>
+              <input
+                type="text"
+                value={eur((Number(sel.importe) || 0) - (Number(form.cobrado) || 0))}
+                disabled
+              />
+            </div>
+          </div>
+          <div className="hint" style={{ marginBottom: 12 }}>
+            {(() => {
+              const ec = estadoCobro(sel.importe, form.cobrado, form.estado);
+              return <>Estado de cobro: <span className={`pill pill-${ec.clase}`}>{ec.label}</span>. El cobro llega con los Premium BDX (rara vez coinciden con el Risk BDX), por eso puede ser parcial.</>;
+            })()}
           </div>
 
           <div className="field">

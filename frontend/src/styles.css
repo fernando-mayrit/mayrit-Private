@@ -349,6 +349,13 @@ td.num, th.num { text-align: right; }
 .bloqueo-fila.bloqueada { background: #fbeae4; border-left-color: var(--naranja); }
 .bloqueo-fila.bloqueada > span:nth-of-type(1) { font-weight: 600; color: var(--gris); }
 .lock-btn { background: none; border: none; cursor: pointer; font-size: 16px; padding: 0; line-height: 1; }
+/* Recibos: estado de cobro (pill de color) */
+.pill { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.pill-pendiente { background: #fde2dd; color: #b42318; }
+.pill-parcial   { background: #fdecd1; color: #b45309; }
+.pill-cobrado   { background: #dcebe0; color: #1a7f37; }
+.pill-anulado   { background: var(--gris-claro); color: var(--gris-medio); }
+
 /* BDX: columna y fila de líneas bloqueadas (periodo cerrado) */
 .bdx-tabla th.col-lock, .bdx-tabla td.col-lock { width: 22px; padding-left: 2px; padding-right: 2px; }
 .bdx-tabla tr.fila-bloqueada { background: #fbeae4; }

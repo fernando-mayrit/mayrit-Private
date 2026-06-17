@@ -497,9 +497,12 @@ class Recibo(Base):
 
     base_comision: Mapped[Decimal] = mapped_column(Numeric(18, 2), server_default=text("0"), default=0)
     importe: Mapped[Decimal] = mapped_column(Numeric(18, 2), server_default=text("0"), default=0)
-    estado: Mapped[str] = mapped_column(String(30), server_default="Emitido", default="Emitido")
+    # Cobro PARCIAL: el cobro real llega con los Premium BDX (que rara vez coinciden con el Risk BDX),
+    # así que se acumula poco a poco. `cobrado` = importe cobrado hasta ahora (pendiente = importe − cobrado).
+    cobrado: Mapped[Decimal] = mapped_column(Numeric(18, 2), server_default=text("0"), default=0)
+    estado: Mapped[str] = mapped_column(String(30), server_default="Emitido", default="Emitido")  # Emitido | Anulado
 
-    fecha_cobro: Mapped[dt.date | None] = mapped_column(Date)
+    fecha_cobro: Mapped[dt.date | None] = mapped_column(Date)   # fecha del cobro total (si llega)
     notas: Mapped[str | None] = mapped_column(Text)
 
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

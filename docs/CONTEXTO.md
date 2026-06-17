@@ -354,8 +354,20 @@ La **BD más importante**. Flujo: subir/importar un Risk BDX → **generar su re
   total de comisión, y panel de detalle (estado/fechas/notas editables; base/importe/contraparte solo
   lectura). En la ficha del binder, **pestaña Datos**: columna **Comisión** (Σ brokerage del mes) y
   acción **«＋ Generar recibo»** por periodo (o muestra `🧾 nº` si ya existe). `recibosApi` en api.ts.
-- **Pendiente:** Fase 3 = **parser del Excel** del Risk BDX (botón «Subir Excel», hoy placeholder);
-  enlazar recibos a Contabilidad; afinar estados/ciclo (cobro) si hace falta.
+- **Emisión NO automática (17/06):** «＋ Generar recibo» abre un **formulario precalculado**
+  (endpoint `GET .../recibos/preview`, calcula sin guardar: nº provisional, base, importe,
+  contraparte, fecha) y el recibo se crea al pulsar **«Emitir recibo»** (campos editables:
+  importe/contraparte/fecha/estado/notas; la base la recalcula el servidor). Pestaña **Recibos**
+  dentro del binder (entre Cálculos y Siniestros) con la tabla filtrada por ese UMR. Menú lateral con
+  bloques separados (Negocio/Facturación/Configuración).
+- **Cobro PARCIAL (17/06):** la emisión se basa en el **Risk BDX**, pero el **cobro/liquidación llega
+  con los Premium BDX**, que **rara vez coinciden** con el Risk BDX → un recibo puede quedar
+  parcialmente cobrado. Campo `recibos.cobrado` (migración `b2c3d4e5f6a7`); pendiente = importe −
+  cobrado; **estado de cobro derivado** (helper `estadoCobro` en format.ts): Pendiente / Parcial /
+  Cobrado / Anulado (pills de color). `estado` manual queda solo como Emitido/Anulado.
+- **Pendiente:** **automatizar el cobro desde los Premium BDX** (acumular `cobrado` a medida que las
+  líneas entran en Premium BDX y se pagan; hoy `cobrado` se edita a mano en el módulo Recibos);
+  Fase 3 = **parser del Excel** del Risk BDX (botón «Subir Excel», hoy placeholder); enlazar a Contabilidad.
 
 ## Estrategia BI / reporting (decidido 2026-06-17)
 Dos capas **separadas**, no Power BI como motor de toda la app:

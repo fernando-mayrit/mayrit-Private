@@ -6,7 +6,7 @@ import BdxTabla from "../components/BdxTabla";
 import NumberInput from "../components/NumberInput";
 import FormPanel from "../components/FormPanel";
 import OptionButtons from "../components/OptionButtons";
-import { fmtMiles, fmtFechaES } from "../format";
+import { fmtMiles, fmtFechaES, estadoCobro } from "../format";
 
 const ESTADOS_RECIBO = ["Emitido", "Cobrado", "Anulado"];
 // Borrador del recibo en el formulario de emisión (precalculado, editable antes de crear).
@@ -589,31 +589,40 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
               Aún no hay recibos. Genera uno desde la pestaña <b>Datos</b> («＋ Generar recibo» de un Risk BDX).
             </div>
           ) : (
-            <table className="compacto" style={{ maxWidth: 820 }}>
+            <table className="compacto" style={{ maxWidth: 960 }}>
               <thead>
                 <tr>
                   <th>Número</th>
                   <th>Risk BDX</th>
                   <th>Contraparte</th>
                   <th className="num">Comisión</th>
-                  <th>Estado</th>
+                  <th className="num">Cobrado</th>
+                  <th className="num">Pendiente</th>
+                  <th>Cobro</th>
                   <th>Emisión</th>
                 </tr>
               </thead>
               <tbody>
-                {recibos.map((r) => (
+                {recibos.map((r) => {
+                  const ec = estadoCobro(r.importe, r.cobrado, r.estado);
+                  return (
                   <tr key={r.id}>
                     <td><b>🧾 {r.numero}</b></td>
                     <td>{mesLargo(r.periodo)}</td>
                     <td>{r.contraparte ?? "—"}</td>
                     <td className="num">{imp(n(r.importe))}</td>
-                    <td>{r.estado}</td>
+                    <td className="num">{imp(n(r.cobrado))}</td>
+                    <td className="num">{imp(n(r.importe) - n(r.cobrado))}</td>
+                    <td><span className={`pill pill-${ec.clase}`}>{ec.label}</span></td>
                     <td>{fmtFechaES(r.fecha_emision)}</td>
                   </tr>
-                ))}
+                  );
+                })}
                 <tr style={{ fontWeight: 600, borderTop: "2px solid var(--borde)" }}>
                   <td colSpan={3}>Total ({recibos.length})</td>
                   <td className="num">{imp(recibos.reduce((a, r) => a + n(r.importe), 0))}</td>
+                  <td className="num">{imp(recibos.reduce((a, r) => a + n(r.cobrado), 0))}</td>
+                  <td className="num">{imp(recibos.reduce((a, r) => a + n(r.importe) - n(r.cobrado), 0))}</td>
                   <td colSpan={2}></td>
                 </tr>
               </tbody>

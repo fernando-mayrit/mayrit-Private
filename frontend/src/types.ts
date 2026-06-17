@@ -181,7 +181,8 @@ export interface Recibo {
   contraparte: string | null;
   base_comision: string;   // Numeric → string
   importe: string;
-  estado: string;          // 'Emitido' | 'Cobrado' | 'Anulado'
+  cobrado: string;         // importe cobrado hasta ahora (cobro parcial vía Premium BDX)
+  estado: string;          // 'Emitido' | 'Anulado' (el cobro se deriva de cobrado vs importe)
   fecha_cobro: string | null;
   notas: string | null;
   created_at: string;
@@ -194,6 +195,7 @@ export interface ReciboUpdate {
   fecha_emision?: string | null;
   fecha_cobro?: string | null;
   importe?: string | null;
+  cobrado?: string | null;
   contraparte?: string | null;
   notas?: string | null;
 }

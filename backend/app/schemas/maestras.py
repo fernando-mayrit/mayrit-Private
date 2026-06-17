@@ -456,6 +456,7 @@ class ReciboRead(BaseModel):
     contraparte: str | None = None
     base_comision: Decimal = Decimal(0)
     importe: Decimal = Decimal(0)
+    cobrado: Decimal = Decimal(0)
     estado: str
     fecha_cobro: dt.date | None = None
     notas: str | None = None
@@ -495,10 +496,11 @@ class ReciboPreview(BaseModel):
 
 
 class ReciboUpdate(BaseModel):
-    """Edición manual de un recibo (estado/fechas/notas/importe)."""
+    """Edición manual de un recibo (estado/fechas/notas/importe/cobro)."""
     estado: str | None = None
     fecha_emision: dt.date | None = None
     fecha_cobro: dt.date | None = None
     importe: Decimal | None = None
+    cobrado: Decimal | None = None
     contraparte: str | None = None
     notas: str | None = None

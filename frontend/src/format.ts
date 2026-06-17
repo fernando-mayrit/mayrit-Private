@@ -16,3 +16,15 @@ export function fmtFechaES(v: unknown): string {
   const [y, m, d] = String(v).slice(0, 10).split("-");
   return d && m && y ? `${d}/${m}/${y}` : String(v);
 }
+
+// Estado de COBRO derivado de un recibo. El cobro llega con los Premium BDX (rara vez
+// coinciden con el Risk BDX) → puede quedar parcialmente cobrado.
+export type EstadoCobro = { label: string; clase: string };
+export function estadoCobro(importe: unknown, cobrado: unknown, estado?: string | null): EstadoCobro {
+  if (estado === "Anulado") return { label: "Anulado", clase: "anulado" };
+  const imp = Number(importe) || 0;
+  const cob = Number(cobrado) || 0;
+  if (cob <= 0.005) return { label: "Pendiente", clase: "pendiente" };
+  if (cob < imp - 0.005) return { label: "Parcial", clase: "parcial" };
+  return { label: "Cobrado", clase: "cobrado" };
+}
