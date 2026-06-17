@@ -404,6 +404,43 @@ export interface TomadorWrite {
   notas?: string | null;
 }
 
+// Póliza de Open Market (OM).
+export interface Poliza {
+  id: number;
+  sp_old_id: number | null;
+  numero_poliza: string | null;
+  referencia: string | null;
+  asegurado: string | null;
+  corredor: string | null;
+  ramo: string | null;
+  mercado: string | null;
+  produccion: string | null;
+  tipo_documento: string | null;
+  estado: string | null;
+  seguro: string | null; // "1"=Seguro Directo / "2"=Reaseguro
+  pago: string | null;
+  moneda: string | null;
+  fecha_efecto: string | null;
+  fecha_vencimiento: string | null;
+  yoa: number | null;
+  renovacion_automatica: boolean;
+  coaseguro: boolean;
+  limite: string | number | null;
+  franquicia: string | number | null;
+  capacidad: string | number | null;
+  prima_neta: string | number | null;
+  impuestos_porc: string | number | null;
+  impuestos: string | number | null;
+  recargos: string | number | null;
+  prima_total: string | number | null;
+  comision_porc: string | number | null;
+  comision_total: string | number | null;
+  prima_participacion: string | number | null;
+  notas: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface CuentaBancaria {
   id: number;
   nombre: string;

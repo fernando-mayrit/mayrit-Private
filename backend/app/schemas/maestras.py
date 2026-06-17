@@ -161,6 +161,83 @@ class CuentaBancariaRead(CuentaBancariaBase):
     updated_at: dt.datetime
 
 
+# ───────────────────────────────── Póliza (OM) ───────────────────────────────
+class PolizaBase(BaseModel):
+    numero_poliza: str | None = None
+    referencia: str | None = None
+    asegurado: str | None = None
+    corredor: str | None = None
+    ramo: str | None = None
+    mercado: str | None = None
+    produccion: str | None = None
+    tipo_documento: str | None = None
+    estado: str | None = None
+    seguro: str | None = None            # 1=Seguro Directo / 2=Reaseguro
+    pago: str | None = None
+    moneda: str | None = None
+    fecha_efecto: dt.date | None = None
+    fecha_vencimiento: dt.date | None = None
+    yoa: int | None = None
+    renovacion_automatica: bool = False
+    coaseguro: bool = False
+    limite: Decimal | None = None
+    franquicia: Decimal | None = None
+    capacidad: Decimal | None = None
+    prima_neta: Decimal | None = None
+    impuestos_porc: Decimal | None = None
+    impuestos: Decimal | None = None
+    recargos: Decimal | None = None
+    prima_total: Decimal | None = None
+    comision_porc: Decimal | None = None
+    comision_total: Decimal | None = None
+    prima_participacion: Decimal | None = None
+    notas: str | None = None
+    sp_old_id: int | None = None
+
+
+class PolizaCreate(PolizaBase):
+    pass
+
+
+class PolizaUpdate(BaseModel):
+    numero_poliza: str | None = None
+    referencia: str | None = None
+    asegurado: str | None = None
+    corredor: str | None = None
+    ramo: str | None = None
+    mercado: str | None = None
+    produccion: str | None = None
+    tipo_documento: str | None = None
+    estado: str | None = None
+    seguro: str | None = None
+    pago: str | None = None
+    moneda: str | None = None
+    fecha_efecto: dt.date | None = None
+    fecha_vencimiento: dt.date | None = None
+    yoa: int | None = None
+    renovacion_automatica: bool | None = None
+    coaseguro: bool | None = None
+    limite: Decimal | None = None
+    franquicia: Decimal | None = None
+    capacidad: Decimal | None = None
+    prima_neta: Decimal | None = None
+    impuestos_porc: Decimal | None = None
+    impuestos: Decimal | None = None
+    recargos: Decimal | None = None
+    prima_total: Decimal | None = None
+    comision_porc: Decimal | None = None
+    comision_total: Decimal | None = None
+    prima_participacion: Decimal | None = None
+    notas: str | None = None
+
+
+class PolizaRead(PolizaBase):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    created_at: dt.datetime
+    updated_at: dt.datetime
+
+
 # ────────────────────────────────── Ramo ─────────────────────────────────
 class RiskCodeIn(BaseModel):
     codigo: str

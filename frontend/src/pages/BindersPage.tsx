@@ -845,7 +845,7 @@ export default function BindersPage() {
   }
 
   return (
-    <div className="container">
+    <div className="container lista-page">
       <PageHeader emoji="📑" title="Binders" />
       <div className="toolbar">
         <input
@@ -903,7 +903,7 @@ export default function BindersPage() {
       ) : visibles.length === 0 ? (
         <div className="empty">Ningún binder coincide con los filtros.</div>
       ) : (
-        <div className="tabla-scroll">
+        <div className="tabla-scroll lista-scroll">
           <table>
             <thead>
               <tr>

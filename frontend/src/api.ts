@@ -202,6 +202,14 @@ export interface MatchResult {
   resumen: { total: number; match: number; importe_distinto: number; no_encontrada: number };
 }
 
+// Pólizas (Open Market). Límite alto para traerlas todas (son ~115).
+import type { Poliza } from "./types";
+export const polizasApi = {
+  listar: (q?: string) =>
+    request<Poliza[]>(`/polizas?limit=2000${q ? `&q=${encodeURIComponent(q)}` : ""}`),
+  get: (id: number) => request<Poliza>(`/polizas/${id}`),
+};
+
 // CRUD genérico para una colección (p. ej. "/mercados").
 export function crud<TRead, TWrite>(collection: string) {
   return {

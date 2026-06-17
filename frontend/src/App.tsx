@@ -4,6 +4,7 @@ import MercadosPage from "./pages/MercadosPage";
 import ProductoresPage from "./pages/ProductoresPage";
 import TomadoresPage from "./pages/TomadoresPage";
 import BindersPage from "./pages/BindersPage";
+import PolizasPage from "./pages/PolizasPage";
 import RecibosPage from "./pages/RecibosPage";
 import RamosPage from "./pages/RamosPage";
 import CuentasBancariasPage from "./pages/CuentasBancariasPage";
@@ -137,7 +138,7 @@ export default function App() {
           {page === "tomadores" && <TomadoresPage />}
           {page === "binders" && <BindersPage />}
           {page === "recibos" && <RecibosPage />}
-          {page === "polizas" && <EnConstruccion titulo="Pólizas (Open Market)" />}
+          {page === "polizas" && <PolizasPage />}
           {page === "consultoria" && <EnConstruccion titulo="Consultoría (Fees)" />}
           {page === "comisiones" && <EnConstruccion titulo="Comisiones" />}
           {page === "ramos" && <RamosPage />}
