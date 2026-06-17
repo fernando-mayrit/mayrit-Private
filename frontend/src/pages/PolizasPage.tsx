@@ -3,6 +3,7 @@ import { polizasApi } from "../api";
 import type { Poliza } from "../types";
 import PageHeader from "../components/PageHeader";
 import TablaDatos, { type Col } from "../components/TablaDatos";
+import PolizaForm from "../components/PolizaForm";
 import { fmtMiles } from "../format";
 
 const eur = (v: unknown) => `${fmtMiles(v)} €`;
@@ -51,6 +52,7 @@ export default function PolizasPage() {
   const [error, setError] = useState<string | null>(null);
   const [q, setQ] = useState("");
   const [fYoa, setFYoa] = useState("");
+  const [form, setForm] = useState<Poliza | "nueva" | null>(null);
 
   async function cargar() {
     setLoading(true);
@@ -95,6 +97,9 @@ export default function PolizasPage() {
           value={q}
           onChange={(e) => setQ(e.target.value)}
         />
+        <button className="btn-primary" onClick={() => setForm("nueva")}>
+          + Nueva póliza
+        </button>
         <span className="hint">
           Prima Neta: <b>{eur(totalPrima)}</b> · Comisión: <b>{eur(totalComision)}</b>
         </span>
@@ -112,6 +117,16 @@ export default function PolizasPage() {
           columnas={CATALOGO}
           defaultKeys={DEFAULT_KEYS}
           storageKey="mayrit.polizas.tabla.v1"
+          onRowClick={(p) => setForm(p)}
+        />
+      )}
+
+      {form && (
+        <PolizaForm
+          poliza={form === "nueva" ? null : form}
+          onSaved={() => { setForm(null); cargar(); }}
+          onDeleted={() => { setForm(null); cargar(); }}
+          onClose={() => setForm(null)}
         />
       )}
     </div>

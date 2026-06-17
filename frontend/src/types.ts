@@ -441,6 +441,8 @@ export interface Poliza {
   updated_at: string;
 }
 
+export type PolizaWrite = Partial<Omit<Poliza, "id" | "sp_old_id" | "created_at" | "updated_at">>;
+
 export interface CuentaBancaria {
   id: number;
   nombre: string;

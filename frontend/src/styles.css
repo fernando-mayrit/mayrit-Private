@@ -354,6 +354,12 @@ td.num, th.num { text-align: right; }
 /* Campo a completar a mano (p. ej. IBNR): fondo ámbar para que destaque */
 .input-completar .inp-num { background: #fff4d6; border-color: var(--naranja); }
 .input-completar .inp-num:focus { background: #fff; }
+/* Campo calculado (solo lectura) en formularios, estilo gris como en Access */
+.calc-box {
+  padding: 8px 10px; border: 1px solid var(--borde); border-radius: 8px;
+  background: var(--gris-claro); color: var(--gris); font-size: 14px; text-align: right;
+  font-variant-numeric: tabular-nums;
+}
 
 /* Pestaña Bloqueo: columnas Risk / Premium / Claims con sus meses */
 .bloqueo-cols { display: flex; gap: 28px; flex-wrap: wrap; align-items: flex-start; }
