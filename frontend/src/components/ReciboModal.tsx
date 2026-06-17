@@ -2,15 +2,12 @@ import { useState } from "react";
 import type { Recibo, ReciboPreview, ReciboUpdate } from "../types";
 import FormPanel from "./FormPanel";
 import NumberInput from "./NumberInput";
-import OptionButtons from "./OptionButtons";
 import { fmtMiles } from "../format";
 
 // Modal de emisión/edición de un recibo, con el layout del Access:
-//  · columna izquierda: identificación + prima/impuestos + comisiones + pagador/cuenta
+//  · columna izquierda: identificación + prima/impuestos + comisiones + cuenta + notas
 //  · 3 cajas a la derecha: Cobro de primas · Liquidación a la Cía · Comisiones
 // El recibo puede venir de un Recibo (edición) o de un ReciboPreview (emisión).
-
-const ESTADOS = ["Emitido", "Anulado"];
 
 // Campos por tipo (para convertir recibo ↔ formulario y formulario ↔ payload).
 const NUM = [
@@ -178,25 +175,10 @@ export default function ReciboModal({
 
           <Texto k="cuenta" label="Cuenta" />
 
-          <details className="recibo-mas">
-            <summary>Más datos (contexto / contable)</summary>
-            <div className="campos-grid" style={{ gridTemplateColumns: "1fr 1fr" }}>
-              <Texto k="nombre_mercado" label="Mercado" />
-              <Texto k="referencia" label="Referencia" />
-              <Texto k="ramo" label="Ramo" />
-              <Texto k="pago" label="Pago" />
-              <Texto k="moneda" label="Moneda" />
-              <Fecha k="fecha_contable" label="Fecha Contable" />
-            </div>
-            <div className="field">
-              <label>Estado</label>
-              <OptionButtons value={f.estado ?? ""} options={ESTADOS} onChange={(v) => set("estado", v)} disabled={soloLectura} />
-            </div>
-            <div className="field">
-              <label>Notas</label>
-              <textarea rows={2} value={f.notas ?? ""} onChange={(e) => set("notas", e.target.value)} disabled={soloLectura} />
-            </div>
-          </details>
+          <div className="field">
+            <label>Notas</label>
+            <textarea rows={2} value={f.notas ?? ""} onChange={(e) => set("notas", e.target.value)} disabled={soloLectura} />
+          </div>
         </div>
 
         {/* ── Columna derecha: 3 cajas ── */}
