@@ -209,6 +209,7 @@ class BinderSeccion(Base):
         ForeignKey("binder_limites.id", ondelete="SET NULL"), index=True
     )
     comision: Mapped[Decimal | None] = mapped_column(Numeric(7, 4))       # % comisión de la sección
+    comision_mayrit: Mapped[Decimal | None] = mapped_column(Numeric(7, 4))  # % comisión Mayrit (override de la del binder)
     sujeto_pc: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
 
     binder: Mapped["Binder"] = relationship(back_populates="secciones")
@@ -270,6 +271,7 @@ class SeccionRiskCode(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     seccion_id: Mapped[int] = mapped_column(ForeignKey("binder_secciones.id", ondelete="CASCADE"), index=True)
     codigo: Mapped[str] = mapped_column(String(20))
+    comision_mayrit: Mapped[Decimal | None] = mapped_column(Numeric(7, 4))  # % comisión Mayrit (override de la sección)
 
     seccion: Mapped["BinderSeccion"] = relationship(back_populates="risk_codes")
 

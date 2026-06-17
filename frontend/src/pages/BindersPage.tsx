@@ -33,11 +33,13 @@ const AMBITO_POR_LABEL: Record<string, LimiteAmbito> = {
 
 type LineaForm = { mercado_id: string; participacion: string };
 type LimiteGrupo = { limite_primas: string; notificacion: string };
+type RiskCodeForm = { codigo: string; comision_mayrit: string };
 type SeccionForm = {
   ramo: string;
-  risk_codes: string[];
+  risk_codes: RiskCodeForm[];
   limite_grupo: number; // índice en form.limites
   comision: string;
+  comision_mayrit: string;  // override de la comisión Mayrit del binder (a nivel sección)
   sujeto_pc: boolean;
   mercados: LineaForm[];
 };
@@ -77,6 +79,7 @@ const SECCION_VACIA: SeccionForm = {
   risk_codes: [],
   limite_grupo: 0,
   comision: "",
+  comision_mayrit: "",
   sujeto_pc: false,
   mercados: [{ mercado_id: "", participacion: "" }],
 };
@@ -110,9 +113,10 @@ const VACIO: FormState = {
 // Vista de solo lectura del snapshot de un suplemento (los términos congelados).
 type SnapSeccionView = {
   ramo: string | null;
-  risk_codes?: string[];
+  risk_codes?: (string | { codigo: string; comision_mayrit: number | null })[];
   limite_grupo?: number | null;
   comision: number | null;
+  comision_mayrit?: number | null;
   sujeto_pc?: boolean;
   mercados?: { mercado_id: number; participacion: number | null }[];
 };
@@ -359,9 +363,13 @@ export default function BindersPage() {
       b.secciones.length > 0
         ? b.secciones.map((s) => ({
             ramo: s.ramo ?? "",
-            risk_codes: s.risk_codes ?? [],
+            risk_codes: (s.risk_codes ?? []).map((rc) => ({
+              codigo: rc.codigo,
+              comision_mayrit: rc.comision_mayrit != null ? String(rc.comision_mayrit) : "",
+            })),
             limite_grupo: s.limite_grupo != null && s.limite_grupo < limites.length ? s.limite_grupo : 0,
             comision: s.comision != null ? String(s.comision) : "",
+            comision_mayrit: s.comision_mayrit != null ? String(s.comision_mayrit) : "",
             sujeto_pc: !!s.sujeto_pc,
             mercados:
               s.mercados.length > 0
@@ -478,7 +486,7 @@ export default function BindersPage() {
     // al cambiar de ramo se resetean los risk codes (dependen del ramo)
     if (form) setSecciones(form.secciones.map((s, idx) => (idx === i ? { ...s, ramo, risk_codes: [] } : s)));
   }
-  function setSeccionCampo(i: number, campo: "comision", valor: string) {
+  function setSeccionCampo(i: number, campo: "comision" | "comision_mayrit", valor: string) {
     if (form) setSecciones(form.secciones.map((s, idx) => (idx === i ? { ...s, [campo]: valor } : s)));
   }
   function setSeccionFlag(i: number, campo: "sujeto_pc", valor: boolean) {
@@ -489,9 +497,24 @@ export default function BindersPage() {
     setSecciones(
       form.secciones.map((s, idx) => {
         if (idx !== i) return s;
-        const has = s.risk_codes.includes(codigo);
-        return { ...s, risk_codes: has ? s.risk_codes.filter((c) => c !== codigo) : [...s.risk_codes, codigo] };
+        const has = s.risk_codes.some((rc) => rc.codigo === codigo);
+        return {
+          ...s,
+          risk_codes: has
+            ? s.risk_codes.filter((rc) => rc.codigo !== codigo)
+            : [...s.risk_codes, { codigo, comision_mayrit: "" }],
+        };
       })
+    );
+  }
+  function setRiskCodeComision(i: number, codigo: string, valor: string) {
+    if (!form) return;
+    setSecciones(
+      form.secciones.map((s, idx) =>
+        idx === i
+          ? { ...s, risk_codes: s.risk_codes.map((rc) => (rc.codigo === codigo ? { ...rc, comision_mayrit: valor } : rc)) }
+          : s
+      )
     );
   }
   function addMercado(i: number) {
@@ -616,9 +639,10 @@ export default function BindersPage() {
       limites: limitesPayload,
       secciones: form.secciones.map((s) => ({
         ramo: s.ramo.trim() || null,
-        risk_codes: s.risk_codes,
+        risk_codes: s.risk_codes.map((rc) => ({ codigo: rc.codigo, comision_mayrit: num(rc.comision_mayrit) })),
         limite_grupo: remap.get(s.limite_grupo) ?? 0,
         comision: num(s.comision),
+        comision_mayrit: num(s.comision_mayrit),
         sujeto_pc: s.sujeto_pc,
         mercados: s.mercados
           .filter((m) => m.mercado_id)
@@ -1062,16 +1086,27 @@ export default function BindersPage() {
                       <span className="hint">(ese ramo no tiene risk codes)</span>
                     ) : (
                       <div className="rc-checks">
-                        {codes.map((c) => (
-                          <label key={c.codigo} className="rc-check">
-                            <input
-                              type="checkbox"
-                              checked={s.risk_codes.includes(c.codigo)}
-                              onChange={() => toggleRiskCode(i, c.codigo)}
-                            />
-                            {c.descripcion ? `${c.codigo} — ${c.descripcion}` : c.codigo}
-                          </label>
-                        ))}
+                        {codes.map((c) => {
+                          const rc = s.risk_codes.find((x) => x.codigo === c.codigo);
+                          return (
+                            <div key={c.codigo} className="rc-row">
+                              <label className="rc-check">
+                                <input type="checkbox" checked={!!rc} onChange={() => toggleRiskCode(i, c.codigo)} />
+                                {c.descripcion ? `${c.codigo} — ${c.descripcion}` : c.codigo}
+                              </label>
+                              {rc && (
+                                <NumberInput
+                                  value={rc.comision_mayrit}
+                                  onChange={(v) => setRiskCodeComision(i, c.codigo, v)}
+                                  suffix="%"
+                                  thousands={false}
+                                  placeholder="Com. Mayrit"
+                                  className="rc-com"
+                                />
+                              )}
+                            </div>
+                          );
+                        })}
                       </div>
                     )}
                   </div>
@@ -1085,6 +1120,16 @@ export default function BindersPage() {
                     onChange={(v) => setSeccionCampo(i, "comision", v)}
                     suffix="%"
                     thousands={false}
+                  />
+                </div>
+                <div className="field">
+                  <label>Comisión Mayrit</label>
+                  <NumberInput
+                    value={s.comision_mayrit}
+                    onChange={(v) => setSeccionCampo(i, "comision_mayrit", v)}
+                    suffix="%"
+                    thousands={false}
+                    placeholder="(binder)"
                   />
                 </div>
                 <label className="field check pc-check">
@@ -1513,6 +1558,7 @@ export default function BindersPage() {
                     ramo: s.ramo,
                     risk_codes: s.risk_codes,
                     comision: s.comision,
+                    comision_mayrit: s.comision_mayrit,
                     sujeto_pc: s.sujeto_pc,
                     mercados: s.mercados,
                   }));
@@ -1601,8 +1647,19 @@ function SeccionesRO({
             <strong>Sección {i + 1}</strong>
             <span className="sub">{s.ramo ?? "—"}</span>
           </div>
-          <Campo label="Risk Codes" valor={(s.risk_codes ?? []).join(", ") || "—"} />
+          <Campo
+            label="Risk Codes"
+            valor={
+              (s.risk_codes ?? [])
+                .map((rc) => {
+                  if (typeof rc === "string") return rc;
+                  return rc.comision_mayrit != null ? `${rc.codigo} (${pct(rc.comision_mayrit)})` : rc.codigo;
+                })
+                .join(", ") || "—"
+            }
+          />
           <Campo label="Comisión" valor={s.comision != null ? pct(s.comision) : "—"} />
+          <Campo label="Comisión Mayrit" valor={s.comision_mayrit != null ? pct(s.comision_mayrit) : "(del binder)"} />
           <Campo label="Sujeto a PC" valor={s.sujeto_pc ? "Sí" : "No"} />
           <label className="mini-label">Mercados</label>
           {(s.mercados ?? []).map((m, j) => (

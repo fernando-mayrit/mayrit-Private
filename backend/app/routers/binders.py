@@ -75,11 +75,12 @@ def _terminos(b: Binder) -> dict:
         "secciones": [
             {
                 "ramo": s.ramo,
-                "risk_codes": [rc.codigo for rc in s.risk_codes],
+                "risk_codes": [{"codigo": rc.codigo, "comision_mayrit": _f(rc.comision_mayrit)} for rc in s.risk_codes],
                 "limite_grupo": idx.get(s.limite_id),
                 "limite_primas": _f(s.limite_primas),
                 "notificacion": _f(s.notificacion),
                 "comision": _f(s.comision),
+                "comision_mayrit": _f(s.comision_mayrit),
                 "sujeto_pc": s.sujeto_pc,
                 "mercados": [
                     {"mercado_id": m.mercado_id, "participacion": _f(m.participacion)} for m in s.mercados
@@ -138,11 +139,12 @@ def _serializar(b: Binder) -> dict:
             {
                 "id": s.id,
                 "ramo": s.ramo,
-                "risk_codes": [rc.codigo for rc in s.risk_codes],
+                "risk_codes": [{"codigo": rc.codigo, "comision_mayrit": rc.comision_mayrit} for rc in s.risk_codes],
                 "limite_grupo": idx.get(s.limite_id),
                 "limite_primas": s.limite_primas,
                 "notificacion": s.notificacion,
                 "comision": s.comision,
+                "comision_mayrit": s.comision_mayrit,
                 "sujeto_pc": s.sujeto_pc,
                 "mercados": [
                     {
@@ -171,7 +173,9 @@ def _aplicar(
         b.limites.append(g)
         grupos.append(g)
     for s in secciones:
-        seccion = BinderSeccion(ramo=s.ramo, comision=s.comision, sujeto_pc=s.sujeto_pc)
+        seccion = BinderSeccion(
+            ramo=s.ramo, comision=s.comision, comision_mayrit=s.comision_mayrit, sujeto_pc=s.sujeto_pc
+        )
         gi = s.limite_grupo
         if grupos and gi is not None and 0 <= gi < len(grupos):
             seccion.limite = grupos[gi]
@@ -179,9 +183,11 @@ def _aplicar(
             seccion.mercados.append(
                 SeccionMercado(mercado_id=m.mercado_id, participacion=m.participacion)
             )
-        for codigo in s.risk_codes:
-            if codigo and codigo.strip():
-                seccion.risk_codes.append(SeccionRiskCode(codigo=codigo.strip()))
+        for rc in s.risk_codes:
+            if rc.codigo and rc.codigo.strip():
+                seccion.risk_codes.append(
+                    SeccionRiskCode(codigo=rc.codigo.strip(), comision_mayrit=rc.comision_mayrit)
+                )
         b.secciones.append(seccion)
 
 

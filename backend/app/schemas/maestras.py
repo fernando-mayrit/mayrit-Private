@@ -214,12 +214,24 @@ class BinderLimiteOut(BinderLimiteIn):
     pass
 
 
+# Código de riesgo de una sección, con su comisión Mayrit opcional (override de la sección).
+class RiskCodeSeccionIn(BaseModel):
+    codigo: str
+    comision_mayrit: Decimal | None = None
+
+
+class RiskCodeSeccionOut(BaseModel):
+    codigo: str
+    comision_mayrit: Decimal | None = None
+
+
 class BinderSeccionIn(BaseModel):
     ramo: str | None = None
-    risk_codes: list[str] = []
+    risk_codes: list[RiskCodeSeccionIn] = []
     # Índice (0-based) del grupo de límite (en `limites`) al que pertenece la sección.
     limite_grupo: int | None = None
     comision: Decimal | None = None
+    comision_mayrit: Decimal | None = None   # override de la comisión Mayrit del binder
     sujeto_pc: bool = False
     mercados: list[SeccionMercadoIn] = []
 
@@ -227,12 +239,13 @@ class BinderSeccionIn(BaseModel):
 class BinderSeccionOut(BaseModel):
     id: int
     ramo: str | None = None
-    risk_codes: list[str] = []
+    risk_codes: list[RiskCodeSeccionOut] = []
     limite_grupo: int | None = None
     # Límite/notificación efectivos (derivados del grupo) para mostrar sin recombinar.
     limite_primas: Decimal | None = None
     notificacion: Decimal | None = None
     comision: Decimal | None = None
+    comision_mayrit: Decimal | None = None
     sujeto_pc: bool = False
     mercados: list[SeccionMercadoOut] = []
 

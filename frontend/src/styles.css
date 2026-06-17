@@ -293,6 +293,9 @@ td.num, th.num { text-align: right; }
 /* Risk codes de una sección (casillas) */
 .rc-checks { display: flex; flex-direction: column; gap: 6px; }
 .rc-check { display: flex; align-items: center; gap: 8px; font-size: 14px; cursor: pointer; }
+.rc-row { display: flex; align-items: center; gap: 10px; }
+.rc-row .rc-check { flex: 1; }
+.rc-row .num-input.rc-com { max-width: 120px; flex: 0 0 120px; }
 .hint { font-size: 13px; color: var(--gris-medio); }
 
 /* Historial de suplementos (versiones del binder) */

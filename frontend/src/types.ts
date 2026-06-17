@@ -68,14 +68,19 @@ export interface BinderLimite {
   limite_primas: number | null;
   notificacion: number | null;
 }
+export interface RiskCodeSeccion {
+  codigo: string;
+  comision_mayrit: number | null;
+}
 export interface BinderSeccion {
   id?: number;
   ramo: string | null;
-  risk_codes: string[];
+  risk_codes: RiskCodeSeccion[];
   limite_grupo: number | null; // índice en Binder.limites
   limite_primas: number | null; // derivado del grupo (solo lectura)
   notificacion: number | null; // derivado del grupo (solo lectura)
   comision: number | null;
+  comision_mayrit: number | null; // override de la comisión Mayrit del binder
   sujeto_pc: boolean;
   mercados: SeccionMercadoLinea[];
 }
@@ -125,9 +130,10 @@ export interface BinderWrite extends BinderComun {
   limites: BinderLimite[];
   secciones: {
     ramo: string | null;
-    risk_codes: string[];
+    risk_codes: { codigo: string; comision_mayrit: number | null }[];
     limite_grupo: number | null;
     comision: number | null;
+    comision_mayrit: number | null;
     sujeto_pc: boolean;
     mercados: { mercado_id: number; participacion: number | null }[];
   }[];
