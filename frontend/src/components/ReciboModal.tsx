@@ -213,9 +213,10 @@ export default function ReciboModal({
           <div className="recibo-box">
             <h4>Cobro de primas</h4>
             <Money k="prima_adeudada" label="Prima Adeudada" />
-            <Money k="prima_cobrada" label="Prima Cobrada" />
-            <RO label="Pendiente de Cobro" v={primaPdteCobro} />
-            <Fecha k="prima_fecha_cobro" label="Fecha de Cobro" />
+            <div className="campos-grid" style={{ gridTemplateColumns: "1fr 1fr" }}>
+              <Money k="prima_cobrada" label="Prima Cobrada" />
+              <RO label="Pendiente de Cobro" v={primaPdteCobro} />
+            </div>
           </div>
 
           <div className="recibo-box">
