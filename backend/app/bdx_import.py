@@ -96,7 +96,14 @@ def importar(db: Session, binder: Binder) -> dict:
     resumen con la conciliación SharePoint ↔ Postgres."""
     list_title = f"Mayrit - {binder.umr}"
     filas = sharepoint.leer_lista_bdx(list_title)
+    return importar_filas(db, binder, filas, origen=list_title)
 
+
+def importar_filas(db: Session, binder: Binder, filas: list[dict], origen: str = "(excel)") -> dict:
+    """Inserta/actualiza líneas Risk del binder desde `filas` (dicts con las claves del MAPEO).
+    Origen-agnóstico: lo usan tanto la importación de SharePoint como la de Excel. Idempotente
+    por `sp_old_id`. Devuelve la conciliación origen ↔ Postgres."""
+    list_title = origen
     # BDX único por binder (tipo Risk): se reutiliza si ya existe.
     bdx = db.scalars(
         select(Bdx).where(Bdx.binder_id == binder.id, Bdx.tipo == "Risk")
