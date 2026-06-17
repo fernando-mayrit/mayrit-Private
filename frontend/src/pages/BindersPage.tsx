@@ -803,12 +803,7 @@ export default function BindersPage() {
             </thead>
             <tbody>
               {visibles.map((b) => (
-                <tr
-                  key={b.id}
-                  className={"fila-click " + claseEstado(b.estado)}
-                  onClick={() => setDetalle(b)}
-                  title="Abrir ficha (Datos / BDX)"
-                >
+                <tr key={b.id} className={claseEstado(b.estado)}>
                   <td>{b.umr ?? "—"}</td>
                   <td>{b.yoa ?? "—"}</td>
                   <td>{b.coverholder_alias ?? b.coverholder_nombre ?? "—"}</td>
@@ -820,7 +815,7 @@ export default function BindersPage() {
                   <td className="num">—</td>
                   <td className="num">—</td>
                   <td>—</td>
-                  <td className="acciones" onClick={(e) => e.stopPropagation()}>
+                  <td className="acciones">
                     <button className="btn-link" onClick={() => setDetalle(b)}>
                       Abrir
                     </button>
