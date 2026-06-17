@@ -1,9 +1,10 @@
 """
-Recibos: comisión de Mayrit por Risk BDX (núcleo de facturación/contabilidad).
+Recibos: núcleo de facturación/contabilidad. Modelo basado en SharePoint 'Mayrit - TRecibos'.
 
-Regla: **1 recibo por Risk BDX** = (binder, periodo de reporte 'YYYY-MM'). La comisión
-es Σ `brokerage_amount` de las líneas Risk de ese periodo (importe limpio, exento).
-Numeración correlativa por año natural 'AÑO-NNNN'.
+En la app se **emite 1 recibo por Risk BDX** (binder + periodo 'YYYY-MM'); la comisión de Mayrit
+es `comision_retenida` = Σ `brokerage_amount` de las líneas Risk de ese periodo. El cobro llega
+con los Premium BDX (rara vez coinciden con el Risk BDX) → puede ser parcial. Numeración por año
+natural 'AÑO-NNNN'. Los "pendientes" (cobro/liquidación) los recalcula el backend.
 """
 import datetime as dt
 from decimal import Decimal
@@ -25,6 +26,8 @@ from ..models.maestras import (
 from ..schemas import maestras as sch
 
 router = APIRouter(tags=["Recibos"])
+
+D0 = Decimal(0)
 
 
 def _siguiente_numero(db: Session, anio: int) -> str:
@@ -64,7 +67,7 @@ def _lineas_risk_periodo(db: Session, binder_id: int, periodo: str):
     ).all()
 
 
-def _contraparte_binder(db: Session, binder_id: int) -> str | None:
+def _mercados_binder(db: Session, binder_id: int) -> str | None:
     """Snapshot de los mercados del binder (nombres, sin repetir)."""
     nombres = db.execute(
         select(Mercado.nombre)
@@ -77,15 +80,24 @@ def _contraparte_binder(db: Session, binder_id: int) -> str | None:
     return ", ".join(sorted(set(nombres))) if nombres else None
 
 
+def _yoa_int(binder: Binder) -> int | None:
+    return int(binder.yoa) if binder.yoa and str(binder.yoa).isdigit() else None
+
+
+def _recompute(r: Recibo) -> None:
+    """Recalcula los 'pendientes' a partir de los importes base."""
+    r.comision_pendiente_cobro = (r.comision_retenida or D0) - (r.comision_retenida_cobrada or D0)
+    r.liquidar_pendiente_cobro = (r.liquidar or D0) - (r.liquidar_cobrado or D0)
+
+
 def _read(db: Session, r: Recibo) -> sch.ReciboRead:
     """ReciboRead enriquecido con UMR del binder y nº de líneas enlazadas."""
     binder = db.get(Binder, r.binder_id)
     num_lineas = db.scalar(select(func.count(BdxLinea.id)).where(BdxLinea.recibo_id == r.id)) or 0
-    return sch.ReciboRead(
-        **{c.name: getattr(r, c.name) for c in Recibo.__table__.columns},
-        binder_umr=(binder.umr or binder.agreement_number) if binder else None,
-        num_lineas=num_lineas,
-    )
+    data = sch.ReciboRead.model_validate(r)
+    data.binder_umr = (binder.umr or binder.agreement_number) if binder else None
+    data.num_lineas = num_lineas
+    return data
 
 
 # ──────────────────────────────── Listados ──────────────────────────────────
@@ -98,7 +110,9 @@ def listar(anio: int | None = None, binder_id: int | None = None, q: str | None 
         stmt = stmt.where(Recibo.binder_id == binder_id)
     if q:
         like = f"%{q}%"
-        stmt = stmt.where(Recibo.numero.ilike(like) | Recibo.contraparte.ilike(like))
+        stmt = stmt.where(
+            Recibo.numero.ilike(like) | Recibo.nombre_mercado.ilike(like) | Recibo.asegurado.ilike(like)
+        )
     stmt = stmt.order_by(Recibo.anio.desc(), Recibo.numero.desc())
     return [_read(db, r) for r in db.scalars(stmt).all()]
 
@@ -121,7 +135,7 @@ def obtener(recibo_id: int, db: Session = Depends(get_db)):
 
 # ───────────────────────── Generar desde un Risk BDX ─────────────────────────
 def _calcular(db: Session, binder: Binder, periodo: str):
-    """Valida y devuelve (lineas, base_comision) del Risk BDX. Aborta 409/400 si procede."""
+    """Valida y devuelve (lineas, comision_retenida, honorarios) del Risk BDX. 409/400 si procede."""
     _rango_mes(periodo)  # valida el formato
     existe = db.scalar(
         select(Recibo).where(Recibo.binder_id == binder.id, Recibo.periodo == periodo)
@@ -134,8 +148,30 @@ def _calcular(db: Session, binder: Binder, periodo: str):
     lineas = _lineas_risk_periodo(db, binder.id, periodo)
     if not lineas:
         raise HTTPException(status_code=400, detail=f"No hay líneas Risk en el periodo {periodo}.")
-    base = sum((l.brokerage_amount or Decimal(0)) for l in lineas)
-    return lineas, base
+    comision = sum((l.brokerage_amount or D0) for l in lineas)
+    honorarios = sum((l.fees or D0) for l in lineas)
+    return lineas, comision, honorarios
+
+
+def _campos_emision(db: Session, binder: Binder, periodo: str, comision, honorarios, fecha: dt.date) -> dict:
+    """Campos precalculados de un recibo emitido desde un Risk BDX (comunes a preview y generar)."""
+    mercados = _mercados_binder(db, binder.id)
+    return dict(
+        binder_id=binder.id,
+        periodo=periodo,
+        anio=fecha.year,
+        estado="Emitido",
+        nombre_mercado=mercados,
+        mercado=mercados,
+        moneda=binder.moneda or "EUR",
+        yoa=_yoa_int(binder),
+        fecha_efecto=binder.fecha_efecto,
+        fecha_vencimiento=binder.fecha_vencimiento,
+        comision_retenida=comision,
+        comision_pendiente_cobro=comision,
+        honorarios=honorarios,
+        fecha_contable=fecha,
+    )
 
 
 @router.get("/binders/{binder_id}/recibos/preview", response_model=sch.ReciboPreview)
@@ -144,21 +180,14 @@ def preview(binder_id: int, periodo: str, db: Session = Depends(get_db)):
     binder = db.get(Binder, binder_id)
     if binder is None:
         raise HTTPException(status_code=404, detail=f"Binder {binder_id} no encontrado")
-    lineas, base = _calcular(db, binder, periodo)
+    lineas, comision, honorarios = _calcular(db, binder, periodo)
     fecha = dt.date.today()
+    campos = _campos_emision(db, binder, periodo, comision, honorarios, fecha)
     return sch.ReciboPreview(
         numero=_siguiente_numero(db, fecha.year),
-        anio=fecha.year,
-        binder_id=binder_id,
         binder_umr=binder.umr or binder.agreement_number,
-        periodo=periodo,
-        fecha_emision=fecha,
-        moneda=binder.moneda or "EUR",
-        contraparte=_contraparte_binder(db, binder_id),
-        base_comision=base,
-        importe=base,
-        estado="Emitido",
         num_lineas=len(lineas),
+        **campos,
     )
 
 
@@ -169,24 +198,14 @@ def generar(binder_id: int, payload: sch.ReciboGenerar, db: Session = Depends(ge
         raise HTTPException(status_code=404, detail=f"Binder {binder_id} no encontrado")
 
     periodo = payload.periodo
-    lineas, base = _calcular(db, binder, periodo)
-    fecha = payload.fecha_emision or dt.date.today()
-    anio = fecha.year
+    lineas, comision, honorarios = _calcular(db, binder, periodo)
+    overrides = payload.model_dump(exclude_unset=True, exclude={"periodo"})
+    fecha = overrides.get("fecha_contable") or dt.date.today()
 
-    recibo = Recibo(
-        numero=_siguiente_numero(db, anio),
-        anio=anio,
-        binder_id=binder_id,
-        periodo=periodo,
-        fecha_emision=fecha,
-        moneda=binder.moneda or "EUR",
-        # La base la manda el servidor; importe/contraparte/estado/notas pueden venir editados.
-        contraparte=payload.contraparte if payload.contraparte is not None else _contraparte_binder(db, binder_id),
-        base_comision=base,
-        importe=payload.importe if payload.importe is not None else base,
-        estado=payload.estado or "Emitido",
-        notas=payload.notas,
-    )
+    campos = _campos_emision(db, binder, periodo, comision, honorarios, fecha)
+    campos.update(overrides)  # lo editado en el formulario prevalece (salvo la comisión recalculada)
+    recibo = Recibo(numero=_siguiente_numero(db, campos["anio"]), **campos)
+    _recompute(recibo)
     db.add(recibo)
     db.flush()                  # asigna recibo.id
 
@@ -208,6 +227,7 @@ def editar(recibo_id: int, payload: sch.ReciboUpdate, db: Session = Depends(get_
         raise HTTPException(status_code=404, detail=f"Recibo {recibo_id} no encontrado")
     for k, v in payload.model_dump(exclude_unset=True).items():
         setattr(r, k, v)
+    _recompute(r)
     db.commit()
     db.refresh(r)
     return _read(db, r)

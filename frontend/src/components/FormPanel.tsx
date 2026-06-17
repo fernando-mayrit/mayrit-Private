@@ -22,6 +22,7 @@ type Props = {
   onDelete?: () => void; // si se pasa, muestra "Borrar" dentro del panel (normalmente solo al editar)
   deleteLabel?: string;
   readOnly?: boolean; // solo consulta: oculta Guardar/Borrar y "Cancelar" pasa a "Cerrar"
+  wide?: boolean; // panel ancho (p. ej. el modal de recibo con varias columnas)
   children: ReactNode;
 };
 
@@ -36,6 +37,7 @@ export default function FormPanel({
   onDelete,
   deleteLabel = "Borrar",
   readOnly = false,
+  wide = false,
   children,
 }: Props) {
   const errorRef = useRef<HTMLDivElement>(null);
@@ -65,7 +67,7 @@ export default function FormPanel({
   return (
     // El overlay NO cierra al hacer clic: es intencionado.
     <div className="overlay">
-      <div className="panel" role="dialog" aria-modal="true" aria-label={title}>
+      <div className={"panel" + (wide ? " panel-wide" : "")} role="dialog" aria-modal="true" aria-label={title}>
         <div className="panel-head">
           <h2>{title}</h2>
           <button className="panel-close" onClick={attemptClose} aria-label="Cerrar" disabled={saving}>

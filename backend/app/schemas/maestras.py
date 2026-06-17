@@ -444,63 +444,102 @@ class BdxDetalle(BdxRead):
 
 
 # ───────────────────────────────── Recibos ──────────────────────────────────
-class ReciboRead(BaseModel):
+# Modelado sobre SharePoint 'Mayrit - TRecibos'. Los "pendientes" los recalcula el backend.
+class ReciboCampos(BaseModel):
+    """Campos de datos del recibo (editables). Todos opcionales para edición parcial."""
+    estado: str | None = None
+    # Contexto
+    referencia: str | None = None
+    nombre_mercado: str | None = None
+    mercado: str | None = None
+    numero_poliza: str | None = None
+    asegurado: str | None = None
+    corredor: str | None = None
+    ramo: str | None = None
+    tipo_poliza: str | None = None
+    produccion: str | None = None
+    fecha_efecto: dt.date | None = None
+    fecha_vencimiento: dt.date | None = None
+    yoa: int | None = None
+    pago: str | None = None
+    moneda: str | None = None
+    prima_neta_poliza: Decimal | None = None
+    participacion: Decimal | None = None
+    recibo_num: int | None = None
+    recibos_totales: str | None = None
+    # Importe + impuestos
+    fecha_efecto_recibo: dt.date | None = None
+    fecha_vcto_recibo: dt.date | None = None
+    prima_neta_recibo: Decimal | None = None
+    impuestos_porc: Decimal | None = None
+    impuestos_sobre_recibo: bool | None = None
+    impuestos_sobre_total_porc: Decimal | None = None
+    impuestos_sobre_recibo_porc: Decimal | None = None
+    otros_impuestos: Decimal | None = None
+    impuestos_recibo: Decimal | None = None
+    prima_bruta_recibo: Decimal | None = None
+    deduccion_total_porc: Decimal | None = None
+    deduccion_total: Decimal | None = None
+    honorarios: Decimal | None = None
+    # Comisiones
+    comision_cedida_porc: Decimal | None = None
+    comision_cedida: Decimal | None = None
+    comision_retenida_porc: Decimal | None = None
+    comision_retenida: Decimal | None = None
+    pagador: str | None = None
+    # Cobro
+    prima_adeudada: Decimal | None = None
+    prima_cobrada: Decimal | None = None
+    prima_fecha_cobro: dt.date | None = None
+    comision_retenida_cobrada: Decimal | None = None
+    comision_retenida_traspasada: Decimal | None = None
+    comision_fecha_traspaso: dt.date | None = None
+    # Liquidación
+    liquidar: Decimal | None = None
+    liquidar_cobrado: Decimal | None = None
+    liquidar_liquidado: Decimal | None = None
+    liquidar_fecha_liquidacion: dt.date | None = None
+    # Comisión cedida — pago
+    comision_cedida_a_pagar: Decimal | None = None
+    comision_cedida_pagada: Decimal | None = None
+    comision_cedida_fecha_pago: dt.date | None = None
+    # Contable
+    notas: str | None = None
+    cuenta: str | None = None
+    fecha_contable: dt.date | None = None
+
+
+class ReciboUpdate(ReciboCampos):
+    """Edición de un recibo (todos los campos opcionales)."""
+
+
+class ReciboGenerar(ReciboCampos):
+    """Emitir el recibo de un Risk BDX (binder + periodo 'YYYY-MM'). La comisión retenida
+    (Σ brokerage) la recalcula el servidor; el resto puede venir editado del formulario."""
+    periodo: str
+
+
+class ReciboRead(ReciboCampos):
     model_config = ConfigDict(from_attributes=True)
     id: int
-    numero: str
-    anio: int
     binder_id: int
     periodo: str
-    fecha_emision: dt.date | None = None
-    moneda: str | None = None
-    contraparte: str | None = None
-    base_comision: Decimal = Decimal(0)
-    importe: Decimal = Decimal(0)
-    cobrado: Decimal = Decimal(0)
-    estado: str
-    fecha_cobro: dt.date | None = None
-    notas: str | None = None
+    anio: int
+    numero: str
+    # Pendientes (recalculados por el backend) y enriquecidos:
+    comision_pendiente_cobro: Decimal = Decimal(0)
+    liquidar_pendiente_cobro: Decimal = Decimal(0)
     created_at: dt.datetime
     updated_at: dt.datetime
-    # Enriquecido en el listado (no son columnas de la tabla):
     binder_umr: str | None = None
     num_lineas: int = 0
 
 
-class ReciboGenerar(BaseModel):
-    """Emitir el recibo de comisión de un Risk BDX (binder + periodo 'YYYY-MM').
-    La base (Σ brokerage) la recalcula el servidor; el resto de campos pueden venir
-    editados desde el formulario de emisión."""
-    periodo: str
-    fecha_emision: dt.date | None = None
-    importe: Decimal | None = None
-    contraparte: str | None = None
-    estado: str | None = None
-    notas: str | None = None
-
-
-class ReciboPreview(BaseModel):
+class ReciboPreview(ReciboCampos):
     """Recibo calculado SIN persistir, para precumplimentar el formulario de emisión."""
-    numero: str                 # nº provisional (el definitivo se asigna al emitir)
-    anio: int
     binder_id: int
     binder_umr: str | None = None
     periodo: str
-    fecha_emision: dt.date
-    moneda: str | None = None
-    contraparte: str | None = None
-    base_comision: Decimal = Decimal(0)
-    importe: Decimal = Decimal(0)
-    estado: str = "Emitido"
+    anio: int
+    numero: str                 # nº provisional (el definitivo se asigna al emitir)
     num_lineas: int = 0
-
-
-class ReciboUpdate(BaseModel):
-    """Edición manual de un recibo (estado/fechas/notas/importe/cobro)."""
-    estado: str | None = None
-    fecha_emision: dt.date | None = None
-    fecha_cobro: dt.date | None = None
-    importe: Decimal | None = None
-    cobrado: Decimal | None = None
-    contraparte: str | None = None
-    notas: str | None = None

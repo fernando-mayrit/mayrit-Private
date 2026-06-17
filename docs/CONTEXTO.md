@@ -337,15 +337,23 @@ OneDrive y OneDrive deshidrata/borra los venv que tiene dentro. Los lanzadores y
 ## Recibos — comisión de Mayrit (núcleo facturación/contabilidad, 17/06/2026)
 La **BD más importante**. Flujo: subir/importar un Risk BDX → **generar su recibo de comisión**.
 **Regla: 1 recibo por Risk BDX** = por (binder, periodo de reporte `YYYY-MM`).
-- **Comisión = Σ `brokerage_amount` de las líneas Risk del periodo** (importe limpio). Comisión de
-  mediación **EXENTA** de impuestos (importe = base). **Contraparte = mercado(s) del binder**
-  (snapshot de nombres en `contraparte`). Moneda del binder.
-- **Numeración `AÑO-NNNN`** correlativa por año natural (año de emisión), como Alea.
-- **Modelo** (`models/maestras.py` → tabla `recibos`, migración `a1b2c3d4e5f6`): numero, anio,
-  binder_id, periodo, fecha_emision, moneda, contraparte, base_comision, importe, estado
-  (`Emitido`/`Cobrado`/`Anulado`), fecha_cobro, notas. **Unique (binder_id, periodo)** → no se
-  duplica el recibo de un Risk BDX. Las líneas del BDX que lo componen apuntan por
-  **`bdx_lineas.recibo_id`** (FK SET NULL) y guardan su nº en el texto `bdx_lineas.recibo`.
+- **Comisión de Mayrit = `comision_retenida` = Σ `brokerage_amount` de las líneas Risk del periodo**.
+  Mercado(s) del binder en `nombre_mercado`/`mercado`. Moneda del binder. `honorarios` = Σ fees.
+- **Numeración `AÑO-NNNN`** correlativa por año natural (de `fecha_contable`). **Casado con SharePoint
+  por `numero` (NumeroRecibo)** — no se usa `_OldID`.
+- **MODELO BASADO EN SharePoint `Mayrit - TRecibos` (reconstruido 17/06, migración `c3d4e5f6a7b8`):**
+  la tabla `recibos` refleja las 53 columnas de TRecibos (ciclo completo): contexto
+  (numero, referencia, nombre_mercado, mercado, numero_poliza, asegurado, corredor, ramo, tipo_poliza,
+  produccion, fechas, yoa, pago, moneda, prima_neta_poliza, participacion, recibo_num, recibos_totales),
+  importe+impuestos (prima_neta_recibo, impuestos_*, otros_impuestos, impuestos_recibo, prima_bruta_recibo,
+  deduccion_total[_porc], honorarios), comisiones (comision_cedida[_porc], comision_retenida[_porc],
+  pagador), cobro (prima_adeudada/cobrada/fecha, comision_retenida_cobrada/traspasada/fecha,
+  comision_pendiente_cobro), liquidación (liquidar, liquidar_cobrado/pendiente/liquidado/fecha) y
+  comisión cedida-pago (comision_cedida_a_pagar/pagada/fecha) + contable (cuenta, fecha_contable, notas).
+  Más enlace app: binder_id, periodo, anio, estado (Emitido/Anulado). **Los "pendientes"
+  (comision_pendiente_cobro, liquidar_pendiente_cobro) los recalcula el backend** (`_recompute`).
+  **Unique (binder_id, periodo)**. Líneas del BDX → `bdx_lineas.recibo_id` (FK SET NULL) + texto `recibo`.
+  (Migraciones previas a1b2c3d4e5f6/b2c3d4e5f6a7 quedaron superadas por la reconstrucción.)
 - **Endpoints** (`routers/recibos.py`): GET `/recibos` (filtros anio/binder_id/q), GET
   `/binders/{id}/recibos`, GET `/recibos/{id}`, **POST `/binders/{id}/recibos/generar`** {periodo,
   fecha_emision?} (409 si ya existe; 400 si no hay líneas), PUT `/recibos/{id}`, DELETE (desenlaza
@@ -360,14 +368,20 @@ La **BD más importante**. Flujo: subir/importar un Risk BDX → **generar su re
   importe/contraparte/fecha/estado/notas; la base la recalcula el servidor). Pestaña **Recibos**
   dentro del binder (entre Cálculos y Siniestros) con la tabla filtrada por ese UMR. Menú lateral con
   bloques separados (Negocio/Facturación/Configuración).
-- **Cobro PARCIAL (17/06):** la emisión se basa en el **Risk BDX**, pero el **cobro/liquidación llega
-  con los Premium BDX**, que **rara vez coinciden** con el Risk BDX → un recibo puede quedar
-  parcialmente cobrado. Campo `recibos.cobrado` (migración `b2c3d4e5f6a7`); pendiente = importe −
-  cobrado; **estado de cobro derivado** (helper `estadoCobro` en format.ts): Pendiente / Parcial /
-  Cobrado / Anulado (pills de color). `estado` manual queda solo como Emitido/Anulado.
-- **Pendiente:** **automatizar el cobro desde los Premium BDX** (acumular `cobrado` a medida que las
-  líneas entran en Premium BDX y se pagan; hoy `cobrado` se edita a mano en el módulo Recibos);
-  Fase 3 = **parser del Excel** del Risk BDX (botón «Subir Excel», hoy placeholder); enlazar a Contabilidad.
+- **Modal estilo Access (`ReciboModal.tsx`):** emisión y edición usan el MISMO modal ancho que replica
+  el de Access — columna izquierda (nº, recibo X de Y, fechas, prima neta/impuestos/prima total
+  bordereau, deducción, comisión cedida/retenida, honorarios, pagador, cuenta + desplegable "Más datos")
+  y 3 cajas a la derecha: **Cobro de primas · Liquidación a la Cía · Comisiones** (con sus pendientes
+  derivados). Usado por `RecibosPage` (editar) y por la emisión desde el binder (`preview` → modal →
+  «Emitir recibo»).
+- **Cobro PARCIAL:** la emisión se basa en el **Risk BDX**, pero el **cobro/liquidación llega con los
+  Premium BDX**, que **rara vez coinciden** con el Risk BDX → cobro parcial. Estado de cobro derivado
+  (`estadoCobro` en format.ts): Pendiente / Parcial / Cobrado / Anulado (pills de color), sobre
+  comision_retenida vs comision_retenida_cobrada. `estado` manual = Emitido/Anulado.
+- **Pendiente:** **automatizar el cobro desde los Premium BDX** (acumular comision_retenida_cobrada y
+  liquidación a medida que las líneas entran en Premium BDX y se pagan; hoy se editan a mano en el modal);
+  rellenar el resto de campos contables; Fase 3 = **parser del Excel** del Risk BDX («Subir Excel»,
+  placeholder); enlazar a Contabilidad.
 
 ## Estrategia BI / reporting (decidido 2026-06-17)
 Dos capas **separadas**, no Power BI como motor de toda la app:

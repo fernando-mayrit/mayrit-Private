@@ -472,38 +472,95 @@ class BdxBloqueo(Base):
 
 
 class Recibo(Base):
-    """Recibo de comisión de Mayrit (núcleo de facturación/contabilidad).
+    """Recibo (núcleo de facturación/contabilidad). Modelado sobre la lista de SharePoint
+    `Mayrit - TRecibos`: ciclo completo prima → impuestos → comisiones (cedida/retenida) →
+    cobro → liquidación a la Cía → pago de comisión cedida → contable.
 
-    **1 recibo por Risk BDX** = por (binder, periodo de reporte 'YYYY-MM'). La comisión
-    de Mayrit es la suma del `brokerage_amount` de las líneas Risk de ese periodo (importe
-    limpio, comisión de mediación **exenta** de impuestos). La contraparte es el/los
-    mercado(s) del binder (snapshot en `contraparte`). Numeración correlativa por año
-    natural: `AÑO-NNNN`. Las líneas del BDX que componen el recibo apuntan a él por
-    `BdxLinea.recibo_id` (y guardan su número en `BdxLinea.recibo`).
+    En la app se **emite 1 por Risk BDX** (binder + periodo 'YYYY-MM'); la comisión de Mayrit
+    es `comision_retenida` (= Σ brokerage del periodo). El **cobro llega con los Premium BDX**
+    (rara vez coinciden con el Risk BDX) → puede ser parcial. Casado con SharePoint por `numero`
+    (NumeroRecibo, 'AÑO-NNNN'). Las líneas del BDX apuntan por `BdxLinea.recibo_id`.
+    Los "pendientes" (cobro/liquidación/traspaso) los recalcula el backend.
     """
 
     __tablename__ = "recibos"
     __table_args__ = (UniqueConstraint("binder_id", "periodo", name="uq_recibo_binder_periodo"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    numero: Mapped[str] = mapped_column(String(20), index=True)   # 'AÑO-NNNN'
-    anio: Mapped[int] = mapped_column(Integer, index=True)        # año natural (agrupación contable)
+    # ── Enlace en la app ──
     binder_id: Mapped[int] = mapped_column(ForeignKey("binders.id", ondelete="CASCADE"), index=True)
-    periodo: Mapped[str] = mapped_column(String(7))               # 'YYYY-MM' del Risk BDX
-
-    fecha_emision: Mapped[dt.date | None] = mapped_column(Date)
-    moneda: Mapped[str | None] = mapped_column(String(10), server_default="EUR", default="EUR")
-    contraparte: Mapped[str | None] = mapped_column(String(400))  # mercado(s) del binder (snapshot)
-
-    base_comision: Mapped[Decimal] = mapped_column(Numeric(18, 2), server_default=text("0"), default=0)
-    importe: Mapped[Decimal] = mapped_column(Numeric(18, 2), server_default=text("0"), default=0)
-    # Cobro PARCIAL: el cobro real llega con los Premium BDX (que rara vez coinciden con el Risk BDX),
-    # así que se acumula poco a poco. `cobrado` = importe cobrado hasta ahora (pendiente = importe − cobrado).
-    cobrado: Mapped[Decimal] = mapped_column(Numeric(18, 2), server_default=text("0"), default=0)
+    periodo: Mapped[str] = mapped_column(String(7))               # 'YYYY-MM' del Risk BDX (enlace)
+    anio: Mapped[int] = mapped_column(Integer, index=True)        # año contable
     estado: Mapped[str] = mapped_column(String(30), server_default="Emitido", default="Emitido")  # Emitido | Anulado
 
-    fecha_cobro: Mapped[dt.date | None] = mapped_column(Date)   # fecha del cobro total (si llega)
+    # ── Contexto (TRecibos) ──
+    numero: Mapped[str] = mapped_column(String(20), index=True)   # NumeroRecibo 'AÑO-NNNN' (clave de casado)
+    referencia: Mapped[str | None] = mapped_column(String(200))
+    nombre_mercado: Mapped[str | None] = mapped_column(String(300))   # Nombre_Mercado
+    mercado: Mapped[str | None] = mapped_column(String(300))          # Mercado (alias/código)
+    numero_poliza: Mapped[str | None] = mapped_column(String(120))
+    asegurado: Mapped[str | None] = mapped_column(String(300))
+    corredor: Mapped[str | None] = mapped_column(String(200))
+    ramo: Mapped[str | None] = mapped_column(String(120))
+    tipo_poliza: Mapped[str | None] = mapped_column(String(80))
+    produccion: Mapped[str | None] = mapped_column(String(120))
+    fecha_efecto: Mapped[dt.date | None] = mapped_column(Date)
+    fecha_vencimiento: Mapped[dt.date | None] = mapped_column(Date)
+    yoa: Mapped[int | None] = mapped_column(Integer)
+    pago: Mapped[str | None] = mapped_column(String(40))              # Único / Fraccionado
+    moneda: Mapped[str | None] = mapped_column(String(10), server_default="EUR", default="EUR")
+    prima_neta_poliza: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    participacion: Mapped[Decimal | None] = mapped_column(Numeric(7, 4))
+    recibo_num: Mapped[int | None] = mapped_column(Integer)           # Recibo (nº de plazo)
+    recibos_totales: Mapped[str | None] = mapped_column(String(40))   # RecibosTotales (ej: "12")
+
+    # ── Importe del recibo + impuestos ──
+    fecha_efecto_recibo: Mapped[dt.date | None] = mapped_column(Date)
+    fecha_vcto_recibo: Mapped[dt.date | None] = mapped_column(Date)
+    prima_neta_recibo: Mapped[Decimal] = mapped_column(Numeric(18, 2), server_default=text("0"), default=0)
+    impuestos_porc: Mapped[Decimal | None] = mapped_column(Numeric(7, 4))
+    impuestos_sobre_recibo: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
+    impuestos_sobre_total_porc: Mapped[Decimal | None] = mapped_column(Numeric(7, 4))
+    impuestos_sobre_recibo_porc: Mapped[Decimal | None] = mapped_column(Numeric(7, 4))
+    otros_impuestos: Mapped[Decimal] = mapped_column(Numeric(18, 2), server_default=text("0"), default=0)
+    impuestos_recibo: Mapped[Decimal] = mapped_column(Numeric(18, 2), server_default=text("0"), default=0)
+    prima_bruta_recibo: Mapped[Decimal] = mapped_column(Numeric(18, 2), server_default=text("0"), default=0)
+    deduccion_total_porc: Mapped[Decimal | None] = mapped_column(Numeric(7, 4))
+    deduccion_total: Mapped[Decimal] = mapped_column(Numeric(18, 2), server_default=text("0"), default=0)
+    honorarios: Mapped[Decimal] = mapped_column(Numeric(18, 2), server_default=text("0"), default=0)
+
+    # ── Comisiones ──
+    comision_cedida_porc: Mapped[Decimal | None] = mapped_column(Numeric(7, 4))    # al corredor
+    comision_cedida: Mapped[Decimal] = mapped_column(Numeric(18, 2), server_default=text("0"), default=0)
+    comision_retenida_porc: Mapped[Decimal | None] = mapped_column(Numeric(7, 4))  # de Mayrit
+    comision_retenida: Mapped[Decimal] = mapped_column(Numeric(18, 2), server_default=text("0"), default=0)
+    pagador: Mapped[str | None] = mapped_column(String(60))
+
+    # ── Cobro de primas / comisión ──
+    prima_adeudada: Mapped[Decimal] = mapped_column(Numeric(18, 2), server_default=text("0"), default=0)
+    prima_cobrada: Mapped[Decimal] = mapped_column(Numeric(18, 2), server_default=text("0"), default=0)
+    prima_fecha_cobro: Mapped[dt.date | None] = mapped_column(Date)
+    comision_retenida_cobrada: Mapped[Decimal] = mapped_column(Numeric(18, 2), server_default=text("0"), default=0)
+    comision_retenida_traspasada: Mapped[Decimal] = mapped_column(Numeric(18, 2), server_default=text("0"), default=0)
+    comision_fecha_traspaso: Mapped[dt.date | None] = mapped_column(Date)
+    comision_pendiente_cobro: Mapped[Decimal] = mapped_column(Numeric(18, 2), server_default=text("0"), default=0)
+
+    # ── Liquidación a la Cía ──
+    liquidar: Mapped[Decimal] = mapped_column(Numeric(18, 2), server_default=text("0"), default=0)
+    liquidar_cobrado: Mapped[Decimal] = mapped_column(Numeric(18, 2), server_default=text("0"), default=0)
+    liquidar_pendiente_cobro: Mapped[Decimal] = mapped_column(Numeric(18, 2), server_default=text("0"), default=0)
+    liquidar_liquidado: Mapped[Decimal] = mapped_column(Numeric(18, 2), server_default=text("0"), default=0)
+    liquidar_fecha_liquidacion: Mapped[dt.date | None] = mapped_column(Date)
+
+    # ── Comisión cedida — pago ──
+    comision_cedida_a_pagar: Mapped[Decimal] = mapped_column(Numeric(18, 2), server_default=text("0"), default=0)
+    comision_cedida_pagada: Mapped[Decimal] = mapped_column(Numeric(18, 2), server_default=text("0"), default=0)
+    comision_cedida_fecha_pago: Mapped[dt.date | None] = mapped_column(Date)
+
+    # ── Contable / control ──
     notas: Mapped[str | None] = mapped_column(Text)
+    cuenta: Mapped[str | None] = mapped_column(String(120))
+    fecha_contable: Mapped[dt.date | None] = mapped_column(Date)
 
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[dt.datetime] = mapped_column(

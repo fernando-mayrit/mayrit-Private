@@ -4,24 +4,9 @@ import type { Binder, Bdx, BdxLinea, Recibo } from "../types";
 import BdxLineaPanel from "../components/BdxLineaPanel";
 import BdxTabla from "../components/BdxTabla";
 import NumberInput from "../components/NumberInput";
-import FormPanel from "../components/FormPanel";
-import OptionButtons from "../components/OptionButtons";
+import ReciboModal from "../components/ReciboModal";
+import type { ReciboPreview, ReciboUpdate } from "../types";
 import { fmtMiles, fmtFechaES, estadoCobro } from "../format";
-
-const ESTADOS_RECIBO = ["Emitido", "Cobrado", "Anulado"];
-// Borrador del recibo en el formulario de emisión (precalculado, editable antes de crear).
-type BorradorRecibo = {
-  periodo: string;
-  numero: string;        // provisional
-  binder_umr: string | null;
-  base_comision: string;
-  num_lineas: number;
-  fecha_emision: string;
-  contraparte: string;
-  importe: string;
-  estado: string;
-  notas: string;
-};
 
 function n(v: unknown): number {
   const x = Number(String(v ?? "").replace(",", "."));
@@ -80,8 +65,7 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
   // Recibos de comisión del binder (1 por Risk BDX). Mapa periodo 'YYYY-MM' → recibo.
   const [recibos, setRecibos] = useState<Recibo[]>([]);
   const [generando, setGenerando] = useState<string | null>(null); // periodo cuyo preview se está pidiendo
-  const [borrador, setBorrador] = useState<BorradorRecibo | null>(null);
-  const [borradorIni, setBorradorIni] = useState<BorradorRecibo | null>(null);
+  const [borrador, setBorrador] = useState<ReciboPreview | null>(null); // recibo precalculado a emitir
   const [emitiendo, setEmitiendo] = useState(false);
 
   // ── Importación desde SharePoint ──
@@ -195,26 +179,12 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
   // Recibo ya generado de cada periodo (1 por Risk BDX).
   const reciboDe = new Map(recibos.map((r) => [r.periodo, r]));
 
-  // Paso 1: NO crea el recibo; calcula el borrador y abre el formulario de emisión.
+  // Paso 1: NO crea el recibo; calcula el borrador (preview) y abre el formulario de emisión.
   async function generarRecibo(periodo: string) {
     setGenerando(periodo);
     setError(null);
     try {
-      const p = await recibosApi.preview(binder.id, periodo);
-      const b: BorradorRecibo = {
-        periodo: p.periodo,
-        numero: p.numero,
-        binder_umr: p.binder_umr,
-        base_comision: p.base_comision,
-        num_lineas: p.num_lineas,
-        fecha_emision: p.fecha_emision ?? "",
-        contraparte: p.contraparte ?? "",
-        importe: p.importe,
-        estado: p.estado,
-        notas: "",
-      };
-      setBorrador(b);
-      setBorradorIni(b);
+      setBorrador(await recibosApi.preview(binder.id, periodo));
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -223,20 +193,13 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
   }
 
   // Paso 2: emite (crea) el recibo con los campos del formulario.
-  async function emitirRecibo() {
+  async function emitirRecibo(payload: ReciboUpdate) {
     if (!borrador) return;
     setEmitiendo(true);
     setError(null);
     try {
-      await recibosApi.generar(binder.id, borrador.periodo, {
-        fecha_emision: borrador.fecha_emision || null,
-        importe: borrador.importe || null,
-        contraparte: borrador.contraparte || null,
-        estado: borrador.estado,
-        notas: borrador.notas.trim() || null,
-      });
+      await recibosApi.generar(binder.id, borrador.periodo, payload);
       setBorrador(null);
-      setBorradorIni(null);
       await cargar(); // refresca recibos y líneas (ya con su nº de recibo)
     } catch (e) {
       setError((e as Error).message);
@@ -350,7 +313,7 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
                       <td className="num">{imp(v.brk)}</td>
                       <td>
                         {recibo ? (
-                          <span title={`${imp(n(recibo.importe))} · ${recibo.estado}`}>🧾 {recibo.numero}</span>
+                          <span title={`Comisión ${imp(n(recibo.comision_retenida))} · ${recibo.estado}`}>🧾 {recibo.numero}</span>
                         ) : (
                           <button
                             className="btn-link"
@@ -604,25 +567,25 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
               </thead>
               <tbody>
                 {recibos.map((r) => {
-                  const ec = estadoCobro(r.importe, r.cobrado, r.estado);
+                  const ec = estadoCobro(r.comision_retenida, r.comision_retenida_cobrada, r.estado);
                   return (
                   <tr key={r.id}>
                     <td><b>🧾 {r.numero}</b></td>
                     <td>{mesLargo(r.periodo)}</td>
-                    <td>{r.contraparte ?? "—"}</td>
-                    <td className="num">{imp(n(r.importe))}</td>
-                    <td className="num">{imp(n(r.cobrado))}</td>
-                    <td className="num">{imp(n(r.importe) - n(r.cobrado))}</td>
+                    <td>{r.nombre_mercado ?? "—"}</td>
+                    <td className="num">{imp(n(r.comision_retenida))}</td>
+                    <td className="num">{imp(n(r.comision_retenida_cobrada))}</td>
+                    <td className="num">{imp(n(r.comision_pendiente_cobro))}</td>
                     <td><span className={`pill pill-${ec.clase}`}>{ec.label}</span></td>
-                    <td>{fmtFechaES(r.fecha_emision)}</td>
+                    <td>{fmtFechaES(r.fecha_contable)}</td>
                   </tr>
                   );
                 })}
                 <tr style={{ fontWeight: 600, borderTop: "2px solid var(--borde)" }}>
                   <td colSpan={3}>Total ({recibos.length})</td>
-                  <td className="num">{imp(recibos.reduce((a, r) => a + n(r.importe), 0))}</td>
-                  <td className="num">{imp(recibos.reduce((a, r) => a + n(r.cobrado), 0))}</td>
-                  <td className="num">{imp(recibos.reduce((a, r) => a + n(r.importe) - n(r.cobrado), 0))}</td>
+                  <td className="num">{imp(recibos.reduce((a, r) => a + n(r.comision_retenida), 0))}</td>
+                  <td className="num">{imp(recibos.reduce((a, r) => a + n(r.comision_retenida_cobrada), 0))}</td>
+                  <td className="num">{imp(recibos.reduce((a, r) => a + n(r.comision_pendiente_cobro), 0))}</td>
                   <td colSpan={2}></td>
                 </tr>
               </tbody>
@@ -660,75 +623,18 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
         />
       )}
 
-      {/* Emisión de recibo: formulario precalculado; el recibo se crea al pulsar "Emitir". */}
+      {/* Emisión de recibo: modal precalculado (estilo Access); se crea al pulsar "Emitir recibo". */}
       {borrador && (
-        <FormPanel
-          title={`Emitir recibo de comisión · ${borrador.numero}`}
-          dirty={JSON.stringify(borrador) !== JSON.stringify(borradorIni)}
-          saving={emitiendo}
+        <ReciboModal
+          titulo={`Emitir recibo · Risk BDX ${mesLargo(borrador.periodo)}`}
           saveLabel="Emitir recibo"
+          recibo={borrador}
+          numeroProvisional
+          saving={emitiendo}
           error={error}
           onSave={emitirRecibo}
-          onClose={() => { setBorrador(null); setBorradorIni(null); }}
-        >
-          <div className="hint" style={{ marginBottom: 12 }}>
-            Recibo del Risk BDX <b>{mesLargo(borrador.periodo)}</b> · binder{" "}
-            <b>{borrador.binder_umr ?? binder.umr ?? binder.id}</b> · {borrador.num_lineas} línea(s).
-            El número <b>{borrador.numero}</b> es provisional (el definitivo se asigna al emitir).
-            Comisión de mediación <b>exenta</b> de impuestos.
-          </div>
-
-          <div className="campos-grid" style={{ gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}>
-            <div className="field">
-              <label>Número (provisional)</label>
-              <input type="text" value={borrador.numero} disabled />
-            </div>
-            <div className="field">
-              <label>Risk BDX (periodo)</label>
-              <input type="text" value={mesLargo(borrador.periodo)} disabled />
-            </div>
-            <div className="field">
-              <label>Base comisión (Σ Brokerage)</label>
-              <input type="text" value={`${fmtMiles(borrador.base_comision)} €`} disabled />
-            </div>
-            <div className="field">
-              <label>Importe a cobrar</label>
-              <NumberInput value={borrador.importe} onChange={(v) => setBorrador({ ...borrador, importe: v })} suffix="€" />
-            </div>
-          </div>
-
-          <div className="field">
-            <label>Contraparte (mercado/s)</label>
-            <input
-              type="text"
-              value={borrador.contraparte}
-              onChange={(e) => setBorrador({ ...borrador, contraparte: e.target.value })}
-            />
-          </div>
-          <div className="campos-grid" style={{ gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}>
-            <div className="field">
-              <label>Fecha de emisión</label>
-              <input
-                type="date"
-                className="inp-fecha"
-                value={borrador.fecha_emision}
-                onChange={(e) => setBorrador({ ...borrador, fecha_emision: e.target.value })}
-              />
-            </div>
-            <div className="field">
-              <label>Estado</label>
-              <OptionButtons
-                value={borrador.estado}
-                options={ESTADOS_RECIBO}
-                onChange={(v) => setBorrador({ ...borrador, estado: v })}
-              />
-            </div>
-          </div>
-          <div className="field">
-            <label>Notas</label>
-            <textarea rows={3} value={borrador.notas} onChange={(e) => setBorrador({ ...borrador, notas: e.target.value })} />
-          </div>
-        </FormPanel>
+          onClose={() => setBorrador(null)}
+        />
       )}
 
       {/* Selector de Excel (carpeta servida por el backend) */}

@@ -169,58 +169,95 @@ export interface BdxWrite {
   notas?: string | null;
 }
 
-// Recibo de comisión de Mayrit (1 por Risk BDX). Núcleo de facturación/contabilidad.
-export interface Recibo {
+// Recibo (núcleo facturación/contabilidad). Modelado sobre SharePoint 'Mayrit - TRecibos'.
+// Los importes/porcentajes (Numeric) viajan como string; las fechas como ISO 'YYYY-MM-DD'.
+export interface ReciboCampos {
+  estado?: string | null;
+  // Contexto
+  referencia?: string | null;
+  nombre_mercado?: string | null;
+  mercado?: string | null;
+  numero_poliza?: string | null;
+  asegurado?: string | null;
+  corredor?: string | null;
+  ramo?: string | null;
+  tipo_poliza?: string | null;
+  produccion?: string | null;
+  fecha_efecto?: string | null;
+  fecha_vencimiento?: string | null;
+  yoa?: number | null;
+  pago?: string | null;
+  moneda?: string | null;
+  prima_neta_poliza?: string | null;
+  participacion?: string | null;
+  recibo_num?: number | null;
+  recibos_totales?: string | null;
+  // Importe + impuestos
+  fecha_efecto_recibo?: string | null;
+  fecha_vcto_recibo?: string | null;
+  prima_neta_recibo?: string | null;
+  impuestos_porc?: string | null;
+  impuestos_sobre_recibo?: boolean | null;
+  impuestos_sobre_total_porc?: string | null;
+  impuestos_sobre_recibo_porc?: string | null;
+  otros_impuestos?: string | null;
+  impuestos_recibo?: string | null;
+  prima_bruta_recibo?: string | null;
+  deduccion_total_porc?: string | null;
+  deduccion_total?: string | null;
+  honorarios?: string | null;
+  // Comisiones
+  comision_cedida_porc?: string | null;
+  comision_cedida?: string | null;
+  comision_retenida_porc?: string | null;
+  comision_retenida?: string | null;
+  pagador?: string | null;
+  // Cobro
+  prima_adeudada?: string | null;
+  prima_cobrada?: string | null;
+  prima_fecha_cobro?: string | null;
+  comision_retenida_cobrada?: string | null;
+  comision_retenida_traspasada?: string | null;
+  comision_fecha_traspaso?: string | null;
+  // Liquidación
+  liquidar?: string | null;
+  liquidar_cobrado?: string | null;
+  liquidar_liquidado?: string | null;
+  liquidar_fecha_liquidacion?: string | null;
+  // Comisión cedida — pago
+  comision_cedida_a_pagar?: string | null;
+  comision_cedida_pagada?: string | null;
+  comision_cedida_fecha_pago?: string | null;
+  // Contable
+  notas?: string | null;
+  cuenta?: string | null;
+  fecha_contable?: string | null;
+}
+
+export interface Recibo extends ReciboCampos {
   id: number;
-  numero: string;          // 'AÑO-NNNN'
-  anio: number;
   binder_id: number;
   periodo: string;         // 'YYYY-MM' del Risk BDX
-  fecha_emision: string | null;
-  moneda: string | null;
-  contraparte: string | null;
-  base_comision: string;   // Numeric → string
-  importe: string;
-  cobrado: string;         // importe cobrado hasta ahora (cobro parcial vía Premium BDX)
-  estado: string;          // 'Emitido' | 'Anulado' (el cobro se deriva de cobrado vs importe)
-  fecha_cobro: string | null;
-  notas: string | null;
+  anio: number;
+  numero: string;          // 'AÑO-NNNN'
+  // Pendientes (recalculados por el backend):
+  comision_pendiente_cobro: string;
+  liquidar_pendiente_cobro: string;
   created_at: string;
   updated_at: string;
-  binder_umr?: string | null;  // enriquecido en el listado
+  binder_umr?: string | null;
   num_lineas?: number;
 }
-export interface ReciboUpdate {
-  estado?: string | null;
-  fecha_emision?: string | null;
-  fecha_cobro?: string | null;
-  importe?: string | null;
-  cobrado?: string | null;
-  contraparte?: string | null;
-  notas?: string | null;
-}
-// Recibo calculado SIN persistir, para precumplimentar el formulario de emisión.
-export interface ReciboPreview {
-  numero: string;          // nº provisional
-  anio: number;
+
+export type ReciboUpdate = ReciboCampos;
+
+export interface ReciboPreview extends ReciboCampos {
   binder_id: number;
   binder_umr: string | null;
   periodo: string;
-  fecha_emision: string;
-  moneda: string | null;
-  contraparte: string | null;
-  base_comision: string;
-  importe: string;
-  estado: string;
+  anio: number;
+  numero: string;          // nº provisional
   num_lineas: number;
-}
-// Campos editables que viajan al emitir el recibo.
-export interface ReciboEmitir {
-  fecha_emision?: string | null;
-  importe?: string | null;
-  contraparte?: string | null;
-  estado?: string | null;
-  notas?: string | null;
 }
 
 // Línea de un BDX. Campos del estándar (8–77) + control interno (80–90).
