@@ -387,6 +387,16 @@ td.num, th.num { text-align: right; }
 .filtro-inline { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; color: var(--gris-medio); }
 .filtro-inline select { padding: 6px 8px; }
 
+/* Etiqueta de Estado del binder en el encabezado (color por estado) */
+.estado-badge { display: inline-block; padding: 2px 12px; border-radius: 999px; font-weight: 700; font-size: 14px; }
+.estado-badge.eb-vigor { background: #dbeafe; color: #1d4ed8; }          /* azul */
+.estado-badge.eb-renovado { background: #dcebe0; color: #1a7f37; }       /* verde */
+.estado-badge.eb-norenovado { background: #e5e7eb; color: #4b5563; }     /* gris */
+.estado-badge.eb-cancelado { background: #f3d6d2; color: #9a2218; }      /* rojo apagado */
+.estado-badge.eb-cerrado-prod { background: #fef9c3; color: #a16207; }   /* amarillo */
+.estado-badge.eb-cerrado { background: #fde2dd; color: #b42318; }        /* rojo */
+.estado-badge.eb-otro { background: var(--gris-claro); color: var(--gris-medio); }
+
 /* Diálogo de confirmación contundente (acciones sensibles) */
 .panel-confirm { max-width: 460px; width: 92vw; border-top: 6px solid var(--rojo); }
 .confirm-head { display: flex; align-items: center; gap: 10px; padding: 16px 20px 6px; }

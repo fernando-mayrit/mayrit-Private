@@ -17,6 +17,18 @@ function n(v: unknown): number {
 }
 
 const MESES_ES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+// Clase de color del Estado del binder para la etiqueta del encabezado.
+function estadoBadgeClase(estado: string | null | undefined): string {
+  switch (estado) {
+    case "En Vigor": return "eb-vigor";
+    case "Renovado": return "eb-renovado";
+    case "No Renovado": return "eb-norenovado";
+    case "Cancelado": return "eb-cancelado";
+    case "Cerrado Producción": return "eb-cerrado-prod";
+    case "Cerrado": return "eb-cerrado";
+    default: return "eb-otro";
+  }
+}
 function mesLargo(k: string): string {
   const [y, mo] = k.split("-");
   return `${MESES_ES[Number(mo) - 1] ?? mo} ${y}`;
@@ -403,7 +415,7 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
         </h1>
         <div className="detalle-sub">
           {binder.coverholder_nombre ?? "—"} · {fmtFecha(binder.fecha_efecto)} → {fmtFecha(binder.fecha_vencimiento)} ·{" "}
-          {binder.estado ?? "—"}
+          <span className={"estado-badge " + estadoBadgeClase(binder.estado)}>{binder.estado ?? "—"}</span>
         </div>
       </div>
 
