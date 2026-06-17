@@ -6,6 +6,8 @@ import BdxTabla from "../components/BdxTabla";
 import NumberInput from "../components/NumberInput";
 import ReciboModal from "../components/ReciboModal";
 import PremiumMatch from "../components/PremiumMatch";
+import ConfirmDialog from "../components/ConfirmDialog";
+import type { ReactNode } from "react";
 import type { ReciboPreview, ReciboUpdate } from "../types";
 import { fmtMiles, fmtFechaES, estadoCobro } from "../format";
 
@@ -74,6 +76,10 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
   // Premiums del binder (grupos por mes) y fecha de pago por periodo (para el cobro)
   const [premiums, setPremiums] = useState<PremiumGrupo[]>([]);
   const [fechasPago, setFechasPago] = useState<Record<string, string>>({});
+  // Diálogo de confirmación contundente para acciones sensibles
+  const [confirmar, setConfirmar] = useState<
+    { titulo: string; mensaje: ReactNode; detalle?: ReactNode; confirmLabel?: string; doble?: boolean; accion: () => void } | null
+  >(null);
 
   // ── Importación desde SharePoint ──
   const [importAbierto, setImportAbierto] = useState(false);
@@ -199,25 +205,52 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
   const premComision = premiums.reduce((a, p) => a + n(p.comision), 0);
 
   // Cobro de un Premium entero (marca líneas pagadas con la fecha real → deriva el cobro a los recibos).
-  async function cobrarPremium(periodo: string) {
+  function pedirCobrarPremium(periodo: string) {
     const fecha = fechasPago[periodo] || new Date().toISOString().slice(0, 10);
-    setError(null);
-    try {
-      await recibosApi.cobrarPremium(binder.id, periodo, fecha);
-      await cargar();
-    } catch (e) {
-      setError((e as Error).message);
-    }
+    setConfirmar({
+      titulo: "Marcar Premium como COBRADO",
+      mensaje: (
+        <>
+          Vas a dar por <b>cobrado</b> el Premium <b>{mesLargo(periodo)}</b> con fecha de pago{" "}
+          <b>{fmtFechaES(fecha)}</b>.
+        </>
+      ),
+      detalle: "Se marcarán sus líneas como pagadas y el cobro se repartirá automáticamente entre los recibos afectados.",
+      confirmLabel: "Sí, marcar cobrado",
+      accion: async () => {
+        setConfirmar(null);
+        setError(null);
+        try {
+          await recibosApi.cobrarPremium(binder.id, periodo, fecha);
+          await cargar();
+        } catch (e) {
+          setError((e as Error).message);
+        }
+      },
+    });
   }
-  async function descobrarPremium(periodo: string) {
-    if (!confirm(`¿Deshacer el cobro del Premium ${periodo}?`)) return;
-    setError(null);
-    try {
-      await recibosApi.descobrarPremium(binder.id, periodo, new Date().toISOString().slice(0, 10));
-      await cargar();
-    } catch (e) {
-      setError((e as Error).message);
-    }
+  function pedirDescobrarPremium(periodo: string) {
+    setConfirmar({
+      titulo: "DESHACER el cobro del Premium",
+      mensaje: (
+        <>
+          Vas a <b>deshacer el cobro</b> del Premium <b>{mesLargo(periodo)}</b>.
+        </>
+      ),
+      detalle: "Sus líneas volverán a PENDIENTE y se revertirá el cobro en los recibos afectados (prima, comisión y liquidación cobradas).",
+      confirmLabel: "Continuar",
+      doble: true,
+      accion: async () => {
+        setConfirmar(null);
+        setError(null);
+        try {
+          await recibosApi.descobrarPremium(binder.id, periodo, new Date().toISOString().slice(0, 10));
+          await cargar();
+        } catch (e) {
+          setError((e as Error).message);
+        }
+      },
+    });
   }
 
   // Paso 1: NO crea el recibo; calcula el borrador (preview) y abre el formulario de emisión.
@@ -551,7 +584,11 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
                     </td>
                     <td>
                       {p.cobrado ? (
-                        <button className="btn-link" onClick={() => descobrarPremium(p.periodo)}>Deshacer</button>
+                        bloqueos.has(`premium:${p.periodo}`) ? (
+                          <span className="hint" title="Premium bloqueado: no se puede deshacer">🔒 bloqueado</span>
+                        ) : (
+                          <button className="btn-link" onClick={() => pedirDescobrarPremium(p.periodo)}>Deshacer</button>
+                        )
                       ) : (
                         <span style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
                           <input
@@ -560,7 +597,7 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
                             value={fechasPago[p.periodo] ?? new Date().toISOString().slice(0, 10)}
                             onChange={(e) => setFechasPago((s) => ({ ...s, [p.periodo]: e.target.value }))}
                           />
-                          <button className="btn-primary btn-sm" onClick={() => cobrarPremium(p.periodo)}>Cobrado</button>
+                          <button className="btn-primary btn-sm" onClick={() => pedirCobrarPremium(p.periodo)}>Cobrado</button>
                         </span>
                       )}
                     </td>
@@ -763,6 +800,19 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
           error={error}
           onSave={emitirRecibo}
           onClose={() => setBorrador(null)}
+        />
+      )}
+
+      {/* Confirmación contundente para acciones sensibles */}
+      {confirmar && (
+        <ConfirmDialog
+          titulo={confirmar.titulo}
+          mensaje={confirmar.mensaje}
+          detalle={confirmar.detalle}
+          confirmLabel={confirmar.confirmLabel}
+          doble={confirmar.doble}
+          onConfirm={confirmar.accion}
+          onClose={() => setConfirmar(null)}
         />
       )}
 

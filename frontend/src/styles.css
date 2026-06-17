@@ -381,6 +381,15 @@ td.num, th.num { text-align: right; }
 .recibo-mas summary { cursor: pointer; color: var(--gris-medio); font-size: 13px; padding: 4px 0; }
 @media (max-width: 760px) { .recibo-modal { grid-template-columns: 1fr; } }
 
+/* Diálogo de confirmación contundente (acciones sensibles) */
+.panel-confirm { max-width: 460px; width: 92vw; border-top: 6px solid var(--rojo); }
+.confirm-head { display: flex; align-items: center; gap: 10px; padding: 16px 20px 6px; }
+.confirm-head .confirm-icon { font-size: 26px; }
+.confirm-head h2 { margin: 0; color: var(--rojo); font-size: 20px; }
+.confirm-body { padding: 6px 20px 12px; font-size: 15px; color: var(--gris); line-height: 1.4; }
+.confirm-detalle { margin-top: 10px; padding: 10px 12px; background: #fde2dd; border-radius: 8px; color: var(--rojo); font-weight: 600; }
+.confirm-warn { margin-top: 12px; padding: 10px 12px; background: var(--rojo); color: #fff; border-radius: 8px; font-weight: 700; }
+
 /* Recibos: estado de cobro (pill de color) */
 .pill { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; white-space: nowrap; }
 .pill-pendiente { background: #fde2dd; color: #b42318; }

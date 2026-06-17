@@ -3,6 +3,7 @@ import { recibosApi } from "../api";
 import type { Recibo, ReciboUpdate } from "../types";
 import PageHeader from "../components/PageHeader";
 import ReciboModal from "../components/ReciboModal";
+import ConfirmDialog from "../components/ConfirmDialog";
 import { fmtMiles, fmtFechaES, estadoCobro } from "../format";
 
 const eur = (v: unknown) => `${fmtMiles(v)} €`;
@@ -21,6 +22,7 @@ export default function RecibosPage() {
 
   const [sel, setSel] = useState<Recibo | null>(null);
   const [saving, setSaving] = useState(false);
+  const [confBorrar, setConfBorrar] = useState(false);
 
   async function cargar(search = q) {
     setLoading(true);
@@ -58,11 +60,11 @@ export default function RecibosPage() {
 
   async function borrar() {
     if (!sel) return;
-    if (!confirm(`¿Borrar el recibo ${sel.numero}? Se desenlazarán sus líneas del BDX.`)) return;
     setSaving(true);
     try {
       await recibosApi.borrar(sel.id);
       setSel(null);
+      setConfBorrar(false);
       await cargar();
     } catch (e) {
       setError((e as Error).message);
@@ -148,7 +150,19 @@ export default function RecibosPage() {
           error={error}
           onSave={guardar}
           onClose={() => setSel(null)}
-          onDelete={borrar}
+          onDelete={() => setConfBorrar(true)}
+        />
+      )}
+
+      {confBorrar && sel && (
+        <ConfirmDialog
+          titulo="BORRAR recibo"
+          mensaje={<>Vas a <b>borrar</b> el recibo <b>{sel.numero}</b>.</>}
+          detalle="Se desenlazarán sus líneas del BDX y se perderá el registro contable de este recibo."
+          confirmLabel="Continuar"
+          doble
+          onConfirm={borrar}
+          onClose={() => setConfBorrar(false)}
         />
       )}
     </div>
