@@ -183,8 +183,6 @@ export default function ReciboModal({
             <div className="campos-grid" style={{ gridTemplateColumns: "1fr 1fr" }}>
               <Texto k="nombre_mercado" label="Mercado" />
               <Texto k="referencia" label="Referencia" />
-              <Texto k="numero_poliza" label="Nº Póliza" />
-              <Texto k="asegurado" label="Asegurado" />
               <Texto k="ramo" label="Ramo" />
               <Texto k="pago" label="Pago" />
               <Texto k="moneda" label="Moneda" />
