@@ -324,7 +324,7 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
                       }
                     />
                   </th>
-                  <th>Mes</th>
+                  <th>Mes Risk</th>
                   <th className="num">GWP</th>
                   <th className="num">Net Premium to Broker</th>
                   <th className="num">Comisión</th>
@@ -333,7 +333,6 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
               </thead>
               <tbody>
                 {porMes.map(([mes, v]) => {
-                  const [y, mo] = mes.split("-");
                   const recibo = reciboDe.get(mes);
                   return (
                     <tr key={mes}>
@@ -351,7 +350,7 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
                           }
                         />
                       </td>
-                      <td>{`${mo}/${y}`}</td>
+                      <td>{mesLargo(mes)}</td>
                       <td className="num">{imp(v.gwp)}</td>
                       <td className="num">{imp(v.net)}</td>
                       <td className="num">{imp(v.brk)}</td>
