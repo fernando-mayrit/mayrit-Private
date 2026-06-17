@@ -197,6 +197,29 @@ export interface ReciboUpdate {
   contraparte?: string | null;
   notas?: string | null;
 }
+// Recibo calculado SIN persistir, para precumplimentar el formulario de emisión.
+export interface ReciboPreview {
+  numero: string;          // nº provisional
+  anio: number;
+  binder_id: number;
+  binder_umr: string | null;
+  periodo: string;
+  fecha_emision: string;
+  moneda: string | null;
+  contraparte: string | null;
+  base_comision: string;
+  importe: string;
+  estado: string;
+  num_lineas: number;
+}
+// Campos editables que viajan al emitir el recibo.
+export interface ReciboEmitir {
+  fecha_emision?: string | null;
+  importe?: string | null;
+  contraparte?: string | null;
+  estado?: string | null;
+  notas?: string | null;
+}
 
 // Línea de un BDX. Campos del estándar (8–77) + control interno (80–90).
 // Todos opcionales: en import/manual pueden venir vacíos.

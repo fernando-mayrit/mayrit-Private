@@ -467,9 +467,31 @@ class ReciboRead(BaseModel):
 
 
 class ReciboGenerar(BaseModel):
-    """Generar el recibo de comisión de un Risk BDX (binder + periodo 'YYYY-MM')."""
+    """Emitir el recibo de comisión de un Risk BDX (binder + periodo 'YYYY-MM').
+    La base (Σ brokerage) la recalcula el servidor; el resto de campos pueden venir
+    editados desde el formulario de emisión."""
     periodo: str
     fecha_emision: dt.date | None = None
+    importe: Decimal | None = None
+    contraparte: str | None = None
+    estado: str | None = None
+    notas: str | None = None
+
+
+class ReciboPreview(BaseModel):
+    """Recibo calculado SIN persistir, para precumplimentar el formulario de emisión."""
+    numero: str                 # nº provisional (el definitivo se asigna al emitir)
+    anio: int
+    binder_id: int
+    binder_umr: str | None = None
+    periodo: str
+    fecha_emision: dt.date
+    moneda: str | None = None
+    contraparte: str | None = None
+    base_comision: Decimal = Decimal(0)
+    importe: Decimal = Decimal(0)
+    estado: str = "Emitido"
+    num_lineas: int = 0
 
 
 class ReciboUpdate(BaseModel):

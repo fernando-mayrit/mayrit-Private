@@ -121,7 +121,7 @@ export interface BdxImportResult {
 }
 
 // ── Recibos (comisión de Mayrit por Risk BDX) ──
-import type { Recibo, ReciboUpdate } from "./types";
+import type { Recibo, ReciboUpdate, ReciboPreview, ReciboEmitir } from "./types";
 
 export const recibosApi = {
   listar: (params?: { anio?: number; binder_id?: number; q?: string }) => {
@@ -134,10 +134,14 @@ export const recibosApi = {
   },
   deBinder: (binderId: number) => request<Recibo[]>(`/binders/${binderId}/recibos`),
   obtener: (id: number) => request<Recibo>(`/recibos/${id}`),
-  generar: (binderId: number, periodo: string, fechaEmision?: string) =>
+  // Calcula el recibo sin guardarlo (para precumplimentar el formulario de emisión).
+  preview: (binderId: number, periodo: string) =>
+    request<ReciboPreview>(`/binders/${binderId}/recibos/preview?periodo=${encodeURIComponent(periodo)}`),
+  // Emite (crea) el recibo con los campos (posiblemente editados) del formulario.
+  generar: (binderId: number, periodo: string, data?: ReciboEmitir) =>
     request<Recibo>(`/binders/${binderId}/recibos/generar`, {
       method: "POST",
-      body: JSON.stringify({ periodo, fecha_emision: fechaEmision ?? null }),
+      body: JSON.stringify({ periodo, ...(data ?? {}) }),
     }),
   editar: (id: number, data: ReciboUpdate) =>
     request<Recibo>(`/recibos/${id}`, { method: "PUT", body: JSON.stringify(data) }),

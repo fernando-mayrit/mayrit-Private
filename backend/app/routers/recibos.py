@@ -120,6 +120,48 @@ def obtener(recibo_id: int, db: Session = Depends(get_db)):
 
 
 # ───────────────────────── Generar desde un Risk BDX ─────────────────────────
+def _calcular(db: Session, binder: Binder, periodo: str):
+    """Valida y devuelve (lineas, base_comision) del Risk BDX. Aborta 409/400 si procede."""
+    _rango_mes(periodo)  # valida el formato
+    existe = db.scalar(
+        select(Recibo).where(Recibo.binder_id == binder.id, Recibo.periodo == periodo)
+    )
+    if existe is not None:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Ya existe el recibo {existe.numero} para este Risk BDX ({periodo}).",
+        )
+    lineas = _lineas_risk_periodo(db, binder.id, periodo)
+    if not lineas:
+        raise HTTPException(status_code=400, detail=f"No hay líneas Risk en el periodo {periodo}.")
+    base = sum((l.brokerage_amount or Decimal(0)) for l in lineas)
+    return lineas, base
+
+
+@router.get("/binders/{binder_id}/recibos/preview", response_model=sch.ReciboPreview)
+def preview(binder_id: int, periodo: str, db: Session = Depends(get_db)):
+    """Calcula el recibo SIN guardarlo, para precumplimentar el formulario de emisión."""
+    binder = db.get(Binder, binder_id)
+    if binder is None:
+        raise HTTPException(status_code=404, detail=f"Binder {binder_id} no encontrado")
+    lineas, base = _calcular(db, binder, periodo)
+    fecha = dt.date.today()
+    return sch.ReciboPreview(
+        numero=_siguiente_numero(db, fecha.year),
+        anio=fecha.year,
+        binder_id=binder_id,
+        binder_umr=binder.umr or binder.agreement_number,
+        periodo=periodo,
+        fecha_emision=fecha,
+        moneda=binder.moneda or "EUR",
+        contraparte=_contraparte_binder(db, binder_id),
+        base_comision=base,
+        importe=base,
+        estado="Emitido",
+        num_lineas=len(lineas),
+    )
+
+
 @router.post("/binders/{binder_id}/recibos/generar", response_model=sch.ReciboRead, status_code=201)
 def generar(binder_id: int, payload: sch.ReciboGenerar, db: Session = Depends(get_db)):
     binder = db.get(Binder, binder_id)
@@ -127,22 +169,7 @@ def generar(binder_id: int, payload: sch.ReciboGenerar, db: Session = Depends(ge
         raise HTTPException(status_code=404, detail=f"Binder {binder_id} no encontrado")
 
     periodo = payload.periodo
-    _rango_mes(periodo)  # valida el formato
-
-    existe = db.scalar(
-        select(Recibo).where(Recibo.binder_id == binder_id, Recibo.periodo == periodo)
-    )
-    if existe is not None:
-        raise HTTPException(
-            status_code=409,
-            detail=f"Ya existe el recibo {existe.numero} para este Risk BDX ({periodo}).",
-        )
-
-    lineas = _lineas_risk_periodo(db, binder_id, periodo)
-    if not lineas:
-        raise HTTPException(status_code=400, detail=f"No hay líneas Risk en el periodo {periodo}.")
-
-    base = sum((l.brokerage_amount or Decimal(0)) for l in lineas)
+    lineas, base = _calcular(db, binder, periodo)
     fecha = payload.fecha_emision or dt.date.today()
     anio = fecha.year
 
@@ -153,10 +180,12 @@ def generar(binder_id: int, payload: sch.ReciboGenerar, db: Session = Depends(ge
         periodo=periodo,
         fecha_emision=fecha,
         moneda=binder.moneda or "EUR",
-        contraparte=_contraparte_binder(db, binder_id),
+        # La base la manda el servidor; importe/contraparte/estado/notas pueden venir editados.
+        contraparte=payload.contraparte if payload.contraparte is not None else _contraparte_binder(db, binder_id),
         base_comision=base,
-        importe=base,           # comisión exenta: total = base
-        estado="Emitido",
+        importe=payload.importe if payload.importe is not None else base,
+        estado=payload.estado or "Emitido",
+        notas=payload.notas,
     )
     db.add(recibo)
     db.flush()                  # asigna recibo.id

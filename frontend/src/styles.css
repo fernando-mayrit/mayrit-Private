@@ -61,9 +61,11 @@ h1, h2, h3 { font-family: var(--fuente-titulo); font-weight: 600; color: var(--g
   display: flex; flex-direction: column; overflow-y: auto;
 }
 .sidebar-nav { padding: 16px 10px; }
-.sidebar-bottom { margin-top: auto; }  /* Configuración abajo del todo */
-.nav-group { margin-bottom: 16px; }
+.sidebar-bottom { margin-top: auto; border-top: 1px solid var(--borde); }  /* Configuración abajo del todo, separada */
+.nav-group { margin-bottom: 22px; }
 .nav-group:last-child { margin-bottom: 0; }
+/* Separador visible entre bloques del mismo panel (p. ej. Negocio / Facturación) */
+.nav-group + .nav-group { border-top: 1px solid var(--borde); padding-top: 16px; }
 .nav-group-title {
   font-size: 12px; letter-spacing: .06em; text-transform: uppercase;
   color: var(--gris-medio); padding: 6px 12px; font-weight: 600;
