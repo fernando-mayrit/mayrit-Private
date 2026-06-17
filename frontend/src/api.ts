@@ -203,7 +203,7 @@ export interface MatchResult {
 }
 
 // Pólizas (Open Market). Límite alto para traerlas todas (son ~115).
-import type { Poliza, PolizaWrite } from "./types";
+import type { Poliza, PolizaWrite, PolizaEmitir, EmisionPreview } from "./types";
 export const polizasApi = {
   listar: (q?: string) =>
     request<Poliza[]>(`/polizas?limit=2000${q ? `&q=${encodeURIComponent(q)}` : ""}`),
@@ -212,6 +212,12 @@ export const polizasApi = {
   editar: (id: number, data: PolizaWrite) =>
     request<Poliza>(`/polizas/${id}`, { method: "PUT", body: JSON.stringify(data) }),
   borrar: (id: number) => request<void>(`/polizas/${id}`, { method: "DELETE" }),
+  // Emisión: calcula la póliza y sus recibos sin guardar (para previsualizar).
+  emitirPreview: (data: PolizaEmitir) =>
+    request<EmisionPreview>("/polizas/emitir/preview", { method: "POST", body: JSON.stringify(data) }),
+  // Emisión: crea la póliza Y genera sus recibos en una operación.
+  emitir: (data: PolizaEmitir) =>
+    request<Poliza>("/polizas/emitir", { method: "POST", body: JSON.stringify(data) }),
 };
 
 // CRUD genérico para una colección (p. ej. "/mercados").

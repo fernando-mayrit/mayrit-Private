@@ -452,6 +452,11 @@ td.num, th.num { text-align: right; }
 /* Fila atenuada (registros inactivos) */
 tr.fila-inactiva td { opacity: 0.55; }
 
+/* Emisión de póliza: tabla de recibos a generar */
+.emision-preview { margin-top: 6px; border: 1px solid var(--borde); border-radius: 8px; overflow: hidden; }
+.emision-preview table { margin: 0; width: 100%; }
+.emision-preview tfoot td { border-top: 2px solid var(--borde); background: var(--gris-claro, #f6f6f6); }
+
 /* BDX: columna y fila de líneas bloqueadas (periodo cerrado) */
 .bdx-tabla th.col-lock, .bdx-tabla td.col-lock { width: 22px; padding-left: 2px; padding-right: 2px; }
 .bdx-tabla tr.fila-bloqueada { background: #fbeae4; }

@@ -6,6 +6,7 @@ es `comision_retenida` = Σ `brokerage_amount` de las líneas Risk de ese period
 con los Premium BDX (rara vez coinciden con el Risk BDX) → puede ser parcial. Numeración por año
 natural 'AÑO-NNNN'. Los "pendientes" (cobro/liquidación) los recalcula el backend.
 """
+import calendar
 import datetime as dt
 import os
 from decimal import Decimal, ROUND_HALF_UP
@@ -48,8 +49,8 @@ def _q4(x):
     return None if x is None else Decimal(x).quantize(Decimal("0.0001"), ROUND_HALF_UP)
 
 
-def _siguiente_numero(db: Session, anio: int) -> str:
-    """'AÑO-NNNN' correlativo por año natural (último + 1)."""
+def _max_numero(db: Session, anio: int) -> int:
+    """Mayor correlativo NNNN usado en 'AÑO-NNNN' para ese año (0 si no hay)."""
     numeros = db.scalars(select(Recibo.numero).where(Recibo.anio == anio)).all()
     maximo = 0
     for n in numeros:
@@ -57,7 +58,12 @@ def _siguiente_numero(db: Session, anio: int) -> str:
             maximo = max(maximo, int(str(n).split("-")[-1]))
         except (ValueError, IndexError):
             pass
-    return f"{anio}-{maximo + 1:04d}"
+    return maximo
+
+
+def _siguiente_numero(db: Session, anio: int) -> str:
+    """'AÑO-NNNN' correlativo por año natural (último + 1)."""
+    return f"{anio}-{_max_numero(db, anio) + 1:04d}"
 
 
 def _rango_mes(periodo: str) -> tuple[dt.date, dt.date]:
@@ -347,6 +353,179 @@ def generar(binder_id: int, payload: sch.ReciboGenerar, db: Session = Depends(ge
     db.commit()
     db.refresh(recibo)
     return _read(db, recibo)
+
+
+# ═══════════════════ Emisión de Póliza OM (póliza + sus recibos) ═══════════════════
+# Reglas (acordadas con negocio):
+#  - Pago Único/Dos/Tres/Cuatro Pagos → 1..4 plazos; la prima de participación se reparte
+#    a partes iguales (el último plazo absorbe el redondeo).
+#  - Comisión por recibo = cedida% (al corredor) + retenida% (Mayrit), independientes.
+#  - Fechas de plazos: 1º en fecha de efecto y los siguientes cada 12/N meses (editables).
+#  - Importes por recibo: prima_bruta = prima + impuestos + recargos;
+#    adeudada = prima_bruta − cedida; liquidar = adeudada − retenida.
+PAGO_LABEL = {1: "Único", 2: "Dos Pagos", 3: "Tres Pagos", 4: "Cuatro Pagos"}
+
+
+def _sumar_meses(d: dt.date, meses: int) -> dt.date:
+    m = d.month - 1 + meses
+    y = d.year + m // 12
+    m = m % 12 + 1
+    return dt.date(y, m, min(d.day, calendar.monthrange(y, m)[1]))
+
+
+class _EmisionParams(BaseModel):
+    n_plazos: int = 1                                   # 1..4
+    comision_cedida_porc: Decimal | None = None         # al corredor
+    comision_retenida_porc: Decimal | None = None       # de Mayrit
+    plazos_fechas: list[dt.date] | None = None          # override opcional de fechas
+
+
+class PolizaEmitir(sch.PolizaCreate, _EmisionParams):
+    pass
+
+
+class EmisionLinea(BaseModel):
+    recibo_num: int
+    recibos_totales: int
+    fecha_efecto_recibo: dt.date | None = None
+    fecha_vcto_recibo: dt.date | None = None
+    prima_neta_recibo: Decimal
+    impuestos_porc: Decimal | None = None
+    impuestos_recibo: Decimal
+    recargos: Decimal
+    prima_bruta_recibo: Decimal
+    comision_cedida_porc: Decimal | None = None
+    comision_cedida: Decimal
+    comision_retenida_porc: Decimal | None = None
+    comision_retenida: Decimal
+    prima_adeudada: Decimal
+    liquidar: Decimal
+
+
+class EmisionPreview(BaseModel):
+    pago: str
+    prima_participacion: Decimal
+    impuestos: Decimal
+    prima_total: Decimal
+    comision_total: Decimal
+    lineas: list[EmisionLinea]
+
+
+def _emision_lineas(p: PolizaEmitir) -> EmisionPreview:
+    n = max(1, min(4, p.n_plazos or 1))
+    cap = p.capacidad if p.capacidad is not None else Decimal(1)
+    base_total = _q2((p.prima_neta or D0) * cap)        # prima de participación (our line)
+    recargos_total = _q2(p.recargos or D0)
+    imp_pct, ced_pct, ret_pct = p.impuestos_porc, p.comision_cedida_porc, p.comision_retenida_porc
+
+    cuota = _q2(base_total / n)
+    rec_cuota = _q2(recargos_total / n)
+    step = 12 // n
+    lineas: list[EmisionLinea] = []
+    for i in range(n):
+        prima_i = cuota if i < n - 1 else _q2(base_total - cuota * (n - 1))
+        rec_i = rec_cuota if i < n - 1 else _q2(recargos_total - rec_cuota * (n - 1))
+        imp_i = _q2(prima_i * imp_pct / 100) if imp_pct else D0
+        bruta_i = _q2(prima_i + imp_i + rec_i)
+        ced_i = _q2(prima_i * ced_pct / 100) if ced_pct else D0
+        ret_i = _q2(prima_i * ret_pct / 100) if ret_pct else D0
+        adeudada = _q2(bruta_i - ced_i)
+        # fechas
+        def fecha_plazo(idx):
+            if p.plazos_fechas and idx < len(p.plazos_fechas):
+                return p.plazos_fechas[idx]
+            return _sumar_meses(p.fecha_efecto, idx * step) if p.fecha_efecto else None
+        fe = fecha_plazo(i)
+        if i < n - 1:
+            sig = fecha_plazo(i + 1)
+            fv = (sig - dt.timedelta(days=1)) if sig else None
+        else:
+            fv = p.fecha_vencimiento
+        lineas.append(EmisionLinea(
+            recibo_num=i + 1, recibos_totales=n,
+            fecha_efecto_recibo=fe, fecha_vcto_recibo=fv,
+            prima_neta_recibo=prima_i, impuestos_porc=imp_pct, impuestos_recibo=imp_i,
+            recargos=rec_i, prima_bruta_recibo=bruta_i,
+            comision_cedida_porc=ced_pct, comision_cedida=ced_i,
+            comision_retenida_porc=ret_pct, comision_retenida=ret_i,
+            prima_adeudada=adeudada, liquidar=_q2(adeudada - ret_i),
+        ))
+    imp_total = _q2(sum((l.impuestos_recibo for l in lineas), D0))
+    com_total = _q2(sum((l.comision_cedida + l.comision_retenida for l in lineas), D0))
+    return EmisionPreview(
+        pago=PAGO_LABEL[n], prima_participacion=base_total, impuestos=imp_total,
+        prima_total=_q2(base_total + imp_total + recargos_total), comision_total=com_total, lineas=lineas,
+    )
+
+
+@router.post("/polizas/emitir/preview", response_model=EmisionPreview)
+def emitir_preview(payload: PolizaEmitir):
+    """Calcula la póliza y sus recibos SIN guardar, para precumplimentar el formulario."""
+    return _emision_lineas(payload)
+
+
+@router.post("/polizas/emitir", response_model=sch.PolizaRead, status_code=201)
+def emitir(payload: PolizaEmitir, db: Session = Depends(get_db)):
+    """Crea la póliza Y genera sus recibos (1..N según el pago), todo en una operación."""
+    if not payload.fecha_efecto:
+        raise HTTPException(status_code=422, detail="La fecha de efecto es obligatoria para emitir.")
+    if not payload.prima_neta:
+        raise HTTPException(status_code=422, detail="La prima neta es obligatoria para emitir.")
+    prev = _emision_lineas(payload)
+
+    # 1) Póliza (con los totales ya calculados)
+    base = payload.model_dump(exclude={"n_plazos", "comision_cedida_porc", "comision_retenida_porc", "plazos_fechas"})
+    ced = payload.comision_cedida_porc or D0
+    ret = payload.comision_retenida_porc or D0
+    base.update(
+        pago=prev.pago,
+        comision_porc=_q4(ced + ret),
+        comision_total=prev.comision_total,
+        impuestos=prev.impuestos,
+        prima_total=prev.prima_total,
+        prima_participacion=prev.prima_participacion,
+    )
+    poliza = Poliza(**base)
+    db.add(poliza)
+    db.flush()  # asigna poliza.id
+
+    # 2) Recibos (numeración correlativa por año, sin colisiones entre plazos)
+    contadores: dict[int, int] = {}
+
+    def numero(anio: int) -> str:
+        if anio not in contadores:
+            contadores[anio] = _max_numero(db, anio)
+        contadores[anio] += 1
+        return f"{anio}-{contadores[anio]:04d}"
+
+    cap = payload.capacidad if payload.capacidad is not None else Decimal(1)
+    for l in prev.lineas:
+        fe = l.fecha_efecto_recibo or payload.fecha_efecto
+        anio = fe.year
+        recibo = Recibo(
+            numero=numero(anio), poliza_id=poliza.id, binder_id=None,
+            periodo=fe.strftime("%Y-%m"), anio=anio, estado="Emitido",
+            numero_poliza=poliza.numero_poliza, referencia=poliza.referencia,
+            asegurado=poliza.asegurado, corredor=poliza.corredor, ramo=poliza.ramo,
+            mercado=poliza.mercado, nombre_mercado=poliza.mercado, produccion=poliza.produccion,
+            tipo_poliza="Póliza", fecha_efecto=poliza.fecha_efecto, fecha_vencimiento=poliza.fecha_vencimiento,
+            pago=prev.pago, moneda=poliza.moneda or "EUR",
+            prima_neta_poliza=prev.prima_participacion, participacion=_q4(cap * 100),
+            recibo_num=l.recibo_num, recibos_totales=str(l.recibos_totales),
+            fecha_efecto_recibo=l.fecha_efecto_recibo, fecha_vcto_recibo=l.fecha_vcto_recibo,
+            prima_neta_recibo=l.prima_neta_recibo, impuestos_porc=l.impuestos_porc,
+            impuestos_recibo=l.impuestos_recibo, prima_bruta_recibo=l.prima_bruta_recibo,
+            comision_cedida_porc=l.comision_cedida_porc, comision_cedida=l.comision_cedida,
+            comision_retenida_porc=l.comision_retenida_porc, comision_retenida=l.comision_retenida,
+            pagador="Corredor", prima_adeudada=l.prima_adeudada, liquidar=l.liquidar,
+            fecha_contable=fe,
+        )
+        _recompute(recibo)
+        db.add(recibo)
+
+    db.commit()
+    db.refresh(poliza)
+    return sch.PolizaRead.model_validate(poliza)
 
 
 # ──────────────────────────── Editar / borrar ───────────────────────────────

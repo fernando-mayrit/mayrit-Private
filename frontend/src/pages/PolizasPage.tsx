@@ -4,6 +4,7 @@ import type { Poliza } from "../types";
 import PageHeader from "../components/PageHeader";
 import TablaDatos, { type Col } from "../components/TablaDatos";
 import PolizaForm from "../components/PolizaForm";
+import EmisionPolizaForm from "../components/EmisionPolizaForm";
 import { fmtMiles } from "../format";
 
 const eur = (v: unknown) => `${fmtMiles(v)} €`;
@@ -51,6 +52,7 @@ export default function PolizasPage() {
   const [error, setError] = useState<string | null>(null);
   const [q, setQ] = useState("");
   const [form, setForm] = useState<Poliza | "nueva" | null>(null);
+  const [emitiendo, setEmitiendo] = useState(false);
   const [recCount, setRecCount] = useState<Map<number, number>>(new Map());
 
   async function cargar() {
@@ -106,7 +108,10 @@ export default function PolizasPage() {
           value={q}
           onChange={(e) => setQ(e.target.value)}
         />
-        <button className="btn-primary" onClick={() => setForm("nueva")}>
+        <button className="btn-primary" onClick={() => setEmitiendo(true)}>
+          ⚡ Emitir póliza
+        </button>
+        <button className="btn-secondary" onClick={() => setForm("nueva")}>
           + Nueva póliza
         </button>
         <span className="hint">
@@ -142,6 +147,13 @@ export default function PolizasPage() {
           onSaved={() => { setForm(null); cargar(); }}
           onDeleted={() => { setForm(null); cargar(); }}
           onClose={() => setForm(null)}
+        />
+      )}
+
+      {emitiendo && (
+        <EmisionPolizaForm
+          onEmitida={() => { setEmitiendo(false); cargar(); }}
+          onClose={() => setEmitiendo(false)}
         />
       )}
     </div>

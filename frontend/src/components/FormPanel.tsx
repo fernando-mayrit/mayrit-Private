@@ -16,6 +16,7 @@ type Props = {
   dirty: boolean;
   saving?: boolean;
   saveLabel?: string;
+  saveDisabled?: boolean; // deshabilita "Guardar" (p. ej. faltan datos obligatorios)
   error?: string | null; // mensaje de validación/guardado; se muestra visible junto a los botones
   onSave: () => void;
   onClose: () => void; // se llama solo cuando el cierre está confirmado
@@ -31,6 +32,7 @@ export default function FormPanel({
   dirty,
   saving = false,
   saveLabel = "Guardar",
+  saveDisabled = false,
   error,
   onSave,
   onClose,
@@ -91,7 +93,7 @@ export default function FormPanel({
           )}
           <div className="panel-actions-right">
             {!readOnly && (
-              <button className="btn-primary" onClick={onSave} disabled={saving}>
+              <button className="btn-primary" onClick={onSave} disabled={saving || saveDisabled}>
                 {saving ? "Guardando…" : saveLabel}
               </button>
             )}

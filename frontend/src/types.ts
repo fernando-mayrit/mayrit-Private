@@ -447,6 +447,41 @@ export interface Poliza {
 
 export type PolizaWrite = Partial<Omit<Poliza, "id" | "sp_old_id" | "created_at" | "updated_at">>;
 
+// Emisión de póliza OM (póliza + sus recibos en una operación).
+export type PolizaEmitir = PolizaWrite & {
+  n_plazos: number;                       // 1..4
+  comision_cedida_porc?: number | string | null;   // al corredor
+  comision_retenida_porc?: number | string | null; // de Mayrit
+  plazos_fechas?: string[] | null;        // override opcional de fechas (YYYY-MM-DD)
+};
+
+export interface EmisionLinea {
+  recibo_num: number;
+  recibos_totales: number;
+  fecha_efecto_recibo: string | null;
+  fecha_vcto_recibo: string | null;
+  prima_neta_recibo: string;
+  impuestos_porc: string | null;
+  impuestos_recibo: string;
+  recargos: string;
+  prima_bruta_recibo: string;
+  comision_cedida_porc: string | null;
+  comision_cedida: string;
+  comision_retenida_porc: string | null;
+  comision_retenida: string;
+  prima_adeudada: string;
+  liquidar: string;
+}
+
+export interface EmisionPreview {
+  pago: string;
+  prima_participacion: string;
+  impuestos: string;
+  prima_total: string;
+  comision_total: string;
+  lineas: EmisionLinea[];
+}
+
 export interface CuentaBancaria {
   id: number;
   nombre: string;
