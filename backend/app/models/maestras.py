@@ -65,6 +65,7 @@ class Mercado(Base):
     tipo_mercado: Mapped[str | None] = mapped_column(String(120))        # TipoMercado
     toba: Mapped[bool] = mapped_column(Boolean, default=False)           # TOBA
     fecha: Mapped[dt.date | None] = mapped_column(Date)                  # Fecha
+    activa: Mapped[bool] = mapped_column(Boolean, server_default=text("true"), default=True)  # se desactiva al dejar de trabajar con él
     notas: Mapped[str | None] = mapped_column(Text)
 
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

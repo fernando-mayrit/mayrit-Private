@@ -81,10 +81,22 @@ def main():
     por_sp = {p.sp_old_id: p for p in existentes if p.sp_old_id is not None}
     por_num = {p.numero_poliza: p for p in existentes if p.numero_poliza}
 
+    # Criterio único: el mercado de la póliza se guarda como ALIAS de la maestra.
+    from app.models.maestras import Mercado
+    _n = lambda s: " ".join((s or "").lower().split())
+    a_alias: dict[str, str] = {}
+    for m in db.scalars(select(Mercado)).all():
+        if m.alias:
+            a_alias[_n(m.alias)] = m.alias
+            if m.nombre:
+                a_alias[_n(m.nombre)] = m.alias
+
     nuevas, actualizadas, sin_numero = 0, 0, 0
     muestra = []
     for fila in filas:
         datos = _coaccionar(fila)
+        if datos.get("mercado"):
+            datos["mercado"] = a_alias.get(_n(datos["mercado"]), datos["mercado"])
         if not datos.get("numero_poliza"):
             sin_numero += 1
         p = por_sp.get(datos["sp_old_id"]) or por_num.get(datos.get("numero_poliza"))

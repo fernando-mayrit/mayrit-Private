@@ -8,6 +8,7 @@ export interface Mercado {
   tipo_mercado: string | null;
   toba: boolean;
   fecha: string | null; // ISO date
+  activa: boolean;
   notas: string | null;
   sp_old_id: number | null;
   created_at: string;
@@ -21,6 +22,7 @@ export interface MercadoWrite {
   tipo_mercado?: string | null;
   toba?: boolean;
   fecha?: string | null;
+  activa?: boolean;
   notas?: string | null;
 }
 
@@ -248,7 +250,8 @@ export interface ReciboCampos {
 
 export interface Recibo extends ReciboCampos {
   id: number;
-  binder_id: number;
+  binder_id: number | null;
+  poliza_id: number | null;   // OM: póliza enlazada (1 recibo → 1 póliza)
   periodo: string;         // 'YYYY-MM' del Risk BDX
   anio: number;
   numero: string;          // 'AÑO-NNNN'
@@ -258,6 +261,7 @@ export interface Recibo extends ReciboCampos {
   created_at: string;
   updated_at: string;
   binder_umr?: string | null;
+  poliza_numero?: string | null;
   num_lineas?: number;
 }
 

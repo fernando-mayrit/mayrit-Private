@@ -62,6 +62,7 @@ class MercadoBase(BaseModel):
     tipo_mercado: str | None = None
     toba: bool = False
     fecha: dt.date | None = None
+    activa: bool = True
     notas: str | None = None
     sp_old_id: int | None = None
 
@@ -77,6 +78,7 @@ class MercadoUpdate(BaseModel):
     tipo_mercado: str | None = None
     toba: bool | None = None
     fecha: dt.date | None = None
+    activa: bool | None = None
     notas: str | None = None
 
 

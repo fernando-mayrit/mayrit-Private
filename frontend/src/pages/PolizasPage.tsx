@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { polizasApi } from "../api";
+import { polizasApi, recibosApi } from "../api";
 import type { Poliza } from "../types";
 import PageHeader from "../components/PageHeader";
 import TablaDatos, { type Col } from "../components/TablaDatos";
@@ -42,7 +42,7 @@ const CATALOGO: Col<Poliza>[] = [
 ];
 const DEFAULT_KEYS = [
   "numero_poliza", "asegurado", "ramo", "mercado", "seguro",
-  "prima_neta", "comision_total", "estado", "fecha_efecto", "fecha_vencimiento",
+  "prima_neta", "comision_total", "num_recibos", "estado", "fecha_efecto", "fecha_vencimiento",
 ];
 
 export default function PolizasPage() {
@@ -51,12 +51,17 @@ export default function PolizasPage() {
   const [error, setError] = useState<string | null>(null);
   const [q, setQ] = useState("");
   const [form, setForm] = useState<Poliza | "nueva" | null>(null);
+  const [recCount, setRecCount] = useState<Map<number, number>>(new Map());
 
   async function cargar() {
     setLoading(true);
     setError(null);
     try {
-      setItems(await polizasApi.listar());
+      const [pol, rec] = await Promise.all([polizasApi.listar(), recibosApi.listar()]);
+      setItems(pol);
+      const m = new Map<number, number>();
+      for (const r of rec) if (r.poliza_id != null) m.set(r.poliza_id, (m.get(r.poliza_id) ?? 0) + 1);
+      setRecCount(m);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -76,6 +81,20 @@ export default function PolizasPage() {
   );
   const totalPrima = filtrados.reduce((a, p) => a + num(p.prima_neta), 0);
   const totalComision = filtrados.reduce((a, p) => a + num(p.comision_total), 0);
+  const sinRecibo = items.filter((p) => (recCount.get(p.id) ?? 0) === 0).length;
+
+  // Columna "Recibos" (nº por póliza) con aviso rojo "Sin recibo" cuando es 0.
+  const colRecibos: Col<Poliza> = {
+    key: "num_recibos",
+    label: "Recibos",
+    tipo: "int",
+    calc: (p) => recCount.get(p.id) ?? 0,
+    render: (p) => {
+      const c = recCount.get(p.id) ?? 0;
+      return c === 0 ? <span className="pill pill-pendiente">Sin recibo</span> : c;
+    },
+  };
+  const columnas: Col<Poliza>[] = [...CATALOGO, colRecibos];
 
   return (
     <div className="container lista-page">
@@ -92,6 +111,7 @@ export default function PolizasPage() {
         </button>
         <span className="hint">
           Prima Neta: <b>{eur(totalPrima)}</b> · Comisión: <b>{eur(totalComision)}</b>
+          {sinRecibo > 0 && <> · <b style={{ color: "var(--rojo)" }}>{sinRecibo} sin recibo</b></>}
         </span>
       </div>
 
@@ -104,9 +124,9 @@ export default function PolizasPage() {
       ) : (
         <TablaDatos
           filas={filtrados}
-          columnas={CATALOGO}
+          columnas={columnas}
           defaultKeys={DEFAULT_KEYS}
-          storageKey="mayrit.polizas.tabla.v1"
+          storageKey="mayrit.polizas.tabla.v2"
           onRowClick={(p) => setForm(p)}
         />
       )}

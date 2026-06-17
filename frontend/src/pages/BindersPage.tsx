@@ -1268,7 +1268,7 @@ export default function BindersPage() {
                   <select value={m.mercado_id} onChange={(e) => setLinea(i, j, "mercado_id", e.target.value)}>
                     <option value="">— Mercado —</option>
                     {mercados
-                      .filter((mc) => !usados.has(String(mc.id)) || String(mc.id) === m.mercado_id)
+                      .filter((mc) => (mc.activa || String(mc.id) === m.mercado_id) && (!usados.has(String(mc.id)) || String(mc.id) === m.mercado_id))
                       .map((mc) => (
                         <option key={mc.id} value={mc.id}>
                           {mc.nombre}

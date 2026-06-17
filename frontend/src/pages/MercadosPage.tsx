@@ -17,12 +17,14 @@ const VACIO: FormState = {
   tipo_mercado: "",
   toba: false,
   fecha: "",
+  activa: true,
   notas: "",
 };
 
 export default function MercadosPage() {
   const [items, setItems] = useState<Mercado[]>([]);
   const [q, setQ] = useState("");
+  const [mostrarInactivos, setMostrarInactivos] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -75,6 +77,7 @@ export default function MercadosPage() {
       tipo_mercado: m.tipo_mercado ?? "",
       toba: m.toba,
       fecha: m.fecha ?? "",
+      activa: m.activa,
       notas: m.notas ?? "",
     });
   }
@@ -101,6 +104,7 @@ export default function MercadosPage() {
       tipo_mercado: form.tipo_mercado,
       toba: !!form.toba,
       fecha: form.toba ? form.fecha || null : null,
+      activa: form.activa !== false,
       notas: form.notas?.trim() || null,
     };
     try {
@@ -141,42 +145,57 @@ export default function MercadosPage() {
         <button className="btn-primary" onClick={abrirNuevo}>
           + Nuevo mercado
         </button>
+        <label className="check-inline" title="Incluir mercados desactivados">
+          <input type="checkbox" checked={mostrarInactivos} onChange={(e) => setMostrarInactivos(e.target.checked)} />
+          Mostrar inactivos
+        </label>
       </div>
 
       {error && <div className="error">⚠ {error}</div>}
 
-      {loading ? (
-        <div className="loading">Cargando…</div>
-      ) : items.length === 0 ? (
-        <div className="empty">No hay mercados. Crea el primero con «+ Nuevo mercado».</div>
-      ) : (
-        <table>
-          <thead>
-            <tr>
-              <th>Nombre</th>
-              <th>Alias</th>
-              <th>Tipo</th>
-              <th>TOBA</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((m) => (
-              <tr key={m.id}>
-                <td>{m.nombre}</td>
-                <td>{m.alias ?? "—"}</td>
-                <td>{m.tipo_mercado ?? "—"}</td>
-                <td>{m.toba ? <span className="badge si">Sí</span> : <span className="badge">No</span>}</td>
-                <td className="acciones">
-                  <button className="btn-link" onClick={() => abrirEdicion(m)}>
-                    Editar
-                  </button>
-                </td>
+      {(() => {
+        const visibles = mostrarInactivos ? items : items.filter((m) => m.activa);
+        return loading ? (
+          <div className="loading">Cargando…</div>
+        ) : visibles.length === 0 ? (
+          <div className="empty">No hay mercados{mostrarInactivos ? "" : " activos"}.</div>
+        ) : (
+          <table>
+            <thead>
+              <tr>
+                <th>Nombre</th>
+                <th>Alias</th>
+                <th>Tipo</th>
+                <th>TOBA</th>
+                <th>Estado</th>
+                <th></th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+            </thead>
+            <tbody>
+              {visibles.map((m) => (
+                <tr key={m.id} style={m.activa ? undefined : { opacity: 0.55 }}>
+                  <td>{m.nombre}</td>
+                  <td>{m.alias ?? "—"}</td>
+                  <td>{m.tipo_mercado ?? "—"}</td>
+                  <td>{m.toba ? <span className="badge si">Sí</span> : <span className="badge">No</span>}</td>
+                  <td>
+                    {m.activa ? (
+                      <span className="pill pill-cobrado">Activo</span>
+                    ) : (
+                      <span className="pill pill-anulado">Inactivo</span>
+                    )}
+                  </td>
+                  <td className="acciones">
+                    <button className="btn-link" onClick={() => abrirEdicion(m)}>
+                      Editar
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        );
+      })()}
 
       {form && (
         <FormPanel
@@ -241,6 +260,14 @@ export default function MercadosPage() {
               )}
             </div>
           </div>
+          <label className="check-inline" style={{ marginBottom: 14 }}>
+            <input
+              type="checkbox"
+              checked={form.activa !== false}
+              onChange={(e) => setForm({ ...form, activa: e.target.checked })}
+            />
+            Activo (desmárcalo para que deje de aparecer en listados y desplegables)
+          </label>
           <div className="field">
             <label>Notas</label>
             <textarea rows={3} value={form.notas ?? ""} onChange={(e) => setForm({ ...form, notas: e.target.value })} />
