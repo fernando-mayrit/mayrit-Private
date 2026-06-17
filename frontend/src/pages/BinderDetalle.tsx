@@ -188,6 +188,16 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
   // Recibo ya generado de cada periodo (1 por Risk BDX).
   const reciboDe = new Map(recibos.map((r) => [r.periodo, r]));
 
+  // Totales del Premium (lo macheado) vs totales del Risk (todas las líneas). Cuando todo está
+  // macheado, deben coincidir. Prima = our line + impuestos − comisión cedida; Comisión = brokerage.
+  const lineasRisk = sel?.lineas ?? [];
+  const riskLineas = lineasRisk.length;
+  const riskPrima = lineasRisk.reduce((a, l) => a + n(l.total_gwp_our_line) + n(l.total_taxes_levies) - n(l.commission_coverholder_amount), 0);
+  const riskComision = lineasRisk.reduce((a, l) => a + n(l.brokerage_amount), 0);
+  const premLineas = premiums.reduce((a, p) => a + p.num_lineas, 0);
+  const premPrima = premiums.reduce((a, p) => a + n(p.prima), 0);
+  const premComision = premiums.reduce((a, p) => a + n(p.comision), 0);
+
   // Cobro de un Premium entero (marca líneas pagadas con la fecha real → deriva el cobro a los recibos).
   async function cobrarPremium(periodo: string) {
     const fecha = fechasPago[periodo] || new Date().toISOString().slice(0, 10);
@@ -459,6 +469,9 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
                 <button className="btn-primary" onClick={() => elegirExcel("risk")}>
                   ⬆ Subir Excel (Risk)
                 </button>
+                <button className="btn-secondary" onClick={() => elegirExcel("premium")}>
+                  ⬆ Subir Premium (Excel)
+                </button>
                 {!importado && (
                   <button className="btn-secondary" onClick={abrirImport}>
                     ⤓ Importar de SharePoint
@@ -487,6 +500,9 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
                   <button className="btn-primary btn-sm" onClick={() => elegirExcel("risk")}>
                     ⬆ Subir Excel (Risk)
                   </button>
+                  <button className="btn-secondary btn-sm" onClick={() => elegirExcel("premium")}>
+                    ⬆ Subir Premium (Excel)
+                  </button>
                   {selMeses.size > 0 && (
                     <span className="hint">
                       Filtrado por Datos:{" "}
@@ -502,16 +518,11 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
 
       {tab === "premium" && (
         <>
-          <div className="toolbar" style={{ marginBottom: 10 }}>
-            <h3 style={{ margin: 0 }}>Premium BDX (cobro)</h3>
-            <button className="btn-primary btn-sm" onClick={() => elegirExcel("premium")}>
-              ⬆ Subir Premium (Excel)
-            </button>
-          </div>
+          <h3 style={{ margin: "4px 0 8px" }}>Premium BDX (cobro)</h3>
           {premiums.length === 0 ? (
             <div className="empty">
-              Aún no hay líneas incluidas en ningún Premium. Pulsa <b>«Subir Premium (Excel)»</b> para
-              machear un Premium con el Risk.
+              Aún no hay líneas incluidas en ningún Premium. En la pestaña <b>BDX</b> pulsa
+              <b> «Subir Premium (Excel)»</b> para machear un Premium con el Risk.
             </div>
           ) : (
             <table className="compacto" style={{ maxWidth: 900 }}>
@@ -556,12 +567,30 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
                     </td>
                   </tr>
                 ))}
+                <tr style={{ fontWeight: 600, borderTop: "2px solid var(--borde)" }}>
+                  <td>Total Premium</td>
+                  <td className="num">{premLineas}</td>
+                  <td className="num">{imp(premPrima)}</td>
+                  <td className="num">{imp(premComision)}</td>
+                  <td colSpan={2}></td>
+                </tr>
+                <tr className="hint">
+                  <td>Total Risk</td>
+                  <td className="num">{riskLineas}</td>
+                  <td className="num">{imp(riskPrima)}</td>
+                  <td className="num">{imp(riskComision)}</td>
+                  <td colSpan={2}>
+                    {premLineas === riskLineas
+                      ? "✓ todo el Risk macheado"
+                      : `faltan ${riskLineas - premLineas} línea(s) por machear`}
+                  </td>
+                </tr>
               </tbody>
             </table>
           )}
           <div className="hint" style={{ marginTop: 8 }}>
-            Al marcar un Premium como cobrado, el cobro se reparte automáticamente entre los recibos de esas
-            líneas (Prima / Comisión retenida / A liquidar cobrados).
+            El <b>Total Premium</b> debe igualar al <b>Total Risk</b> cuando todo está macheado. Al marcar un
+            Premium como cobrado, el cobro se reparte automáticamente entre los recibos de esas líneas.
           </div>
         </>
       )}
