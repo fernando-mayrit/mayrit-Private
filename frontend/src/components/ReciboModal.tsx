@@ -222,10 +222,14 @@ export default function ReciboModal({
           <div className="recibo-box">
             <h4>Liquidación a la Cía</h4>
             <Money k="liquidar" label="A Liquidar" />
-            <Money k="liquidar_cobrado" label="A Liquidar Cobrado" />
-            <RO label="A Liquidar Pdte. Cobro" v={liqPdteCobro} />
-            <Money k="liquidar_liquidado" label="Liquidado" />
-            <RO label="Pdte. Liquidación" v={liqPdteLiquidacion} />
+            <div className="campos-grid" style={{ gridTemplateColumns: "1fr 1fr" }}>
+              <Money k="liquidar_cobrado" label="A Liquidar Cobrado" />
+              <RO label="A Liquidar Pdte. Cobro" v={liqPdteCobro} />
+            </div>
+            <div className="campos-grid" style={{ gridTemplateColumns: "1fr 1fr" }}>
+              <Money k="liquidar_liquidado" label="Liquidado" />
+              <RO label="Pdte. Liquidación" v={liqPdteLiquidacion} />
+            </div>
             <Fecha k="liquidar_fecha_liquidacion" label="Fecha Liquidación" />
           </div>
 

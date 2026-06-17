@@ -361,9 +361,6 @@ td.num, th.num { text-align: right; }
 .recibo-modal .field .num-input { max-width: 200px; }
 .recibo-modal .field input[type="date"] { max-width: 150px; }
 .recibo-modal .field textarea { max-width: 100%; }
-/* En las 3 cajas de la derecha los importes ocupan todo su ancho (Adeudada ancha; la pareja a la mitad) */
-.recibo-box .field input,
-.recibo-box .field .num-input { max-width: 100%; }
 .recibo-mas { margin-top: 6px; }
 .recibo-mas summary { cursor: pointer; color: var(--gris-medio); font-size: 13px; padding: 4px 0; }
 @media (max-width: 760px) { .recibo-modal { grid-template-columns: 1fr; } }
