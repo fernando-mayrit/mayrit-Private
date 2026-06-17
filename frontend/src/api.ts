@@ -120,6 +120,30 @@ export interface BdxImportResult {
   };
 }
 
+// ── Recibos (comisión de Mayrit por Risk BDX) ──
+import type { Recibo, ReciboUpdate } from "./types";
+
+export const recibosApi = {
+  listar: (params?: { anio?: number; binder_id?: number; q?: string }) => {
+    const qs = new URLSearchParams();
+    if (params?.anio != null) qs.set("anio", String(params.anio));
+    if (params?.binder_id != null) qs.set("binder_id", String(params.binder_id));
+    if (params?.q) qs.set("q", params.q);
+    const s = qs.toString();
+    return request<Recibo[]>(`/recibos${s ? `?${s}` : ""}`);
+  },
+  deBinder: (binderId: number) => request<Recibo[]>(`/binders/${binderId}/recibos`),
+  obtener: (id: number) => request<Recibo>(`/recibos/${id}`),
+  generar: (binderId: number, periodo: string, fechaEmision?: string) =>
+    request<Recibo>(`/binders/${binderId}/recibos/generar`, {
+      method: "POST",
+      body: JSON.stringify({ periodo, fecha_emision: fechaEmision ?? null }),
+    }),
+  editar: (id: number, data: ReciboUpdate) =>
+    request<Recibo>(`/recibos/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+  borrar: (id: number) => request<void>(`/recibos/${id}`, { method: "DELETE" }),
+};
+
 // CRUD genérico para una colección (p. ej. "/mercados").
 export function crud<TRead, TWrite>(collection: string) {
   return {

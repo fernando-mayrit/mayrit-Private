@@ -169,6 +169,35 @@ export interface BdxWrite {
   notas?: string | null;
 }
 
+// Recibo de comisión de Mayrit (1 por Risk BDX). Núcleo de facturación/contabilidad.
+export interface Recibo {
+  id: number;
+  numero: string;          // 'AÑO-NNNN'
+  anio: number;
+  binder_id: number;
+  periodo: string;         // 'YYYY-MM' del Risk BDX
+  fecha_emision: string | null;
+  moneda: string | null;
+  contraparte: string | null;
+  base_comision: string;   // Numeric → string
+  importe: string;
+  estado: string;          // 'Emitido' | 'Cobrado' | 'Anulado'
+  fecha_cobro: string | null;
+  notas: string | null;
+  created_at: string;
+  updated_at: string;
+  binder_umr?: string | null;  // enriquecido en el listado
+  num_lineas?: number;
+}
+export interface ReciboUpdate {
+  estado?: string | null;
+  fecha_emision?: string | null;
+  fecha_cobro?: string | null;
+  importe?: string | null;
+  contraparte?: string | null;
+  notas?: string | null;
+}
+
 // Línea de un BDX. Campos del estándar (8–77) + control interno (80–90).
 // Todos opcionales: en import/manual pueden venir vacíos.
 export interface BdxLinea {

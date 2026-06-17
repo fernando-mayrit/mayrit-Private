@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { bdxApi, type BdxDetalle, type BdxPreview, type BdxImportResult, type ExcelDir } from "../api";
-import type { Binder, Bdx, BdxLinea } from "../types";
+import { bdxApi, recibosApi, type BdxDetalle, type BdxPreview, type BdxImportResult, type ExcelDir } from "../api";
+import type { Binder, Bdx, BdxLinea, Recibo } from "../types";
 import BdxLineaPanel from "../components/BdxLineaPanel";
 import BdxTabla from "../components/BdxTabla";
 import NumberInput from "../components/NumberInput";
@@ -60,6 +60,9 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
   const [selMeses, setSelMeses] = useState<Set<string>>(new Set());
   // Bloqueo de periodos por tipo de BDX (local de momento; falta persistencia/lógica de presentar).
   const [bloqueos, setBloqueos] = useState<Set<string>>(new Set());
+  // Recibos de comisión del binder (1 por Risk BDX). Mapa periodo 'YYYY-MM' → recibo.
+  const [recibos, setRecibos] = useState<Recibo[]>([]);
+  const [generando, setGenerando] = useState<string | null>(null); // periodo en curso
 
   // ── Importación desde SharePoint ──
   const [importAbierto, setImportAbierto] = useState(false);
@@ -79,6 +82,7 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
       setSel(lista.length > 0 ? await bdxApi.detalle(lista[0].id) : null);
       const bl = await bdxApi.listarBloqueos(binder.id);
       setBloqueos(new Set(bl.map((b) => `${b.tipo}:${b.periodo}`)));
+      setRecibos(await recibosApi.deBinder(binder.id));
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -150,15 +154,16 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
     cargarCarpeta(padre);
   }
 
-  // Cifras por mes (Reporting Start): GWP (our line), Net Premium to Broker y recibos.
+  // Cifras por mes (Reporting Start): GWP (our line), Net Premium to Broker, comisión (brokerage).
   const porMes = (() => {
-    const m = new Map<string, { gwp: number; net: number; recibos: Set<string> }>();
+    const m = new Map<string, { gwp: number; net: number; brk: number; recibos: Set<string> }>();
     for (const l of sel?.lineas ?? []) {
       const k = String(l.reporting_period_start ?? "").slice(0, 7); // aaaa-mm
       if (!k) continue;
-      const cur = m.get(k) ?? { gwp: 0, net: 0, recibos: new Set<string>() };
+      const cur = m.get(k) ?? { gwp: 0, net: 0, brk: 0, recibos: new Set<string>() };
       cur.gwp += n(l.total_gwp_our_line);
       cur.net += n(l.net_premium_to_broker);
+      cur.brk += n(l.brokerage_amount);
       if (l.recibo) cur.recibos.add(String(l.recibo));
       m.set(k, cur);
     }
@@ -166,6 +171,22 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
   })();
   const totGwp = porMes.reduce((a, [, v]) => a + v.gwp, 0);
   const totNet = porMes.reduce((a, [, v]) => a + v.net, 0);
+
+  // Recibo ya generado de cada periodo (1 por Risk BDX).
+  const reciboDe = new Map(recibos.map((r) => [r.periodo, r]));
+
+  async function generarRecibo(periodo: string) {
+    setGenerando(periodo);
+    setError(null);
+    try {
+      await recibosApi.generar(binder.id, periodo);
+      await cargar(); // refresca recibos y líneas (ya con su nº de recibo)
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setGenerando(null);
+    }
+  }
 
   // Una línea está bloqueada si su periodo Risk (reporting start) o, si entra en Premium,
   // su mes de premium_bdx están bloqueados en la pestaña Bloqueo.
@@ -224,7 +245,7 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
           ) : porMes.length === 0 ? (
             <div className="empty">Aún no hay BDX importado. Ve a la pestaña BDX para importarlo.</div>
           ) : (
-            <table className="compacto" style={{ maxWidth: 560 }}>
+            <table className="compacto" style={{ maxWidth: 760 }}>
               <thead>
                 <tr>
                   <th style={{ width: 28 }}>
@@ -239,12 +260,14 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
                   <th>Mes</th>
                   <th className="num">GWP</th>
                   <th className="num">Net Premium to Broker</th>
+                  <th className="num">Comisión</th>
                   <th>Recibo</th>
                 </tr>
               </thead>
               <tbody>
                 {porMes.map(([mes, v]) => {
                   const [y, mo] = mes.split("-");
+                  const recibo = reciboDe.get(mes);
                   return (
                     <tr key={mes}>
                       <td className="celda-centro">
@@ -264,7 +287,21 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
                       <td>{`${mo}/${y}`}</td>
                       <td className="num">{imp(v.gwp)}</td>
                       <td className="num">{imp(v.net)}</td>
-                      <td>{v.recibos.size ? [...v.recibos].join(", ") : "—"}</td>
+                      <td className="num">{imp(v.brk)}</td>
+                      <td>
+                        {recibo ? (
+                          <span title={`${imp(n(recibo.importe))} · ${recibo.estado}`}>🧾 {recibo.numero}</span>
+                        ) : (
+                          <button
+                            className="btn-link"
+                            disabled={generando === mes || v.brk === 0}
+                            title={v.brk === 0 ? "Sin comisión (brokerage) en este periodo" : "Generar el recibo de comisión de este Risk BDX"}
+                            onClick={() => generarRecibo(mes)}
+                          >
+                            {generando === mes ? "Generando…" : "＋ Generar recibo"}
+                          </button>
+                        )}
+                      </td>
                     </tr>
                   );
                 })}
@@ -273,6 +310,7 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
                   <td>Total</td>
                   <td className="num">{imp(totGwp)}</td>
                   <td className="num">{imp(totNet)}</td>
+                  <td className="num">{imp(porMes.reduce((a, [, v]) => a + v.brk, 0))}</td>
                   <td></td>
                 </tr>
               </tbody>

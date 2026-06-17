@@ -438,7 +438,10 @@ class BdxLinea(Base):
     liquidado: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
     liquidado_uw: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
     fecha_liquidacion: Mapped[dt.date | None] = mapped_column(Date)
-    recibo: Mapped[str | None] = mapped_column(String(120))
+    recibo: Mapped[str | None] = mapped_column(String(120))   # nº de recibo (texto, para mostrar)
+    recibo_id: Mapped[int | None] = mapped_column(
+        ForeignKey("recibos.id", ondelete="SET NULL"), index=True
+    )
     notas: Mapped[str | None] = mapped_column(Text)
 
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -466,3 +469,42 @@ class BdxBloqueo(Base):
     tipo: Mapped[str] = mapped_column(String(20))   # 'risk' | 'premium' | 'claims'
     periodo: Mapped[str] = mapped_column(String(7))  # 'YYYY-MM'
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class Recibo(Base):
+    """Recibo de comisión de Mayrit (núcleo de facturación/contabilidad).
+
+    **1 recibo por Risk BDX** = por (binder, periodo de reporte 'YYYY-MM'). La comisión
+    de Mayrit es la suma del `brokerage_amount` de las líneas Risk de ese periodo (importe
+    limpio, comisión de mediación **exenta** de impuestos). La contraparte es el/los
+    mercado(s) del binder (snapshot en `contraparte`). Numeración correlativa por año
+    natural: `AÑO-NNNN`. Las líneas del BDX que componen el recibo apuntan a él por
+    `BdxLinea.recibo_id` (y guardan su número en `BdxLinea.recibo`).
+    """
+
+    __tablename__ = "recibos"
+    __table_args__ = (UniqueConstraint("binder_id", "periodo", name="uq_recibo_binder_periodo"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    numero: Mapped[str] = mapped_column(String(20), index=True)   # 'AÑO-NNNN'
+    anio: Mapped[int] = mapped_column(Integer, index=True)        # año natural (agrupación contable)
+    binder_id: Mapped[int] = mapped_column(ForeignKey("binders.id", ondelete="CASCADE"), index=True)
+    periodo: Mapped[str] = mapped_column(String(7))               # 'YYYY-MM' del Risk BDX
+
+    fecha_emision: Mapped[dt.date | None] = mapped_column(Date)
+    moneda: Mapped[str | None] = mapped_column(String(10), server_default="EUR", default="EUR")
+    contraparte: Mapped[str | None] = mapped_column(String(400))  # mercado(s) del binder (snapshot)
+
+    base_comision: Mapped[Decimal] = mapped_column(Numeric(18, 2), server_default=text("0"), default=0)
+    importe: Mapped[Decimal] = mapped_column(Numeric(18, 2), server_default=text("0"), default=0)
+    estado: Mapped[str] = mapped_column(String(30), server_default="Emitido", default="Emitido")
+
+    fecha_cobro: Mapped[dt.date | None] = mapped_column(Date)
+    notas: Mapped[str | None] = mapped_column(Text)
+
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    binder: Mapped["Binder"] = relationship()

@@ -334,6 +334,29 @@ OneDrive y OneDrive deshidrata/borra los venv que tiene dentro. Los lanzadores y
 - Backend:  `cd backend` · `& "$env:USERPROFILE\.mayrit\venv\Scripts\uvicorn.exe" app.main:app --reload`  → http://localhost:8000
 - Frontend: `cd frontend` · `npm run dev`  → http://localhost:5173
 
+## Recibos — comisión de Mayrit (núcleo facturación/contabilidad, 17/06/2026)
+La **BD más importante**. Flujo: subir/importar un Risk BDX → **generar su recibo de comisión**.
+**Regla: 1 recibo por Risk BDX** = por (binder, periodo de reporte `YYYY-MM`).
+- **Comisión = Σ `brokerage_amount` de las líneas Risk del periodo** (importe limpio). Comisión de
+  mediación **EXENTA** de impuestos (importe = base). **Contraparte = mercado(s) del binder**
+  (snapshot de nombres en `contraparte`). Moneda del binder.
+- **Numeración `AÑO-NNNN`** correlativa por año natural (año de emisión), como Alea.
+- **Modelo** (`models/maestras.py` → tabla `recibos`, migración `a1b2c3d4e5f6`): numero, anio,
+  binder_id, periodo, fecha_emision, moneda, contraparte, base_comision, importe, estado
+  (`Emitido`/`Cobrado`/`Anulado`), fecha_cobro, notas. **Unique (binder_id, periodo)** → no se
+  duplica el recibo de un Risk BDX. Las líneas del BDX que lo componen apuntan por
+  **`bdx_lineas.recibo_id`** (FK SET NULL) y guardan su nº en el texto `bdx_lineas.recibo`.
+- **Endpoints** (`routers/recibos.py`): GET `/recibos` (filtros anio/binder_id/q), GET
+  `/binders/{id}/recibos`, GET `/recibos/{id}`, **POST `/binders/{id}/recibos/generar`** {periodo,
+  fecha_emision?} (409 si ya existe; 400 si no hay líneas), PUT `/recibos/{id}`, DELETE (desenlaza
+  líneas). Verificado end-to-end (binder 12 / 2019-03 → 2026-0001, 6 líneas, 1.141,15 €).
+- **Frontend:** nueva página **Recibos** (`RecibosPage.tsx`, nav Negocio, 🧾) — listado con búsqueda,
+  total de comisión, y panel de detalle (estado/fechas/notas editables; base/importe/contraparte solo
+  lectura). En la ficha del binder, **pestaña Datos**: columna **Comisión** (Σ brokerage del mes) y
+  acción **«＋ Generar recibo»** por periodo (o muestra `🧾 nº` si ya existe). `recibosApi` en api.ts.
+- **Pendiente:** Fase 3 = **parser del Excel** del Risk BDX (botón «Subir Excel», hoy placeholder);
+  enlazar recibos a Contabilidad; afinar estados/ciclo (cobro) si hace falta.
+
 ## Estrategia BI / reporting (decidido 2026-06-17)
 Dos capas **separadas**, no Power BI como motor de toda la app:
 - **Gráficos operativos del día a día → nativos en la app** (React, con librería ligera tipo

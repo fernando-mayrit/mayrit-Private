@@ -441,3 +441,42 @@ class BdxRead(BdxBase):
 
 class BdxDetalle(BdxRead):
     lineas: list[BdxLineaRead] = []
+
+
+# ───────────────────────────────── Recibos ──────────────────────────────────
+class ReciboRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    numero: str
+    anio: int
+    binder_id: int
+    periodo: str
+    fecha_emision: dt.date | None = None
+    moneda: str | None = None
+    contraparte: str | None = None
+    base_comision: Decimal = Decimal(0)
+    importe: Decimal = Decimal(0)
+    estado: str
+    fecha_cobro: dt.date | None = None
+    notas: str | None = None
+    created_at: dt.datetime
+    updated_at: dt.datetime
+    # Enriquecido en el listado (no son columnas de la tabla):
+    binder_umr: str | None = None
+    num_lineas: int = 0
+
+
+class ReciboGenerar(BaseModel):
+    """Generar el recibo de comisión de un Risk BDX (binder + periodo 'YYYY-MM')."""
+    periodo: str
+    fecha_emision: dt.date | None = None
+
+
+class ReciboUpdate(BaseModel):
+    """Edición manual de un recibo (estado/fechas/notas/importe)."""
+    estado: str | None = None
+    fecha_emision: dt.date | None = None
+    fecha_cobro: dt.date | None = None
+    importe: Decimal | None = None
+    contraparte: str | None = None
+    notas: str | None = None

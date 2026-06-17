@@ -4,6 +4,7 @@ import MercadosPage from "./pages/MercadosPage";
 import ProductoresPage from "./pages/ProductoresPage";
 import TomadoresPage from "./pages/TomadoresPage";
 import BindersPage from "./pages/BindersPage";
+import RecibosPage from "./pages/RecibosPage";
 import RamosPage from "./pages/RamosPage";
 import CuentasBancariasPage from "./pages/CuentasBancariasPage";
 import EnConstruccion from "./components/EnConstruccion";
@@ -14,6 +15,7 @@ const EMOJI: Record<string, string> = {
   mercados: "🏦",
   tomadores: "👥",
   binders: "📑",
+  recibos: "🧾",
   polizas: "📄",
   consultoria: "💼",
   comisiones: "💶",
@@ -26,6 +28,7 @@ type Page =
   | "mercados"
   | "tomadores"
   | "binders"
+  | "recibos"
   | "polizas"
   | "consultoria"
   | "comisiones"
@@ -42,6 +45,7 @@ const MAESTRAS: { id: Page; label: string }[] = [
 // Menú lateral: el Negocio (las 4 fuentes principales).
 const NEGOCIO: { id: Page; label: string }[] = [
   { id: "binders", label: "Binders" },
+  { id: "recibos", label: "Recibos" },
   { id: "polizas", label: "Pólizas (OM)" },
   { id: "consultoria", label: "Consultoría" },
   { id: "comisiones", label: "Comisiones" },
@@ -115,6 +119,7 @@ export default function App() {
           {page === "mercados" && <MercadosPage />}
           {page === "tomadores" && <TomadoresPage />}
           {page === "binders" && <BindersPage />}
+          {page === "recibos" && <RecibosPage />}
           {page === "polizas" && <EnConstruccion titulo="Pólizas (Open Market)" />}
           {page === "consultoria" && <EnConstruccion titulo="Consultoría (Fees)" />}
           {page === "comisiones" && <EnConstruccion titulo="Comisiones" />}
