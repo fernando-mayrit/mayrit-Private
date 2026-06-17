@@ -364,6 +364,15 @@ td.num, th.num { text-align: right; }
 /* Importes que ocupan el ancho completo de su caja (Prima Adeudada, A Liquidar, Retenida) = las dos de debajo juntas */
 .recibo-modal .field .num-input.full-w,
 .recibo-modal .field .num-input.full-w .inp-num { max-width: 100%; }
+/* Fila del nº de recibo: Número (ancho, centrado) + Recibo/de muy estrechos a la derecha */
+.recibo-num-row { display: flex; gap: 10px; align-items: flex-end; }
+.recibo-num-row > .field { margin-bottom: 6px; }
+.recibo-num-row > .field:first-child { flex: 1; }
+.recibo-num-row .recibo-mini { flex: 0 0 54px; }
+.recibo-modal .recibo-num-row .recibo-mini input,
+.recibo-modal .recibo-num-row .recibo-mini .num-input { max-width: 54px; }
+.recibo-num-row .recibo-mini input,
+.recibo-num-row .recibo-mini .inp-num { text-align: center; }
 .recibo-mas { margin-top: 6px; }
 .recibo-mas summary { cursor: pointer; color: var(--gris-medio); font-size: 13px; padding: 4px 0; }
 @media (max-width: 760px) { .recibo-modal { grid-template-columns: 1fr; } }

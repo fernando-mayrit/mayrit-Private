@@ -10,7 +10,6 @@ import { fmtMiles } from "../format";
 //  · 3 cajas a la derecha: Cobro de primas · Liquidación a la Cía · Comisiones
 // El recibo puede venir de un Recibo (edición) o de un ReciboPreview (emisión).
 
-const PAGADORES = ["Agencia de Suscripción", "Mercado", "Tomador", "Corredor"];
 const ESTADOS = ["Emitido", "Anulado"];
 
 // Campos por tipo (para convertir recibo ↔ formulario y formulario ↔ payload).
@@ -143,16 +142,19 @@ export default function ReciboModal({
       <div className="recibo-modal">
         {/* ── Columna izquierda: identificación + prima + comisiones ── */}
         <div className="recibo-col">
-          <div className="field">
-            <label>Número de Recibo {numeroProvisional && <span className="hint">(provisional)</span>}</label>
-            <input type="text" value={(recibo as Recibo).numero ?? ""} disabled />
-          </div>
-          <div className="campos-grid" style={{ gridTemplateColumns: "1fr 1fr" }}>
+          <div className="recibo-num-row">
             <div className="field">
-              <label>Recibo Número</label>
+              <label>Número de Recibo {numeroProvisional && <span className="hint">(provisional)</span>}</label>
+              <input type="text" value={(recibo as Recibo).numero ?? ""} disabled style={{ textAlign: "center", maxWidth: "100%", width: "100%", color: "var(--naranja-osc)", fontWeight: 700 }} />
+            </div>
+            <div className="field recibo-mini">
+              <label>Recibo</label>
               <NumberInput value={f.recibo_num ?? ""} onChange={(v) => set("recibo_num", v)} decimals={0} thousands={false} disabled={soloLectura} />
             </div>
-            <Texto k="recibos_totales" label="de (nº total)" />
+            <div className="field recibo-mini">
+              <label>de</label>
+              <input type="text" value={f.recibos_totales ?? ""} onChange={(e) => set("recibos_totales", e.target.value)} disabled={soloLectura} />
+            </div>
           </div>
 
           <div className="campos-grid" style={{ gridTemplateColumns: "1fr 1fr" }}>
@@ -179,10 +181,6 @@ export default function ReciboModal({
 
           <Money k="honorarios" label="Honorarios" />
 
-          <div className="field">
-            <label>Pagador</label>
-            <OptionButtons value={f.pagador ?? ""} options={PAGADORES} onChange={(v) => set("pagador", v)} vertical disabled={soloLectura} />
-          </div>
           <Texto k="cuenta" label="Cuenta" />
 
           <details className="recibo-mas">
