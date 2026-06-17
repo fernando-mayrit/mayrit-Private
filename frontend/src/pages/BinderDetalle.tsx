@@ -298,17 +298,25 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
                       const key = `${c.titulo}:${m}`;
                       const bloq = bloqueos.has(key);
                       return (
-                        <div className="bloqueo-fila" key={m}>
-                          <input type="checkbox" />
-                          <button
-                            className="lock-btn"
-                            onClick={() => toggle(key)}
-                            title={bloq ? "Bloqueado (clic para desbloquear)" : "Desbloqueado (clic para bloquear)"}
-                          >
+                        <div
+                          className={"bloqueo-fila" + (bloq ? " bloqueada" : "")}
+                          key={m}
+                          onClick={() => toggle(key)}
+                          style={{ cursor: "pointer" }}
+                          title={bloq ? "Bloqueado (clic para desbloquear)" : "Clic para bloquear este periodo"}
+                        >
+                          <input type="checkbox" checked={bloq} readOnly tabIndex={-1} />
+                          <button type="button" className="lock-btn" tabIndex={-1}>
                             {bloq ? "🔒" : "🔓"}
                           </button>
                           <span>{mesLargo(m)}</span>
-                          <span className="ayuda" title="Bloquear este periodo impide presentarlo / modificarlo.">?</span>
+                          <span
+                            className="ayuda"
+                            onClick={(e) => e.stopPropagation()}
+                            title="Bloquear este periodo impide presentarlo / modificarlo."
+                          >
+                            ?
+                          </span>
                         </div>
                       );
                     })
