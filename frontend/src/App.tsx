@@ -45,10 +45,14 @@ const MAESTRAS: { id: Page; label: string }[] = [
 // Menú lateral: el Negocio (las 4 fuentes principales).
 const NEGOCIO: { id: Page; label: string }[] = [
   { id: "binders", label: "Binders" },
-  { id: "recibos", label: "Recibos" },
   { id: "polizas", label: "Pólizas (OM)" },
   { id: "consultoria", label: "Consultoría" },
   { id: "comisiones", label: "Comisiones" },
+];
+
+// Menú lateral: Facturación / Contabilidad (módulo propio, diferenciado del Negocio).
+const FACTURACION: { id: Page; label: string }[] = [
+  { id: "recibos", label: "Recibos" },
 ];
 
 // Menú lateral: Configuración (catálogos compartidos).
@@ -86,6 +90,19 @@ export default function App() {
             <div className="nav-group">
               <div className="nav-group-title">Negocio</div>
               {NEGOCIO.map((it) => (
+                <button
+                  key={it.id}
+                  className={"nav-item" + (page === it.id ? " active" : "")}
+                  onClick={() => setPage(it.id)}
+                >
+                  <span className="nav-emoji">{EMOJI[it.id]}</span>
+                  {it.label}
+                </button>
+              ))}
+            </div>
+            <div className="nav-group">
+              <div className="nav-group-title">Facturación</div>
+              {FACTURACION.map((it) => (
                 <button
                   key={it.id}
                   className={"nav-item" + (page === it.id ? " active" : "")}
