@@ -7,13 +7,16 @@ con los Premium BDX (rara vez coinciden con el Risk BDX) → puede ser parcial. 
 natural 'AÑO-NNNN'. Los "pendientes" (cobro/liquidación) los recalcula el backend.
 """
 import datetime as dt
+import os
 from decimal import Decimal, ROUND_HALF_UP
 
+import openpyxl
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
 
+from ..config import settings
 from ..db import get_db
 from ..models.maestras import (
     Bdx,
@@ -22,6 +25,7 @@ from ..models.maestras import (
     BinderSeccion,
     CuentaBancaria,
     Mercado,
+    Productor,
     Recibo,
     SeccionMercado,
 )
@@ -466,3 +470,186 @@ def descobrar_premium(binder_id: int, payload: CobrarPremium, db: Session = Depe
         _recalcular_cobro_recibo(db, r)
     db.commit()
     return {"lineas": len(lineas), "recibos_actualizados": len(recibos)}
+
+
+# ─────────────── Macheo automático desde Excel (cualquier formato) ───────────────
+def _resolver_excel(ruta: str) -> str:
+    base = os.path.abspath(settings.bdx_excel_dir)
+    destino = os.path.abspath(os.path.join(base, ruta))
+    if os.path.commonpath([base, destino]) != base:
+        raise HTTPException(status_code=400, detail="Ruta fuera de la carpeta base.")
+    if not os.path.isfile(destino):
+        raise HTTPException(status_code=404, detail=f"No existe el fichero: {ruta}")
+    if not destino.lower().endswith(".xlsx"):
+        raise HTTPException(status_code=400, detail="Solo se admite .xlsx (convierte los .xls antes).")
+    return destino
+
+
+def _cabecera(ws, max_scan: int = 12):
+    """Detecta la fila de cabecera (la que más celdas de texto tiene) y devuelve (idx, columnas)."""
+    filas = []
+    for i, row in enumerate(ws.iter_rows(values_only=True)):
+        filas.append(row)
+        if i >= max_scan:
+            break
+    best_i, best_n = 0, -1
+    for i, row in enumerate(filas):
+        n = sum(1 for v in row if isinstance(v, str) and v.strip())
+        if n > best_n:
+            best_i, best_n = i, n
+    cols = [(str(v).strip() if v is not None else "") for v in filas[best_i]]
+    return best_i, cols
+
+
+def _sugerir(cols: list[str], guardado: str | None, claves: list[str]) -> str | None:
+    """Sugiere una columna: primero la guardada (si existe), si no por palabras clave EN ORDEN
+    de prioridad (la 1ª clave manda; así 'our line' gana a un genérico 'premium')."""
+    if guardado and guardado in cols:
+        return guardado
+    for k in claves:
+        for c in cols:
+            if k in c.lower():
+                return c
+    return None
+
+
+class ExcelPreviewReq(BaseModel):
+    ruta: str
+    hoja: str | None = None
+
+
+@router.post("/binders/{binder_id}/premium/excel-preview")
+def excel_preview(binder_id: int, payload: ExcelPreviewReq, db: Session = Depends(get_db)):
+    """Lee hojas/cabeceras del Excel y sugiere el mapeo (recordado de la agencia o por palabras clave)."""
+    binder = db.get(Binder, binder_id)
+    if binder is None:
+        raise HTTPException(status_code=404, detail=f"Binder {binder_id} no encontrado")
+    destino = _resolver_excel(payload.ruta)
+    wb = openpyxl.load_workbook(destino, read_only=True, data_only=True)
+    hoja = payload.hoja if (payload.hoja and payload.hoja in wb.sheetnames) else wb.sheetnames[0]
+    ws = wb[hoja]
+    hdr_i, cols = _cabecera(ws)
+    columnas = [c for c in cols if c]
+    # Muestra: hasta 3 filas de datos tras la cabecera
+    muestra = []
+    for i, row in enumerate(ws.iter_rows(values_only=True)):
+        if i <= hdr_i:
+            continue
+        fila = {cols[j]: ("" if v is None else str(v)) for j, v in enumerate(row) if j < len(cols) and cols[j]}
+        if any(fila.values()):
+            muestra.append(fila)
+        if len(muestra) >= 3:
+            break
+    prod = binder.productor
+    return {
+        "hojas": wb.sheetnames,
+        "hoja": hoja,
+        "columnas": columnas,
+        "muestra": muestra,
+        "mapeo": {
+            "certificado": _sugerir(columnas, prod.premium_col_certificado if prod else None, ["certificate", "certificado", "cert ref", "policy", "poliza"]),
+            "importe": _sugerir(columnas, prod.premium_col_importe if prod else None, ["our line", "gross written", "net to broker", "net to", "gwp", "importe", "premium"]),
+        },
+    }
+
+
+class MatchExcelReq(BaseModel):
+    ruta: str
+    hoja: str
+    certificado: str           # nombre de la columna del Certificado
+    importe: str | None = None  # nombre de la columna del Importe (comprobación)
+    periodo: str                # mes del Premium 'YYYY-MM'
+
+
+class MatchRow(BaseModel):
+    certificate_ref: str
+    importe_excel: Decimal | None = None
+    estado: str                 # 'match' | 'importe_distinto' | 'no_encontrada'
+    linea_id: int | None = None
+    importe_risk: Decimal | None = None
+
+
+def _a_decimal(v) -> Decimal | None:
+    if v is None or v == "":
+        return None
+    try:
+        return Decimal(str(v).replace(",", "."))
+    except (ValueError, TypeError, ArithmeticError):
+        return None
+
+
+@router.post("/binders/{binder_id}/premium/match-excel")
+def match_excel(binder_id: int, payload: MatchExcelReq, db: Session = Depends(get_db)):
+    """Casa las filas del Excel con las líneas Risk del binder por Certificate Ref (importe como
+    comprobación). Guarda el mapeo en la agencia. NO aplica: devuelve preview + ids macheados."""
+    binder = db.get(Binder, binder_id)
+    if binder is None:
+        raise HTTPException(status_code=404, detail=f"Binder {binder_id} no encontrado")
+    _rango_mes(payload.periodo)
+    destino = _resolver_excel(payload.ruta)
+    wb = openpyxl.load_workbook(destino, read_only=True, data_only=True)
+    if payload.hoja not in wb.sheetnames:
+        raise HTTPException(status_code=404, detail=f"Hoja '{payload.hoja}' no encontrada")
+    ws = wb[payload.hoja]
+    hdr_i, cols = _cabecera(ws)
+    try:
+        cert_idx = cols.index(payload.certificado)
+    except ValueError:
+        raise HTTPException(status_code=422, detail=f"Columna de certificado '{payload.certificado}' no está en la hoja")
+    imp_idx = cols.index(payload.importe) if (payload.importe and payload.importe in cols) else None
+
+    # Líneas Risk del binder indexadas por certificate_ref
+    risk = db.scalars(
+        select(BdxLinea).join(Bdx, BdxLinea.bdx_id == Bdx.id).where(Bdx.binder_id == binder_id)
+    ).all()
+    por_cert: dict[str, list[BdxLinea]] = {}
+    for l in risk:
+        if l.certificate_ref:
+            por_cert.setdefault(l.certificate_ref.strip().lower(), []).append(l)
+
+    filas: list[MatchRow] = []
+    matched_ids: list[int] = []
+    for i, row in enumerate(ws.iter_rows(values_only=True)):
+        if i <= hdr_i:
+            continue
+        cert_raw = row[cert_idx] if cert_idx < len(row) else None
+        if cert_raw is None or str(cert_raw).strip() == "":
+            continue
+        cert = str(cert_raw).strip()
+        imp = _a_decimal(row[imp_idx]) if (imp_idx is not None and imp_idx < len(row)) else None
+        cands = por_cert.get(cert.lower(), [])
+        if not cands:
+            filas.append(MatchRow(certificate_ref=cert, importe_excel=imp, estado="no_encontrada"))
+            continue
+        # mejor candidata: la de importe más cercano (entre our line / gwp / net)
+        def candidatos_importe(l: BdxLinea):
+            return [l.total_gwp_our_line, l.gross_written_premium, l.net_premium_to_broker]
+        best = cands[0]
+        best_diff = None
+        for l in cands:
+            for amt in candidatos_importe(l):
+                if amt is None:
+                    continue
+                d = abs(Decimal(amt) - (imp if imp is not None else Decimal(amt)))
+                if best_diff is None or d < best_diff:
+                    best, best_diff = l, d
+        risk_amt = _q2(best.total_gwp_our_line or 0)
+        ok_importe = imp is None or (best_diff is not None and best_diff <= max(Decimal("0.02"), abs(imp) * Decimal("0.01")))
+        estado = "match" if ok_importe else "importe_distinto"
+        filas.append(MatchRow(certificate_ref=cert, importe_excel=imp, estado=estado, linea_id=best.id, importe_risk=risk_amt))
+        if estado == "match":
+            matched_ids.append(best.id)
+
+    # Recordar el mapeo en la agencia
+    if binder.productor:
+        binder.productor.premium_col_certificado = payload.certificado
+        binder.productor.premium_col_importe = payload.importe
+        db.commit()
+
+    resumen = {
+        "total": len(filas),
+        "match": sum(1 for f in filas if f.estado == "match"),
+        "importe_distinto": sum(1 for f in filas if f.estado == "importe_distinto"),
+        "no_encontrada": sum(1 for f in filas if f.estado == "no_encontrada"),
+    }
+    return {"periodo": payload.periodo, "filas": filas, "matched_ids": matched_ids, "resumen": resumen}

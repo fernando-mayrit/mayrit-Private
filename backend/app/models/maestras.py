@@ -41,6 +41,10 @@ class Productor(Base):
     pais: Mapped[str | None] = mapped_column(String(120))
     notas: Mapped[str | None] = mapped_column(Text)
 
+    # Mapeo recordado del Excel de Premium de esta agencia (nombres de columna del Excel):
+    premium_col_certificado: Mapped[str | None] = mapped_column(String(200))
+    premium_col_importe: Mapped[str | None] = mapped_column(String(200))
+
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
