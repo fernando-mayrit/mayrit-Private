@@ -132,12 +132,14 @@ export default function BdxTabla({
   acciones,
   hayFiltroExterno,
   onQuitarFiltros,
+  bloqueada,
 }: {
   lineas: BdxLinea[];
   onRowClick?: (l: BdxLinea) => void;
   acciones?: React.ReactNode;
   hayFiltroExterno?: boolean; // filtro aplicado desde fuera (p. ej. meses en la pestaña Datos)
   onQuitarFiltros?: () => void; // limpiar también ese filtro externo al pulsar "Quitar filtros"
+  bloqueada?: (l: BdxLinea) => boolean; // línea en periodo bloqueado → candado + solo lectura
 }) {
   const [visibles, setVisibles] = useState<string[]>(cargarVisibles);
   const [sort, setSort] = useState<SortState>(cargarSort);
@@ -320,6 +322,7 @@ export default function BdxTabla({
               }}
               title="Clic derecho para elegir columnas"
             >
+              {bloqueada && <th className="col-lock" title="Bloqueo" />}
               {cols.map((c) => {
                 const activo = sort?.key === c.key;
                 const numCol = c.tipo === "num" || c.tipo === "pct" || c.tipo === "int";
@@ -360,8 +363,19 @@ export default function BdxTabla({
             </tr>
           </thead>
           <tbody>
-            {filas.map((l) => (
-              <tr key={l.id} className={onRowClick ? "fila-click" : undefined} onClick={() => onRowClick?.(l)}>
+            {filas.map((l) => {
+              const bloq = bloqueada?.(l) ?? false;
+              return (
+              <tr
+                key={l.id}
+                className={(onRowClick ? "fila-click" : "") + (bloq ? " fila-bloqueada" : "")}
+                onClick={() => onRowClick?.(l)}
+              >
+                {bloqueada && (
+                  <td className="celda-centro col-lock" title={bloq ? "Periodo bloqueado (solo consulta)" : ""}>
+                    {bloq ? "🔒" : ""}
+                  </td>
+                )}
                 {cols.map((c) => {
                   const numCol = c.tipo === "num" || c.tipo === "pct" || c.tipo === "int";
                   return (
@@ -371,7 +385,8 @@ export default function BdxTabla({
                   );
                 })}
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </div>

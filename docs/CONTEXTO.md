@@ -272,7 +272,7 @@ binder a binder.
 
 ## Sesión 16-17/06/2026 — ficha del binder (pestañas) y cálculos
 - **Pestañas de la ficha del binder** (`BinderDetalle.tsx`), en este orden: **Bloqueo · Datos · BDX ·
-  Cálculos · Siniestros · Triangulación**. (La que abre por defecto sigue siendo Datos.)
+  Cálculos · Siniestros · Triangulación**. (La que abre por defecto es **BDX**.)
 - **Datos:** tabla "Cifras por mes (Reporting Start)" con **GWP our line · Net Premium to Broker ·
   Recibo** y un **check por fila**. Marcar meses **filtra la tabla BDX** por ese `reporting_period_start`
   (filtro bidireccional: "Quitar filtros" en BDX también limpia los checks de Datos).
@@ -285,14 +285,22 @@ binder a binder.
   A liquidar/Liquidado/Pdte). Botones (Subir Excel, + Nueva línea) en la misma fila que los totales.
 - **Cálculos:** cuadro de **Profit Commission** que replica el Access del usuario (ver arriba la regla).
   La caja de **IBNR** va en ámbar (campo a rellenar). Verificado contra Access en CY0219ALE.
-- **Bloqueo:** tabla de 3 columnas (Risk/Premium/Claims BDX) con sus meses + candado 🔓/🔒 (estado
-  local, **sin persistencia ni lógica de "presentar" todavía**). Claims vacío (sin módulo de siniestros).
+- **Bloqueo (REAL/persistido, 17/06/2026):** tabla de 3 columnas (Risk/Premium/Claims BDX) con sus
+  meses; **clic en la fila del mes cierra/abre el candado** y lo guarda en Postgres (tabla
+  `bdx_bloqueos`: binder_id + tipo `risk`/`premium`/`claims` + periodo `YYYY-MM`, endpoints
+  GET/POST/DELETE `/binders/{id}/bloqueos`). **Efecto:** una línea cuyo periodo Risk (reporting start)
+  o, si está incluida en Premium, su mes `premium_bdx`, esté bloqueado → en la pestaña BDX sale con
+  **🔒** (columna izquierda, fila resaltada) y al abrirla el panel es **solo consulta** (inputs
+  deshabilitados, sin Guardar/Borrar). El backend rechaza con **409** crear/editar/borrar líneas de un
+  periodo bloqueado (`_exigir_no_bloqueada` en `routers/bdx.py`). Claims sin meses (sin módulo de
+  siniestros). **OJO pendiente:** la importación (SharePoint/Excel) aún NO respeta el bloqueo (puede
+  sobrescribir líneas de un periodo cerrado); falta blindar el import.
 - **Diseñador de formulario de línea** (`BdxLineaPanel.tsx`): botón "✎ Diseñar" → arrastrar campos,
   columnas por grupo, mostrar/ocultar, renombrar; persistido (`mayrit.bdxlinea.layout.v1`).
 - **Formato único** (`frontend/src/format.ts`): `fmtMiles` (miles con punto, agrupa también los de 4
   cifras, que es-ES no agrupaba) y `fmtFechaES` (dd/mm/aaaa en toda la app).
-- **Pendiente de contenido:** pestañas **Bloqueo** (lógica/persistencia), **Siniestros** y
-  **Triangulación** (placeholder); contar **Pólizas**; parser de Excel (arriba).
+- **Pendiente de contenido:** blindar la **importación** frente a periodos bloqueados (arriba);
+  pestañas **Siniestros** y **Triangulación** (placeholder); contar **Pólizas**; parser de Excel.
 
 ## Imagen de marca (estándar a seguir en todo)
 - Colores: **naranja `#da5833`** (PANTONE 7579 C) y **gris `#4b4b4b`** (PANTONE 446 C).

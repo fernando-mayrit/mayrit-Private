@@ -162,9 +162,10 @@ type Props = {
   onSaved: () => void;
   onClose: () => void;
   onDeleted: () => void;
+  readOnly?: boolean; // periodo bloqueado: solo consulta, sin editar/guardar/borrar
 };
 
-export default function BdxLineaPanel({ bdxId, linea, onSaved, onClose, onDeleted }: Props) {
+export default function BdxLineaPanel({ bdxId, linea, onSaved, onClose, onDeleted, readOnly = false }: Props) {
   const [vals, setVals] = useState<FormVals>(() => inicialDe(linea));
   const [inicial] = useState<FormVals>(() => inicialDe(linea));
   const [saving, setSaving] = useState(false);
@@ -267,7 +268,12 @@ export default function BdxLineaPanel({ bdxId, linea, onSaved, onClose, onDelete
     if (tipo === "bool") {
       return (
         <label className="check-inline">
-          <input type="checkbox" checked={Boolean(vals[key])} onChange={(e) => set(key, e.target.checked)} />
+          <input
+            type="checkbox"
+            checked={Boolean(vals[key])}
+            onChange={(e) => set(key, e.target.checked)}
+            disabled={readOnly}
+          />
           {label}
         </label>
       );
@@ -276,7 +282,7 @@ export default function BdxLineaPanel({ bdxId, linea, onSaved, onClose, onDelete
       return (
         <>
           <label>{label}</label>
-          <NumberInput value={String(vals[key] ?? "")} onChange={(v) => set(key, v)} />
+          <NumberInput value={String(vals[key] ?? "")} onChange={(v) => set(key, v)} disabled={readOnly} />
         </>
       );
     }
@@ -284,7 +290,7 @@ export default function BdxLineaPanel({ bdxId, linea, onSaved, onClose, onDelete
       return (
         <>
           <label>{label}</label>
-          <NumberInput value={String(vals[key] ?? "")} onChange={(v) => set(key, v)} decimals={0} thousands={false} />
+          <NumberInput value={String(vals[key] ?? "")} onChange={(v) => set(key, v)} decimals={0} thousands={false} disabled={readOnly} />
         </>
       );
     }
@@ -292,7 +298,7 @@ export default function BdxLineaPanel({ bdxId, linea, onSaved, onClose, onDelete
       return (
         <>
           <label>{label}</label>
-          <textarea rows={3} value={String(vals[key] ?? "")} onChange={(e) => set(key, e.target.value)} />
+          <textarea rows={3} value={String(vals[key] ?? "")} onChange={(e) => set(key, e.target.value)} disabled={readOnly} />
         </>
       );
     }
@@ -304,6 +310,7 @@ export default function BdxLineaPanel({ bdxId, linea, onSaved, onClose, onDelete
           className={tipo === "date" ? "inp-fecha" : undefined}
           value={String(vals[key] ?? "")}
           onChange={(e) => set(key, e.target.value)}
+          disabled={readOnly}
         />
       </>
     );
@@ -311,15 +318,21 @@ export default function BdxLineaPanel({ bdxId, linea, onSaved, onClose, onDelete
 
   return (
     <FormPanel
-      title={linea ? "Editar línea de BDX" : "Nueva línea de BDX"}
+      title={readOnly ? "Línea de BDX (periodo bloqueado)" : linea ? "Editar línea de BDX" : "Nueva línea de BDX"}
       dirty={dirty}
       saving={saving}
       error={error}
       onSave={guardar}
       onClose={onClose}
       onDelete={linea ? borrar : undefined}
+      readOnly={readOnly}
     >
-      <div className="diseno-barra">
+      {readOnly && (
+        <div className="hint" style={{ marginBottom: 10 }}>
+          🔒 Este periodo está bloqueado (BDX presentado/cerrado). Solo consulta: no se puede editar.
+        </div>
+      )}
+      <div className="diseno-barra" style={readOnly ? { display: "none" } : undefined}>
         <button type="button" className={"btn-secondary btn-sm" + (diseno ? " sel" : "")} onClick={() => setDiseno((d) => !d)}>
           {diseno ? "✓ Diseñando" : "✎ Diseñar formulario"}
         </button>

@@ -3,18 +3,71 @@ Endpoints de BDX (bordereaux Risk/Premium). Estructura:
   Binder → BDX (cabecera de un periodo) → líneas.
 Claims va en otro módulo.
 """
+import datetime as dt
 import os
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import func, select
+from pydantic import BaseModel
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from ..config import settings
 from ..db import get_db
-from ..models.maestras import Binder, Bdx, BdxLinea
+from ..models.maestras import Binder, Bdx, BdxBloqueo, BdxLinea
 from ..schemas import maestras as sch
 
 router = APIRouter(tags=["BDX"])
+
+TIPOS_BLOQUEO = {"risk", "premium", "claims"}
+
+
+def _mes(fecha: dt.date | None) -> str | None:
+    return fecha.strftime("%Y-%m") if fecha else None
+
+
+def _bloqueos_binder(db: Session, binder_id: int) -> set[tuple[str, str]]:
+    """Conjunto de (tipo, periodo) bloqueados de un binder."""
+    return {
+        (t, p)
+        for t, p in db.execute(
+            select(BdxBloqueo.tipo, BdxBloqueo.periodo).where(BdxBloqueo.binder_id == binder_id)
+        ).all()
+    }
+
+
+def _periodo_bloqueado(
+    locks: set[tuple[str, str]],
+    reporting_period_start: dt.date | None,
+    incluido_en_premium: bool | None,
+    premium_bdx: dt.date | None,
+) -> bool:
+    """True si la línea cae en algún periodo bloqueado (Risk por su mes de reporting,
+    o Premium por su mes de premium_bdx cuando está incluida en el Premium)."""
+    rs = _mes(reporting_period_start)
+    if rs and ("risk", rs) in locks:
+        return True
+    pm = _mes(premium_bdx)
+    if incluido_en_premium and pm and ("premium", pm) in locks:
+        return True
+    return False
+
+
+def _exigir_no_bloqueada(db: Session, bdx_id: int, linea: BdxLinea | sch.BdxLineaCreate):
+    """Aborta con 409 si la línea (existente o a crear) cae en un periodo bloqueado."""
+    bdx = db.get(Bdx, bdx_id)
+    if bdx is None:
+        return
+    locks = _bloqueos_binder(db, bdx.binder_id)
+    if _periodo_bloqueado(
+        locks,
+        getattr(linea, "reporting_period_start", None),
+        getattr(linea, "incluido_en_premium", None),
+        getattr(linea, "premium_bdx", None),
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="Periodo bloqueado: este BDX está cerrado y no admite cambios en sus líneas.",
+        )
 
 
 @router.get("/bdx/excel-dir")
@@ -117,6 +170,7 @@ def borrar(bdx_id: int, db: Session = Depends(get_db)):
 def crear_linea(bdx_id: int, payload: sch.BdxLineaCreate, db: Session = Depends(get_db)):
     if db.get(Bdx, bdx_id) is None:
         raise HTTPException(status_code=404, detail=f"BDX {bdx_id} no encontrado")
+    _exigir_no_bloqueada(db, bdx_id, payload)
     linea = BdxLinea(bdx_id=bdx_id, **payload.model_dump())
     db.add(linea)
     db.commit()
@@ -129,6 +183,7 @@ def editar_linea(linea_id: int, payload: sch.BdxLineaUpdate, db: Session = Depen
     linea = db.get(BdxLinea, linea_id)
     if linea is None:
         raise HTTPException(status_code=404, detail=f"Línea {linea_id} no encontrada")
+    _exigir_no_bloqueada(db, linea.bdx_id, linea)
     for k, v in payload.model_dump(exclude_unset=True).items():
         setattr(linea, k, v)
     db.commit()
@@ -141,5 +196,53 @@ def borrar_linea(linea_id: int, db: Session = Depends(get_db)):
     linea = db.get(BdxLinea, linea_id)
     if linea is None:
         raise HTTPException(status_code=404, detail=f"Línea {linea_id} no encontrada")
+    _exigir_no_bloqueada(db, linea.bdx_id, linea)
     db.delete(linea)
+    db.commit()
+
+
+# ─────────────────── Bloqueo de periodos del BDX (presentado) ────────────────
+class Bloqueo(BaseModel):
+    tipo: str       # 'risk' | 'premium' | 'claims'
+    periodo: str    # 'YYYY-MM'
+
+
+@router.get("/binders/{binder_id}/bloqueos", response_model=list[Bloqueo])
+def listar_bloqueos(binder_id: int, db: Session = Depends(get_db)):
+    if db.get(Binder, binder_id) is None:
+        raise HTTPException(status_code=404, detail=f"Binder {binder_id} no encontrado")
+    filas = db.scalars(
+        select(BdxBloqueo).where(BdxBloqueo.binder_id == binder_id).order_by(BdxBloqueo.tipo, BdxBloqueo.periodo)
+    ).all()
+    return [Bloqueo(tipo=b.tipo, periodo=b.periodo) for b in filas]
+
+
+@router.post("/binders/{binder_id}/bloqueos", response_model=Bloqueo, status_code=201)
+def bloquear(binder_id: int, payload: Bloqueo, db: Session = Depends(get_db)):
+    if db.get(Binder, binder_id) is None:
+        raise HTTPException(status_code=404, detail=f"Binder {binder_id} no encontrado")
+    if payload.tipo not in TIPOS_BLOQUEO:
+        raise HTTPException(status_code=422, detail=f"Tipo de bloqueo inválido: {payload.tipo}")
+    existe = db.scalar(
+        select(BdxBloqueo).where(
+            BdxBloqueo.binder_id == binder_id,
+            BdxBloqueo.tipo == payload.tipo,
+            BdxBloqueo.periodo == payload.periodo,
+        )
+    )
+    if existe is None:
+        db.add(BdxBloqueo(binder_id=binder_id, tipo=payload.tipo, periodo=payload.periodo))
+        db.commit()
+    return payload
+
+
+@router.delete("/binders/{binder_id}/bloqueos", status_code=204)
+def desbloquear(binder_id: int, tipo: str, periodo: str, db: Session = Depends(get_db)):
+    db.execute(
+        delete(BdxBloqueo).where(
+            BdxBloqueo.binder_id == binder_id,
+            BdxBloqueo.tipo == tipo,
+            BdxBloqueo.periodo == periodo,
+        )
+    )
     db.commit()

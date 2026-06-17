@@ -77,6 +77,8 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
       const lista = await bdxApi.listar(binder.id);
       setBdxs(lista);
       setSel(lista.length > 0 ? await bdxApi.detalle(lista[0].id) : null);
+      const bl = await bdxApi.listarBloqueos(binder.id);
+      setBloqueos(new Set(bl.map((b) => `${b.tipo}:${b.periodo}`)));
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -164,6 +166,16 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
   })();
   const totGwp = porMes.reduce((a, [, v]) => a + v.gwp, 0);
   const totNet = porMes.reduce((a, [, v]) => a + v.net, 0);
+
+  // Una línea está bloqueada si su periodo Risk (reporting start) o, si entra en Premium,
+  // su mes de premium_bdx están bloqueados en la pestaña Bloqueo.
+  function lineaBloqueada(l: BdxLinea): boolean {
+    const rs = String(l.reporting_period_start ?? "").slice(0, 7);
+    if (rs && bloqueos.has(`risk:${rs}`)) return true;
+    const pm = String(l.premium_bdx ?? "").slice(0, 7);
+    if (l.incluido_en_premium && pm && bloqueos.has(`premium:${pm}`)) return true;
+    return false;
+  }
 
   return (
     <div className="container detalle-binder">
@@ -272,18 +284,26 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
       {tab === "bloqueo" && (
         (() => {
           const ls = sel?.lineas ?? [];
-          const cols: { titulo: string; emoji: string; meses: string[] }[] = [
-            { titulo: "Risk BDX", emoji: "📊", meses: mesesDe(ls, "reporting_period_start") },
-            { titulo: "Premium BDX", emoji: "💷", meses: mesesDe(ls, "premium_bdx", (l) => !!l.incluido_en_premium) },
-            { titulo: "Claims BDX", emoji: "⚖️", meses: [] },
+          const cols: { titulo: string; tipo: string; emoji: string; meses: string[] }[] = [
+            { titulo: "Risk BDX", tipo: "risk", emoji: "📊", meses: mesesDe(ls, "reporting_period_start") },
+            { titulo: "Premium BDX", tipo: "premium", emoji: "💷", meses: mesesDe(ls, "premium_bdx", (l) => !!l.incluido_en_premium) },
+            { titulo: "Claims BDX", tipo: "claims", emoji: "⚖️", meses: [] },
           ];
-          const toggle = (k: string) =>
-            setBloqueos((s) => {
-              const ns = new Set(s);
-              if (ns.has(k)) ns.delete(k);
-              else ns.add(k);
-              return ns;
-            });
+          // Persistente: el bloqueo se guarda en el backend (impide editar líneas del periodo).
+          const toggle = async (tipo: string, m: string) => {
+            const key = `${tipo}:${m}`;
+            try {
+              if (bloqueos.has(key)) {
+                await bdxApi.desbloquear(binder.id, tipo, m);
+                setBloqueos((s) => { const ns = new Set(s); ns.delete(key); return ns; });
+              } else {
+                await bdxApi.bloquear(binder.id, tipo, m);
+                setBloqueos((s) => new Set(s).add(key));
+              }
+            } catch (e) {
+              alert((e as Error).message);
+            }
+          };
           return (
             <div className="bloqueo-cols">
               {cols.map((c) => (
@@ -295,13 +315,13 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
                     <div className="hint">— sin periodos —</div>
                   ) : (
                     c.meses.map((m) => {
-                      const key = `${c.titulo}:${m}`;
+                      const key = `${c.tipo}:${m}`;
                       const bloq = bloqueos.has(key);
                       return (
                         <div
                           className={"bloqueo-fila" + (bloq ? " bloqueada" : "")}
                           key={m}
-                          onClick={() => toggle(key)}
+                          onClick={() => toggle(c.tipo, m)}
                           style={{ cursor: "pointer" }}
                           title={bloq ? "Bloqueado (clic para desbloquear)" : "Clic para bloquear este periodo"}
                         >
@@ -369,6 +389,7 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
                   : sel.lineas
               }
               onRowClick={(l) => setLinea(l)}
+              bloqueada={lineaBloqueada}
               hayFiltroExterno={selMeses.size > 0}
               onQuitarFiltros={() => setSelMeses(new Set())}
               acciones={
@@ -483,6 +504,7 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
         <BdxLineaPanel
           bdxId={sel.id}
           linea={linea === "nueva" ? null : linea}
+          readOnly={linea !== "nueva" && lineaBloqueada(linea)}
           onSaved={async () => {
             setLinea(null);
             await refrescarSel();

@@ -21,6 +21,7 @@ type Props = {
   onClose: () => void; // se llama solo cuando el cierre está confirmado
   onDelete?: () => void; // si se pasa, muestra "Borrar" dentro del panel (normalmente solo al editar)
   deleteLabel?: string;
+  readOnly?: boolean; // solo consulta: oculta Guardar/Borrar y "Cancelar" pasa a "Cerrar"
   children: ReactNode;
 };
 
@@ -34,6 +35,7 @@ export default function FormPanel({
   onClose,
   onDelete,
   deleteLabel = "Borrar",
+  readOnly = false,
   children,
 }: Props) {
   const errorRef = useRef<HTMLDivElement>(null);
@@ -80,17 +82,19 @@ export default function FormPanel({
         )}
 
         <div className="panel-actions">
-          {onDelete && (
+          {!readOnly && onDelete && (
             <button className="btn-danger" onClick={onDelete} disabled={saving}>
               {deleteLabel}
             </button>
           )}
           <div className="panel-actions-right">
-            <button className="btn-primary" onClick={onSave} disabled={saving}>
-              {saving ? "Guardando…" : saveLabel}
-            </button>
+            {!readOnly && (
+              <button className="btn-primary" onClick={onSave} disabled={saving}>
+                {saving ? "Guardando…" : saveLabel}
+              </button>
+            )}
             <button className="btn-secondary" onClick={attemptClose} disabled={saving}>
-              Cancelar
+              {readOnly ? "Cerrar" : "Cancelar"}
             </button>
           </div>
         </div>

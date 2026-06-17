@@ -20,6 +20,7 @@ type Props = {
   placeholder?: string;
   id?: string;
   className?: string;
+  disabled?: boolean;
 };
 
 // Edición (estilo es-ES: coma decimal, sin miles) → canónica (punto decimal, sin miles).
@@ -44,6 +45,7 @@ export default function NumberInput({
   placeholder,
   id,
   className,
+  disabled = false,
 }: Props) {
   const [focused, setFocused] = useState(false);
   const [buf, setBuf] = useState("");
@@ -59,6 +61,7 @@ export default function NumberInput({
         className="inp-num"
         placeholder={placeholder}
         value={shown}
+        disabled={disabled}
         onFocus={() => {
           setBuf(toEditing(value));
           setFocused(true);

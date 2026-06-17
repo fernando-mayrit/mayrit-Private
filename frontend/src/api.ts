@@ -65,6 +65,19 @@ export const bdxApi = {
     request<BdxLinea>(`/bdx/lineas/${lineaId}`, { method: "PUT", body: JSON.stringify(data) }),
   borrarLinea: (lineaId: number) =>
     request<void>(`/bdx/lineas/${lineaId}`, { method: "DELETE" }),
+  // Bloqueo de periodos (presentado/cerrado): tipo = 'risk' | 'premium' | 'claims', periodo = 'YYYY-MM'.
+  listarBloqueos: (binderId: number) =>
+    request<{ tipo: string; periodo: string }[]>(`/binders/${binderId}/bloqueos`),
+  bloquear: (binderId: number, tipo: string, periodo: string) =>
+    request<{ tipo: string; periodo: string }>(`/binders/${binderId}/bloqueos`, {
+      method: "POST",
+      body: JSON.stringify({ tipo, periodo }),
+    }),
+  desbloquear: (binderId: number, tipo: string, periodo: string) =>
+    request<void>(
+      `/binders/${binderId}/bloqueos?tipo=${encodeURIComponent(tipo)}&periodo=${encodeURIComponent(periodo)}`,
+      { method: "DELETE" }
+    ),
   // Importación desde SharePoint (solo lectura el preview; el import escribe).
   sharepointPreview: (binderId: number) =>
     request<BdxPreview>(`/binders/${binderId}/bdx/sharepoint-preview`),

@@ -14,7 +14,7 @@ from __future__ import annotations
 import datetime as dt
 from decimal import Decimal
 
-from sqlalchemy import JSON, Boolean, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, func, text
+from sqlalchemy import JSON, Boolean, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint, func, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..db import Base
@@ -447,3 +447,22 @@ class BdxLinea(Base):
     )
 
     bdx: Mapped["Bdx"] = relationship(back_populates="lineas")
+
+
+class BdxBloqueo(Base):
+    """Bloqueo de un periodo (mes) de un BDX de un binder.
+
+    Cuando un periodo está bloqueado se considera el bordereau de ese periodo ya
+    presentado/cerrado: sus líneas no se pueden crear, editar ni borrar (solo
+    consultar). Se identifica por (binder, tipo de BDX, mes 'YYYY-MM') para casar
+    con la pestaña Bloqueo, donde se bloquea por columna (Risk/Premium/Claims) y mes.
+    """
+
+    __tablename__ = "bdx_bloqueos"
+    __table_args__ = (UniqueConstraint("binder_id", "tipo", "periodo", name="uq_bdx_bloqueo"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    binder_id: Mapped[int] = mapped_column(ForeignKey("binders.id", ondelete="CASCADE"), index=True)
+    tipo: Mapped[str] = mapped_column(String(20))   # 'risk' | 'premium' | 'claims'
+    periodo: Mapped[str] = mapped_column(String(7))  # 'YYYY-MM'
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
