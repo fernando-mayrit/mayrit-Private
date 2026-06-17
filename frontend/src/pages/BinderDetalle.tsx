@@ -467,10 +467,10 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
             <>
               <div className="toolbar">
                 <button className="btn-primary" onClick={() => elegirExcel("risk")}>
-                  ⬆ Subir Excel (Risk)
+                  ⬆ Subir Risk
                 </button>
                 <button className="btn-secondary" onClick={() => elegirExcel("premium")}>
-                  ⬆ Subir Premium (Excel)
+                  ⬆ Subir Premium
                 </button>
                 {!importado && (
                   <button className="btn-secondary" onClick={abrirImport}>
@@ -498,10 +498,10 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
               acciones={
                 <>
                   <button className="btn-primary btn-sm" onClick={() => elegirExcel("risk")}>
-                    ⬆ Subir Excel (Risk)
+                    ⬆ Subir Risk
                   </button>
                   <button className="btn-secondary btn-sm" onClick={() => elegirExcel("premium")}>
-                    ⬆ Subir Premium (Excel)
+                    ⬆ Subir Premium
                   </button>
                   {selMeses.size > 0 && (
                     <span className="hint">
@@ -522,7 +522,7 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
           {premiums.length === 0 ? (
             <div className="empty">
               Aún no hay líneas incluidas en ningún Premium. En la pestaña <b>BDX</b> pulsa
-              <b> «Subir Premium (Excel)»</b> para machear un Premium con el Risk.
+              <b> «Subir Premium»</b> para machear un Premium con el Risk.
             </div>
           ) : (
             <table className="compacto" style={{ maxWidth: 900 }}>
@@ -786,7 +786,7 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
         <div className="overlay">
           <div className="panel" role="dialog" aria-modal="true" aria-label="Seleccionar Excel">
             <div className="panel-head">
-              <h2>{excelModo === "premium" ? "Subir Premium (Excel)" : "Subir Excel (Risk)"}</h2>
+              <h2>{excelModo === "premium" ? "Subir Premium" : "Subir Risk"}</h2>
               <button className="panel-close" onClick={() => setExcelOpen(false)} aria-label="Cerrar">
                 ✕
               </button>
