@@ -194,6 +194,11 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
   // Recibo ya generado de cada periodo (1 por Risk BDX).
   const reciboDe = new Map(recibos.map((r) => [r.periodo, r]));
 
+  // Estado de cierre del binder: "Cerrado Producción" → no más Risk/Premium; "Cerrado" → además
+  // cierra Siniestros.
+  const produccionCerrada = (binder.estado || "").startsWith("Cerrado");
+  const cerradoTotal = binder.estado === "Cerrado";
+
   // Totales del Premium (lo macheado) vs totales del Risk (todas las líneas). Cuando todo está
   // macheado, deben coincidir. Prima = our line + impuestos − comisión cedida; Comisión = brokerage.
   const lineasRisk = sel?.lineas ?? [];
@@ -591,19 +596,23 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
             <div className="loading">Cargando…</div>
           ) : !sel || sel.lineas.length === 0 ? (
             <>
-              <div className="toolbar">
-                <button className="btn-primary" onClick={() => elegirExcel("risk")}>
-                  ⬆ Subir Risk
-                </button>
-                <button className="btn-secondary" onClick={() => elegirExcel("premium")}>
-                  ⬆ Subir Premium
-                </button>
-                {!importado && (
-                  <button className="btn-secondary" onClick={abrirImport}>
-                    ⤓ Importar de SharePoint
+              {produccionCerrada ? (
+                <div className="hint" style={{ marginBottom: 10 }}>🔒 Producción cerrada: no se pueden subir más Risk ni Premium.</div>
+              ) : (
+                <div className="toolbar">
+                  <button className="btn-primary" onClick={() => elegirExcel("risk")}>
+                    ⬆ Subir Risk
                   </button>
-                )}
-              </div>
+                  <button className="btn-secondary" onClick={() => elegirExcel("premium")}>
+                    ⬆ Subir Premium
+                  </button>
+                  {!importado && (
+                    <button className="btn-secondary" onClick={abrirImport}>
+                      ⤓ Importar de SharePoint
+                    </button>
+                  )}
+                </div>
+              )}
               <div className="empty">
                 {!sel
                   ? "Este binder no tiene BDX todavía. Impórtalo de SharePoint o sube el Excel."
@@ -623,12 +632,18 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
               onQuitarFiltros={() => setSelMeses(new Set())}
               acciones={
                 <>
-                  <button className="btn-primary btn-sm" onClick={() => elegirExcel("risk")}>
-                    ⬆ Subir Risk
-                  </button>
-                  <button className="btn-secondary btn-sm" onClick={() => elegirExcel("premium")}>
-                    ⬆ Subir Premium
-                  </button>
+                  {produccionCerrada ? (
+                    <span className="hint">🔒 Producción cerrada</span>
+                  ) : (
+                    <>
+                      <button className="btn-primary btn-sm" onClick={() => elegirExcel("risk")}>
+                        ⬆ Subir Risk
+                      </button>
+                      <button className="btn-secondary btn-sm" onClick={() => elegirExcel("premium")}>
+                        ⬆ Subir Premium
+                      </button>
+                    </>
+                  )}
                   {selMeses.size > 0 && (
                     <span className="hint">
                       Filtrado por Datos:{" "}
@@ -840,7 +855,11 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
       )}
 
       {tab === "siniestros" && (
-        <div className="empty">Siniestros — pendiente de definir el contenido.</div>
+        cerradoTotal ? (
+          <div className="empty">🔒 Binder <b>Cerrado</b>: el módulo de Siniestros está bloqueado (solo consulta).</div>
+        ) : (
+          <div className="empty">Siniestros — pendiente de definir el contenido.</div>
+        )
       )}
 
       {tab === "triangulacion" && (
