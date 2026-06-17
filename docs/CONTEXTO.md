@@ -326,6 +326,25 @@ OneDrive y OneDrive deshidrata/borra los venv que tiene dentro. Los lanzadores y
 - Backend:  `cd backend` · `& "$env:USERPROFILE\.mayrit\venv\Scripts\uvicorn.exe" app.main:app --reload`  → http://localhost:8000
 - Frontend: `cd frontend` · `npm run dev`  → http://localhost:5173
 
+## Estrategia BI / reporting (decidido 2026-06-17)
+Dos capas **separadas**, no Power BI como motor de toda la app:
+- **Gráficos operativos del día a día → nativos en la app** (React, con librería ligera tipo
+  Recharts/Chart.js), alimentados por la API FastAPI. Rápidos, integrados con la lógica de negocio
+  (cálculos de PC, comisiones, primas) y sin licencias extra.
+- **Cuadro(s) de mando analíticos → Power BI**, conectado a los **datos de nuestra app**
+  (PostgreSQL de Azure, base `mayrit`). Empezar **standalone** (Power BI Desktop/Service); embeber
+  con *Power BI Embedded* dentro de una sección "Cuadros de mando" solo cuando justifique el coste
+  de la capacidad.
+
+Motivos de NO usar Power BI como motor único: es solo lectura (la app necesita escrituras/formularios/
+flujos), evita acoplar un sistema crítico a una licencia BI + Azure AD, y evita duplicar los cálculos
+en DAX (la fuente de verdad de los cálculos es la API).
+
+Para la conexión de Power BI a Postgres (cuando se haga): **rol de solo lectura dedicado** (p.ej.
+`mayrit_bi`, NUNCA `mayrit_app`/`aleaadmin`), **vistas de reporting** en la BD que entreguen los datos
+ya aplanados/calculados (desacoplar el esquema interno de los informes), abrir firewall de Azure a las
+IPs de Power BI, y para refresco automático en Power BI Service un On-premises Data Gateway.
+
 ## Decisión abierta (para más adelante)
 Hay `TLiquidaciones` (4330) y `TLiquidaciones1` (4018): decidir cuál es la buena. Relevante en
 la Fase 3 (Liquidaciones+LPAN), no ahora.
