@@ -7,7 +7,7 @@ con los Premium BDX (rara vez coinciden con el Risk BDX) → puede ser parcial. 
 natural 'AÑO-NNNN'. Los "pendientes" (cobro/liquidación) los recalcula el backend.
 """
 import datetime as dt
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import delete, func, select, update
@@ -19,6 +19,7 @@ from ..models.maestras import (
     BdxLinea,
     Binder,
     BinderSeccion,
+    CuentaBancaria,
     Mercado,
     Recibo,
     SeccionMercado,
@@ -28,6 +29,16 @@ from ..schemas import maestras as sch
 router = APIRouter(tags=["Recibos"])
 
 D0 = Decimal(0)
+# Nº de Risk BDX al año según el intervalo del binder (para "Recibo Nº X de N").
+INTERVALO_N = {"Mensual": 12, "Trimestral": 4, "Semestral": 2, "Anual": 1}
+
+
+def _q2(x) -> Decimal:
+    return Decimal(x).quantize(Decimal("0.01"), ROUND_HALF_UP)
+
+
+def _q4(x):
+    return None if x is None else Decimal(x).quantize(Decimal("0.0001"), ROUND_HALF_UP)
 
 
 def _siguiente_numero(db: Session, anio: int) -> str:
@@ -84,6 +95,38 @@ def _yoa_int(binder: Binder) -> int | None:
     return int(binder.yoa) if binder.yoa and str(binder.yoa).isdigit() else None
 
 
+def _cuenta_binder(db: Session, binder: Binder) -> str | None:
+    if not binder.cuenta_bancaria_id:
+        return None
+    c = db.get(CuentaBancaria, binder.cuenta_bancaria_id)
+    return c.nombre if c else None
+
+
+def _ramos_binder(db: Session, binder_id: int) -> str | None:
+    ramos = db.scalars(
+        select(BinderSeccion.ramo).where(BinderSeccion.binder_id == binder_id).distinct()
+    ).all()
+    ramos = [r for r in ramos if r]
+    return ", ".join(sorted(set(ramos))) if ramos else None
+
+
+def _pos_bdx_anual(binder: Binder, periodo: str) -> tuple[int | None, str | None]:
+    """'Recibo Nº X de N' = posición de este Risk BDX en el año según el intervalo del binder."""
+    mes = int(periodo.split("-")[1])
+    n = INTERVALO_N.get(binder.risk_bdx_intervalo or "")
+    if n == 12:
+        x = mes
+    elif n == 4:
+        x = (mes - 1) // 3 + 1
+    elif n == 2:
+        x = (mes - 1) // 6 + 1
+    elif n == 1:
+        x = 1
+    else:
+        x, n = mes, None  # intervalo desconocido: usa el mes, total sin fijar
+    return x, (str(n) if n else None)
+
+
 def _recompute(r: Recibo) -> None:
     """Recalcula los 'pendientes' a partir de los importes base."""
     r.comision_pendiente_cobro = (r.comision_retenida or D0) - (r.comision_retenida_cobrada or D0)
@@ -134,8 +177,8 @@ def obtener(recibo_id: int, db: Session = Depends(get_db)):
 
 
 # ───────────────────────── Generar desde un Risk BDX ─────────────────────────
-def _calcular(db: Session, binder: Binder, periodo: str):
-    """Valida y devuelve (lineas, comision_retenida, honorarios) del Risk BDX. 409/400 si procede."""
+def _validar(db: Session, binder: Binder, periodo: str):
+    """Valida y devuelve las líneas del Risk BDX del periodo. Aborta 409/400 si procede."""
     _rango_mes(periodo)  # valida el formato
     existe = db.scalar(
         select(Recibo).where(Recibo.binder_id == binder.id, Recibo.periodo == periodo)
@@ -148,28 +191,77 @@ def _calcular(db: Session, binder: Binder, periodo: str):
     lineas = _lineas_risk_periodo(db, binder.id, periodo)
     if not lineas:
         raise HTTPException(status_code=400, detail=f"No hay líneas Risk en el periodo {periodo}.")
-    comision = sum((l.brokerage_amount or D0) for l in lineas)
-    honorarios = sum((l.fees or D0) for l in lineas)
-    return lineas, comision, honorarios
+    return lineas
 
 
-def _campos_emision(db: Session, binder: Binder, periodo: str, comision, honorarios, fecha: dt.date) -> dict:
-    """Campos precalculados de un recibo emitido desde un Risk BDX (comunes a preview y generar)."""
+def _campos_emision(db: Session, binder: Binder, periodo: str, lineas, fecha: dt.date) -> dict:
+    """Auto-relleno COMPLETO del recibo a partir de las líneas del Risk BDX (our line).
+    Pagador = Agencia de Suscripción → Prima Adeudada = Prima Total − Comisión Cedida."""
+    def S(attr) -> Decimal:
+        return sum((getattr(l, attr) or D0) for l in lineas)
+
+    prima_neta = _q2(S("total_gwp_our_line"))       # Prima Neta Bordereau (our line, sin impuestos)
+    impuestos = _q2(S("total_taxes_levies"))
+    prima_bruta = _q2(prima_neta + impuestos)        # Prima Total Bordereau
+    cedida = _q2(S("commission_coverholder_amount")) # comisión a la agencia (coverholder)
+    retenida = _q2(S("brokerage_amount"))            # comisión de Mayrit
+    honorarios = _q2(S("fees"))
+    deduccion = _q2(cedida + retenida + honorarios)
+    gwp100 = _q2(S("gross_written_premium"))         # GWP al 100% (para la participación)
+    adeudada = _q2(prima_bruta - cedida)             # pagador = Agencia
+    liquidar = _q2(adeudada - retenida)
+
+    def pct(x):
+        return _q4(x / prima_neta * 100) if prima_neta else None
+
+    ini, fin = _rango_mes(periodo)
     mercados = _mercados_binder(db, binder.id)
+    pos, total = _pos_bdx_anual(binder, periodo)
+
     return dict(
         binder_id=binder.id,
         periodo=periodo,
         anio=fecha.year,
         estado="Emitido",
+        # Contexto
+        numero_poliza=None,                           # bordereau: varias pólizas
+        referencia=binder.umr or binder.agreement_number,
         nombre_mercado=mercados,
         mercado=mercados,
-        moneda=binder.moneda or "EUR",
-        yoa=_yoa_int(binder),
+        corredor=(binder.productor.nombre if binder.productor else None),
+        ramo=_ramos_binder(db, binder.id),
+        produccion=None,
         fecha_efecto=binder.fecha_efecto,
         fecha_vencimiento=binder.fecha_vencimiento,
-        comision_retenida=comision,
-        comision_pendiente_cobro=comision,
+        yoa=_yoa_int(binder),
+        pago="Fraccionado" if (total and total != "1") else "Único",
+        moneda=binder.moneda or "EUR",
+        prima_neta_poliza=prima_neta,
+        participacion=(_q4(prima_neta / gwp100 * 100) if gwp100 else None),
+        recibo_num=pos,
+        recibos_totales=total,
+        # Importe del recibo + impuestos
+        fecha_efecto_recibo=ini,
+        fecha_vcto_recibo=fin - dt.timedelta(days=1),
+        prima_neta_recibo=prima_neta,
+        impuestos_porc=pct(impuestos),
+        impuestos_recibo=impuestos,
+        prima_bruta_recibo=prima_bruta,
+        deduccion_total_porc=pct(deduccion),
+        deduccion_total=deduccion,
         honorarios=honorarios,
+        # Comisiones
+        comision_cedida_porc=pct(cedida),
+        comision_cedida=cedida,
+        comision_retenida_porc=pct(retenida),
+        comision_retenida=retenida,
+        pagador="Agencia de Suscripción",
+        # Cobro (a 0 al emitir; llega con los Premium BDX)
+        prima_adeudada=adeudada,
+        # Liquidación a la Cía
+        liquidar=liquidar,
+        # Contable
+        cuenta=_cuenta_binder(db, binder),
         fecha_contable=fecha,
     )
 
@@ -180,9 +272,9 @@ def preview(binder_id: int, periodo: str, db: Session = Depends(get_db)):
     binder = db.get(Binder, binder_id)
     if binder is None:
         raise HTTPException(status_code=404, detail=f"Binder {binder_id} no encontrado")
-    lineas, comision, honorarios = _calcular(db, binder, periodo)
+    lineas = _validar(db, binder, periodo)
     fecha = dt.date.today()
-    campos = _campos_emision(db, binder, periodo, comision, honorarios, fecha)
+    campos = _campos_emision(db, binder, periodo, lineas, fecha)
     return sch.ReciboPreview(
         numero=_siguiente_numero(db, fecha.year),
         binder_umr=binder.umr or binder.agreement_number,
@@ -198,12 +290,12 @@ def generar(binder_id: int, payload: sch.ReciboGenerar, db: Session = Depends(ge
         raise HTTPException(status_code=404, detail=f"Binder {binder_id} no encontrado")
 
     periodo = payload.periodo
-    lineas, comision, honorarios = _calcular(db, binder, periodo)
+    lineas = _validar(db, binder, periodo)
     overrides = payload.model_dump(exclude_unset=True, exclude={"periodo"})
     fecha = overrides.get("fecha_contable") or dt.date.today()
 
-    campos = _campos_emision(db, binder, periodo, comision, honorarios, fecha)
-    campos.update(overrides)  # lo editado en el formulario prevalece (salvo la comisión recalculada)
+    campos = _campos_emision(db, binder, periodo, lineas, fecha)
+    campos.update(overrides)  # lo editado en el formulario prevalece
     recibo = Recibo(numero=_siguiente_numero(db, campos["anio"]), **campos)
     _recompute(recibo)
     db.add(recibo)

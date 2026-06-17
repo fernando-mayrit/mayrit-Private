@@ -368,6 +368,17 @@ La **BD más importante**. Flujo: subir/importar un Risk BDX → **generar su re
   importe/contraparte/fecha/estado/notas; la base la recalcula el servidor). Pestaña **Recibos**
   dentro del binder (entre Cálculos y Siniestros) con la tabla filtrada por ese UMR. Menú lateral con
   bloques separados (Negocio/Facturación/Configuración).
+- **AUTO-RELLENO COMPLETO desde el Risk BDX (17/06):** al generar, el recibo se cumplimenta entero
+  agregando las líneas del periodo (`_campos_emision` en routers/recibos.py), **sobre our line**:
+  `prima_neta_recibo`=Σ total_gwp_our_line · `impuestos_recibo`=Σ total_taxes_levies ·
+  `prima_bruta_recibo`=neta+impuestos · `comision_cedida`=Σ commission_coverholder_amount ·
+  `comision_retenida`=Σ brokerage_amount · `honorarios`=Σ fees · `deduccion_total`=cedida+retenida+hon
+  · los `%` = importe/prima_neta · **Pagador=Agencia de Suscripción** → `prima_adeudada`=prima_bruta−cedida
+  · `liquidar`=adeudada−retenida · `participacion`=our_line/100% · `recibo_num`/`recibos_totales`="X de N"
+  = nº de Risk BDX del año según `risk_bdx_intervalo` (Mensual→12, Trimestral→4, Semestral→2, Anual→1)
+  · `cuenta`=cuenta bancaria del binder · `corredor`=coverholder · `ramo`=secciones · fechas del
+  recibo = mes del periodo · cobrado/liquidado/traspasado=0 (llegan con los Premium BDX). El formulario
+  de emisión sale ya entero; se puede ajustar antes de «Emitir recibo». Verificado e2e (binder 12/2019-03).
 - **Modal estilo Access (`ReciboModal.tsx`):** emisión y edición usan el MISMO modal ancho que replica
   el de Access — columna izquierda (nº, recibo X de Y, fechas, prima neta/impuestos/prima total
   bordereau, deducción, comisión cedida/retenida, honorarios, pagador, cuenta + desplegable "Más datos")
