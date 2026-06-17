@@ -381,6 +381,9 @@ td.num, th.num { text-align: right; }
 .recibo-mas summary { cursor: pointer; color: var(--gris-medio); font-size: 13px; padding: 4px 0; }
 @media (max-width: 760px) { .recibo-modal { grid-template-columns: 1fr; } }
 
+.filtro-inline { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; color: var(--gris-medio); }
+.filtro-inline select { padding: 6px 8px; }
+
 /* Diálogo de confirmación contundente (acciones sensibles) */
 .panel-confirm { max-width: 460px; width: 92vw; border-top: 6px solid var(--rojo); }
 .confirm-head { display: flex; align-items: center; gap: 10px; padding: 16px 20px 6px; }

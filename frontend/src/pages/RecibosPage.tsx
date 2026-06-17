@@ -4,44 +4,100 @@ import type { Recibo, ReciboUpdate } from "../types";
 import PageHeader from "../components/PageHeader";
 import ReciboModal from "../components/ReciboModal";
 import ConfirmDialog from "../components/ConfirmDialog";
-import { fmtMiles, fmtFechaES, estadoCobro } from "../format";
+import TablaDatos, { type Col } from "../components/TablaDatos";
+import { fmtMiles, estadoCobro } from "../format";
 
 const eur = (v: unknown) => `${fmtMiles(v)} €`;
 const num = (v: unknown) => Number(v) || 0;
-// 'YYYY-MM' → 'MM/YYYY'
-const periodoFmt = (p: string) => {
+const periodoFmt = (p: string | null | undefined) => {
+  if (!p) return "";
   const [y, m] = p.split("-");
   return m && y ? `${m}/${y}` : p;
 };
 
+// Catálogo de TODAS las columnas (clic derecho en la cabecera para elegir).
+const CATALOGO: Col<Recibo>[] = [
+  { key: "numero", label: "Número", tipo: "text" },
+  { key: "binder_umr", label: "Binder (UMR)", tipo: "text" },
+  { key: "periodo", label: "Risk BDX", tipo: "text", calc: (r) => periodoFmt(r.periodo) },
+  { key: "anio", label: "Año", tipo: "int" },
+  { key: "yoa", label: "YOA", tipo: "int" },
+  {
+    key: "estado_cobro", label: "Cobro", tipo: "text",
+    calc: (r) => estadoCobro(r.comision_retenida, r.comision_retenida_cobrada, r.estado).label,
+    render: (r) => {
+      const ec = estadoCobro(r.comision_retenida, r.comision_retenida_cobrada, r.estado);
+      return <span className={`pill pill-${ec.clase}`}>{ec.label}</span>;
+    },
+  },
+  { key: "estado", label: "Estado", tipo: "text" },
+  { key: "nombre_mercado", label: "Mercado", tipo: "text" },
+  { key: "mercado", label: "Mercado (alias)", tipo: "text" },
+  { key: "numero_poliza", label: "Nº Póliza / UMR", tipo: "text" },
+  { key: "asegurado", label: "Asegurado", tipo: "text" },
+  { key: "corredor", label: "Corredor", tipo: "text" },
+  { key: "ramo", label: "Ramo", tipo: "text" },
+  { key: "tipo_poliza", label: "Tipo", tipo: "text" },
+  { key: "pago", label: "Pago", tipo: "text" },
+  { key: "moneda", label: "Moneda", tipo: "text" },
+  { key: "recibo_num", label: "Recibo nº", tipo: "int" },
+  { key: "recibos_totales", label: "de", tipo: "text" },
+  { key: "fecha_efecto_recibo", label: "F. Efecto", tipo: "date" },
+  { key: "fecha_vcto_recibo", label: "F. Vto.", tipo: "date" },
+  { key: "fecha_contable", label: "F. Contable", tipo: "date" },
+  { key: "prima_neta_recibo", label: "Prima Neta", tipo: "num" },
+  { key: "impuestos_recibo", label: "Impuestos", tipo: "num" },
+  { key: "prima_bruta_recibo", label: "Prima Total", tipo: "num" },
+  { key: "deduccion_total", label: "Deducción", tipo: "num" },
+  { key: "comision_cedida_porc", label: "Cedida %", tipo: "pct" },
+  { key: "comision_cedida", label: "Cedida", tipo: "num" },
+  { key: "comision_retenida_porc", label: "Retenida %", tipo: "pct" },
+  { key: "comision_retenida", label: "Comisión", tipo: "num" },
+  { key: "comision_retenida_cobrada", label: "Cobrada", tipo: "num" },
+  { key: "comision_pendiente_cobro", label: "Pdte. Cobro", tipo: "num" },
+  { key: "comision_retenida_traspasada", label: "Traspasada", tipo: "num" },
+  { key: "prima_adeudada", label: "Prima Adeudada", tipo: "num" },
+  { key: "prima_cobrada", label: "Prima Cobrada", tipo: "num" },
+  { key: "liquidar", label: "A Liquidar", tipo: "num" },
+  { key: "liquidar_cobrado", label: "A Liq. Cobrado", tipo: "num" },
+  { key: "liquidar_liquidado", label: "Liquidado", tipo: "num" },
+  { key: "honorarios", label: "Honorarios", tipo: "num" },
+];
+const DEFAULT_KEYS = [
+  "numero", "binder_umr", "periodo", "nombre_mercado", "comision_retenida",
+  "comision_retenida_cobrada", "comision_pendiente_cobro", "estado_cobro", "fecha_contable",
+];
+
 export default function RecibosPage() {
   const [items, setItems] = useState<Recibo[]>([]);
-  const [q, setQ] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Filtros: Año (servidor, por defecto el actual), YOA / UMR / búsqueda (cliente).
+  const [anio, setAnio] = useState<string>(String(new Date().getFullYear()));
+  const [yoa, setYoa] = useState("");
+  const [umr, setUmr] = useState("");
+  const [q, setQ] = useState("");
 
   const [sel, setSel] = useState<Recibo | null>(null);
   const [saving, setSaving] = useState(false);
   const [confBorrar, setConfBorrar] = useState(false);
 
-  async function cargar(search = q) {
+  async function cargar() {
     setLoading(true);
     setError(null);
     try {
-      setItems(await recibosApi.listar(search ? { q: search } : undefined));
+      setItems(await recibosApi.listar(anio === "todos" ? undefined : { anio: Number(anio) }));
     } catch (e) {
       setError((e as Error).message);
     } finally {
       setLoading(false);
     }
   }
-
-  // Búsqueda en vivo (pequeño retardo).
   useEffect(() => {
-    const t = setTimeout(() => cargar(q), 250);
-    return () => clearTimeout(t);
+    cargar();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [q]);
+  }, [anio]);
 
   async function guardar(payload: ReciboUpdate) {
     if (!sel) return;
@@ -57,7 +113,6 @@ export default function RecibosPage() {
       setSaving(false);
     }
   }
-
   async function borrar() {
     if (!sel) return;
     setSaving(true);
@@ -73,21 +128,31 @@ export default function RecibosPage() {
     }
   }
 
-  const totalComision = items.reduce((a, r) => a + num(r.comision_retenida), 0);
-  const totalCobrada = items.reduce((a, r) => a + num(r.comision_retenida_cobrada), 0);
+  const filtrados = items.filter(
+    (r) =>
+      (!yoa || String(r.yoa ?? "") === yoa.trim()) &&
+      (!umr || (r.binder_umr ?? "").toLowerCase().includes(umr.toLowerCase())) &&
+      (!q || `${r.numero} ${r.nombre_mercado ?? ""} ${r.asegurado ?? ""}`.toLowerCase().includes(q.toLowerCase()))
+  );
+  const totalComision = filtrados.reduce((a, r) => a + num(r.comision_retenida), 0);
+  const totalCobrada = filtrados.reduce((a, r) => a + num(r.comision_retenida_cobrada), 0);
+  const anios = Array.from({ length: new Date().getFullYear() - 2016 }, (_, i) => new Date().getFullYear() - i);
 
   return (
     <div className="container">
       <PageHeader emoji="🧾" title="Recibos" />
-      <div className="toolbar">
-        <input
-          type="search"
-          placeholder="Buscar por número, mercado o asegurado…"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-        />
+      <div className="toolbar" style={{ flexWrap: "wrap", gap: 10 }}>
+        <label className="filtro-inline">Año
+          <select value={anio} onChange={(e) => setAnio(e.target.value)}>
+            <option value="todos">Todos</option>
+            {anios.map((y) => <option key={y} value={y}>{y}</option>)}
+          </select>
+        </label>
+        <input type="text" placeholder="YOA" style={{ width: 80 }} value={yoa} onChange={(e) => setYoa(e.target.value)} />
+        <input type="search" placeholder="UMR…" style={{ width: 160 }} value={umr} onChange={(e) => setUmr(e.target.value)} />
+        <input type="search" placeholder="Buscar nº / mercado / asegurado…" value={q} onChange={(e) => setQ(e.target.value)} />
         <span className="hint">
-          {items.length} recibo(s) · Comisión: <b>{eur(totalComision)}</b> · Cobrada: <b>{eur(totalCobrada)}</b>
+          Comisión: <b>{eur(totalComision)}</b> · Cobrada: <b>{eur(totalCobrada)}</b>
         </span>
       </div>
 
@@ -96,49 +161,15 @@ export default function RecibosPage() {
       {loading ? (
         <div className="loading">Cargando…</div>
       ) : items.length === 0 ? (
-        <div className="empty">
-          No hay recibos. Se emiten desde la ficha del binder (pestaña Datos → «Generar recibo» de un Risk BDX).
-        </div>
+        <div className="empty">No hay recibos para {anio === "todos" ? "ningún año" : anio}. Cambia el filtro de Año.</div>
       ) : (
-        <table>
-          <thead>
-            <tr>
-              <th>Número</th>
-              <th>Binder (UMR)</th>
-              <th>Risk BDX</th>
-              <th>Mercado</th>
-              <th className="num">Comisión</th>
-              <th className="num">Cobrada</th>
-              <th className="num">Pendiente</th>
-              <th>Cobro</th>
-              <th>Contable</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((r) => {
-              const ec = estadoCobro(r.comision_retenida, r.comision_retenida_cobrada, r.estado);
-              return (
-                <tr key={r.id}>
-                  <td><b>{r.numero}</b></td>
-                  <td>{r.binder_umr ?? `Binder ${r.binder_id}`}</td>
-                  <td>{periodoFmt(r.periodo)}</td>
-                  <td>{r.nombre_mercado ?? "—"}</td>
-                  <td className="num">{eur(r.comision_retenida)}</td>
-                  <td className="num">{eur(r.comision_retenida_cobrada)}</td>
-                  <td className="num">{eur(r.comision_pendiente_cobro)}</td>
-                  <td><span className={`pill pill-${ec.clase}`}>{ec.label}</span></td>
-                  <td>{fmtFechaES(r.fecha_contable)}</td>
-                  <td className="acciones">
-                    <button className="btn-link" onClick={() => setSel(r)}>
-                      Abrir
-                    </button>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+        <TablaDatos
+          filas={filtrados}
+          columnas={CATALOGO}
+          defaultKeys={DEFAULT_KEYS}
+          storageKey="mayrit.recibos.tabla.v1"
+          onRowClick={(r) => setSel(r)}
+        />
       )}
 
       {sel && (
@@ -153,7 +184,6 @@ export default function RecibosPage() {
           onDelete={() => setConfBorrar(true)}
         />
       )}
-
       {confBorrar && sel && (
         <ConfirmDialog
           titulo="BORRAR recibo"
