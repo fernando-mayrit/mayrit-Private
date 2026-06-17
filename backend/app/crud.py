@@ -1,5 +1,5 @@
 """Operaciones CRUD genéricas reutilizables por cualquier modelo ORM."""
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 
@@ -8,7 +8,9 @@ def list_items(db: Session, model, *, q=None, search_cols=None, limit=100, offse
     if q and search_cols:
         like = f"%{q}%"
         stmt = stmt.where(or_(*[col.ilike(like) for col in search_cols]))
-    stmt = stmt.order_by(model.id).limit(limit).offset(offset)
+    # Orden alfabético por nombre (sin distinguir mayúsculas) si el modelo lo tiene; si no, por id.
+    orden = func.lower(model.nombre) if hasattr(model, "nombre") else model.id
+    stmt = stmt.order_by(orden).limit(limit).offset(offset)
     return list(db.scalars(stmt))
 
 
