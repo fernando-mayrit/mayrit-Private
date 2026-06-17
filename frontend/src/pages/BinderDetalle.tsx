@@ -35,7 +35,7 @@ function imp(v: string | number | null | undefined): string {
 }
 
 export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBack: () => void }) {
-  const [tab, setTab] = useState<"datos" | "bloqueo" | "bdx" | "calculos" | "siniestros" | "triangulacion">("datos");
+  const [tab, setTab] = useState<"datos" | "bloqueo" | "bdx" | "calculos" | "siniestros" | "triangulacion">("bdx");
 
   // ── BDX (uno por binder) ──
   const [bdxs, setBdxs] = useState<Bdx[]>([]);
