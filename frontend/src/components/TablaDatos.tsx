@@ -94,7 +94,10 @@ export default function TablaDatos<T extends { id: number }>({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resetSignal]);
 
-  useEffect(() => { try { localStorage.setItem(COLS_KEY, JSON.stringify(visibles)); } catch { /* */ } }, [visibles, COLS_KEY]);
+  // Persistir SOLO cuando cambian las columnas elegidas (no al cambiar de storageKey/versión,
+  // que si no copiaría las columnas viejas a la clave nueva e impediría aplicar los nuevos defaults).
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { try { localStorage.setItem(COLS_KEY, JSON.stringify(visibles)); } catch { /* */ } }, [visibles]);
   useEffect(() => { try { localStorage.setItem(SORT_KEY, JSON.stringify(sort)); } catch { /* */ } }, [sort, SORT_KEY]);
 
   useEffect(() => {

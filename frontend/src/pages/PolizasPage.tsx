@@ -137,7 +137,7 @@ export default function PolizasPage() {
           filas={filtrados}
           columnas={columnas}
           defaultKeys={DEFAULT_KEYS}
-          storageKey="mayrit.polizas.tabla.v7"
+          storageKey="mayrit.polizas.tabla.v8"
           defaultSort={{ key: "fecha_efecto", dir: -1 }}
           rowClass={(p) =>
             p.estado === "En Vigor"
