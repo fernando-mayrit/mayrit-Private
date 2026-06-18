@@ -643,3 +643,18 @@ class Recibo(Base):
     )
 
     binder: Mapped["Binder"] = relationship()
+
+
+class CierreContable(Base):
+    """Cierre contable mensual: cuando se envían los recibos de un mes a contabilidad,
+    se cierra ese (año, mes) y sus recibos (por FechaContable) quedan 'Contabilizado'."""
+
+    __tablename__ = "cierres_contables"
+    __table_args__ = (UniqueConstraint("anio", "mes", name="uq_cierre_anio_mes"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    anio: Mapped[int] = mapped_column(Integer, index=True)
+    mes: Mapped[int] = mapped_column(Integer)              # 1-12
+    fecha: Mapped[dt.date] = mapped_column(Date)           # fecha en que se cerró
+    usuario: Mapped[str | None] = mapped_column(String(120))
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

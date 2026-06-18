@@ -6,6 +6,7 @@ import TomadoresPage from "./pages/TomadoresPage";
 import BindersPage from "./pages/BindersPage";
 import PolizasPage from "./pages/PolizasPage";
 import RecibosPage from "./pages/RecibosPage";
+import CierreContablePage from "./pages/CierreContablePage";
 import RamosPage from "./pages/RamosPage";
 import CuentasBancariasPage from "./pages/CuentasBancariasPage";
 import UsuariosPage from "./pages/UsuariosPage";
@@ -30,6 +31,7 @@ const EMOJI: Record<string, string> = {
   ramos: "🏷️",
   cuentas: "🏧",
   usuarios: "👤",
+  cierre: "🔒",
 };
 
 type Page =
@@ -44,7 +46,8 @@ type Page =
   | "comisiones"
   | "ramos"
   | "cuentas"
-  | "usuarios";
+  | "usuarios"
+  | "cierre";
 
 // Barra superior: las Maestras (las partes).
 const MAESTRAS: { id: Page; label: string }[] = [
@@ -64,6 +67,7 @@ const NEGOCIO: { id: Page; label: string }[] = [
 // Menú lateral: Facturación / Contabilidad (módulo propio, diferenciado del Negocio).
 const FACTURACION: { id: Page; label: string }[] = [
   { id: "recibos", label: "Recibos" },
+  { id: "cierre", label: "Cierre Contable" },
 ];
 
 // Menú lateral: Configuración (catálogos compartidos).
@@ -207,6 +211,7 @@ export default function App() {
           {page === "tomadores" && <TomadoresPage />}
           {page === "binders" && <BindersPage />}
           {page === "recibos" && <RecibosPage />}
+          {page === "cierre" && <CierreContablePage />}
           {page === "polizas" && <PolizasPage />}
           {page === "consultoria" && <EnConstruccion titulo="Consultoría (Fees)" />}
           {page === "comisiones" && <EnConstruccion titulo="Comisiones" />}

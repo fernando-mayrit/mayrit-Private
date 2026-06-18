@@ -21,6 +21,43 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+// Exporta a Excel (.xlsx) un conjunto de cabeceras + filas (lo genera el backend con estilo).
+export async function exportarXlsx(payload: {
+  nombre: string;
+  hoja: string;
+  headers: string[];
+  filas: (string | number | null)[][];
+}): Promise<Blob> {
+  const res = await fetch(`${BASE}/export/xlsx`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error(`Error al exportar (${res.status})`);
+  return res.blob();
+}
+
+// ── Cierre contable mensual ──
+export interface CierreMes {
+  mes: number;
+  nombre: string;
+  recibos: number;
+  acumulado: number;
+  cerrado: boolean;
+  fecha: string | null; // fecha de envío a contabilidad
+}
+export const cierresApi = {
+  resumen: (anio: number) => request<{ anio: number; meses: CierreMes[] }>(`/cierres/resumen?anio=${anio}`),
+  cerrar: (anio: number, mes: number, fecha: string, usuario?: string) =>
+    request(`/cierres`, { method: "POST", body: JSON.stringify({ anio, mes, fecha, usuario }) }),
+  reabrir: (anio: number, mes: number) => request<void>(`/cierres/${anio}/${mes}`, { method: "DELETE" }),
+  excel: async (anio: number, mes: number): Promise<Blob> => {
+    const res = await fetch(`${BASE}/cierres/${anio}/${mes}/excel`);
+    if (!res.ok) throw new Error(`Error al generar el Excel (${res.status})`);
+    return res.blob();
+  },
+};
+
 // Consulta de un código postal (datos compartidos con Alea): localidades + provincia.
 export interface CpResultado {
   localidad: string;

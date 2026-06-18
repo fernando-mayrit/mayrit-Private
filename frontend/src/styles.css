@@ -554,6 +554,9 @@ tr.fila-inactiva td { opacity: 0.55; }
 .btn-corregir { background: #f5a524; color: #fff; border-color: #f5a524; font-weight: 600; }
 .btn-corregir:hover { background: #e0921a; border-color: #e0921a; }
 
+/* Selector de columnas para exportar a Excel */
+.export-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 16px; }
+
 /* Interruptor on/off estilo switch (p. ej. "Gestión de cobros/pagos") */
 .switch {
   display: inline-flex; align-items: center; gap: 9px; padding: 4px 8px;

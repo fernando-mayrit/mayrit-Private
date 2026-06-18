@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
-import { recibosApi } from "../api";
+import { recibosApi, exportarXlsx } from "../api";
 import type { Recibo, ReciboUpdate } from "../types";
 import PageHeader from "../components/PageHeader";
 import ReciboModal from "../components/ReciboModal";
 import ConfirmDialog from "../components/ConfirmDialog";
+import FormPanel from "../components/FormPanel";
 import TablaDatos, { type Col } from "../components/TablaDatos";
-import { fmtMiles, estadoCobro } from "../format";
+import { fmtMiles, fmtFechaES, estadoCobro } from "../format";
 
 const eur = (v: unknown) => `${fmtMiles(v)} €`;
 const num = (v: unknown) => Number(v) || 0;
@@ -89,6 +90,10 @@ export default function RecibosPage() {
   >(null);
   const [vistaEstados, setVistaEstados] = useState(false); // false = importes, true = pastillas de color
   const [gestionMode, setGestionMode] = useState(false);   // muestra acciones por línea y filtra a no-binder
+  // Exportar a Excel: selector de columnas (por defecto, las visibles en la tabla).
+  const [exportando, setExportando] = useState(false);
+  const [expCols, setExpCols] = useState<Set<string>>(new Set());
+  const [expSaving, setExpSaving] = useState(false);
   const [saving, setSaving] = useState(false);
   const [confBorrar, setConfBorrar] = useState(false);
   const [resetSignal, setResetSignal] = useState(0);
@@ -168,6 +173,54 @@ export default function RecibosPage() {
       : `Vas a ${lbl.toLowerCase()} el recibo ${r.numero} por ${eur(importe[accion])}.`;
     setGst({ r, accion, deshacer, titulo, mensaje });
   }
+  // Abre el selector de columnas, marcando por defecto las que se ven ahora en la tabla.
+  function abrirExport() {
+    let visibles: string[] = DEFAULT_KEYS;
+    try {
+      const raw = localStorage.getItem("mayrit.recibos.tabla.v8.cols");
+      if (raw) {
+        const arr = (JSON.parse(raw) as string[]).filter((k) => CATALOGO.some((c) => c.key === k));
+        if (arr.length) visibles = arr;
+      }
+    } catch { /* ignora */ }
+    setExpCols(new Set(visibles));
+    setExportando(true);
+  }
+  // Valor de una celda para Excel: números como número, fechas como dd/mm/aaaa, resto texto.
+  function valorExport(r: Recibo, col: Col<Recibo>): string | number | null {
+    const raw = col.calc ? col.calc(r) : (r as unknown as Record<string, unknown>)[col.key];
+    if (raw == null || raw === "") return null;
+    if (col.tipo === "num" || col.tipo === "pct" || col.tipo === "int") return Number(raw) || 0;
+    if (col.tipo === "date") return fmtFechaES(raw);
+    if (col.tipo === "bool") return raw ? "Sí" : "No";
+    return String(raw);
+  }
+  async function descargarExcel() {
+    const cols = CATALOGO.filter((c) => expCols.has(c.key)); // en el orden del catálogo
+    if (!cols.length) return setError("Selecciona al menos una columna.");
+    setExpSaving(true);
+    setError(null);
+    try {
+      const blob = await exportarXlsx({
+        nombre: `recibos_${anio}`,
+        hoja: "Recibos",
+        headers: cols.map((c) => c.label),
+        filas: filtrados.map((r) => cols.map((c) => valorExport(r, c))),
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `recibos_${anio}.xlsx`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setExportando(false);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setExpSaving(false);
+    }
+  }
+
   // Ejecuta la acción ya confirmada.
   async function gestionarConfirmado() {
     if (!gst) return;
@@ -255,17 +308,22 @@ export default function RecibosPage() {
       </div>
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "0 4px 10px 0" }}>
-        <button
-          type="button"
-          role="switch"
-          aria-checked={gestionMode}
-          className={"switch" + (gestionMode ? " on" : "")}
-          onClick={() => setGestionMode((v) => !v)}
-          title="Acciones de cobro/pago por recibo (solo recibos que no son de binder)"
-        >
-          <span className="switch-track"><span className="switch-knob" /></span>
-          <span className="switch-label">⚙️ Gestión de cobros/pagos</span>
-        </button>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={gestionMode}
+            className={"switch" + (gestionMode ? " on" : "")}
+            onClick={() => setGestionMode((v) => !v)}
+            title="Acciones de cobro/pago por recibo (solo recibos que no son de binder)"
+          >
+            <span className="switch-track"><span className="switch-knob" /></span>
+            <span className="switch-label">⚙️ Gestión de cobros/pagos</span>
+          </button>
+          <button className="btn-secondary btn-sm" title="Exportar el listado a Excel" onClick={abrirExport}>
+            ⬇️ Excel
+          </button>
+        </div>
         <label className="check-inline" style={{ fontSize: 11 }}>
           {vistaEstados ? "Ver Cantidades" : "Ver estado por colores"}
           <input type="checkbox" checked={vistaEstados} onChange={(e) => setVistaEstados(e.target.checked)} />
@@ -331,6 +389,45 @@ export default function RecibosPage() {
           onDelete={() => setConfBorrar(true)}
           onDescontabilizar={descontabilizar}
         />
+      )}
+      {exportando && (
+        <FormPanel
+          title="Exportar a Excel"
+          dirty={false}
+          saving={expSaving}
+          saveLabel={`Descargar (${filtrados.length} filas)`}
+          error={error}
+          onSave={descargarExcel}
+          onClose={() => setExportando(false)}
+        >
+          <p className="hint" style={{ marginBottom: 10 }}>
+            Marca las columnas a exportar. Se exporta el listado tal y como está filtrado.
+          </p>
+          <div style={{ display: "flex", gap: 12, marginBottom: 10 }}>
+            <button className="btn-link" onClick={() => setExpCols(new Set(CATALOGO.map((c) => c.key)))}>Todas</button>
+            <button className="btn-link" onClick={() => setExpCols(new Set())}>Ninguna</button>
+            <button className="btn-link" onClick={() => setExpCols(new Set(DEFAULT_KEYS))}>Por defecto</button>
+          </div>
+          <div className="export-cols">
+            {CATALOGO.map((c) => (
+              <label key={c.key} className="col-menu-item">
+                <input
+                  type="checkbox"
+                  checked={expCols.has(c.key)}
+                  onChange={() =>
+                    setExpCols((s) => {
+                      const nx = new Set(s);
+                      if (nx.has(c.key)) nx.delete(c.key);
+                      else nx.add(c.key);
+                      return nx;
+                    })
+                  }
+                />
+                {c.label}
+              </label>
+            ))}
+          </div>
+        </FormPanel>
       )}
       {gst && (
         <ConfirmDialog

@@ -98,6 +98,17 @@ class MercadoRead(MercadoBase):
     updated_at: dt.datetime
 
 
+# ──────────────────────────── Cierre contable ────────────────────────────
+class CierreRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    anio: int
+    mes: int
+    fecha: dt.date
+    usuario: str | None = None
+    created_at: dt.datetime
+
+
 # ──────────────────────────────── Usuario ────────────────────────────────
 class UsuarioBase(BaseModel):
     nombre: str

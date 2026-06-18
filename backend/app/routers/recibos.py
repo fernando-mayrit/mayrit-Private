@@ -8,12 +8,15 @@ natural 'AÑO-NNNN'. Los "pendientes" (cobro/liquidación) los recalcula el back
 """
 import calendar
 import datetime as dt
+import io
 import os
 import re
 from decimal import Decimal, ROUND_HALF_UP
 
 import openpyxl
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
+from openpyxl.styles import Font, PatternFill
+from openpyxl.utils import get_column_letter
 from pydantic import BaseModel
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
@@ -26,6 +29,7 @@ from ..models.maestras import (
     BdxLinea,
     Binder,
     BinderSeccion,
+    CierreContable,
     CuentaBancaria,
     Mercado,
     Poliza,
@@ -48,6 +52,20 @@ def _q2(x) -> Decimal:
 
 def _q4(x):
     return None if x is None else Decimal(x).quantize(Decimal("0.0001"), ROUND_HALF_UP)
+
+
+def _exigir_mes_abierto(db: Session, fecha: dt.date | None) -> None:
+    """Bloquea crear recibos cuya FechaContable caiga en un mes contable ya cerrado."""
+    if not fecha:
+        return
+    cerrado = db.scalar(
+        select(CierreContable).where(CierreContable.anio == fecha.year, CierreContable.mes == fecha.month)
+    )
+    if cerrado is not None:
+        raise HTTPException(
+            status_code=409,
+            detail=f"El mes contable {fecha.month:02d}/{fecha.year} está cerrado: no se pueden generar recibos en ese periodo.",
+        )
 
 
 def _max_numero(db: Session, anio: int) -> int:
@@ -364,6 +382,7 @@ def generar(binder_id: int, payload: sch.ReciboGenerar, db: Session = Depends(ge
     lineas = _validar(db, binder, periodo)
     overrides = payload.model_dump(exclude_unset=True, exclude={"periodo"})
     fecha = overrides.get("fecha_contable") or dt.date.today()
+    _exigir_mes_abierto(db, fecha)  # no emitir en un mes contable cerrado
 
     campos = _campos_emision(db, binder, periodo, lineas, fecha)
     campos.update(overrides)  # lo editado en el formulario prevalece
@@ -527,6 +546,10 @@ def _generar_recibos(db: Session, poliza: Poliza, n: int) -> None:
 
     def fecha_plazo(idx: int) -> dt.date:
         return _sumar_meses(poliza.fecha_efecto, idx * step)
+
+    # Ningún plazo puede caer en un mes contable cerrado.
+    for i in range(n):
+        _exigir_mes_abierto(db, fecha_plazo(i))
 
     for mercado_nom, share in companias:
         prima_comp = _q2(prima_neta * share)            # prima de esta compañía (su parte del total)
@@ -1130,3 +1153,57 @@ def match_excel(binder_id: int, payload: MatchExcelReq, db: Session = Depends(ge
         "no_encontrada": sum(1 for f in filas if f.estado == "no_encontrada"),
     }
     return {"periodo": payload.periodo, "filas": filas, "matched_ids": matched_ids, "resumen": resumen}
+
+
+# ──────────────────────── Exportación genérica a Excel (.xlsx) ────────────────────────
+# El frontend manda ya las columnas (cabeceras) y los valores formateados/numéricos que
+# quiere exportar; aquí solo se genera el .xlsx con el estilo de la casa: Calibri 9 y
+# cabecera en gris + negrita.
+class ExportXlsx(BaseModel):
+    nombre: str = "export"
+    hoja: str = "Datos"
+    headers: list[str]
+    filas: list[list[str | float | int | None]]
+
+
+@router.post("/export/xlsx")
+def export_xlsx(payload: ExportXlsx):
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = (payload.hoja or "Datos")[:31]
+
+    head_font = Font(name="Calibri", size=9, bold=True)
+    head_fill = PatternFill("solid", fgColor="D9D9D9")  # gris claro
+    body_font = Font(name="Calibri", size=9)
+
+    ws.append(payload.headers)
+    for c in ws[1]:
+        c.font = head_font
+        c.fill = head_fill
+
+    for fila in payload.filas:
+        ws.append(fila)
+    for row in ws.iter_rows(min_row=2):
+        for c in row:
+            c.font = body_font
+
+    # Anchos de columna aproximados al contenido (acotados).
+    for i, h in enumerate(payload.headers, start=1):
+        ancho = len(str(h))
+        for fila in payload.filas:
+            v = fila[i - 1] if i - 1 < len(fila) else None
+            if v is not None:
+                ancho = max(ancho, len(str(v)))
+        ws.column_dimensions[get_column_letter(i)].width = min(max(ancho + 2, 8), 50)
+
+    ws.freeze_panes = "A2"
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    nombre = (payload.nombre or "export").replace('"', "")
+    return Response(
+        content=buf.getvalue(),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{nombre}.xlsx"'},
+    )
