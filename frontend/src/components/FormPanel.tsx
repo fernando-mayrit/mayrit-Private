@@ -1,4 +1,5 @@
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import ConfirmDialog from "./ConfirmDialog";
 
 /**
  * Panel lateral estándar para alta/edición en toda la app.
@@ -46,6 +47,7 @@ export default function FormPanel({
 }: Props) {
   const errorRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
+  const [confirmCerrar, setConfirmCerrar] = useState(false);
 
   // Al aparecer un error, llevarlo a la vista (el panel puede estar desplazado).
   useEffect(() => {
@@ -55,7 +57,7 @@ export default function FormPanel({
   // Focus-trap: el tabulador circula dentro del panel (solo el panel activo; si hay otro
   // apilado encima, escEnabled=false y este no atrapa). Evita que el foco se escape a la página.
   useEffect(() => {
-    if (!escEnabled) return;
+    if (!escEnabled || confirmCerrar) return;
     function onKey(e: KeyboardEvent) {
       if (e.key !== "Tab" || !panelRef.current) return;
       const sel =
@@ -76,10 +78,11 @@ export default function FormPanel({
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [escEnabled]);
+  }, [escEnabled, confirmCerrar]);
   function attemptClose() {
     if (saving) return;
-    if (dirty && !confirm("Hay cambios sin guardar. ¿Seguro que quieres cerrar sin guardarlos?")) {
+    if (dirty) {
+      setConfirmCerrar(true); // aviso contundente (ConfirmDialog), no el confirm() nativo
       return;
     }
     onClose();
@@ -87,14 +90,14 @@ export default function FormPanel({
 
   // Tecla Esc = intentar cerrar (con el mismo aviso si hay cambios).
   useEffect(() => {
-    if (!escEnabled) return;
+    if (!escEnabled || confirmCerrar) return;
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") attemptClose();
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dirty, saving, escEnabled]);
+  }, [dirty, saving, escEnabled, confirmCerrar]);
 
   return (
     // El overlay NO cierra al hacer clic: es intencionado.
@@ -133,6 +136,17 @@ export default function FormPanel({
           </div>
         </div>
       </div>
+
+      {confirmCerrar && (
+        <ConfirmDialog
+          titulo="Cambios sin guardar"
+          mensaje="Hay cambios sin guardar en este formulario."
+          detalle="Si sales ahora, se perderán y no se podrán recuperar."
+          confirmLabel="Salir sin guardar"
+          onConfirm={() => { setConfirmCerrar(false); onClose(); }}
+          onClose={() => setConfirmCerrar(false)}
+        />
+      )}
     </div>
   );
 }

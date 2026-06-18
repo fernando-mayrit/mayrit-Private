@@ -8,6 +8,7 @@ import FormPanel from "./FormPanel";
 import NumberInput from "./NumberInput";
 import OptionButtons from "./OptionButtons";
 import SelectConAlta from "./SelectConAlta";
+import ConfirmDialog from "./ConfirmDialog";
 import TomadorForm from "./TomadorForm";
 import ProductorForm from "./ProductorForm";
 import MercadoForm from "./MercadoForm";
@@ -81,7 +82,7 @@ function desde(p: Poliza | null): FormState {
     fecha_vencimiento: s(p?.fecha_vencimiento).slice(0, 10),
     renovacion_automatica: !!p?.renovacion_automatica,
     coaseguro: !!p?.coaseguro,
-    coaseguro_lineas: [],
+    coaseguro_lineas: (p?.coaseguro_lineas ?? []).map((l) => ({ mercado: s(l.mercado), participacion: s(l.participacion) })),
     limite: s(p?.limite),
     franquicia: s(p?.franquicia),
     capacidad: p?.capacidad != null ? String(num(s(p.capacidad)) * 100) : "100",
@@ -89,7 +90,7 @@ function desde(p: Poliza | null): FormState {
     impuestos_porc: s(p?.impuestos_porc),
     recargos: s(p?.recargos),
     comision_porc: s(p?.comision_porc),
-    comision_cedida_porc: "",
+    comision_cedida_porc: s(p?.comision_cedida_porc),
     comision_retenida_porc: "",
     notas: s(p?.notas),
   };
@@ -127,6 +128,7 @@ export default function PolizaForm({
   const [numeroAuto, setNumeroAuto] = useState(false);
   // Alta rápida apilada encima (sin cerrar la póliza).
   const [alta, setAlta] = useState<null | "tomador" | "corredor" | "mercado">(null);
+  const [confirmSinRecibos, setConfirmSinRecibos] = useState(false);
 
   useEffect(() => {
     // limit alto para traerlas todas (el endpoint pagina a 100 por defecto).
@@ -170,8 +172,9 @@ export default function PolizaForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [numeroAuto, form.fecha_efecto, poliza]);
 
-  // Modo emisión: póliza nueva + generar recibos.
-  const esEmision = !poliza && genRecibos;
+  // Modo emisión: DESACTIVADO de momento. El check "Generar recibos" no cambia el formulario
+  // ni emite (pendiente de retomar). Se conserva todo el código de emisión más abajo.
+  const esEmision = false; // antes: !poliza && genRecibos
   const listoParaEmitir = !!form.fecha_efecto && num(form.prima_neta) > 0;
 
   // Campos calculados (en gris), sobre la Prima Participación (modo ficha).
@@ -179,6 +182,8 @@ export default function PolizaForm({
   const impuestos = (primaPart * num(form.impuestos_porc)) / 100;
   const primaTotal = primaPart + impuestos + num(form.recargos);
   const comisionTotal = (primaPart * num(form.comision_porc)) / 100;
+  // Reparto: % del corredor (cedida) lo introduce el usuario; el de Mayrit (retenida) se calcula.
+  const comisionRetenidaPct = num(form.comision_porc) - num(form.comision_cedida_porc);
   const comisionTotalPct = num(form.comision_cedida_porc) + num(form.comision_retenida_porc);
   const nPlazos = PLAZOS_DE[form.pago] ?? 1; // nº de recibos a emitir según el Pago
 
@@ -207,33 +212,10 @@ export default function PolizaForm({
         : [],
     }));
 
-  // Payload de emisión (póliza + recibos).
+  // Payload de emisión: la ficha completa + el nº de plazos (derivado del Pago).
+  // El backend genera los recibos = plazos × compañías (coaseguro).
   function emitPayload(): PolizaEmitir {
-    return {
-      numero_poliza: form.numero_poliza.trim() || null,
-      asegurado: form.asegurado.trim() || null,
-      corredor: form.corredor.trim() || null,
-      ramo: form.ramo.trim() || null,
-      mercado: form.mercado.trim() || null,
-      produccion: form.produccion.trim() || null,
-      estado: form.estado.trim() || null,
-      seguro: form.seguro || null,
-      moneda: form.moneda || null,
-      fecha_efecto: form.fecha_efecto || null,
-      fecha_vencimiento: form.fecha_vencimiento || null,
-      renovacion_automatica: form.renovacion_automatica,
-      coaseguro: form.coaseguro,
-      limite: form.limite ? num(form.limite) : null,
-      franquicia: form.franquicia ? num(form.franquicia) : null,
-      capacidad: form.capacidad ? num(form.capacidad) / 100 : null,
-      prima_neta: form.prima_neta ? num(form.prima_neta) : null,
-      impuestos_porc: form.impuestos_porc ? num(form.impuestos_porc) : null,
-      recargos: form.recargos ? num(form.recargos) : null,
-      comision_cedida_porc: form.comision_cedida_porc ? num(form.comision_cedida_porc) : null,
-      comision_retenida_porc: form.comision_retenida_porc ? num(form.comision_retenida_porc) : null,
-      n_plazos: nPlazos,
-      notas: form.notas.trim() || null,
-    };
+    return { ...recordPayload(), n_plazos: nPlazos };
   }
 
   // Payload de ficha (sin recibos): incluye los totales ya calculados.
@@ -253,6 +235,9 @@ export default function PolizaForm({
       fecha_vencimiento: form.fecha_vencimiento || null,
       renovacion_automatica: form.renovacion_automatica,
       coaseguro: form.coaseguro,
+      coaseguro_lineas: form.coaseguro
+        ? form.coaseguro_lineas.map((l) => ({ mercado: l.mercado, participacion: num(l.participacion) }))
+        : [],
       limite: form.limite ? num(form.limite) : null,
       franquicia: form.franquicia ? num(form.franquicia) : null,
       capacidad: form.capacidad ? num(form.capacidad) / 100 : null,
@@ -260,6 +245,7 @@ export default function PolizaForm({
       impuestos_porc: form.impuestos_porc ? num(form.impuestos_porc) : null,
       recargos: form.recargos ? num(form.recargos) : null,
       comision_porc: form.comision_porc ? num(form.comision_porc) : null,
+      comision_cedida_porc: form.comision_cedida_porc ? num(form.comision_cedida_porc) : null,
       // calculados
       prima_participacion: round2(primaPart),
       impuestos: round2(impuestos),
@@ -319,9 +305,12 @@ export default function PolizaForm({
     } else {
       req.push([form.pago, "El pago es obligatorio."]);
       req.push([form.comision_porc, "La comisión % es obligatoria."]);
+      req.push([form.comision_cedida_porc, "La comisión del corredor (cedida) es obligatoria."]);
     }
     for (const [v, msg] of req) if (!String(v ?? "").trim()) return msg;
-    if (esEmision && num(form.prima_neta) <= 0) return "La prima neta debe ser mayor que 0 para emitir.";
+    if (num(form.comision_cedida_porc) > num(form.comision_porc))
+      return "La comisión del corredor (cedida) no puede superar la comisión total.";
+    if (!poliza && genRecibos && num(form.prima_neta) <= 0) return "La prima neta debe ser mayor que 0 para emitir.";
     if (form.coaseguro) {
       if (form.coaseguro_lineas.length < 2)
         return "El coaseguro necesita al menos 2 compañías (con una sola al 100% no sería coaseguro).";
@@ -340,10 +329,19 @@ export default function PolizaForm({
   async function guardar() {
     const falta = campoFaltante();
     if (falta) return setError(falta);
+    // Póliza nueva sin generar recibos → avisar antes de guardar.
+    if (!poliza && !genRecibos) {
+      setConfirmSinRecibos(true);
+      return;
+    }
+    await doGuardar();
+  }
+
+  async function doGuardar() {
     setSaving(true);
     setError(null);
     try {
-      if (esEmision) await polizasApi.emitir(emitPayload());
+      if (!poliza && genRecibos) await polizasApi.emitir(emitPayload());
       else if (poliza) await polizasApi.editar(poliza.id, recordPayload());
       else await polizasApi.crear(recordPayload());
       onSaved();
@@ -386,7 +384,7 @@ export default function PolizaForm({
       onClose={onClose}
       onDelete={poliza ? borrar : undefined}
       wide
-      escEnabled={alta === null}
+      escEnabled={alta === null && !confirmSinRecibos}
     >
       <div className="dos-columnas">
         {/* IZQUIERDA: datos generales + Importes al 100% */}
@@ -575,8 +573,18 @@ export default function PolizaForm({
               </div>
               <div className="field-row">
                 <div className="field">
-                  <label>Comisión % <span className="required">*</span></label>
+                  <label>Comisión % (total) <span className="required">*</span></label>
                   <NumberInput value={form.comision_porc} onChange={(v) => set("comision_porc", v)} suffix="%" thousands={false} />
+                </div>
+                <div className="field">
+                  <label>Comisión corredor % (cedida) <span className="required">*</span></label>
+                  <NumberInput value={form.comision_cedida_porc} onChange={(v) => set("comision_cedida_porc", v)} suffix="%" thousands={false} />
+                </div>
+              </div>
+              <div className="field-row">
+                <div className="field">
+                  <label>Comisión Mayrit % (retenida)</label>
+                  <div className="calc-box">{fmtMiles(comisionRetenidaPct, 4, false)} %</div>
                 </div>
                 <div className="field">
                   <label>Comisión Total</label>
@@ -736,6 +744,17 @@ export default function PolizaForm({
       )}
 
     </FormPanel>
+
+    {confirmSinRecibos && (
+      <ConfirmDialog
+        titulo="Póliza sin recibos"
+        mensaje="Vas a guardar la póliza SIN generar recibos."
+        detalle="Quedará marcada como «Sin recibo» en el listado. Podrás generarlos más adelante."
+        confirmLabel="Guardar sin recibos"
+        onConfirm={() => { setConfirmSinRecibos(false); doGuardar(); }}
+        onClose={() => setConfirmSinRecibos(false)}
+      />
+    )}
 
     {/* Alta rápida apilada encima (no cierra la póliza; al guardar, selecciona el nuevo). */}
     {alta === "tomador" && (

@@ -90,7 +90,7 @@ export default function PolizasPage() {
     calc: (p) => recCount.get(p.id) ?? 0,
     render: (p) => {
       const c = recCount.get(p.id) ?? 0;
-      return c === 0 ? <span className="pill pill-pendiente">Sin recibo</span> : c;
+      return c === 0 ? <span className="pill pill-anulado">⚠ Sin recibo</span> : c;
     },
   };
   const columnas: Col<Poliza>[] = [...CATALOGO, colRecibos];
@@ -127,6 +127,7 @@ export default function PolizasPage() {
           defaultKeys={DEFAULT_KEYS}
           storageKey="mayrit.polizas.tabla.v5"
           defaultSort={{ key: "fecha_efecto", dir: -1 }}
+          rowClass={(p) => ((recCount.get(p.id) ?? 0) === 0 ? "fila-sin-recibo" : undefined)}
           rowAction={(p) => (
             <button className="btn-link" onClick={() => setForm(p)}>
               Editar

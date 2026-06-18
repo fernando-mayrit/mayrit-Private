@@ -491,30 +491,52 @@ def emitir_preview(payload: PolizaEmitir):
 
 @router.post("/polizas/emitir", response_model=sch.PolizaRead, status_code=201)
 def emitir(payload: PolizaEmitir, db: Session = Depends(get_db)):
-    """Crea la póliza Y genera sus recibos (1..N según el pago), todo en una operación."""
+    """Crea la póliza y genera sus recibos: nº de plazos (Pago) × compañías (coaseguro).
+
+    - Pago: Único=1, Semestral=2, Trimestral=4 → la prima de cada compañía se reparte entre los plazos.
+    - Coaseguro: 1 recibo por compañía y plazo (prima = prima_neta × su % sobre el total / plazos).
+      Sin coaseguro, la "compañía" es nuestra capacidad (1 sola).
+    Ej.: trimestral (4) + 2 compañías = 8 recibos.
+    """
     if not payload.fecha_efecto:
         raise HTTPException(status_code=422, detail="La fecha de efecto es obligatoria para emitir.")
     if not payload.prima_neta:
         raise HTTPException(status_code=422, detail="La prima neta es obligatoria para emitir.")
-    prev = _emision_lineas(payload)
 
-    # 1) Póliza (con los totales ya calculados)
+    n = max(1, min(4, payload.n_plazos or 1))
+    step = 12 // n
+    prima_neta = payload.prima_neta or D0
+    cap = payload.capacidad if payload.capacidad is not None else Decimal(1)   # fracción (0..1)
+    imp_pct = payload.impuestos_porc or D0
+    com_pct = payload.comision_porc or D0                 # comisión total %
+    ced_pct = payload.comision_cedida_porc or D0          # parte del corredor (cedida)
+    ret_pct = com_pct - ced_pct                            # parte de Mayrit (retenida)
+
+    # Compañías: coaseguro (participacion en %) o una sola (nuestra capacidad, fracción).
+    if payload.coaseguro and payload.coaseguro_lineas:
+        companias = [
+            (str(l.get("mercado") or payload.mercado or ""), Decimal(str(l.get("participacion") or 0)) / 100)
+            for l in payload.coaseguro_lineas
+        ]
+    else:
+        companias = [(payload.mercado or "", cap)]
+
+    # 1) Póliza con totales sobre nuestra participación
+    prima_part = _q2(prima_neta * cap)
+    imp_part = _q2(prima_part * imp_pct / 100) if imp_pct else D0
     base = payload.model_dump(exclude={"n_plazos", "comision_cedida_porc", "comision_retenida_porc", "plazos_fechas"})
-    ced = payload.comision_cedida_porc or D0
-    ret = payload.comision_retenida_porc or D0
     base.update(
-        pago=prev.pago,
-        comision_porc=_q4(ced + ret),
-        comision_total=prev.comision_total,
-        impuestos=prev.impuestos,
-        prima_total=prev.prima_total,
-        prima_participacion=prev.prima_participacion,
+        pago=PAGO_LABEL.get(n, payload.pago),
+        prima_participacion=prima_part,
+        impuestos=imp_part,
+        prima_total=_q2(prima_part + imp_part + _q2(payload.recargos or D0)),
+        comision_total=_q2(prima_part * com_pct / 100) if com_pct else D0,
     )
     poliza = Poliza(**base)
     db.add(poliza)
     db.flush()  # asigna poliza.id
 
-    # 2) Recibos (numeración correlativa por año, sin colisiones entre plazos)
+    # 2) Recibos = compañías × plazos (numeración correlativa por año, sin colisiones)
     contadores: dict[int, int] = {}
 
     def numero(anio: int) -> str:
@@ -523,30 +545,42 @@ def emitir(payload: PolizaEmitir, db: Session = Depends(get_db)):
         contadores[anio] += 1
         return f"{anio}-{contadores[anio]:04d}"
 
-    cap = payload.capacidad if payload.capacidad is not None else Decimal(1)
-    for l in prev.lineas:
-        fe = l.fecha_efecto_recibo or payload.fecha_efecto
-        anio = fe.year
-        recibo = Recibo(
-            numero=numero(anio), poliza_id=poliza.id, binder_id=None,
-            periodo=fe.strftime("%Y-%m"), anio=anio, estado="Emitido",
-            numero_poliza=poliza.numero_poliza,
-            asegurado=poliza.asegurado, corredor=poliza.corredor, ramo=poliza.ramo,
-            mercado=poliza.mercado, nombre_mercado=poliza.mercado, produccion=poliza.produccion,
-            tipo_poliza="Póliza", fecha_efecto=poliza.fecha_efecto, fecha_vencimiento=poliza.fecha_vencimiento,
-            pago=prev.pago, moneda=poliza.moneda or "EUR",
-            prima_neta_poliza=prev.prima_participacion, participacion=_q4(cap * 100),
-            recibo_num=l.recibo_num, recibos_totales=str(l.recibos_totales),
-            fecha_efecto_recibo=l.fecha_efecto_recibo, fecha_vcto_recibo=l.fecha_vcto_recibo,
-            prima_neta_recibo=l.prima_neta_recibo, impuestos_porc=l.impuestos_porc,
-            impuestos_recibo=l.impuestos_recibo, prima_bruta_recibo=l.prima_bruta_recibo,
-            comision_cedida_porc=l.comision_cedida_porc, comision_cedida=l.comision_cedida,
-            comision_retenida_porc=l.comision_retenida_porc, comision_retenida=l.comision_retenida,
-            pagador="Corredor", prima_adeudada=l.prima_adeudada, liquidar=l.liquidar,
-            fecha_contable=fe,
-        )
-        _recompute(recibo)
-        db.add(recibo)
+    def fecha_plazo(idx: int) -> dt.date:
+        return _sumar_meses(payload.fecha_efecto, idx * step)
+
+    for mercado_nom, share in companias:
+        prima_comp = _q2(prima_neta * share)            # prima de esta compañía (su parte del total)
+        cuota = _q2(prima_comp / n)
+        for i in range(n):
+            prima_i = cuota if i < n - 1 else _q2(prima_comp - cuota * (n - 1))
+            imp_i = _q2(prima_i * imp_pct / 100) if imp_pct else D0
+            bruta_i = _q2(prima_i + imp_i)
+            ced_i = _q2(prima_i * ced_pct / 100) if ced_pct else D0   # comisión corredor
+            ret_i = _q2(prima_i * ret_pct / 100) if ret_pct else D0   # comisión Mayrit
+            adeudada = _q2(bruta_i - ced_i)
+            fe = fecha_plazo(i)
+            fv = (fecha_plazo(i + 1) - dt.timedelta(days=1)) if i < n - 1 else payload.fecha_vencimiento
+            anio = fe.year
+            recibo = Recibo(
+                numero=numero(anio), poliza_id=poliza.id, binder_id=None,
+                periodo=fe.strftime("%Y-%m"), anio=anio, estado="Emitido",
+                numero_poliza=poliza.numero_poliza,
+                asegurado=poliza.asegurado, corredor=poliza.corredor, ramo=poliza.ramo,
+                mercado=mercado_nom, nombre_mercado=mercado_nom, produccion=poliza.produccion,
+                tipo_poliza="Póliza", fecha_efecto=poliza.fecha_efecto, fecha_vencimiento=poliza.fecha_vencimiento,
+                pago=PAGO_LABEL.get(n, ""), moneda=poliza.moneda or "EUR",
+                prima_neta_poliza=prima_comp, participacion=_q4(share * 100),
+                recibo_num=i + 1, recibos_totales=str(n),
+                fecha_efecto_recibo=fe, fecha_vcto_recibo=fv,
+                prima_neta_recibo=prima_i, impuestos_porc=(imp_pct or None),
+                impuestos_recibo=imp_i, prima_bruta_recibo=bruta_i,
+                comision_cedida_porc=(ced_pct or None), comision_cedida=ced_i,
+                comision_retenida_porc=(ret_pct or None), comision_retenida=ret_i,
+                prima_adeudada=adeudada, liquidar=_q2(adeudada - ret_i),
+                pagador="Corredor", fecha_contable=fe,
+            )
+            _recompute(recibo)
+            db.add(recibo)
 
     db.commit()
     db.refresh(poliza)

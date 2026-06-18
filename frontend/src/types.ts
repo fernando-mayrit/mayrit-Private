@@ -430,6 +430,7 @@ export interface Poliza {
   fecha_vencimiento: string | null;
   renovacion_automatica: boolean;
   coaseguro: boolean;
+  coaseguro_lineas: { mercado: string; participacion: number | string }[];
   limite: string | number | null;
   franquicia: string | number | null;
   capacidad: string | number | null;
@@ -439,6 +440,7 @@ export interface Poliza {
   recargos: string | number | null;
   prima_total: string | number | null;
   comision_porc: string | number | null;
+  comision_cedida_porc: string | number | null;
   comision_total: string | number | null;
   prima_participacion: string | number | null;
   notas: string | null;

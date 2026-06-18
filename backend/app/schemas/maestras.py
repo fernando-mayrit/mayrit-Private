@@ -189,6 +189,7 @@ class PolizaBase(BaseModel):
     fecha_vencimiento: dt.date | None = None
     renovacion_automatica: bool = False
     coaseguro: bool = False
+    coaseguro_lineas: list[dict] = []   # [{mercado, participacion}] cuando hay coaseguro
     limite: Decimal | None = None
     franquicia: Decimal | None = None
     capacidad: Decimal | None = None
@@ -198,10 +199,16 @@ class PolizaBase(BaseModel):
     recargos: Decimal | None = None
     prima_total: Decimal | None = None
     comision_porc: Decimal | None = None
+    comision_cedida_porc: Decimal | None = None
     comision_total: Decimal | None = None
     prima_participacion: Decimal | None = None
     notas: str | None = None
     sp_old_id: int | None = None
+
+    @field_validator("coaseguro_lineas", mode="before")
+    @classmethod
+    def _coa_no_none(cls, v):
+        return v or []
 
 
 class PolizaCreate(PolizaBase):
@@ -224,6 +231,7 @@ class PolizaUpdate(BaseModel):
     fecha_vencimiento: dt.date | None = None
     renovacion_automatica: bool | None = None
     coaseguro: bool | None = None
+    coaseguro_lineas: list[dict] | None = None
     limite: Decimal | None = None
     franquicia: Decimal | None = None
     capacidad: Decimal | None = None
@@ -233,6 +241,7 @@ class PolizaUpdate(BaseModel):
     recargos: Decimal | None = None
     prima_total: Decimal | None = None
     comision_porc: Decimal | None = None
+    comision_cedida_porc: Decimal | None = None
     comision_total: Decimal | None = None
     prima_participacion: Decimal | None = None
     notas: str | None = None

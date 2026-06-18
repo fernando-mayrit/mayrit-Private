@@ -506,6 +506,7 @@ class Poliza(Base):
     fecha_vencimiento: Mapped[dt.date | None] = mapped_column(Date)
     renovacion_automatica: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
     coaseguro: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
+    coaseguro_lineas: Mapped[list | None] = mapped_column(JSON, default=list)  # [{mercado, participacion}] cuando hay coaseguro
 
     limite: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
     franquicia: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
@@ -515,7 +516,8 @@ class Poliza(Base):
     impuestos: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
     recargos: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
     prima_total: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
-    comision_porc: Mapped[Decimal | None] = mapped_column(Numeric(7, 4))
+    comision_porc: Mapped[Decimal | None] = mapped_column(Numeric(7, 4))            # comisión total %
+    comision_cedida_porc: Mapped[Decimal | None] = mapped_column(Numeric(7, 4))     # % de la comisión para el corredor (cedida)
     comision_total: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
     prima_participacion: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
 
