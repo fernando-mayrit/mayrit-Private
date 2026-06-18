@@ -464,6 +464,45 @@ export interface Poliza {
 
 export type PolizaWrite = Partial<Omit<Poliza, "id" | "sp_old_id" | "created_at" | "updated_at">>;
 
+// Siniestro (Claims BDX de un binder).
+export interface Siniestro {
+  id: number;
+  binder_id: number;
+  sp_old_id: number | null;
+  section: number | null;
+  yoa: number | null;
+  risk_code: string | null;
+  currency: string | null;
+  certificate: string | null;
+  reference: string | null;
+  insured: string | null;
+  reporting_period: string | null;
+  risk_inception: string | null;
+  risk_expiry: string | null;
+  description: string | null;
+  claim_first_advised: string | null;
+  status: string | null;
+  refer: string | null;
+  denial: string | null;
+  claimant: string | null;
+  date_opened: string | null;
+  date_closed: string | null;
+  ucr: string | null;
+  abogado: string | null;
+  last_bdx_change: string | null;
+  ultima_revision: string | null;
+  informacion: string | null;
+  amount_claimed: string | null;
+  to_pay_indemnity: string | null;
+  to_pay_fees: string | null;
+  paid_indemnity: string | null;
+  paid_fees: string | null;
+  reserves_indemnity: string | null;
+  reserves_fees: string | null;
+  total_indemnity: string | null;
+  total_fees: string | null;
+}
+
 // Emisión de póliza OM (póliza + sus recibos en una operación).
 export type PolizaEmitir = PolizaWrite & {
   n_plazos: number;                       // 1..4

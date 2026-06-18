@@ -658,3 +658,90 @@ class CierreContable(Base):
     fecha: Mapped[dt.date] = mapped_column(Date)           # fecha en que se cerró
     usuario: Mapped[str | None] = mapped_column(String(120))
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class Siniestro(Base):
+    """Siniestro (Claims BDX de un binder), estándar Lloyd's. Una fila por siniestro,
+    enlazado al binder. Se importa de la lista de SharePoint `Mayrit - Claims<agreement>`.
+    Casado/idempotencia por `sp_old_id` (_OldID) y, en su defecto, (binder, certificate, reference)."""
+
+    __tablename__ = "siniestros"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    sp_old_id: Mapped[int | None] = mapped_column(Integer, index=True)
+    binder_id: Mapped[int] = mapped_column(ForeignKey("binders.id", ondelete="CASCADE"), index=True)
+
+    # Identificación
+    section: Mapped[int | None] = mapped_column(Integer)
+    yoa: Mapped[int | None] = mapped_column(Integer)
+    risk_code: Mapped[str | None] = mapped_column(String(20))
+    currency: Mapped[str | None] = mapped_column(String(10))
+    certificate: Mapped[str | None] = mapped_column(String(120), index=True)
+    reference: Mapped[str | None] = mapped_column(String(120))
+    insured: Mapped[str | None] = mapped_column(String(255))
+    reporting_period: Mapped[str | None] = mapped_column(String(60))
+    risk_inception: Mapped[dt.date | None] = mapped_column(Date)
+    risk_expiry: Mapped[dt.date | None] = mapped_column(Date)
+
+    # Siniestro
+    description: Mapped[str | None] = mapped_column(Text)
+    claim_first_advised: Mapped[dt.date | None] = mapped_column(Date)
+    status: Mapped[str | None] = mapped_column(String(60))
+    refer: Mapped[str | None] = mapped_column(String(120))
+    denial: Mapped[str | None] = mapped_column(String(120))
+    claimant: Mapped[str | None] = mapped_column(String(255))
+    date_opened: Mapped[dt.date | None] = mapped_column(Date)
+    date_closed: Mapped[dt.date | None] = mapped_column(Date)
+    ucr: Mapped[str | None] = mapped_column(String(120))
+    abogado: Mapped[str | None] = mapped_column(String(255))
+    last_bdx_change: Mapped[dt.date | None] = mapped_column(Date)
+    ultima_revision: Mapped[dt.date | None] = mapped_column(Date)
+    informacion: Mapped[str | None] = mapped_column(Text)
+
+    # Importes (indemnización y honorarios)
+    amount_claimed: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    to_pay_indemnity: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    to_pay_fees: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    paid_indemnity: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    paid_fees: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    reserves_indemnity: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    reserves_fees: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    total_indemnity: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    total_fees: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    binder: Mapped["Binder"] = relationship()
+
+
+class ClaimsPresentacion(Base):
+    """Snapshot mensual del Claims BDX de un binder (presentación a Lloyd's). A diferencia de
+    Risk/Premium, el Claims BDX es acumulativo: cada mes se presenta el estado actual y se conserva
+    lo presentado. Una fila por (binder, periodo, siniestro): guarda el pagado ACUMULADO (base del
+    'To pay this month' del mes siguiente), el to_pay del mes, reservas, estado y la fila congelada
+    (32 columnas) en `fila_json`. Presentar un mes lo BLOQUEA (BdxBloqueo tipo='claims')."""
+
+    __tablename__ = "claims_presentaciones"
+    __table_args__ = (UniqueConstraint("binder_id", "periodo", "siniestro_id", name="uq_claims_pres"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    binder_id: Mapped[int] = mapped_column(ForeignKey("binders.id", ondelete="CASCADE"), index=True)
+    periodo: Mapped[str] = mapped_column(String(7), index=True)   # 'YYYY-MM' (fin de mes)
+    periodo_ord: Mapped[int] = mapped_column(Integer, index=True)  # aaaamm (orden/comparación)
+    siniestro_id: Mapped[int | None] = mapped_column(Integer, index=True)
+
+    paid_indemnity_acum: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=0)
+    paid_fees_acum: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=0)
+    to_pay_indemnity: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=0)
+    to_pay_fees: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=0)
+    reserves_indemnity: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=0)
+    reserves_fees: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=0)
+    status: Mapped[str | None] = mapped_column(String(60))
+    fila_json: Mapped[str | None] = mapped_column(Text)            # fila de 32 columnas congelada
+
+    fecha_presentacion: Mapped[dt.date | None] = mapped_column(Date)
+    usuario: Mapped[str | None] = mapped_column(String(120))
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

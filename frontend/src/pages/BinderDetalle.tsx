@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { bdxApi, recibosApi, type BdxDetalle, type BdxPreview, type BdxImportResult, type ExcelDir, type PremiumGrupo } from "../api";
-import type { Binder, Bdx, BdxLinea, Recibo } from "../types";
+import { bdxApi, recibosApi, siniestrosApi, claimsBdxApi, type BdxDetalle, type BdxPreview, type BdxImportResult, type ExcelDir, type PremiumGrupo, type ClaimsBdxVista } from "../api";
+import type { Binder, Bdx, BdxLinea, Recibo, Siniestro } from "../types";
 import BdxLineaPanel from "../components/BdxLineaPanel";
 import BdxTabla from "../components/BdxTabla";
+import TablaDatos, { type Col } from "../components/TablaDatos";
 import NumberInput from "../components/NumberInput";
 import ReciboModal from "../components/ReciboModal";
 import PremiumMatch from "../components/PremiumMatch";
@@ -47,12 +48,68 @@ function mesesDe(lineas: BdxLinea[], campo: keyof BdxLinea, filtro?: (l: BdxLine
 function fmtFecha(s: string | null | undefined): string {
   return fmtFechaES(s) || "—";
 }
+// Meses (aaaa-mm) de calendario desde 'ini' hasta min(fin, hoy), más reciente primero.
+function mesesCalendario(ini?: string | null, fin?: string | null): string[] {
+  if (!ini) return [];
+  const d0 = new Date(ini);
+  const hoy = new Date();
+  const dFin = fin ? new Date(fin) : hoy;
+  const end = dFin < hoy ? dFin : hoy;
+  const out: string[] = [];
+  let y = d0.getFullYear();
+  let m = d0.getMonth() + 1;
+  while (y < end.getFullYear() || (y === end.getFullYear() && m <= end.getMonth() + 1)) {
+    out.push(`${y}-${String(m).padStart(2, "0")}`);
+    m++;
+    if (m > 12) { y++; m = 1; }
+  }
+  return out.reverse();
+}
 function imp(v: string | number | null | undefined): string {
   return fmtMiles(v) || "—";
 }
 
+// Catálogo de columnas del listado de Siniestros (clic derecho en la cabecera para elegir/mover).
+const SIN_COLS: Col<Siniestro>[] = [
+  { key: "certificate", label: "Certificate", tipo: "text" },
+  { key: "reference", label: "Reference", tipo: "text" },
+  { key: "insured", label: "Asegurado", tipo: "text", width: 180 },
+  { key: "section", label: "Secc.", tipo: "int" },
+  { key: "yoa", label: "YOA", tipo: "int" },
+  { key: "risk_code", label: "Risk Code", tipo: "text" },
+  { key: "currency", label: "Moneda", tipo: "text" },
+  { key: "status", label: "Estado", tipo: "text" },
+  { key: "claimant", label: "Reclamante", tipo: "text", width: 160 },
+  { key: "reporting_period", label: "Periodo", tipo: "text" },
+  { key: "risk_inception", label: "Inicio riesgo", tipo: "date" },
+  { key: "risk_expiry", label: "Fin riesgo", tipo: "date" },
+  { key: "claim_first_advised", label: "1er aviso", tipo: "date" },
+  { key: "date_opened", label: "Abierto", tipo: "date" },
+  { key: "date_closed", label: "Cerrado", tipo: "date" },
+  { key: "amount_claimed", label: "Reclamado", tipo: "num" },
+  { key: "to_pay_indemnity", label: "A pagar ind.", tipo: "num" },
+  { key: "to_pay_fees", label: "A pagar fees", tipo: "num" },
+  { key: "paid_indemnity", label: "Pagado ind.", tipo: "num" },
+  { key: "paid_fees", label: "Pagado fees", tipo: "num" },
+  { key: "reserves_indemnity", label: "Reservas ind.", tipo: "num" },
+  { key: "reserves_fees", label: "Reservas fees", tipo: "num" },
+  { key: "total_indemnity", label: "Total ind.", tipo: "num" },
+  { key: "total_fees", label: "Total fees", tipo: "num" },
+  { key: "ucr", label: "UCR", tipo: "text" },
+  { key: "abogado", label: "Abogado", tipo: "text" },
+  { key: "description", label: "Descripción", tipo: "text", width: 220 },
+  { key: "refer", label: "Refer", tipo: "text" },
+  { key: "denial", label: "Denial", tipo: "text" },
+  { key: "last_bdx_change", label: "Últ. cambio BDX", tipo: "date" },
+  { key: "ultima_revision", label: "Últ. revisión", tipo: "date" },
+];
+const SIN_DEFAULT = [
+  "certificate", "insured", "section", "yoa", "status", "date_opened", "date_closed",
+  "amount_claimed", "paid_indemnity", "reserves_indemnity", "total_indemnity", "total_fees",
+];
+
 export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBack: () => void }) {
-  const [tab, setTab] = useState<"datos" | "bloqueo" | "bdx" | "premium" | "calculos" | "recibos" | "siniestros" | "triangulacion">("bdx");
+  const [tab, setTab] = useState<"datos" | "bloqueo" | "bdx" | "premium" | "calculos" | "recibos" | "siniestros" | "claimsbdx" | "triangulacion">("bdx");
 
   // ── BDX (uno por binder) ──
   const [bdxs, setBdxs] = useState<Bdx[]>([]);
@@ -61,17 +118,116 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
   const [error, setError] = useState<string | null>(null);
   const [linea, setLinea] = useState<BdxLinea | "nueva" | null>(null);
 
+  // ── Siniestros (Claims BDX del binder) ──
+  const [siniestros, setSiniestros] = useState<Siniestro[]>([]);
+  const [sinCargado, setSinCargado] = useState(false);
+  const [sinBusy, setSinBusy] = useState(false);
+  const [sinMsg, setSinMsg] = useState<string | null>(null);
+
+  async function cargarSiniestros() {
+    try {
+      setSiniestros(await siniestrosApi.listar(binder.id));
+      setSinCargado(true);
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
+  async function importarSiniestros() {
+    setSinBusy(true);
+    setSinMsg(null);
+    setError(null);
+    try {
+      const r = await siniestrosApi.importar(binder.id);
+      setSinMsg(`Importados: ${r.nuevos} nuevos, ${r.actualizados} actualizados (total ${r.total_binder}).`);
+      await cargarSiniestros();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setSinBusy(false);
+    }
+  }
+  useEffect(() => {
+    // Los Claims se usan en la pestaña Siniestros y en la siniestralidad del PC.
+    if ((tab === "siniestros" || tab === "calculos") && !sinCargado) cargarSiniestros();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab]);
+
+  // ── Claims BDX (bordereau mensual acumulativo) ──
+  const [cbVista, setCbVista] = useState<ClaimsBdxVista | null>(null);
+  const [cbPeriodos, setCbPeriodos] = useState<{ periodo: string; n: number; fecha: string | null }[]>([]);
+  const [cbBusy, setCbBusy] = useState(false);
+  const [cbMsg, setCbMsg] = useState<string | null>(null);
+  const [cbPresentar, setCbPresentar] = useState(false);
+
+  async function cargarClaimsBdx(periodo?: string) {
+    try {
+      const [v, ps] = await Promise.all([claimsBdxApi.vista(binder.id, periodo), claimsBdxApi.periodos(binder.id)]);
+      setCbVista(v);
+      setCbPeriodos(ps);
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
+  async function descargarSnapshot(periodo: string) {
+    setError(null);
+    try {
+      const blob = await claimsBdxApi.excel(binder.id, periodo, "presentado");
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `Claims BDX ${binder.umr ?? binder.id} ${periodo} (presentado).xlsx`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
+  useEffect(() => {
+    if (tab === "claimsbdx" && !cbVista) cargarClaimsBdx();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab]);
+
+  async function descargarClaimsBdx(modo: "vivo" | "presentado") {
+    if (!cbVista) return;
+    setError(null);
+    try {
+      const blob = await claimsBdxApi.excel(binder.id, cbVista.periodo, modo);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `Claims BDX ${binder.umr ?? binder.id} ${cbVista.periodo}.xlsx`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
+  async function presentarClaimsBdx() {
+    if (!cbVista) return;
+    setCbBusy(true);
+    setCbMsg(null);
+    setError(null);
+    try {
+      const r = (await claimsBdxApi.presentar(binder.id, cbVista.periodo, localStorage.getItem("mayrit.usuario") ?? undefined)) as { presentados: number };
+      setCbMsg(`Presentado ${cbVista.periodo}: ${r.presentados} siniestro(s). Mes bloqueado.`);
+      setCbPresentar(false);
+      await cargarClaimsBdx(cbVista.periodo);
+      await refrescarBloqueos(); // refleja el bloqueo en la pestaña Bloqueo
+      await descargarClaimsBdx("vivo"); // descarga el bordereau presentado
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setCbBusy(false);
+    }
+  }
+
   // ── Selector de Excel (carpeta servida por el backend) ──
   const [excelOpen, setExcelOpen] = useState(false);
   const [excelDir, setExcelDir] = useState<ExcelDir | null>(null);
   const [excelBusy, setExcelBusy] = useState(false);
   const [excelErr, setExcelErr] = useState<string | null>(null);
   const [excelSel, setExcelSel] = useState<string | null>(null);
-  // Cálculos PC: siniestralidad simulada (aún sin datos reales) — entradas editables.
-  const [indemPaid, setIndemPaid] = useState("0");
-  const [indemRes, setIndemRes] = useState("0");
-  const [feesPaid, setFeesPaid] = useState("0");
-  const [feesRes, setFeesRes] = useState("0");
+  // PC: IBNR manual (% s/ GWP). La siniestralidad sale de los Claims importados (no simulada).
   const [ibnrPct, setIbnrPct] = useState("0");
   // Selección de meses/periodos en la tabla de Datos.
   const [selMeses, setSelMeses] = useState<Set<string>>(new Set());
@@ -121,6 +277,10 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
   }
   async function refrescarSel() {
     if (sel) setSel(await bdxApi.detalle(sel.id));
+  }
+  async function refrescarBloqueos() {
+    const bl = await bdxApi.listarBloqueos(binder.id);
+    setBloqueos(new Set(bl.map((b) => `${b.tipo}:${b.periodo}`)));
   }
 
   useEffect(() => {
@@ -433,13 +593,16 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
           Premium
         </button>
         <button className={"tab" + (tab === "calculos" ? " active" : "")} onClick={() => setTab("calculos")}>
-          Cálculos
+          PC
         </button>
         <button className={"tab" + (tab === "recibos" ? " active" : "")} onClick={() => setTab("recibos")}>
           Recibos
         </button>
         <button className={"tab" + (tab === "siniestros" ? " active" : "")} onClick={() => setTab("siniestros")}>
           Siniestros
+        </button>
+        <button className={"tab" + (tab === "claimsbdx" ? " active" : "")} onClick={() => setTab("claimsbdx")}>
+          Claims BDX
         </button>
         <button className={"tab" + (tab === "triangulacion" ? " active" : "")} onClick={() => setTab("triangulacion")}>
           Triangulación
@@ -535,7 +698,7 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
           const cols: { titulo: string; tipo: string; emoji: string; meses: string[] }[] = [
             { titulo: "Risk BDX", tipo: "risk", emoji: "📊", meses: mesesDe(ls, "reporting_period_start") },
             { titulo: "Premium BDX", tipo: "premium", emoji: "💷", meses: mesesDe(ls, "premium_bdx", (l) => !!l.incluido_en_premium) },
-            { titulo: "Claims BDX", tipo: "claims", emoji: "⚖️", meses: [] },
+            { titulo: "Claims BDX", tipo: "claims", emoji: "⚖️", meses: mesesCalendario(binder.fecha_efecto, binder.fecha_vencimiento) },
           ];
           // Persistente: el bloqueo se guarda en el backend (impide editar líneas del periodo).
           const toggle = async (tipo: string, m: string) => {
@@ -544,6 +707,12 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
               if (bloqueos.has(key)) {
                 await bdxApi.desbloquear(binder.id, tipo, m);
                 setBloqueos((s) => { const ns = new Set(s); ns.delete(key); return ns; });
+              } else if (tipo === "claims") {
+                // En Claims, bloquear = PRESENTAR el bordereau de ese mes (congela snapshot + bloquea).
+                if (!window.confirm(`¿Presentar el Claims BDX de ${mesLargo(m)}? Se congelará el snapshot y se bloqueará el mes.`)) return;
+                await claimsBdxApi.presentar(binder.id, m, localStorage.getItem("mayrit.usuario") ?? undefined);
+                setBloqueos((s) => new Set(s).add(key));
+                setCbVista(null); // fuerza recarga de la pestaña Claims BDX
               } else {
                 await bdxApi.bloquear(binder.id, tipo, m);
                 setBloqueos((s) => new Set(s).add(key));
@@ -764,8 +933,13 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
           const comMayritPct = gwp > 0 ? (comMayritAmt / gwp) * 100 : 0;
           const comTotal = comCoverAmt + comMayritAmt;
           const netToUws = gwp - comTotal;
-          // Siniestralidad (simulada): indemnización + fees, pagado + reservas.
-          const claims = n(indemPaid) + n(indemRes) + n(feesPaid) + n(feesRes);
+          // Siniestralidad REAL desde los Claims importados (secciones sujetas a PC).
+          const sinPC = siniestros.filter((s) => seccionesPC.has(s.section ?? 0));
+          const indemPaidR = sinPC.reduce((a, s) => a + n(s.paid_indemnity), 0);
+          const indemResR = sinPC.reduce((a, s) => a + n(s.reserves_indemnity), 0);
+          const feesPaidR = sinPC.reduce((a, s) => a + n(s.paid_fees), 0);
+          const feesResR = sinPC.reduce((a, s) => a + n(s.reserves_fees), 0);
+          const claims = indemPaidR + indemResR + feesPaidR + feesResR;
           // IBNR: % manual sobre la GWP (our line).
           const ibnr = (gwp * n(ibnrPct)) / 100;
           const uwPct = n(binder.pc_gastos);
@@ -781,7 +955,7 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
               <h3 style={{ margin: "4px 0 8px" }}>Profit Commission</h3>
               <div className="hint" style={{ marginBottom: 10 }}>
                 PC {fmtMiles(pcPct)} % · UW Expenses {fmtMiles(uwPct)} % · Sujetas a PC: {nombresPC || "—"}.
-                La siniestralidad es simulada (campos editables, aún sin datos reales).
+                La siniestralidad proviene de los Claims importados de este binder (secciones sujetas a PC).
               </div>
               <table className="compacto pc-tabla" style={{ maxWidth: 560 }}>
                 <tbody>
@@ -794,10 +968,10 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
                   <tr className="pc-fuerte"><td>Net to UWs</td><Money v={netToUws} /></tr>
 
                   <tr className="pc-seccion"><td colSpan={2}>Siniestralidad</td></tr>
-                  <tr><td>Indemnización — Pagado</td><td className="num"><NumberInput value={indemPaid} onChange={setIndemPaid} /></td></tr>
-                  <tr><td>Indemnización — Reservas</td><td className="num"><NumberInput value={indemRes} onChange={setIndemRes} /></td></tr>
-                  <tr><td>Fees — Pagado</td><td className="num"><NumberInput value={feesPaid} onChange={setFeesPaid} /></td></tr>
-                  <tr><td>Fees — Reservas</td><td className="num"><NumberInput value={feesRes} onChange={setFeesRes} /></td></tr>
+                  <tr><td>Indemnización — Pagado</td><Money v={indemPaidR} /></tr>
+                  <tr><td>Indemnización — Reservas</td><Money v={indemResR} /></tr>
+                  <tr><td>Fees — Pagado</td><Money v={feesPaidR} /></tr>
+                  <tr><td>Fees — Reservas</td><Money v={feesResR} /></tr>
                   <tr className="pc-subtotal"><td>Total siniestralidad</td><Money v={claims} /></tr>
                   <tr>
                     <td>IBNR (<span style={{ display: "inline-block", width: 70 }}><NumberInput value={ibnrPct} onChange={setIbnrPct} suffix="%" thousands={false} className="input-completar" /></span> s/ GWP)</td>
@@ -874,15 +1048,215 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
       )}
 
       {tab === "siniestros" && (
-        cerradoTotal ? (
-          <div className="empty">🔒 Binder <b>Cerrado</b>: el módulo de Siniestros está bloqueado (solo consulta).</div>
+        <>
+          <div className="toolbar" style={{ marginBottom: 10 }}>
+            <button className="btn-primary btn-sm" onClick={importarSiniestros} disabled={sinBusy || cerradoTotal}>
+              {sinBusy ? "Importando…" : "⬇️ Importar de SharePoint"}
+            </button>
+            {cerradoTotal && <span className="hint">🔒 Binder Cerrado: solo consulta.</span>}
+            {sinMsg && <span className="hint">{sinMsg}</span>}
+            <span className="hint" style={{ marginLeft: "auto" }}>{siniestros.length} siniestro(s)</span>
+          </div>
+          {!sinCargado ? (
+            <div className="loading">Cargando…</div>
+          ) : siniestros.length === 0 ? (
+            <div className="empty">Sin siniestros. Pulsa «Importar de SharePoint» para traer los Claims de este binder.</div>
+          ) : (
+            (() => {
+              const nSin = siniestros.length;
+              const abiertos = siniestros.filter((s) => !s.date_closed).length;
+              const reclamado = siniestros.reduce((a, s) => a + n(s.amount_claimed), 0);
+              const reservaFees = siniestros.reduce((a, s) => a + n(s.reserves_fees), 0);
+              const pagosFees = siniestros.reduce((a, s) => a + n(s.paid_fees), 0);
+              const totalFees = siniestros.reduce((a, s) => a + n(s.total_fees), 0);
+              const reservaIndem = siniestros.reduce((a, s) => a + n(s.reserves_indemnity), 0);
+              const pagosIndem = siniestros.reduce((a, s) => a + n(s.paid_indemnity), 0);
+              const totalIndem = siniestros.reduce((a, s) => a + n(s.total_indemnity), 0);
+              const total = totalFees + totalIndem; // total incurrido (siniestralidad total)
+              const pct = (x: number) => (total > 0 ? `${fmtMiles((x / total) * 100)} %` : "—");
+              // Ratio de siniestralidad = siniestralidad / (GWP our line − com. coverholder − brokerage).
+              const lin = sel?.lineas ?? [];
+              const gwpOL = lin.reduce((a, l) => a + n(l.total_gwp_our_line), 0);
+              const comCover = lin.reduce((a, l) => a + n(l.commission_coverholder_amount), 0);
+              const brokerage = lin.reduce((a, l) => a + n(l.brokerage_amount), 0);
+              const netUW = gwpOL - comCover - brokerage;
+              const ratioStr = netUW > 0 ? `${fmtMiles((total / netUW) * 100)} %` : "—";
+              return (
+                <>
+                  <div className="bdx-topbar">
+                    <div />
+                    <div className="bdx-totales">
+                      <div className="tot-col">
+                        <div className="tot-row"><span>Nº Siniestros</span><b>{fmtMiles(nSin, 0)}</b></div>
+                        <div className="tot-row"><span>Abiertos</span><b>{fmtMiles(abiertos, 0)}</b></div>
+                        <div className="tot-row"><span>Cerrados</span><b>{fmtMiles(nSin - abiertos, 0)}</b></div>
+                        <div className="tot-row"><span>Cantidad Reclamada</span><b>{fmtMiles(reclamado)}</b></div>
+                      </div>
+                      <div className="tot-col">
+                        <div className="tot-row"><span>% Fees</span><b>{pct(totalFees)}</b></div>
+                        <div className="tot-row"><span>Reserva Fees</span><b>{fmtMiles(reservaFees)}</b></div>
+                        <div className="tot-row"><span>Pagos Fees</span><b>{fmtMiles(pagosFees)}</b></div>
+                        <div className="tot-row tot-pdte"><span>Total Fees</span><b>{fmtMiles(totalFees)}</b></div>
+                      </div>
+                      <div className="tot-col">
+                        <div className="tot-row"><span>% Indem.</span><b>{pct(totalIndem)}</b></div>
+                        <div className="tot-row"><span>Reserva Indem.</span><b>{fmtMiles(reservaIndem)}</b></div>
+                        <div className="tot-row"><span>Pagos Indem.</span><b>{fmtMiles(pagosIndem)}</b></div>
+                        <div className="tot-row tot-pdte"><span>Total Indem.</span><b>{fmtMiles(totalIndem)}</b></div>
+                      </div>
+                      <div className="tot-col">
+                        <div className="tot-row" style={{ visibility: "hidden" }}><span>·</span><b>·</b></div>
+                        <div className="tot-row"><span>Reserva Total</span><b>{fmtMiles(reservaFees + reservaIndem)}</b></div>
+                        <div className="tot-row"><span>Pagos Total</span><b>{fmtMiles(pagosFees + pagosIndem)}</b></div>
+                        <div className="tot-row tot-pdte"><span>Total</span><b>{fmtMiles(total)}</b></div>
+                      </div>
+                      <div className="tot-col">
+                        <div className="tot-row"><span title="Nº siniestros / Nº pólizas (pendiente de calcular el nº de pólizas)">Ratio Frecuencia</span><b>—</b></div>
+                        <div className="tot-row" style={{ visibility: "hidden" }}><span>·</span><b>·</b></div>
+                        <div className="tot-row" style={{ visibility: "hidden" }}><span>·</span><b>·</b></div>
+                        <div className="tot-row tot-pdte"><span title="Siniestralidad / (GWP our line − com. coverholder − brokerage)">Ratio Siniestralidad</span><b>{ratioStr}</b></div>
+                      </div>
+                    </div>
+                  </div>
+                  <TablaDatos
+                    filas={siniestros}
+                    columnas={SIN_COLS}
+                    defaultKeys={SIN_DEFAULT}
+                    storageKey="mayrit.siniestros.tabla.v1"
+                  />
+                </>
+              );
+            })()
+          )}
+        </>
+      )}
+
+      {tab === "claimsbdx" && (
+        !cbVista ? (
+          <div className="loading">Cargando…</div>
         ) : (
-          <div className="empty">Siniestros — pendiente de definir el contenido.</div>
+          (() => {
+            const fmtCell = (v: unknown) => {
+              if (v == null || v === "") return "—";
+              if (typeof v === "number") return fmtMiles(v);
+              if (typeof v === "string" && /^\d{4}-\d{2}-\d{2}/.test(v)) return fmtFechaES(v);
+              return String(v);
+            };
+            const numHeader = (h: string) =>
+              /Amount|Paid|Reserve|Total Incurred/.test(h);
+            return (
+              <>
+                <div className="toolbar" style={{ marginBottom: 10, flexWrap: "wrap" }}>
+                  <label className="check-inline">Periodo&nbsp;
+                    <select
+                      className="filtro"
+                      value={cbVista.periodo}
+                      onChange={(e) => { setCbMsg(null); cargarClaimsBdx(e.target.value); }}
+                    >
+                      {cbVista.meses.map((m) => <option key={m} value={m}>{m}</option>)}
+                    </select>
+                  </label>
+                  {cbVista.bloqueado ? (
+                    <span className="pill pill-anulado">🔒 Presentado/Bloqueado</span>
+                  ) : (
+                    <span className="pill pill-cobrado">Abierto</span>
+                  )}
+                  <button
+                    className="btn-secondary btn-sm"
+                    title="Excel con el estado actual; las celdas cambiadas respecto a la última presentación salen en azul."
+                    onClick={() => descargarClaimsBdx("vivo")}
+                  >
+                    ⬇️ Descargar (vivo)
+                  </button>
+                  {cbVista.presentado && (
+                    <button
+                      className="btn-secondary btn-sm"
+                      title="Re-descarga idéntica del bordereau tal y como se presentó ese mes (congelado)."
+                      onClick={() => descargarClaimsBdx("presentado")}
+                    >
+                      ⬇️ Snapshot presentado
+                    </button>
+                  )}
+                  <button
+                    className="btn-primary btn-sm"
+                    title="Congela el snapshot del mes, bloquea el periodo y descarga el bordereau."
+                    disabled={cbBusy || cbVista.bloqueado || cbVista.filas.length === 0}
+                    onClick={() => setCbPresentar(true)}
+                  >
+                    📤 Presentar periodo
+                  </button>
+                  {cbMsg && <span className="hint">{cbMsg}</span>}
+                  <span className="hint" style={{ marginLeft: "auto" }}>{cbVista.filas.length} siniestro(s)</span>
+                </div>
+                <div className="hint" style={{ marginBottom: 8 }}>
+                  El Claims BDX es acumulativo: "To pay this month" = pagado actual − lo presentado el mes anterior. Al presentar se congela el snapshot y se bloquea el mes.
+                </div>
+                {cbVista.filas.length === 0 ? (
+                  <div className="empty">Sin siniestros para este binder. Impórtalos en la pestaña Siniestros.</div>
+                ) : (
+                  <div className="tabla-scroll bdx-scroll" style={{ overflowX: "auto" }}>
+                    <table className="compacto bdx-tabla">
+                      <thead>
+                        <tr>{cbVista.headers.map((h) => (
+                          <th key={h} className={numHeader(h) ? "num" : undefined} style={{ whiteSpace: "nowrap" }}>{h}</th>
+                        ))}</tr>
+                      </thead>
+                      <tbody>
+                        {cbVista.filas.map((f, i) => (
+                          <tr key={i}>
+                            {cbVista.headers.map((h) => (
+                              <td key={h} className={numHeader(h) ? "num" : undefined} style={{ whiteSpace: "nowrap" }}>{fmtCell(f[h])}</td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {cbPeriodos.length > 0 && (
+                  <div style={{ marginTop: 18 }}>
+                    <h3 style={{ margin: "4px 0 8px" }}>📚 Presentaciones anteriores</h3>
+                    <table className="compacto" style={{ maxWidth: 460 }}>
+                      <thead>
+                        <tr><th>Periodo</th><th className="num">Siniestros</th><th>Presentado el</th><th></th></tr>
+                      </thead>
+                      <tbody>
+                        {cbPeriodos.map((p) => (
+                          <tr key={p.periodo}>
+                            <td>{p.periodo}</td>
+                            <td className="num">{p.n}</td>
+                            <td>{fmtFecha(p.fecha)}</td>
+                            <td className="acciones">
+                              <button className="btn-link" title="Re-descarga idéntica del snapshot presentado" onClick={() => descargarSnapshot(p.periodo)}>
+                                ⬇️ Descargar
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </>
+            );
+          })()
         )
       )}
 
       {tab === "triangulacion" && (
         <div className="empty">Triangulación — pendiente de definir el contenido.</div>
+      )}
+
+      {cbPresentar && cbVista && (
+        <ConfirmDialog
+          titulo={`Presentar Claims BDX ${cbVista.periodo}`}
+          mensaje={`Vas a presentar el Claims BDX de ${cbVista.periodo} (${cbVista.filas.length} siniestros). Se congelará el snapshot, se bloqueará el mes y se descargará el bordereau.`}
+          detalle="Para volver a presentarlo habrá que desbloquear el mes."
+          confirmLabel="Presentar"
+          onConfirm={presentarClaimsBdx}
+          onClose={() => setCbPresentar(false)}
+        />
       )}
 
       {/* Ficha de línea */}

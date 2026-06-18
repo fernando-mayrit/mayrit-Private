@@ -98,6 +98,46 @@ class MercadoRead(MercadoBase):
     updated_at: dt.datetime
 
 
+# ──────────────────────────────── Siniestro ──────────────────────────────
+class SiniestroRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    binder_id: int
+    sp_old_id: int | None = None
+    section: int | None = None
+    yoa: int | None = None
+    risk_code: str | None = None
+    currency: str | None = None
+    certificate: str | None = None
+    reference: str | None = None
+    insured: str | None = None
+    reporting_period: str | None = None
+    risk_inception: dt.date | None = None
+    risk_expiry: dt.date | None = None
+    description: str | None = None
+    claim_first_advised: dt.date | None = None
+    status: str | None = None
+    refer: str | None = None
+    denial: str | None = None
+    claimant: str | None = None
+    date_opened: dt.date | None = None
+    date_closed: dt.date | None = None
+    ucr: str | None = None
+    abogado: str | None = None
+    last_bdx_change: dt.date | None = None
+    ultima_revision: dt.date | None = None
+    informacion: str | None = None
+    amount_claimed: Decimal | None = None
+    to_pay_indemnity: Decimal | None = None
+    to_pay_fees: Decimal | None = None
+    paid_indemnity: Decimal | None = None
+    paid_fees: Decimal | None = None
+    reserves_indemnity: Decimal | None = None
+    reserves_fees: Decimal | None = None
+    total_indemnity: Decimal | None = None
+    total_fees: Decimal | None = None
+
+
 # ──────────────────────────── Cierre contable ────────────────────────────
 class CierreRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)

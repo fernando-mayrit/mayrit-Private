@@ -312,3 +312,49 @@ MAPEO_CORREDORES: dict[str, str] = {
 def leer_lista_corredores(list_title: str = "Mayrit - TCorredores") -> list[dict]:
     """Corredores mapeados a los campos de Productor."""
     return leer_lista(list_title, MAPEO_CORREDORES, set())
+
+
+# ── Siniestros (Claims BDX por binder) → campos del modelo Siniestro ──
+MAPEO_CLAIMS: dict[str, str] = {
+    "section": "Section",
+    "yoa": "YOA",
+    "risk_code": "Risk_Code",
+    "currency": "Currency",
+    "certificate": "Certificate",
+    "reference": "Reference",
+    "insured": "Insured",
+    "reporting_period": "Reporting_Period",
+    "risk_inception": "Risk_Inception_Date",
+    "risk_expiry": "Risk_Expiry_Date",
+    "description": "Description",
+    "claim_first_advised": "Claim_First_Advised",
+    "status": "Status",
+    "refer": "Refer",
+    "denial": "Denial",
+    "claimant": "Claimant",
+    "date_opened": "Date_Claim_Opened",
+    "date_closed": "Date_Claim_Closed",
+    "ucr": "UCR",
+    "abogado": "Abogado",
+    "last_bdx_change": "Last_Bdx_Change",
+    "ultima_revision": "Ultima_Revision",
+    "informacion": "Informacion",
+    "amount_claimed": "Amount_Claimed",
+    "to_pay_indemnity": "To_Pay_Indemnity",
+    "to_pay_fees": "To_Pay_Fees",
+    "paid_indemnity": "Paid_Indemnity",
+    "paid_fees": "Paid_Fees",
+    "reserves_indemnity": "Reserves_Indemnity",
+    "reserves_fees": "Reserves_Fees",
+    "total_indemnity": "Total_Indemnity",
+    "total_fees": "Total_Fees",
+}
+DATE_FIELDS_CLAIMS = {
+    "risk_inception", "risk_expiry", "claim_first_advised", "date_opened",
+    "date_closed", "last_bdx_change", "ultima_revision",
+}
+
+
+def leer_lista_claims(list_title: str) -> list[dict]:
+    """Siniestros de un binder (`Mayrit - Claims<agreement>`) mapeados a los campos de Siniestro."""
+    return leer_lista(list_title, MAPEO_CLAIMS, DATE_FIELDS_CLAIMS)

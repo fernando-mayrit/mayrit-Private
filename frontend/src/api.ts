@@ -37,6 +37,43 @@ export async function exportarXlsx(payload: {
   return res.blob();
 }
 
+// ── Siniestros (Claims BDX por binder) ──
+export const siniestrosApi = {
+  listar: (binderId: number) => request<import("./types").Siniestro[]>(`/binders/${binderId}/siniestros`),
+  preview: (binderId: number) =>
+    request<{ list_title: string; total: number; suma_total_indemnity: number; suma_total_fees: number; suma_reservas: number }>(
+      `/binders/${binderId}/siniestros/sharepoint-preview`
+    ),
+  importar: (binderId: number) =>
+    request<{ leidos: number; nuevos: number; actualizados: number; total_binder: number }>(
+      `/binders/${binderId}/siniestros/import`,
+      { method: "POST" }
+    ),
+};
+
+// ── Claims BDX (bordereau de siniestros por binder) ──
+export interface ClaimsBdxVista {
+  periodo: string;
+  meses: string[];
+  presentado: boolean;
+  bloqueado: boolean;
+  headers: string[];
+  filas: Record<string, unknown>[];
+}
+export const claimsBdxApi = {
+  vista: (binderId: number, periodo?: string) =>
+    request<ClaimsBdxVista>(`/binders/${binderId}/claims-bdx${periodo ? `?periodo=${periodo}` : ""}`),
+  periodos: (binderId: number) =>
+    request<{ periodo: string; n: number; fecha: string | null }[]>(`/binders/${binderId}/claims-bdx/periodos`),
+  presentar: (binderId: number, periodo: string, usuario?: string) =>
+    request(`/binders/${binderId}/claims-bdx/presentar`, { method: "POST", body: JSON.stringify({ periodo, usuario }) }),
+  excel: async (binderId: number, periodo: string, modo: "vivo" | "presentado" = "vivo"): Promise<Blob> => {
+    const res = await fetch(`${BASE}/binders/${binderId}/claims-bdx/excel?periodo=${periodo}&modo=${modo}`);
+    if (!res.ok) throw new Error(`Error al generar el Claims BDX (${res.status})`);
+    return res.blob();
+  },
+};
+
 // ── Cierre contable mensual ──
 export interface CierreMes {
   mes: number;
