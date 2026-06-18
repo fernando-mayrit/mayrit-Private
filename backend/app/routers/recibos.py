@@ -667,6 +667,79 @@ def descontabilizar(recibo_id: int, db: Session = Depends(get_db)):
     return _read(db, r)
 
 
+# ─────────── Gestión íntegra de un recibo (OM / Fees / Comisiones, uno a uno) ───────────
+# Los recibos de BINDER se cobran/traspasan/liquidan parcialmente desde el Premium BDX.
+# Los demás (póliza OM, y futuros Fees/Comisiones) se gestionan aquí, ÍNTEGRAMENTE:
+#   · Cobrar   → cobra toda la prima (y con ella la comisión retenida y lo 'a liquidar').
+#   · Liquidar → paga a la compañía lo cobrado pendiente de liquidar.
+#   · Traspasar→ pasa NUESTRA comisión (retenida cobrada) a la cuenta de gastos.
+#   · Pagar    → paga la comisión cedida al tercero (corredor).
+class GestionRecibo(BaseModel):
+    accion: str                      # cobrar | liquidar | traspasar | pagar
+    fecha: dt.date | None = None     # por defecto, hoy
+    deshacer: bool = False           # revertir la acción
+
+
+@router.post("/recibos/{recibo_id}/gestion", response_model=sch.ReciboRead)
+def gestion(recibo_id: int, payload: GestionRecibo, db: Session = Depends(get_db)):
+    r = db.get(Recibo, recibo_id)
+    if r is None:
+        raise HTTPException(status_code=404, detail=f"Recibo {recibo_id} no encontrado")
+    if r.binder_id is not None:
+        raise HTTPException(status_code=409, detail="Los recibos de binder se gestionan desde el Premium BDX.")
+    f = payload.fecha or dt.date.today()
+    off = payload.deshacer
+    a = payload.accion
+
+    if a == "cobrar":
+        if off:
+            if (r.liquidar_liquidado or D0) > 0 or (r.comision_retenida_traspasada or D0) > 0 or (r.comision_cedida_pagada or D0) > 0:
+                raise HTTPException(status_code=409, detail="Deshaz antes la liquidación, el traspaso y el pago de comisión.")
+            r.prima_cobrada = r.comision_retenida_cobrada = r.liquidar_cobrado = D0
+            r.prima_fecha_cobro = None
+        else:
+            r.prima_cobrada = r.prima_adeudada
+            r.comision_retenida_cobrada = r.comision_retenida
+            r.liquidar_cobrado = r.liquidar
+            r.prima_fecha_cobro = f
+    elif a == "traspasar":
+        if off:
+            r.comision_retenida_traspasada = D0
+            r.comision_fecha_traspaso = None
+        else:
+            if (r.comision_retenida_cobrada or D0) <= 0:
+                raise HTTPException(status_code=409, detail="Primero hay que cobrar la comisión antes de traspasarla.")
+            r.comision_retenida_traspasada = r.comision_retenida_cobrada
+            r.comision_fecha_traspaso = f
+    elif a == "liquidar":
+        if off:
+            r.liquidar_liquidado = D0
+            r.liquidar_fecha_liquidacion = None
+        else:
+            if (r.liquidar_cobrado or D0) <= 0:
+                raise HTTPException(status_code=409, detail="Primero hay que cobrar la prima antes de liquidar a la compañía.")
+            r.liquidar_liquidado = r.liquidar_cobrado
+            r.liquidar_fecha_liquidacion = f
+    elif a == "pagar":
+        if off:
+            r.comision_cedida_pagada = D0
+            r.comision_cedida_fecha_pago = None
+        else:
+            base = r.comision_cedida_a_pagar or r.comision_cedida or D0
+            if base <= 0:
+                raise HTTPException(status_code=409, detail="Este recibo no tiene comisión cedida que pagar.")
+            r.comision_cedida_a_pagar = base
+            r.comision_cedida_pagada = base
+            r.comision_cedida_fecha_pago = f
+    else:
+        raise HTTPException(status_code=422, detail=f"Acción desconocida: {a!r}")
+
+    _recompute(r)
+    db.commit()
+    db.refresh(r)
+    return _read(db, r)
+
+
 @router.delete("/recibos/{recibo_id}", status_code=204)
 def borrar(recibo_id: int, db: Session = Depends(get_db)):
     r = db.get(Recibo, recibo_id)

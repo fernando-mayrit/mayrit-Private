@@ -156,6 +156,9 @@ export const recibosApi = {
   // Envía a contabilidad (bloquea) / reabre para corregir.
   contabilizar: (id: number) => request<Recibo>(`/recibos/${id}/contabilizar`, { method: "POST" }),
   descontabilizar: (id: number) => request<Recibo>(`/recibos/${id}/descontabilizar`, { method: "POST" }),
+  // Gestión íntegra de un recibo OM/Fees/Comisiones: cobrar | liquidar | traspasar | pagar (+ deshacer).
+  gestion: (id: number, accion: "cobrar" | "liquidar" | "traspasar" | "pagar", fecha?: string, deshacer = false) =>
+    request<Recibo>(`/recibos/${id}/gestion`, { method: "POST", body: JSON.stringify({ accion, fecha, deshacer }) }),
   // ── Premium: grupos, cobro y macheo desde Excel ──
   listarPremium: (binderId: number) => request<PremiumGrupo[]>(`/binders/${binderId}/premium`),
   cobrarPremium: (binderId: number, periodo: string, fecha: string) =>

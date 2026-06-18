@@ -83,7 +83,12 @@ export default function RecibosPage() {
   const [q, setQ] = useState("");
 
   const [sel, setSel] = useState<Recibo | null>(null);
+  // Confirmación de una acción íntegra (cobrar/liquidar/traspasar/pagar) sobre un recibo.
+  const [gst, setGst] = useState<
+    { r: Recibo; accion: "cobrar" | "liquidar" | "traspasar" | "pagar"; deshacer: boolean; titulo: string; mensaje: string } | null
+  >(null);
   const [vistaEstados, setVistaEstados] = useState(false); // false = importes, true = pastillas de color
+  const [gestionMode, setGestionMode] = useState(false);   // muestra acciones por línea y filtra a no-binder
   const [saving, setSaving] = useState(false);
   const [confBorrar, setConfBorrar] = useState(false);
   const [resetSignal, setResetSignal] = useState(0);
@@ -149,11 +154,39 @@ export default function RecibosPage() {
       setError((e as Error).message);
     }
   }
+  // Pide confirmación antes de una acción íntegra (evita clics accidentales).
+  function pedirGestion(r: Recibo, accion: "cobrar" | "liquidar" | "traspasar" | "pagar", deshacer: boolean, lbl: string) {
+    const importe: Record<typeof accion, number> = {
+      cobrar: num(r.prima_adeudada),
+      liquidar: num(r.liquidar_cobrado),
+      traspasar: num(r.comision_retenida_cobrada),
+      pagar: num(r.comision_cedida_a_pagar) || num(r.comision_cedida),
+    } as Record<typeof accion, number>;
+    const titulo = deshacer ? `Deshacer: ${lbl}` : lbl;
+    const mensaje = deshacer
+      ? `Vas a deshacer "${lbl}" del recibo ${r.numero}.`
+      : `Vas a ${lbl.toLowerCase()} el recibo ${r.numero} por ${eur(importe[accion])}.`;
+    setGst({ r, accion, deshacer, titulo, mensaje });
+  }
+  // Ejecuta la acción ya confirmada.
+  async function gestionarConfirmado() {
+    if (!gst) return;
+    setError(null);
+    try {
+      await recibosApi.gestion(gst.r.id, gst.accion, undefined, gst.deshacer);
+      setGst(null);
+      await cargar();
+    } catch (e) {
+      setGst(null);
+      setError((e as Error).message);
+    }
+  }
 
   const refDe = (r: Recibo) => r.numero_poliza ?? r.binder_umr ?? null;
   const umrs = [...new Set(items.map(refDe).filter(Boolean) as string[])].sort();
   const filtrados = items.filter(
     (r) =>
+      (!gestionMode || r.binder_id == null) && // en modo gestión, solo recibos que NO son de binder
       (!umr || refDe(r) === umr) &&
       (!q || `${r.numero} ${r.nombre_mercado ?? ""} ${r.asegurado ?? ""}`.toLowerCase().includes(q.toLowerCase()))
   );
@@ -221,7 +254,18 @@ export default function RecibosPage() {
         </span>
       </div>
 
-      <div style={{ display: "flex", justifyContent: "flex-end", margin: "0 4px 10px 0" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "0 4px 10px 0" }}>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={gestionMode}
+          className={"switch" + (gestionMode ? " on" : "")}
+          onClick={() => setGestionMode((v) => !v)}
+          title="Acciones de cobro/pago por recibo (solo recibos que no son de binder)"
+        >
+          <span className="switch-track"><span className="switch-knob" /></span>
+          <span className="switch-label">⚙️ Gestión de cobros/pagos</span>
+        </button>
         <label className="check-inline" style={{ fontSize: 11 }}>
           {vistaEstados ? "Ver Cantidades" : "Ver estado por colores"}
           <input type="checkbox" checked={vistaEstados} onChange={(e) => setVistaEstados(e.target.checked)} />
@@ -240,11 +284,36 @@ export default function RecibosPage() {
           columnas={columnas}
           defaultKeys={DEFAULT_KEYS}
           storageKey="mayrit.recibos.tabla.v8"
-          rowAction={(r) => (
-            <button className="btn-link" onClick={() => setSel(r)}>
-              Editar
-            </button>
-          )}
+          rowAction={(r) => {
+            // Fuera del modo gestión (o en recibos de binder, que van por Premium BDX): solo Editar.
+            if (!gestionMode || r.binder_id != null) {
+              return <button className="btn-link" onClick={() => setSel(r)}>Editar</button>;
+            }
+            const cobrado = !!r.prima_fecha_cobro;
+            const liquidado = !!r.liquidar_fecha_liquidacion;
+            const traspasado = !!r.comision_fecha_traspaso;
+            const pagado = !!r.comision_cedida_fecha_pago;
+            const tieneCedida = num(r.comision_cedida) > 0 || num(r.comision_cedida_a_pagar) > 0;
+            const chip = (on: boolean, emoji: string, acc: "cobrar" | "liquidar" | "traspasar" | "pagar", lbl: string) => (
+              <button
+                className={"acc-chip" + (on ? " on" : "")}
+                title={on ? `${lbl} ✓ — clic para deshacer` : lbl}
+                onClick={() => pedirGestion(r, acc, on, lbl)}
+              >
+                {emoji}
+              </button>
+            );
+            return (
+              <div className="recibo-row-acc">
+                {chip(cobrado, "💰", "cobrar", "Cobrar")}
+                {/* Liquidar/Traspasar/Pagar SOLO tienen sentido (y aparecen) una vez cobrada la prima. */}
+                {cobrado && chip(liquidado, "🏦", "liquidar", "Liquidar a compañía")}
+                {cobrado && chip(traspasado, "🔁", "traspasar", "Traspasar comisión a gastos")}
+                {cobrado && tieneCedida && chip(pagado, "💸", "pagar", "Pagar comisión al corredor")}
+                <button className="btn-link" onClick={() => setSel(r)}>Editar</button>
+              </div>
+            );
+          }}
           resetSignal={resetSignal}
         />
       )}
@@ -261,6 +330,15 @@ export default function RecibosPage() {
           onClose={() => setSel(null)}
           onDelete={() => setConfBorrar(true)}
           onDescontabilizar={descontabilizar}
+        />
+      )}
+      {gst && (
+        <ConfirmDialog
+          titulo={gst.titulo}
+          mensaje={gst.mensaje}
+          confirmLabel="Confirmar"
+          onConfirm={gestionarConfirmado}
+          onClose={() => setGst(null)}
         />
       )}
       {confBorrar && sel && (
