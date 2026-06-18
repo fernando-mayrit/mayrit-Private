@@ -83,20 +83,6 @@ def _binder_o_404(binder_id: int, db: Session) -> Binder:
     return b
 
 
-def _meses_binder(b: Binder) -> list[str]:
-    """Meses (YYYY-MM, fin de mes) desde el efecto del binder hasta hoy (más reciente primero)."""
-    ini = b.fecha_efecto or dt.date.today()
-    hoy = dt.date.today()
-    fin = b.fecha_vencimiento and min(b.fecha_vencimiento, hoy) or hoy
-    out, y, m = [], ini.year, ini.month
-    while (y, m) <= (fin.year, fin.month):
-        out.append(f"{y:04d}-{m:02d}")
-        m += 1
-        if m > 12:
-            y, m = y + 1, 1
-    return list(reversed(out))
-
-
 def _bloqueado(db: Session, binder_id: int, periodo: str) -> bool:
     return db.scalar(
         select(BdxBloqueo).where(BdxBloqueo.binder_id == binder_id, BdxBloqueo.tipo == "claims", BdxBloqueo.periodo == periodo)
@@ -251,17 +237,31 @@ def _excel(filas: list[dict], cambios: list[set]) -> bytes:
 # ─────────────────────────────── Endpoints ───────────────────────────────
 @router.get("/binders/{binder_id}/claims-bdx")
 def vista(binder_id: int, periodo: str | None = None, db: Session = Depends(get_db)):
-    """Vista en vivo del Claims BDX del binder para un periodo (por defecto, el último mes)."""
+    """Vista en vivo del Claims BDX. `meses` = solo periodos YA presentados (los que existen);
+    para presentar uno nuevo se elige el mes libremente en el frontend. Por defecto abre en el
+    último presentado (o el mes actual si aún no hay ninguno)."""
     b = _binder_o_404(binder_id, db)
-    meses = _meses_binder(b)
-    periodo = periodo or (meses[0] if meses else dt.date.today().strftime("%Y-%m"))
+    presentadas = sorted(
+        {p.periodo for p in db.scalars(select(ClaimsPresentacion).where(ClaimsPresentacion.binder_id == b.id)).all()},
+        reverse=True,
+    )
+    periodo = periodo or (presentadas[0] if presentadas else dt.date.today().strftime("%Y-%m"))
     filas, _ = _construir(db, b, periodo)
+    # Meses candidatos a PRESENTAR: del efecto del binder a hoy, menos los ya presentados.
+    pend, ini, hoy, ya = [], (b.fecha_efecto or dt.date.today()), dt.date.today(), set(presentadas)
+    y, m = ini.year, ini.month
+    while (y, m) <= (hoy.year, hoy.month):
+        mm = f"{y:04d}-{m:02d}"
+        if mm not in ya:
+            pend.append(mm)
+        m += 1
+        if m > 12:
+            y, m = y + 1, 1
     return {
         "periodo": periodo,
-        "meses": meses,
-        "presentado": db.scalar(
-            select(ClaimsPresentacion).where(ClaimsPresentacion.binder_id == b.id, ClaimsPresentacion.periodo == periodo)
-        ) is not None,
+        "meses": presentadas,
+        "meses_pendientes": pend,
+        "presentado": periodo in presentadas,
         "bloqueado": _bloqueado(db, b.id, periodo),
         "headers": HEADERS,
         "filas": filas,

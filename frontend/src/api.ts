@@ -54,7 +54,8 @@ export const siniestrosApi = {
 // ── Claims BDX (bordereau de siniestros por binder) ──
 export interface ClaimsBdxVista {
   periodo: string;
-  meses: string[];
+  meses: string[];            // periodos ya presentados (para ver)
+  meses_pendientes: string[]; // meses sin presentar (para presentar)
   presentado: boolean;
   bloqueado: boolean;
   headers: string[];
