@@ -62,7 +62,7 @@ export default function PolizasPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [q, setQ] = useState("");
-  const [estadoF, setEstadoF] = useState("");
+  const [estadoF, setEstadoF] = useState("En Vigor");
   const [form, setForm] = useState<Poliza | "nueva" | null>(null);
   const [recCount, setRecCount] = useState<Map<number, number>>(new Map());
 

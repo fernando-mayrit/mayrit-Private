@@ -214,12 +214,14 @@ def _read_lote(db: Session, recibos: list[Recibo]) -> list[sch.ReciboRead]:
 
 # ──────────────────────────────── Listados ──────────────────────────────────
 @router.get("/recibos", response_model=list[sch.ReciboRead])
-def listar(anio: int | None = None, binder_id: int | None = None, q: str | None = None, db: Session = Depends(get_db)):
+def listar(anio: int | None = None, binder_id: int | None = None, poliza_id: int | None = None, q: str | None = None, db: Session = Depends(get_db)):
     stmt = select(Recibo)
     if anio is not None:
         stmt = stmt.where(Recibo.anio == anio)
     if binder_id is not None:
         stmt = stmt.where(Recibo.binder_id == binder_id)
+    if poliza_id is not None:
+        stmt = stmt.where(Recibo.poliza_id == poliza_id)
     if q:
         like = f"%{q}%"
         stmt = stmt.where(
@@ -489,54 +491,32 @@ def emitir_preview(payload: PolizaEmitir):
     return _emision_lineas(payload)
 
 
-@router.post("/polizas/emitir", response_model=sch.PolizaRead, status_code=201)
-def emitir(payload: PolizaEmitir, db: Session = Depends(get_db)):
-    """Crea la póliza y genera sus recibos: nº de plazos (Pago) × compañías (coaseguro).
+def _plazos_de_pago(pago: str | None) -> int:
+    """Pago → nº de plazos al año (Único=1, Semestral=2, Trimestral=4)."""
+    return {"Único": 1, "Semestral": 2, "Trimestral": 4}.get((pago or "").strip(), 1)
 
-    - Pago: Único=1, Semestral=2, Trimestral=4 → la prima de cada compañía se reparte entre los plazos.
-    - Coaseguro: 1 recibo por compañía y plazo (prima = prima_neta × su % sobre el total / plazos).
-      Sin coaseguro, la "compañía" es nuestra capacidad (1 sola).
-    Ej.: trimestral (4) + 2 compañías = 8 recibos.
-    """
-    if not payload.fecha_efecto:
-        raise HTTPException(status_code=422, detail="La fecha de efecto es obligatoria para emitir.")
-    if not payload.prima_neta:
-        raise HTTPException(status_code=422, detail="La prima neta es obligatoria para emitir.")
 
-    n = max(1, min(4, payload.n_plazos or 1))
+def _generar_recibos(db: Session, poliza: Poliza, n: int) -> None:
+    """Genera los recibos de una póliza YA guardada: n plazos × compañías (coaseguro).
+    Prima de cada compañía = prima_neta × su % sobre el total; repartida entre los plazos.
+    Comisión por recibo repartida en cedida (corredor) y retenida (Mayrit)."""
+    n = max(1, min(4, n or 1))
     step = 12 // n
-    prima_neta = payload.prima_neta or D0
-    cap = payload.capacidad if payload.capacidad is not None else Decimal(1)   # fracción (0..1)
-    imp_pct = payload.impuestos_porc or D0
-    com_pct = payload.comision_porc or D0                 # comisión total %
-    ced_pct = payload.comision_cedida_porc or D0          # parte del corredor (cedida)
-    ret_pct = com_pct - ced_pct                            # parte de Mayrit (retenida)
+    prima_neta = poliza.prima_neta or D0
+    cap = poliza.capacidad if poliza.capacidad is not None else Decimal(1)   # fracción (0..1)
+    imp_pct = poliza.impuestos_porc or D0
+    com_pct = poliza.comision_porc or D0
+    ced_pct = poliza.comision_cedida_porc or D0
+    ret_pct = com_pct - ced_pct
 
-    # Compañías: coaseguro (participacion en %) o una sola (nuestra capacidad, fracción).
-    if payload.coaseguro and payload.coaseguro_lineas:
+    if poliza.coaseguro and poliza.coaseguro_lineas:
         companias = [
-            (str(l.get("mercado") or payload.mercado or ""), Decimal(str(l.get("participacion") or 0)) / 100)
-            for l in payload.coaseguro_lineas
+            (str(l.get("mercado") or poliza.mercado or ""), Decimal(str(l.get("participacion") or 0)) / 100)
+            for l in poliza.coaseguro_lineas
         ]
     else:
-        companias = [(payload.mercado or "", cap)]
+        companias = [(poliza.mercado or "", cap)]
 
-    # 1) Póliza con totales sobre nuestra participación
-    prima_part = _q2(prima_neta * cap)
-    imp_part = _q2(prima_part * imp_pct / 100) if imp_pct else D0
-    base = payload.model_dump(exclude={"n_plazos", "comision_cedida_porc", "comision_retenida_porc", "plazos_fechas"})
-    base.update(
-        pago=PAGO_LABEL.get(n, payload.pago),
-        prima_participacion=prima_part,
-        impuestos=imp_part,
-        prima_total=_q2(prima_part + imp_part + _q2(payload.recargos or D0)),
-        comision_total=_q2(prima_part * com_pct / 100) if com_pct else D0,
-    )
-    poliza = Poliza(**base)
-    db.add(poliza)
-    db.flush()  # asigna poliza.id
-
-    # 2) Recibos = compañías × plazos (numeración correlativa por año, sin colisiones)
     contadores: dict[int, int] = {}
 
     def numero(anio: int) -> str:
@@ -546,7 +526,7 @@ def emitir(payload: PolizaEmitir, db: Session = Depends(get_db)):
         return f"{anio}-{contadores[anio]:04d}"
 
     def fecha_plazo(idx: int) -> dt.date:
-        return _sumar_meses(payload.fecha_efecto, idx * step)
+        return _sumar_meses(poliza.fecha_efecto, idx * step)
 
     for mercado_nom, share in companias:
         prima_comp = _q2(prima_neta * share)            # prima de esta compañía (su parte del total)
@@ -559,7 +539,7 @@ def emitir(payload: PolizaEmitir, db: Session = Depends(get_db)):
             ret_i = _q2(prima_i * ret_pct / 100) if ret_pct else D0   # comisión Mayrit
             adeudada = _q2(bruta_i - ced_i)
             fe = fecha_plazo(i)
-            fv = (fecha_plazo(i + 1) - dt.timedelta(days=1)) if i < n - 1 else payload.fecha_vencimiento
+            fv = (fecha_plazo(i + 1) - dt.timedelta(days=1)) if i < n - 1 else poliza.fecha_vencimiento
             anio = fe.year
             recibo = Recibo(
                 numero=numero(anio), poliza_id=poliza.id, binder_id=None,
@@ -582,6 +562,54 @@ def emitir(payload: PolizaEmitir, db: Session = Depends(get_db)):
             _recompute(recibo)
             db.add(recibo)
 
+
+@router.post("/polizas/emitir", response_model=sch.PolizaRead, status_code=201)
+def emitir(payload: PolizaEmitir, db: Session = Depends(get_db)):
+    """Crea la póliza y genera sus recibos (plazos × compañías). Ej.: trimestral + 2 compañías = 8."""
+    if not payload.fecha_efecto:
+        raise HTTPException(status_code=422, detail="La fecha de efecto es obligatoria para emitir.")
+    if not payload.prima_neta:
+        raise HTTPException(status_code=422, detail="La prima neta es obligatoria para emitir.")
+
+    n = max(1, min(4, payload.n_plazos or 1))
+    prima_neta = payload.prima_neta or D0
+    cap = payload.capacidad if payload.capacidad is not None else Decimal(1)
+    imp_pct = payload.impuestos_porc or D0
+    com_pct = payload.comision_porc or D0
+    prima_part = _q2(prima_neta * cap)
+    imp_part = _q2(prima_part * imp_pct / 100) if imp_pct else D0
+    base = payload.model_dump(exclude={"n_plazos", "comision_cedida_porc", "comision_retenida_porc", "plazos_fechas"})
+    base.update(
+        pago=PAGO_LABEL.get(n, payload.pago),
+        prima_participacion=prima_part,
+        impuestos=imp_part,
+        prima_total=_q2(prima_part + imp_part + _q2(payload.recargos or D0)),
+        comision_total=_q2(prima_part * com_pct / 100) if com_pct else D0,
+    )
+    poliza = Poliza(**base)
+    db.add(poliza)
+    db.flush()  # asigna poliza.id
+    _generar_recibos(db, poliza, n)
+    db.commit()
+    db.refresh(poliza)
+    return sch.PolizaRead.model_validate(poliza)
+
+
+@router.post("/polizas/{poliza_id}/emitir-recibos", response_model=sch.PolizaRead)
+def emitir_recibos_existente(poliza_id: int, db: Session = Depends(get_db)):
+    """Genera los recibos de una póliza YA existente que aún no los tiene (mismo criterio:
+    plazos según Pago × compañías de coaseguro)."""
+    poliza = db.get(Poliza, poliza_id)
+    if poliza is None:
+        raise HTTPException(status_code=404, detail=f"Póliza {poliza_id} no encontrada")
+    ya = db.scalar(select(func.count()).select_from(Recibo).where(Recibo.poliza_id == poliza_id)) or 0
+    if ya:
+        raise HTTPException(status_code=409, detail="La póliza ya tiene recibos.")
+    if not poliza.fecha_efecto:
+        raise HTTPException(status_code=422, detail="La fecha de efecto es obligatoria para emitir.")
+    if not poliza.prima_neta:
+        raise HTTPException(status_code=422, detail="La prima neta es obligatoria para emitir.")
+    _generar_recibos(db, poliza, _plazos_de_pago(poliza.pago))
     db.commit()
     db.refresh(poliza)
     return sch.PolizaRead.model_validate(poliza)

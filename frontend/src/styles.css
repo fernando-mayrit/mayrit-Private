@@ -200,6 +200,13 @@ input[type="date"] { text-align: center; }
 
 /* Dos columnas (p. ej. ficha de póliza: datos+Importes | Participación) */
 .dos-columnas { display: flex; gap: 20px; align-items: stretch; }
+/* Solo lectura al editar (fieldset que deshabilita todo) + banner con botón Corregir */
+.ro-fieldset { border: 0; margin: 0; padding: 0; min-inline-size: 0; }
+.ro-banner {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  background: var(--gris-claro); border: 1px solid var(--borde); border-radius: 8px;
+  padding: 8px 12px; margin-bottom: 12px; font-size: 14px; color: var(--gris); font-weight: 600;
+}
 .dos-columnas > .col { flex: 1; min-width: 0; }
 .dos-columnas > .col.bloque { border: 1px solid var(--borde); border-radius: 10px; padding: 14px 16px; background: #fff; }
 

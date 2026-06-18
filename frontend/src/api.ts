@@ -130,10 +130,11 @@ export interface BdxImportResult {
 import type { Recibo, ReciboUpdate, ReciboPreview } from "./types";
 
 export const recibosApi = {
-  listar: (params?: { anio?: number; binder_id?: number; q?: string }) => {
+  listar: (params?: { anio?: number; binder_id?: number; poliza_id?: number; q?: string }) => {
     const qs = new URLSearchParams();
     if (params?.anio != null) qs.set("anio", String(params.anio));
     if (params?.binder_id != null) qs.set("binder_id", String(params.binder_id));
+    if (params?.poliza_id != null) qs.set("poliza_id", String(params.poliza_id));
     if (params?.q) qs.set("q", params.q);
     const s = qs.toString();
     return request<Recibo[]>(`/recibos${s ? `?${s}` : ""}`);
@@ -221,6 +222,9 @@ export const polizasApi = {
   // Próximo nº de póliza automático (B1634 + AA + correlativo) para un año (de la fecha de efecto).
   siguienteNumero: (anio: number) =>
     request<{ numero_poliza: string }>(`/polizas/siguiente-numero?anio=${anio}`),
+  // Genera los recibos de una póliza ya existente que aún no los tiene.
+  emitirRecibos: (id: number) =>
+    request<Poliza>(`/polizas/${id}/emitir-recibos`, { method: "POST" }),
 };
 
 // Usuarios de la app (identificación) + autologin por equipo.

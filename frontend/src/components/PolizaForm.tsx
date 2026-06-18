@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { polizasApi, crud } from "../api";
+import { polizasApi, recibosApi, crud } from "../api";
 import type {
-  Poliza, PolizaWrite, PolizaEmitir, EmisionPreview,
+  Poliza, PolizaWrite, PolizaEmitir, EmisionPreview, Recibo,
   Tomador, TomadorWrite, Productor, ProductorWrite, Mercado, MercadoWrite, Ramo,
 } from "../types";
 import FormPanel from "./FormPanel";
@@ -129,6 +129,20 @@ export default function PolizaForm({
   // Alta rápida apilada encima (sin cerrar la póliza).
   const [alta, setAlta] = useState<null | "tomador" | "corredor" | "mercado">(null);
   const [confirmSinRecibos, setConfirmSinRecibos] = useState(false);
+  // Al editar una póliza existente se abre en SOLO LECTURA; "Corregir" libera la edición.
+  const [bloqueado, setBloqueado] = useState(!!poliza);
+  // Recibos enlazados a esta póliza (al editar).
+  const [recibos, setRecibos] = useState<Recibo[]>([]);
+  const [recibosCargados, setRecibosCargados] = useState(false);
+
+  useEffect(() => {
+    if (!poliza) return;
+    recibosApi
+      .listar({ poliza_id: poliza.id })
+      .then(setRecibos)
+      .catch(() => {})
+      .finally(() => setRecibosCargados(true));
+  }, [poliza]);
 
   useEffect(() => {
     // limit alto para traerlas todas (el endpoint pagina a 100 por defecto).
@@ -352,6 +366,27 @@ export default function PolizaForm({
     }
   }
 
+  // Emitir los recibos de una póliza YA existente que no los tiene (mismos criterios).
+  async function emitirRecibosExistente() {
+    if (!poliza) return;
+    const falta = campoFaltante();
+    if (falta) return setError(falta);
+    if (num(form.prima_neta) <= 0) return setError("La prima neta debe ser mayor que 0 para emitir.");
+    if (!confirm(`Se generarán los recibos de esta póliza (pago ${form.pago || "Único"}${form.coaseguro ? ", coaseguro" : ""}). ¿Continuar?`))
+      return;
+    setSaving(true);
+    setError(null);
+    try {
+      if (dirty) await polizasApi.editar(poliza.id, recordPayload()); // guarda los datos en pantalla
+      await polizasApi.emitirRecibos(poliza.id);
+      onSaved();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function borrar() {
     if (!poliza) return;
     if (!confirm(`¿Borrar la póliza ${poliza.numero_poliza ?? poliza.asegurado ?? ""}?`)) return;
@@ -382,10 +417,29 @@ export default function PolizaForm({
       saveLabel={esEmision ? "Emitir" : undefined}
       saveDisabled={esEmision && !listoParaEmitir}
       onClose={onClose}
-      onDelete={poliza ? borrar : undefined}
+      onDelete={poliza && !bloqueado ? borrar : undefined}
       wide
+      readOnly={bloqueado}
       escEnabled={alta === null && !confirmSinRecibos}
     >
+      {poliza && (
+        <div className="ro-banner">
+          <span>{bloqueado ? "🔒 Solo lectura" : "✏️ Editando"}</span>
+          <div style={{ display: "flex", gap: 8 }}>
+            {recibosCargados && recibos.length === 0 && (
+              <button type="button" className="btn-primary" onClick={emitirRecibosExistente} disabled={saving}>
+                ⚡ Emitir recibos
+              </button>
+            )}
+            {bloqueado && (
+              <button type="button" className="btn-primary" onClick={() => setBloqueado(false)}>
+                ✏️ Corregir
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+      <fieldset className="ro-fieldset" disabled={bloqueado}>
       <div className="dos-columnas">
         {/* IZQUIERDA: datos generales + Importes al 100% */}
         <div className="col bloque">
@@ -742,7 +796,39 @@ export default function PolizaForm({
           )}
         </>
       )}
+      </fieldset>
 
+      {poliza && recibos.length > 0 && (
+        <div style={{ marginTop: 16 }}>
+          <h3 style={{ marginBottom: 8 }}>Recibos de esta póliza ({recibos.length})</h3>
+          <div className="emision-preview">
+            <table className="compacto">
+              <thead>
+                <tr>
+                  <th>Nº</th>
+                  <th>Mercado</th>
+                  <th>F. Efecto</th>
+                  <th>F. Vto.</th>
+                  <th className="num">Prima Neta</th>
+                  <th className="num">Comisión Mayrit</th>
+                </tr>
+              </thead>
+              <tbody>
+                {recibos.map((r) => (
+                  <tr key={r.id}>
+                    <td>{r.numero}</td>
+                    <td>{r.nombre_mercado ?? r.mercado ?? "—"}</td>
+                    <td>{fmtFechaES(r.fecha_efecto_recibo)}</td>
+                    <td>{fmtFechaES(r.fecha_vcto_recibo)}</td>
+                    <td className="num">{fmtMiles(r.prima_neta_recibo)}</td>
+                    <td className="num">{fmtMiles(r.comision_retenida)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </FormPanel>
 
     {confirmSinRecibos && (
