@@ -17,7 +17,7 @@ const periodoFmt = (p: string | null | undefined) => {
 
 // Catálogo de TODAS las columnas (clic derecho en la cabecera para elegir).
 const CATALOGO: Col<Recibo>[] = [
-  { key: "numero", label: "Número", tipo: "text" },
+  { key: "numero", label: "Recibo Nº", tipo: "text" },
   { key: "umr_poliza", label: "UMR / Nº Póliza", tipo: "text", calc: (r) => r.numero_poliza ?? r.binder_umr },
   { key: "periodo", label: "Risk BDX", tipo: "text", calc: (r) => periodoFmt(r.periodo) },
   { key: "anio", label: "Año", tipo: "int" },
@@ -33,13 +33,13 @@ const CATALOGO: Col<Recibo>[] = [
   { key: "estado", label: "Estado", tipo: "text" },
   { key: "nombre_mercado", label: "Mercado", tipo: "text" },
   { key: "mercado", label: "Mercado (alias)", tipo: "text" },
-  { key: "asegurado", label: "Asegurado", tipo: "text" },
+  { key: "asegurado", label: "Asegurado", tipo: "text", width: 120 },
   { key: "corredor", label: "Corredor", tipo: "text" },
   { key: "ramo", label: "Ramo", tipo: "text" },
   { key: "tipo_poliza", label: "Tipo", tipo: "text" },
   { key: "pago", label: "Pago", tipo: "text" },
   { key: "moneda", label: "Moneda", tipo: "text" },
-  { key: "recibo_num", label: "Recibo nº", tipo: "int" },
+  { key: "recibo_num", label: "Plazo", tipo: "int" },
   { key: "recibos_totales", label: "de", tipo: "text" },
   { key: "fecha_efecto_recibo", label: "F. Efecto", tipo: "date" },
   { key: "fecha_vcto_recibo", label: "F. Vto.", tipo: "date" },
@@ -53,7 +53,7 @@ const CATALOGO: Col<Recibo>[] = [
   { key: "comision_retenida_porc", label: "Retenida %", tipo: "pct" },
   { key: "comision_retenida", label: "Comisión", tipo: "num" },
   { key: "comision_retenida_cobrada", label: "Cobrada", tipo: "num" },
-  { key: "comision_pendiente_cobro", label: "Pdte. Cobro", tipo: "num" },
+  { key: "comision_pendiente_cobro", label: "Cobro", tipo: "num" },
   { key: "comision_retenida_traspasada", label: "Traspasada", tipo: "num" },
   { key: "prima_adeudada", label: "Prima Adeudada", tipo: "num" },
   { key: "prima_cobrada", label: "Prima Cobrada", tipo: "num" },
@@ -61,10 +61,15 @@ const CATALOGO: Col<Recibo>[] = [
   { key: "liquidar_cobrado", label: "A Liq. Cobrado", tipo: "num" },
   { key: "liquidar_liquidado", label: "Liquidado", tipo: "num" },
   { key: "honorarios", label: "Honorarios", tipo: "num" },
+  // Pendientes calculados (sobre los importes base del recibo).
+  { key: "pdte_liquidar", label: "Liquidación", tipo: "num", calc: (r) => num(r.liquidar_cobrado) - num(r.liquidar_liquidado) },
+  { key: "pdte_traspaso", label: "Traspaso", tipo: "num", calc: (r) => num(r.comision_retenida_cobrada) - num(r.comision_retenida_traspasada) },
+  { key: "pendiente_pago", label: "Pago Comi.", tipo: "num", calc: (r) => num(r.comision_cedida_a_pagar) - num(r.comision_cedida_pagada) },
 ];
 const DEFAULT_KEYS = [
-  "numero", "umr_poliza", "periodo", "nombre_mercado", "comision_retenida",
-  "comision_retenida_cobrada", "comision_pendiente_cobro", "estado_cobro", "fecha_contable",
+  "numero", "tipo_poliza", "umr_poliza", "corredor", "asegurado", "fecha_efecto_recibo",
+  "ramo", "nombre_mercado", "pago",
+  "comision_pendiente_cobro", "pdte_liquidar", "pdte_traspaso", "pendiente_pago",
 ];
 
 export default function RecibosPage() {
@@ -78,6 +83,7 @@ export default function RecibosPage() {
   const [q, setQ] = useState("");
 
   const [sel, setSel] = useState<Recibo | null>(null);
+  const [vistaEstados, setVistaEstados] = useState(false); // false = importes, true = pastillas de color
   const [saving, setSaving] = useState(false);
   const [confBorrar, setConfBorrar] = useState(false);
   const [resetSignal, setResetSignal] = useState(0);
@@ -144,8 +150,44 @@ export default function RecibosPage() {
   const totalCobrada = filtrados.reduce((a, r) => a + num(r.comision_retenida_cobrada), 0);
   const anios = Array.from({ length: new Date().getFullYear() - 2016 }, (_, i) => new Date().getFullYear() - i);
 
+  // Columnas de "pendiente": en modo estados muestran pastilla (Pendiente/Parcial/Cobrado) por
+  // su (total, hecho) en vez del importe.
+  // verde = etiqueta del estado "completo" por columna (la roja=Pendiente y amarilla=Parcial son comunes).
+  const PEND: Record<string, { total: (r: Recibo) => unknown; hecho: (r: Recibo) => unknown; verde: string }> = {
+    comision_pendiente_cobro: { total: (r) => r.comision_retenida, hecho: (r) => r.comision_retenida_cobrada, verde: "Cobrado" },
+    pdte_liquidar: { total: (r) => r.liquidar_cobrado, hecho: (r) => r.liquidar_liquidado, verde: "Liquidado" },
+    pdte_traspaso: { total: (r) => r.comision_retenida_cobrada, hecho: (r) => r.comision_retenida_traspasada, verde: "Traspasado" },
+    pendiente_pago: { total: (r) => r.comision_cedida_a_pagar, hecho: (r) => r.comision_cedida_pagada, verde: "Pagado" },
+  };
+  const etiquetaEstado = (p: { total: (r: Recibo) => unknown; hecho: (r: Recibo) => unknown; verde: string }, r: Recibo) => {
+    const total = num(p.total(r));
+    const hecho = num(p.hecho(r));
+    // Descuadre: lo realizado supera al total (incoherencia) → sin pastilla, para identificarlo.
+    if (hecho > total + 0.005) return { descuadre: true, clase: "", label: "⚠" };
+    // Base 0 (aún no aplica: p. ej. no se puede liquidar/traspasar lo que no se ha cobrado) → gris "—".
+    if (total <= 0.005) return { descuadre: false, clase: "anulado", label: "—" };
+    const ec = estadoCobro(total, hecho, r.estado);
+    return { descuadre: false, clase: ec.clase, label: ec.clase === "cobrado" ? p.verde : ec.label };
+  };
+  const columnas: Col<Recibo>[] = vistaEstados
+    ? CATALOGO.map((c) => {
+        const p = PEND[c.key];
+        if (!p) return c;
+        return {
+          ...c,
+          tipo: "text",
+          calc: (r) => etiquetaEstado(p, r).label,
+          render: (r) => {
+            const e = etiquetaEstado(p, r);
+            if (e.descuadre) return <span className="descuadre" title="Descuadre: lo realizado supera al total">⚠</span>;
+            return <span className={`pill pill-${e.clase}`}>{e.label}</span>;
+          },
+        };
+      })
+    : CATALOGO;
+
   return (
-    <div className="container">
+    <div className="container lista-page">
       <PageHeader emoji="🧾" title="Recibos" />
       <div className="toolbar" style={{ flexWrap: "wrap" }}>
         <button className="btn-secondary" title="Limpiar todos los filtros" onClick={limpiarFiltros}>🧹</button>
@@ -163,6 +205,13 @@ export default function RecibosPage() {
         </span>
       </div>
 
+      <div style={{ display: "flex", justifyContent: "flex-end", margin: "0 4px 10px 0" }}>
+        <label className="check-inline" style={{ fontSize: 11 }}>
+          {vistaEstados ? "Ver Cantidades" : "Ver estado por colores"}
+          <input type="checkbox" checked={vistaEstados} onChange={(e) => setVistaEstados(e.target.checked)} />
+        </label>
+      </div>
+
       {error && <div className="error">⚠ {error}</div>}
 
       {loading ? (
@@ -172,10 +221,14 @@ export default function RecibosPage() {
       ) : (
         <TablaDatos
           filas={filtrados}
-          columnas={CATALOGO}
+          columnas={columnas}
           defaultKeys={DEFAULT_KEYS}
-          storageKey="mayrit.recibos.tabla.v1"
-          onRowClick={(r) => setSel(r)}
+          storageKey="mayrit.recibos.tabla.v8"
+          rowAction={(r) => (
+            <button className="btn-link" onClick={() => setSel(r)}>
+              Editar
+            </button>
+          )}
           resetSignal={resetSignal}
         />
       )}

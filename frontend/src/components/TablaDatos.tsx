@@ -57,6 +57,7 @@ export default function TablaDatos<T extends { id: number }>({
 }) {
   const COLS_KEY = `${storageKey}.cols`;
   const SORT_KEY = `${storageKey}.sort`;
+  const WIDTHS_KEY = `${storageKey}.widths`;
   type SortState = { key: string; dir: 1 | -1 } | null;
 
   const [visibles, setVisibles] = useState<string[]>(() => {
@@ -87,6 +88,10 @@ export default function TablaDatos<T extends { id: number }>({
   const [dragKey, setDragKey] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const filtroRef = useRef<HTMLDivElement | null>(null);
+  // Solo persistimos columnas/anchos tras un cambio REAL del usuario, no en el primer render
+  // (así una clave de versión nueva siempre arranca con los defaults actuales y no se "auto-rellena").
+  const colsFirst = useRef(true);
+  const anchosFirst = useRef(true);
 
   // Limpiar filtros por columna cuando el padre lo pide (botón "Limpiar filtros").
   useEffect(() => {
@@ -97,8 +102,23 @@ export default function TablaDatos<T extends { id: number }>({
   // Persistir SOLO cuando cambian las columnas elegidas (no al cambiar de storageKey/versión,
   // que si no copiaría las columnas viejas a la clave nueva e impediría aplicar los nuevos defaults).
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { try { localStorage.setItem(COLS_KEY, JSON.stringify(visibles)); } catch { /* */ } }, [visibles]);
+  useEffect(() => {
+    if (colsFirst.current) { colsFirst.current = false; return; }
+    try { localStorage.setItem(COLS_KEY, JSON.stringify(visibles)); } catch { /* */ }
+  }, [visibles]);
   useEffect(() => { try { localStorage.setItem(SORT_KEY, JSON.stringify(sort)); } catch { /* */ } }, [sort, SORT_KEY]);
+
+  // Anchos de columna ajustables (arrastrando el borde), guardados por listado.
+  const [anchos, setAnchos] = useState<Record<string, number>>(() => {
+    try { const raw = localStorage.getItem(WIDTHS_KEY); if (raw) return JSON.parse(raw) as Record<string, number>; } catch { /* */ }
+    return {};
+  });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (anchosFirst.current) { anchosFirst.current = false; return; }
+    try { localStorage.setItem(WIDTHS_KEY, JSON.stringify(anchos)); } catch { /* */ }
+  }, [anchos]);
+  const [resizingKey, setResizingKey] = useState<string | null>(null);
 
   useEffect(() => {
     if (!menu && !filtro) return;
@@ -208,22 +228,49 @@ export default function TablaDatos<T extends { id: number }>({
                 const activo = sort?.key === c.key;
                 const numCol = c.tipo === "num" || c.tipo === "pct" || c.tipo === "int";
                 const filtrada = !!filtros[c.key];
+                const w = anchos[c.key] ?? c.width;
                 return (
                   <th
                     key={c.key}
                     className={(numCol ? "num " : "") + "col-arrastrable" + (dragKey === c.key ? " arrastrando" : "")}
-                    style={{ whiteSpace: "nowrap", ...(c.width ? { maxWidth: c.width } : {}) }}
-                    draggable
+                    style={{ whiteSpace: "nowrap", ...(w ? { width: w, maxWidth: w, minWidth: w } : {}) }}
+                    draggable={!resizingKey}
                     onDragStart={(e) => { setDragKey(c.key); e.dataTransfer.effectAllowed = "move"; }}
                     onDragOver={(e) => e.preventDefault()}
                     onDrop={(e) => { e.preventDefault(); if (dragKey) moverCol(dragKey, c.key); setDragKey(null); }}
                     onDragEnd={() => setDragKey(null)}
-                    title="Arrastra para mover · clic para ordenar · clic derecho para columnas"
+                    title="Arrastra para mover · clic para ordenar · clic derecho para columnas · borde derecho para ajustar ancho"
                   >
                     <span style={{ cursor: "pointer" }} onClick={() => ordenarPor(c.key)}>
                       {c.label}{activo ? (sort!.dir === 1 ? " ▲" : " ▼") : ""}
                     </span>
                     <span className={"col-filtro" + (filtrada ? " activo" : "")} title="Filtrar" onClick={(e) => abrirFiltro(c, e)}>▾</span>
+                    <span
+                      className="col-resize"
+                      title="Arrastra para ajustar el ancho (doble clic para auto)"
+                      onClick={(e) => e.stopPropagation()}
+                      onDoubleClick={(e) => {
+                        e.stopPropagation();
+                        setAnchos((a) => { const nx = { ...a }; delete nx[c.key]; return nx; });
+                      }}
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        const th = (e.currentTarget as HTMLElement).closest("th");
+                        const startX = e.clientX;
+                        const startW = anchos[c.key] ?? th?.offsetWidth ?? 120;
+                        setResizingKey(c.key);
+                        const onMove = (ev: MouseEvent) =>
+                          setAnchos((a) => ({ ...a, [c.key]: Math.max(60, Math.round(startW + (ev.clientX - startX))) }));
+                        const onUp = () => {
+                          setResizingKey(null);
+                          document.removeEventListener("mousemove", onMove);
+                          document.removeEventListener("mouseup", onUp);
+                        };
+                        document.addEventListener("mousemove", onMove);
+                        document.addEventListener("mouseup", onUp);
+                      }}
+                    />
                   </th>
                 );
               })}
@@ -239,14 +286,15 @@ export default function TablaDatos<T extends { id: number }>({
               >
                 {cols.map((c) => {
                   const numCol = c.tipo === "num" || c.tipo === "pct" || c.tipo === "int";
+                  const w = anchos[c.key] ?? c.width;
                   return (
                     <td
                       key={c.key}
                       className={numCol ? "num" : c.tipo === "bool" ? "celda-centro" : undefined}
-                      style={c.width ? { maxWidth: c.width } : undefined}
-                      title={c.width && !c.render ? fmtValor(r, c) : undefined}
+                      style={w ? { width: w, maxWidth: w, minWidth: w } : undefined}
+                      title={w && !c.render ? fmtValor(r, c) : undefined}
                     >
-                      {c.width ? <span className="celda-recorte">{celda(r, c)}</span> : celda(r, c)}
+                      {w ? <span className="celda-recorte">{celda(r, c)}</span> : celda(r, c)}
                     </td>
                   );
                 })}

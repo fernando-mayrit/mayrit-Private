@@ -155,6 +155,9 @@ tr.estado-cerrado:hover td { background: #595959; }
 tr.estado-cerrado .btn-link { color: #ffd9cc; }          /* enlaces legibles sobre gris oscuro */
 /* Contenedor con scroll horizontal para tablas anchas (p. ej. binders) */
 .tabla-scroll { overflow-x: auto; }
+/* Tirador para ajustar el ancho de columna (borde derecho de la cabecera) */
+.col-resize { position: absolute; top: 0; right: 0; width: 7px; height: 100%; cursor: col-resize; z-index: 3; }
+.col-resize:hover { background: var(--naranja); opacity: 0.5; }
 /* Botones de acción dentro de la ficha de un binder (+ Suplemento / Historial) */
 .binder-botones { display: flex; gap: 8px; margin-bottom: 6px; }
 .binder-botones button { background: #f8e2d8; color: var(--naranja-osc); border-color: var(--naranja); font-weight: 600; }
@@ -369,6 +372,10 @@ td.num, th.num { text-align: right; }
 /* Pantallas de catálogo (Configuración: Ramos, Cuentas Bancarias) con letra más pequeña */
 .compacto { font-size: 12px; }
 .compacto th, .compacto td { font-size: 12px; padding: 7px 10px; }
+/* Listados: una sola línea por celda → alto de fila constante (no se ajusta al texto). */
+.bdx-tabla td { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Descuadre (sin pastilla): aviso rojo */
+.descuadre { color: var(--rojo); font-weight: 700; }
 .compacto .field label, .compacto input, .compacto select, .compacto textarea, .compacto button { font-size: 12px; }
 
 /* ── Ficha "interior" del binder (Datos / BDX) ── */
