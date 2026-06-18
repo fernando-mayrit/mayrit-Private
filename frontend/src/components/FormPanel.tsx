@@ -13,7 +13,7 @@ import ConfirmDialog from "./ConfirmDialog";
  * lo gestiona este componente para que el comportamiento sea uniforme.
  */
 type Props = {
-  title: string;
+  title: ReactNode;
   dirty: boolean;
   saving?: boolean;
   saveLabel?: string;
@@ -102,7 +102,7 @@ export default function FormPanel({
   return (
     // El overlay NO cierra al hacer clic: es intencionado.
     <div className="overlay">
-      <div ref={panelRef} className={"panel" + (wide ? " panel-wide" : "")} role="dialog" aria-modal="true" aria-label={title}>
+      <div ref={panelRef} className={"panel" + (wide ? " panel-wide" : "")} role="dialog" aria-modal="true" aria-label={typeof title === "string" ? title : undefined}>
         <div className="panel-head">
           <h2>{title}</h2>
           <button className="panel-close" onClick={attemptClose} aria-label="Cerrar" disabled={saving}>

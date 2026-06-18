@@ -508,6 +508,52 @@ td.num, th.num { text-align: right; }
 /* Fila atenuada (registros inactivos) */
 tr.fila-inactiva td { opacity: 0.55; }
 
+/* Portada de bienvenida (Inicio) */
+.inicio { max-width: 920px; margin: 0 auto; padding: 8px 4px 32px; }
+.inicio-hero {
+  text-align: center; padding: 40px 24px 28px;
+  background: linear-gradient(180deg, #fdf0e9 0%, #ffffff 100%);
+  border: 1px solid var(--borde); border-radius: 16px;
+}
+.inicio-emoji { font-size: 64px; line-height: 1; animation: inicio-saluda 2.2s ease-in-out infinite; transform-origin: 70% 80%; }
+@keyframes inicio-saluda {
+  0%, 60%, 100% { transform: rotate(0deg); }
+  70% { transform: rotate(14deg); }
+  80% { transform: rotate(-8deg); }
+  90% { transform: rotate(10deg); }
+}
+.inicio-saludo { font-size: 30px; margin: 14px 0 4px; color: var(--gris); }
+.inicio-nombre { color: var(--naranja-osc); }
+.inicio-fecha { color: #8a8f98; margin: 0 0 14px; text-transform: capitalize; }
+.inicio-frase { font-size: 18px; color: var(--gris); margin: 0 0 6px; }
+.inicio-bienvenida { color: #6b7280; margin: 4px 0 0; }
+
+.inicio-accesos {
+  margin-top: 28px; display: grid; gap: 14px;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+}
+.inicio-card {
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  padding: 22px 14px; background: #fff; border: 1px solid var(--borde);
+  border-radius: 14px; cursor: pointer; transition: transform .12s, box-shadow .12s, border-color .12s;
+}
+.inicio-card:hover {
+  transform: translateY(-3px); border-color: var(--naranja);
+  box-shadow: 0 6px 18px rgba(224, 122, 90, 0.18);
+}
+.inicio-card-emoji { font-size: 34px; line-height: 1; }
+.inicio-card-label { font-weight: 600; color: var(--gris); }
+
+/* Recibo: barra de estado/acciones (Corregir · Reabrir) */
+.recibo-acciones-top {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin-bottom: 12px; padding-bottom: 10px; border-bottom: 1px solid var(--borde);
+}
+.recibo-acciones-top > button:first-of-type { margin-left: auto; }  /* acciones justificadas a la derecha */
+.pill-estado-lg { font-size: 14px; padding: 6px 14px; font-weight: 700; }
+.btn-corregir { background: #f5a524; color: #fff; border-color: #f5a524; font-weight: 600; }
+.btn-corregir:hover { background: #e0921a; border-color: #e0921a; }
+
 /* Emisión de póliza: tabla de recibos a generar */
 .emision-preview { margin-top: 6px; border: 1px solid var(--borde); border-radius: 8px; overflow: hidden; }
 .emision-preview table { margin: 0; width: 100%; }

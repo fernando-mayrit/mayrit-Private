@@ -10,6 +10,7 @@ import RamosPage from "./pages/RamosPage";
 import CuentasBancariasPage from "./pages/CuentasBancariasPage";
 import UsuariosPage from "./pages/UsuariosPage";
 import EnConstruccion from "./components/EnConstruccion";
+import Inicio from "./components/Inicio";
 import LoginUsuario from "./components/LoginUsuario";
 import { usuariosApi, usuarioEquipo } from "./api";
 import type { Usuario } from "./types";
@@ -32,6 +33,7 @@ const EMOJI: Record<string, string> = {
 };
 
 type Page =
+  | "inicio"
   | "productores"
   | "mercados"
   | "tomadores"
@@ -72,7 +74,7 @@ const CONFIG: { id: Page; label: string }[] = [
 ];
 
 export default function App() {
-  const [page, setPage] = useState<Page>("productores");
+  const [page, setPage] = useState<Page>("inicio");
 
   // Identificación de usuario (sin contraseña): autologin por equipo + selector.
   const [usuarios, setUsuarios] = useState<Usuario[]>([]);
@@ -121,7 +123,14 @@ export default function App() {
   return (
     <div className="app">
       <header className="app-header">
-        <img className="logo" src={logo} alt="Mayrit" />
+        <img
+          className="logo"
+          src={logo}
+          alt="Mayrit"
+          style={{ cursor: "pointer" }}
+          title="Inicio"
+          onClick={() => setPage("inicio")}
+        />
         <div className="sep" />
         <nav className="tabs">
           {MAESTRAS.map((t) => (
@@ -192,6 +201,7 @@ export default function App() {
         </aside>
 
         <main className="content">
+          {page === "inicio" && <Inicio usuario={usuario} onIr={(p) => setPage(p as Page)} />}
           {page === "productores" && <ProductoresPage />}
           {page === "mercados" && <MercadosPage />}
           {page === "tomadores" && <TomadoresPage />}

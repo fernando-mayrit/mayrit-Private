@@ -138,6 +138,17 @@ export default function RecibosPage() {
       setSaving(false);
     }
   }
+  async function descontabilizar() {
+    if (!sel) return;
+    setError(null);
+    try {
+      const r = await recibosApi.descontabilizar(sel.id);
+      setSel(r);
+      await cargar();
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
 
   const refDe = (r: Recibo) => r.numero_poliza ?? r.binder_umr ?? null;
   const umrs = [...new Set(items.map(refDe).filter(Boolean) as string[])].sort();
@@ -184,7 +195,12 @@ export default function RecibosPage() {
           },
         };
       })
-    : CATALOGO;
+    : // En modo cantidades, las columnas de pendientes muestran lo YA REALIZADO
+      // (Cobrado / Liquidado / Traspasado / Pagado) en vez del pendiente.
+      CATALOGO.map((c) => {
+        const p = PEND[c.key];
+        return p ? { ...c, label: p.verde, calc: p.hecho } : c;
+      });
 
   return (
     <div className="container lista-page">
@@ -235,14 +251,16 @@ export default function RecibosPage() {
 
       {sel && (
         <ReciboModal
-          titulo={`Recibo ${sel.numero}`}
+          titulo={<>Recibo <span style={{ color: "var(--naranja-osc)", fontWeight: 700 }}>{sel.numero}</span></>}
           saveLabel="Guardar"
           recibo={sel}
+          bloqueado={sel.estado === "Contabilizado"}
           saving={saving}
           error={error}
           onSave={guardar}
           onClose={() => setSel(null)}
           onDelete={() => setConfBorrar(true)}
+          onDescontabilizar={descontabilizar}
         />
       )}
       {confBorrar && sel && (

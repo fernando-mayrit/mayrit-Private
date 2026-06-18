@@ -153,6 +153,9 @@ export const recibosApi = {
   editar: (id: number, data: ReciboUpdate) =>
     request<Recibo>(`/recibos/${id}`, { method: "PUT", body: JSON.stringify(data) }),
   borrar: (id: number) => request<void>(`/recibos/${id}`, { method: "DELETE" }),
+  // Envía a contabilidad (bloquea) / reabre para corregir.
+  contabilizar: (id: number) => request<Recibo>(`/recibos/${id}/contabilizar`, { method: "POST" }),
+  descontabilizar: (id: number) => request<Recibo>(`/recibos/${id}/descontabilizar`, { method: "POST" }),
   // ── Premium: grupos, cobro y macheo desde Excel ──
   listarPremium: (binderId: number) => request<PremiumGrupo[]>(`/binders/${binderId}/premium`),
   cobrarPremium: (binderId: number, periodo: string, fecha: string) =>

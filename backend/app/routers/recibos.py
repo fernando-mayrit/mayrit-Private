@@ -616,14 +616,52 @@ def emitir_recibos_existente(poliza_id: int, db: Session = Depends(get_db)):
 
 
 # ──────────────────────────── Editar / borrar ───────────────────────────────
+# Un recibo "Contabilizado" (enviado al cierre contable mensual) queda BLOQUEADO:
+# no se puede editar ni borrar. Para corregir un error hay que reabrirlo primero.
+CONTABILIZADO = "Contabilizado"
+
+
+def _exigir_no_contabilizado(r: Recibo, accion: str = "modificar") -> None:
+    if (r.estado or "") == CONTABILIZADO:
+        raise HTTPException(
+            status_code=409,
+            detail=f"El recibo {r.numero} está contabilizado: no se puede {accion}. Reábrelo primero.",
+        )
+
+
 @router.put("/recibos/{recibo_id}", response_model=sch.ReciboRead)
 def editar(recibo_id: int, payload: sch.ReciboUpdate, db: Session = Depends(get_db)):
     r = db.get(Recibo, recibo_id)
     if r is None:
         raise HTTPException(status_code=404, detail=f"Recibo {recibo_id} no encontrado")
+    _exigir_no_contabilizado(r)
     for k, v in payload.model_dump(exclude_unset=True).items():
         setattr(r, k, v)
     _recompute(r)
+    db.commit()
+    db.refresh(r)
+    return _read(db, r)
+
+
+@router.post("/recibos/{recibo_id}/contabilizar", response_model=sch.ReciboRead)
+def contabilizar(recibo_id: int, db: Session = Depends(get_db)):
+    """Envía el recibo a contabilidad (cierre mensual): pasa a estado 'Contabilizado' y queda bloqueado."""
+    r = db.get(Recibo, recibo_id)
+    if r is None:
+        raise HTTPException(status_code=404, detail=f"Recibo {recibo_id} no encontrado")
+    r.estado = CONTABILIZADO
+    db.commit()
+    db.refresh(r)
+    return _read(db, r)
+
+
+@router.post("/recibos/{recibo_id}/descontabilizar", response_model=sch.ReciboRead)
+def descontabilizar(recibo_id: int, db: Session = Depends(get_db)):
+    """Reabre un recibo contabilizado (vuelve a 'Emitido') para poder corregir errores."""
+    r = db.get(Recibo, recibo_id)
+    if r is None:
+        raise HTTPException(status_code=404, detail=f"Recibo {recibo_id} no encontrado")
+    r.estado = "Emitido"
     db.commit()
     db.refresh(r)
     return _read(db, r)
@@ -634,6 +672,7 @@ def borrar(recibo_id: int, db: Session = Depends(get_db)):
     r = db.get(Recibo, recibo_id)
     if r is None:
         raise HTTPException(status_code=404, detail=f"Recibo {recibo_id} no encontrado")
+    _exigir_no_contabilizado(r, "borrar")
     # Desenlaza las líneas antes de borrar (el FK es SET NULL, pero limpiamos también el texto).
     db.execute(
         update(BdxLinea).where(BdxLinea.recibo_id == recibo_id).values(recibo_id=None, recibo=None)

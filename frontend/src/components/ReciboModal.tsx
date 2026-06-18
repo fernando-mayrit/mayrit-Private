@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import type { Recibo, ReciboPreview, ReciboUpdate } from "../types";
 import FormPanel from "./FormPanel";
 import NumberInput from "./NumberInput";
@@ -58,26 +58,48 @@ export default function ReciboModal({
   recibo,
   numeroProvisional = false,
   soloLectura = false,
+  bloqueado = false,
   saving,
   error,
   onSave,
   onClose,
   onDelete,
+  onDescontabilizar,
 }: {
-  titulo: string;
+  titulo: ReactNode;
   saveLabel: string;
   recibo: Partial<Recibo> | ReciboPreview;
   numeroProvisional?: boolean;
   soloLectura?: boolean; // emisión: todo viene del Risk BDX, ningún campo editable
+  bloqueado?: boolean;   // edición: recibo contabilizado → no se puede corregir hasta reabrir
   saving: boolean;
   error: string | null;
   onSave: (payload: ReciboUpdate) => void;
   onClose: () => void;
   onDelete?: () => void;
+  onDescontabilizar?: () => void; // reabrir un recibo contabilizado (la remesa a contabilidad va aparte)
 }) {
   const [f, setF] = useState<Form>(() => aForm(recibo as Partial<Recibo>));
   const [inicial] = useState<Form>(() => aForm(recibo as Partial<Recibo>));
   const dirty = JSON.stringify(f) !== JSON.stringify(inicial);
+
+  // Edición de un recibo ya emitido: abre en SOLO LECTURA; "Corregir" la habilita
+  // (solo si no está contabilizado). En emisión (soloLectura) no aplica.
+  const [corrigiendo, setCorrigiendo] = useState(false);
+  const ro = soloLectura || bloqueado || (!soloLectura && !corrigiendo);
+  // El panel oculta "Guardar" salvo en emisión o cuando se está corrigiendo.
+  const formReadOnly = !soloLectura && !corrigiendo;
+
+  function pedirCorregir() {
+    if (window.confirm("Vas a modificar un recibo ya emitido. Hazlo solo para corregir errores y antes de enviarlo a contabilidad. ¿Continuar?")) {
+      setCorrigiendo(true);
+    }
+  }
+  function pedirReabrir() {
+    if (onDescontabilizar && window.confirm("Vas a reabrir un recibo contabilizado para corregir un error. ¿Continuar?")) {
+      onDescontabilizar();
+    }
+  }
 
   const set = (k: string, v: string | boolean) => setF((s) => ({ ...s, [k]: v as never }));
 
@@ -92,7 +114,7 @@ export default function ReciboModal({
   const Money = ({ k, label, full }: { k: string; label: string; full?: boolean }) => (
     <div className="field">
       <label>{label}</label>
-      <NumberInput value={f[k] ?? ""} onChange={(v) => set(k, v)} suffix="€" disabled={soloLectura} className={full ? "full-w" : undefined} />
+      <NumberInput value={f[k] ?? ""} onChange={(v) => set(k, v)} suffix="€" disabled={ro} className={full ? "full-w" : undefined} />
     </div>
   );
   // Fila tipo Access: etiqueta · % (opcional) · € — con los importes alineados en columna.
@@ -100,23 +122,23 @@ export default function ReciboModal({
     <div className="recibo-linea">
       <span className="recibo-linea-lbl">{label}</span>
       {kPct ? (
-        <NumberInput value={f[kPct] ?? ""} onChange={(v) => set(kPct, v)} suffix="%" thousands={false} disabled={soloLectura} />
+        <NumberInput value={f[kPct] ?? ""} onChange={(v) => set(kPct, v)} suffix="%" thousands={false} disabled={ro} />
       ) : (
         <span />
       )}
-      <NumberInput value={f[kEur] ?? ""} onChange={(v) => set(kEur, v)} suffix="€" disabled={soloLectura} />
+      <NumberInput value={f[kEur] ?? ""} onChange={(v) => set(kEur, v)} suffix="€" disabled={ro} />
     </div>
   );
   const Fecha = ({ k, label }: { k: string; label: string }) => (
     <div className="field">
       <label>{label}</label>
-      <input type="date" className="inp-fecha" value={f[k] ?? ""} onChange={(e) => set(k, e.target.value)} disabled={soloLectura} />
+      <input type="date" className="inp-fecha" value={f[k] ?? ""} onChange={(e) => set(k, e.target.value)} disabled={ro} />
     </div>
   );
   const Texto = ({ k, label }: { k: string; label: string }) => (
     <div className="field">
       <label>{label}</label>
-      <input type="text" value={f[k] ?? ""} onChange={(e) => set(k, e.target.value)} disabled={soloLectura} />
+      <input type="text" value={f[k] ?? ""} onChange={(e) => set(k, e.target.value)} disabled={ro} />
     </div>
   );
   // Solo lectura, con el MISMO formato que NumberInput (cifra a la derecha, € como sufijo fuera).
@@ -136,27 +158,52 @@ export default function ReciboModal({
       dirty={dirty}
       saving={saving}
       saveLabel={saveLabel}
+      readOnly={formReadOnly}
       error={error}
       onSave={() => onSave(aPayload(f))}
       onClose={onClose}
-      onDelete={onDelete}
+      onDelete={corrigiendo ? onDelete : undefined}
       wide
     >
+      {/* Barra de estado/acciones (solo en edición, no en emisión) */}
+      {!soloLectura && (
+        <div className="recibo-acciones-top">
+          {bloqueado ? (
+            <>
+              <span className="pill pill-anulado pill-estado-lg">🔒 Contabilizado — no editable</span>
+              {onDescontabilizar && (
+                <button className="btn-secondary btn-sm" onClick={pedirReabrir}>Reabrir para corregir</button>
+              )}
+            </>
+          ) : corrigiendo ? (
+            <span className="hint">✏️ Modo corrección — solo para corregir errores antes de enviar a contabilidad.</span>
+          ) : (
+            <>
+              <span className="pill pill-cobrado pill-estado-lg">Emitido</span>
+              <button className="btn-sm btn-corregir" onClick={pedirCorregir}>✏️ Corregir</button>
+            </>
+          )}
+        </div>
+      )}
+
       <div className="recibo-modal">
         {/* ── Columna izquierda: identificación + prima + comisiones ── */}
         <div className="recibo-col">
           <div className="recibo-num-row">
-            <div className="field">
-              <label>Número de Recibo {numeroProvisional && <span className="hint">(provisional)</span>}</label>
-              <input type="text" value={(recibo as Recibo).numero ?? ""} disabled style={{ textAlign: "center", maxWidth: "100%", width: "100%", color: "var(--naranja-osc)", fontWeight: 700 }} />
-            </div>
+            {/* En edición el nº va en el título; aquí solo se muestra en emisión (provisional). */}
+            {numeroProvisional && (
+              <div className="field">
+                <label>Número de Recibo <span className="hint">(provisional)</span></label>
+                <input type="text" value={(recibo as Recibo).numero ?? ""} disabled style={{ textAlign: "center", maxWidth: "100%", width: "100%", color: "var(--naranja-osc)", fontWeight: 700 }} />
+              </div>
+            )}
             <div className="field recibo-mini">
               <label>Recibo</label>
-              <NumberInput value={f.recibo_num ?? ""} onChange={(v) => set("recibo_num", v)} decimals={0} thousands={false} disabled={soloLectura} />
+              <NumberInput value={f.recibo_num ?? ""} onChange={(v) => set("recibo_num", v)} decimals={0} thousands={false} disabled={ro} />
             </div>
             <div className="field recibo-mini">
               <label>de</label>
-              <input type="text" value={f.recibos_totales ?? ""} onChange={(e) => set("recibos_totales", e.target.value)} disabled={soloLectura} />
+              <input type="text" value={f.recibos_totales ?? ""} onChange={(e) => set("recibos_totales", e.target.value)} disabled={ro} />
             </div>
           </div>
 
@@ -177,7 +224,7 @@ export default function ReciboModal({
 
           <div className="field">
             <label>Notas</label>
-            <textarea rows={2} value={f.notas ?? ""} onChange={(e) => set("notas", e.target.value)} disabled={soloLectura} />
+            <textarea rows={2} value={f.notas ?? ""} onChange={(e) => set("notas", e.target.value)} disabled={ro} />
           </div>
         </div>
 
