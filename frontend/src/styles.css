@@ -195,6 +195,38 @@ input[type="date"] { text-align: center; }
 .vigencia .inp-yoa { width: 80px; text-align: center; }
 .field.check { flex-direction: row; align-items: center; gap: 8px; }
 
+/* Dos columnas (p. ej. ficha de póliza: datos+Importes | Participación) */
+.dos-columnas { display: flex; gap: 20px; align-items: stretch; }
+.dos-columnas > .col { flex: 1; min-width: 0; }
+.dos-columnas > .col.bloque { border: 1px solid var(--borde); border-radius: 10px; padding: 14px 16px; background: #fff; }
+
+/* Checkboxes de ramos (en el formulario de Mercado) */
+.ramos-check { display: flex; flex-wrap: wrap; gap: 6px 16px; border: 1px solid var(--borde); border-radius: 8px; padding: 8px 10px; }
+
+/* Desplegable con buscador + botón "+" (SelectConAlta) */
+.combo-row { display: flex; align-items: stretch; gap: 6px; }
+.combo { position: relative; flex: 1; min-width: 0; }
+.combo input[type="text"] {
+  width: 100%; box-sizing: border-box; padding: 8px 10px; border: 1px solid var(--borde);
+  border-radius: 8px; font-size: 14px; font-family: inherit; background: #fff;
+}
+.combo input:focus { outline: none; border-color: var(--naranja); box-shadow: 0 0 0 3px rgba(224, 122, 90, 0.25); }
+.combo-list {
+  position: absolute; top: calc(100% + 2px); left: 0; right: 0; z-index: 10; margin: 0; padding: 4px;
+  list-style: none; background: #fff; border: 1px solid var(--borde); border-radius: 8px;
+  box-shadow: 0 6px 18px rgba(0,0,0,.12); max-height: 240px; overflow-y: auto;
+}
+.combo-list li { padding: 7px 9px; border-radius: 6px; font-size: 14px; cursor: pointer; }
+.combo-list li:hover { background: var(--gris-claro); }
+.combo-list li.sel { background: #f8e2d8; color: var(--naranja-osc); font-weight: 600; }
+.combo-list .combo-empty { color: var(--gris-medio); cursor: default; }
+.combo-list .combo-empty:hover { background: none; }
+.btn-add {
+  flex-shrink: 0; width: 38px; border: 1px solid var(--naranja); background: #fff; color: var(--naranja-osc);
+  border-radius: 8px; font-size: 20px; line-height: 1; cursor: pointer; font-weight: 600;
+}
+.btn-add:hover { background: #f8e2d8; }
+
 /* Campo numérico estándar: alineado a la derecha, con sufijo opcional (p. ej. %) */
 .num-input { display: flex; align-items: center; gap: 6px; }
 .num-input .inp-num {

@@ -10,7 +10,7 @@ from __future__ import annotations
 import datetime as dt
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 
 
 # ─────────────────────────────── Productor ───────────────────────────────
@@ -65,8 +65,14 @@ class MercadoBase(BaseModel):
     toba: bool = False
     fecha: dt.date | None = None
     activa: bool = True
+    ramos: list[str] = []
     notas: str | None = None
     sp_old_id: int | None = None
+
+    @field_validator("ramos", mode="before")
+    @classmethod
+    def _ramos_no_none(cls, v):
+        return v or []
 
 
 class MercadoCreate(MercadoBase):
@@ -81,6 +87,7 @@ class MercadoUpdate(BaseModel):
     toba: bool | None = None
     fecha: dt.date | None = None
     activa: bool | None = None
+    ramos: list[str] | None = None
     notas: str | None = None
 
 
@@ -168,7 +175,6 @@ class CuentaBancariaRead(CuentaBancariaBase):
 # ───────────────────────────────── Póliza (OM) ───────────────────────────────
 class PolizaBase(BaseModel):
     numero_poliza: str | None = None
-    referencia: str | None = None
     asegurado: str | None = None
     corredor: str | None = None
     ramo: str | None = None
@@ -204,7 +210,6 @@ class PolizaCreate(PolizaBase):
 
 class PolizaUpdate(BaseModel):
     numero_poliza: str | None = None
-    referencia: str | None = None
     asegurado: str | None = None
     corredor: str | None = None
     ramo: str | None = None

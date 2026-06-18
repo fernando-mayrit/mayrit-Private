@@ -218,13 +218,21 @@ export const polizasApi = {
   // Emisión: crea la póliza Y genera sus recibos en una operación.
   emitir: (data: PolizaEmitir) =>
     request<Poliza>("/polizas/emitir", { method: "POST", body: JSON.stringify(data) }),
+  // Próximo nº de póliza automático (B1634 + AA + correlativo) para un año (de la fecha de efecto).
+  siguienteNumero: (anio: number) =>
+    request<{ numero_poliza: string }>(`/polizas/siguiente-numero?anio=${anio}`),
 };
 
 // CRUD genérico para una colección (p. ej. "/mercados").
 export function crud<TRead, TWrite>(collection: string) {
   return {
-    list: (q?: string) =>
-      request<TRead[]>(`${collection}${q ? `?q=${encodeURIComponent(q)}` : ""}`),
+    list: (q?: string, limit?: number) => {
+      const qs = new URLSearchParams();
+      if (q) qs.set("q", q);
+      if (limit != null) qs.set("limit", String(limit));
+      const s = qs.toString();
+      return request<TRead[]>(`${collection}${s ? `?${s}` : ""}`);
+    },
     get: (id: number) => request<TRead>(`${collection}/${id}`),
     create: (data: TWrite) =>
       request<TRead>(collection, { method: "POST", body: JSON.stringify(data) }),

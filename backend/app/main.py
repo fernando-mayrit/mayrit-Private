@@ -25,9 +25,11 @@ app.include_router(maestras.productores_router)
 app.include_router(maestras.mercados_router)
 app.include_router(maestras.tomadores_router)
 app.include_router(maestras.cuentas_bancarias_router)
+# recibos ANTES que polizas_router: define /polizas/siguiente-numero, que si no
+# quedaría capturado por GET /polizas/{item_id} (item_id no entero → 422).
+app.include_router(recibos.router)
 app.include_router(maestras.polizas_router)
 app.include_router(ramos.router)
 app.include_router(binders.router)
 app.include_router(bdx.router)
-app.include_router(recibos.router)
 app.include_router(codigos_postales.router)

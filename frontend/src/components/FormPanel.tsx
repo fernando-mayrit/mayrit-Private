@@ -24,6 +24,7 @@ type Props = {
   deleteLabel?: string;
   readOnly?: boolean; // solo consulta: oculta Guardar/Borrar y "Cancelar" pasa a "Cerrar"
   wide?: boolean; // panel ancho (p. ej. el modal de recibo con varias columnas)
+  escEnabled?: boolean; // si false, ignora la tecla Esc (útil al apilar otro panel encima)
   children: ReactNode;
 };
 
@@ -40,14 +41,42 @@ export default function FormPanel({
   deleteLabel = "Borrar",
   readOnly = false,
   wide = false,
+  escEnabled = true,
   children,
 }: Props) {
   const errorRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
 
   // Al aparecer un error, llevarlo a la vista (el panel puede estar desplazado).
   useEffect(() => {
     if (error) errorRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }, [error]);
+
+  // Focus-trap: el tabulador circula dentro del panel (solo el panel activo; si hay otro
+  // apilado encima, escEnabled=false y este no atrapa). Evita que el foco se escape a la página.
+  useEffect(() => {
+    if (!escEnabled) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== "Tab" || !panelRef.current) return;
+      const sel =
+        'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+      // Visible = tiene caja (getClientRects); offsetParent falla dentro de overlays position:fixed.
+      const list = Array.from(panelRef.current.querySelectorAll<HTMLElement>(sel)).filter(
+        (el) => el.getClientRects().length > 0
+      );
+      if (list.length === 0) return;
+      // Movemos el foco SIEMPRE nosotros (no dependemos del orden por defecto del navegador,
+      // que dentro del overlay se escapa del modal).
+      e.preventDefault();
+      const idx = list.indexOf(document.activeElement as HTMLElement);
+      let next: number;
+      if (e.shiftKey) next = idx <= 0 ? list.length - 1 : idx - 1;
+      else next = idx === -1 || idx === list.length - 1 ? 0 : idx + 1;
+      list[next].focus();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [escEnabled]);
   function attemptClose() {
     if (saving) return;
     if (dirty && !confirm("Hay cambios sin guardar. ¿Seguro que quieres cerrar sin guardarlos?")) {
@@ -58,18 +87,19 @@ export default function FormPanel({
 
   // Tecla Esc = intentar cerrar (con el mismo aviso si hay cambios).
   useEffect(() => {
+    if (!escEnabled) return;
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") attemptClose();
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dirty, saving]);
+  }, [dirty, saving, escEnabled]);
 
   return (
     // El overlay NO cierra al hacer clic: es intencionado.
     <div className="overlay">
-      <div className={"panel" + (wide ? " panel-wide" : "")} role="dialog" aria-modal="true" aria-label={title}>
+      <div ref={panelRef} className={"panel" + (wide ? " panel-wide" : "")} role="dialog" aria-modal="true" aria-label={title}>
         <div className="panel-head">
           <h2>{title}</h2>
           <button className="panel-close" onClick={attemptClose} aria-label="Cerrar" disabled={saving}>

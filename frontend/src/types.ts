@@ -9,6 +9,7 @@ export interface Mercado {
   toba: boolean;
   fecha: string | null; // ISO date
   activa: boolean;
+  ramos: string[]; // ramos (nombres) que trabaja este mercado
   notas: string | null;
   sp_old_id: number | null;
   created_at: string;
@@ -23,6 +24,7 @@ export interface MercadoWrite {
   toba?: boolean;
   fecha?: string | null;
   activa?: boolean;
+  ramos?: string[];
   notas?: string | null;
 }
 
@@ -414,7 +416,6 @@ export interface Poliza {
   id: number;
   sp_old_id: number | null;
   numero_poliza: string | null;
-  referencia: string | null;
   asegurado: string | null;
   corredor: string | null;
   ramo: string | null;

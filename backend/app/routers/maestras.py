@@ -101,7 +101,7 @@ polizas_router = _make_router(
     read_schema=sch.PolizaRead,
     create_schema=sch.PolizaCreate,
     update_schema=sch.PolizaUpdate,
-    search_cols=lambda m: [m.numero_poliza, m.asegurado, m.corredor, m.referencia],
+    search_cols=lambda m: [m.numero_poliza, m.asegurado, m.corredor],
 )
 
 # Los routers de ramos y binders viven aparte (estructura anidada).

@@ -195,7 +195,6 @@ def get_context():
 # ── Pólizas (Open Market): lista única `Mayrit - TPolizas` → campos del modelo Poliza ──
 MAPEO_POLIZAS: dict[str, str] = {
     "numero_poliza": "NumeroPoliza",
-    "referencia": "Referencia",
     "asegurado": "Asegurado",
     "corredor": "Corredor",
     "ramo": "Ramo",

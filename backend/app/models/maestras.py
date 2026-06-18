@@ -67,6 +67,7 @@ class Mercado(Base):
     toba: Mapped[bool] = mapped_column(Boolean, default=False)           # TOBA
     fecha: Mapped[dt.date | None] = mapped_column(Date)                  # Fecha
     activa: Mapped[bool] = mapped_column(Boolean, server_default=text("true"), default=True)  # se desactiva al dejar de trabajar con él
+    ramos: Mapped[list | None] = mapped_column(JSON, default=list)       # ramos (nombres) que trabaja este mercado
     notas: Mapped[str | None] = mapped_column(Text)
 
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -491,7 +492,6 @@ class Poliza(Base):
     sp_old_id: Mapped[int | None] = mapped_column(Integer, index=True)
 
     numero_poliza: Mapped[str | None] = mapped_column(String(120), index=True)  # clave de casado con recibos
-    referencia: Mapped[str | None] = mapped_column(String(200))
     asegurado: Mapped[str | None] = mapped_column(String(300))
     corredor: Mapped[str | None] = mapped_column(String(200))
     ramo: Mapped[str | None] = mapped_column(String(120))

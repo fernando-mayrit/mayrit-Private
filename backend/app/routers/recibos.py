@@ -9,6 +9,7 @@ natural 'AÑO-NNNN'. Los "pendientes" (cobro/liquidación) los recalcula el back
 import calendar
 import datetime as dt
 import os
+import re
 from decimal import Decimal, ROUND_HALF_UP
 
 import openpyxl
@@ -64,6 +65,30 @@ def _max_numero(db: Session, anio: int) -> int:
 def _siguiente_numero(db: Session, anio: int) -> str:
     """'AÑO-NNNN' correlativo por año natural (último + 1)."""
     return f"{anio}-{_max_numero(db, anio) + 1:04d}"
+
+
+# ── Numeración automática de pólizas OM: B1634OM + AA (año efecto) + NNNNNNNN (correlativo global) ──
+POLIZA_PREFIX = "B1634OM"
+POLIZA_SEQ_INICIO = 43  # primera póliza emitida con numeración automática
+
+
+def _siguiente_numero_poliza(db: Session, anio: int) -> str:
+    """B1634OM + AA + correlativo de 8 dígitos. El correlativo es GLOBAL (no reinicia por año)
+    y arranca en 43; AA son los 2 últimos dígitos del año de la fecha de efecto."""
+    yy = f"{anio % 100:02d}"
+    rx = re.compile(rf"^{POLIZA_PREFIX}\d{{2}}(\d{{8}})$")
+    maxseq = POLIZA_SEQ_INICIO - 1
+    for num in db.scalars(select(Poliza.numero_poliza).where(Poliza.numero_poliza.isnot(None))):
+        m = rx.match(num or "")
+        if m:
+            maxseq = max(maxseq, int(m.group(1)))
+    return f"{POLIZA_PREFIX}{yy}{maxseq + 1:08d}"
+
+
+@router.get("/polizas/siguiente-numero")
+def siguiente_numero_poliza(anio: int, db: Session = Depends(get_db)):
+    """Devuelve el próximo nº de póliza automático para un año (de la fecha de efecto)."""
+    return {"numero_poliza": _siguiente_numero_poliza(db, anio)}
 
 
 def _rango_mes(periodo: str) -> tuple[dt.date, dt.date]:
@@ -363,7 +388,7 @@ def generar(binder_id: int, payload: sch.ReciboGenerar, db: Session = Depends(ge
 #  - Fechas de plazos: 1º en fecha de efecto y los siguientes cada 12/N meses (editables).
 #  - Importes por recibo: prima_bruta = prima + impuestos + recargos;
 #    adeudada = prima_bruta − cedida; liquidar = adeudada − retenida.
-PAGO_LABEL = {1: "Único", 2: "Dos Pagos", 3: "Tres Pagos", 4: "Cuatro Pagos"}
+PAGO_LABEL = {1: "Único", 2: "Semestral", 3: "Cuatrimestral", 4: "Trimestral"}
 
 
 def _sumar_meses(d: dt.date, meses: int) -> dt.date:
@@ -505,7 +530,7 @@ def emitir(payload: PolizaEmitir, db: Session = Depends(get_db)):
         recibo = Recibo(
             numero=numero(anio), poliza_id=poliza.id, binder_id=None,
             periodo=fe.strftime("%Y-%m"), anio=anio, estado="Emitido",
-            numero_poliza=poliza.numero_poliza, referencia=poliza.referencia,
+            numero_poliza=poliza.numero_poliza,
             asegurado=poliza.asegurado, corredor=poliza.corredor, ramo=poliza.ramo,
             mercado=poliza.mercado, nombre_mercado=poliza.mercado, produccion=poliza.produccion,
             tipo_poliza="Póliza", fecha_efecto=poliza.fecha_efecto, fecha_vencimiento=poliza.fecha_vencimiento,
