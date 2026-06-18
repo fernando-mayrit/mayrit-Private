@@ -4,18 +4,27 @@ import type { Poliza } from "../types";
 import PageHeader from "../components/PageHeader";
 import TablaDatos, { type Col } from "../components/TablaDatos";
 import PolizaForm from "../components/PolizaForm";
-import { fmtMiles } from "../format";
 
-const eur = (v: unknown) => `${fmtMiles(v)} €`;
 const num = (v: unknown) => Number(v) || 0;
 const seguroLabel = (s: string | null) => (s === "1" ? "Seguro Directo" : s === "2" ? "Reaseguro" : s ?? "");
+const ESTADOS = ["En Vigor", "Cancelada", "Renovada", "No Renovada", "Temporal-Vencida"];
+
+// ¿Queda menos de 1 mes para el vencimiento? (incluye ya vencidas)
+function venceEnMenosDeUnMes(fv: string | null): boolean {
+  if (!fv) return false;
+  const venc = new Date(`${String(fv).slice(0, 10)}T00:00:00`);
+  if (isNaN(venc.getTime())) return false;
+  const limite = new Date();
+  limite.setMonth(limite.getMonth() + 1);
+  return venc <= limite;
+}
 
 // Catálogo de columnas (clic derecho en la cabecera para elegir/ocultar).
 const CATALOGO: Col<Poliza>[] = [
   { key: "numero_poliza", label: "Nº Póliza", tipo: "text" },
   { key: "asegurado", label: "Asegurado", tipo: "text", width: 160 },
   { key: "corredor", label: "Corredor", tipo: "text" },
-  { key: "ramo", label: "Ramo", tipo: "text" },
+  { key: "ramo", label: "Ramo", tipo: "text", width: 90 },
   { key: "mercado", label: "Mercado", tipo: "text" },
   { key: "produccion", label: "Producción", tipo: "text" },
   { key: "seguro", label: "Seguro", tipo: "text", calc: (p) => seguroLabel(p.seguro) },
@@ -29,19 +38,23 @@ const CATALOGO: Col<Poliza>[] = [
   { key: "coaseguro", label: "Coaseguro", tipo: "bool" },
   { key: "limite", label: "Límite 100%", tipo: "num" },
   { key: "franquicia", label: "Franquicia", tipo: "num" },
-  { key: "capacidad", label: "Capacidad", tipo: "num" },
-  { key: "prima_neta", label: "Prima Neta", tipo: "num" },
+  // Capacidad almacenada como fracción (0,5) → se muestra en % (50,00 %).
+  { key: "capacidad", label: "Capacidad", tipo: "pct", calc: (p) => (p.capacidad == null || p.capacidad === "" ? "" : num(p.capacidad) * 100) },
+  { key: "prima_neta", label: "Prima Neta 100%", tipo: "num" },
   { key: "impuestos_porc", label: "Impuestos %", tipo: "pct" },
   { key: "impuestos", label: "Impuestos", tipo: "num" },
   { key: "recargos", label: "Recargos", tipo: "num" },
   { key: "prima_total", label: "Prima Total", tipo: "num" },
   { key: "comision_porc", label: "Comisión %", tipo: "pct" },
+  { key: "comision_cedida_porc", label: "Comisión corredor %", tipo: "pct" },
   { key: "comision_total", label: "Comisión Total", tipo: "num" },
-  { key: "prima_participacion", label: "Prima Part.", tipo: "num" },
+  // Comisión de Mayrit (retenida) = prima participación × (comisión total − cedida) %.
+  { key: "comision_mayrit", label: "Comisión Mayrit", tipo: "num", calc: (p) => (num(p.prima_participacion) * (num(p.comision_porc) - num(p.comision_cedida_porc))) / 100 },
+  { key: "prima_participacion", label: "Prima Neta", tipo: "num" },
 ];
 const DEFAULT_KEYS = [
   "numero_poliza", "asegurado", "corredor", "ramo", "mercado", "seguro",
-  "prima_neta", "comision_total", "num_recibos", "estado", "fecha_efecto", "fecha_vencimiento",
+  "capacidad", "prima_participacion", "comision_mayrit", "num_recibos", "estado", "fecha_efecto", "fecha_vencimiento",
 ];
 
 export default function PolizasPage() {
@@ -49,6 +62,7 @@ export default function PolizasPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [q, setQ] = useState("");
+  const [estadoF, setEstadoF] = useState("");
   const [form, setForm] = useState<Poliza | "nueva" | null>(null);
   const [recCount, setRecCount] = useState<Map<number, number>>(new Map());
 
@@ -73,14 +87,12 @@ export default function PolizasPage() {
 
   const filtrados = items.filter(
     (p) =>
-      !q ||
-      `${p.numero_poliza ?? ""} ${p.asegurado ?? ""} ${p.corredor ?? ""}`
-        .toLowerCase()
-        .includes(q.toLowerCase())
+      (!estadoF || p.estado === estadoF) &&
+      (!q ||
+        `${p.numero_poliza ?? ""} ${p.asegurado ?? ""} ${p.corredor ?? ""}`
+          .toLowerCase()
+          .includes(q.toLowerCase()))
   );
-  const totalPrima = filtrados.reduce((a, p) => a + num(p.prima_neta), 0);
-  const totalComision = filtrados.reduce((a, p) => a + num(p.comision_total), 0);
-  const sinRecibo = items.filter((p) => (recCount.get(p.id) ?? 0) === 0).length;
 
   // Columna "Recibos" (nº por póliza) con aviso rojo "Sin recibo" cuando es 0.
   const colRecibos: Col<Poliza> = {
@@ -105,13 +117,13 @@ export default function PolizasPage() {
           value={q}
           onChange={(e) => setQ(e.target.value)}
         />
+        <select className="filtro" value={estadoF} onChange={(e) => setEstadoF(e.target.value)} title="Filtrar por Estado">
+          <option value="">— Estado: todos —</option>
+          {ESTADOS.map((e) => <option key={e} value={e}>{e}</option>)}
+        </select>
         <button className="btn-primary" onClick={() => setForm("nueva")}>
           + Nueva póliza
         </button>
-        <span className="hint">
-          Prima Neta: <b>{eur(totalPrima)}</b> · Comisión: <b>{eur(totalComision)}</b>
-          {sinRecibo > 0 && <> · <b style={{ color: "var(--rojo)" }}>{sinRecibo} sin recibo</b></>}
-        </span>
       </div>
 
       {error && <div className="error">⚠ {error}</div>}
@@ -125,9 +137,15 @@ export default function PolizasPage() {
           filas={filtrados}
           columnas={columnas}
           defaultKeys={DEFAULT_KEYS}
-          storageKey="mayrit.polizas.tabla.v5"
+          storageKey="mayrit.polizas.tabla.v7"
           defaultSort={{ key: "fecha_efecto", dir: -1 }}
-          rowClass={(p) => ((recCount.get(p.id) ?? 0) === 0 ? "fila-sin-recibo" : undefined)}
+          rowClass={(p) =>
+            p.estado === "En Vigor"
+              ? venceEnMenosDeUnMes(p.fecha_vencimiento)
+                ? "fila-vence"
+                : "fila-envigor"
+              : undefined
+          }
           rowAction={(p) => (
             <button className="btn-link" onClick={() => setForm(p)}>
               Editar

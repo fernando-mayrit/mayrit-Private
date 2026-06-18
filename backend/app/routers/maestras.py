@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from .. import crud
 from ..db import get_db
-from ..models.maestras import CuentaBancaria, Mercado, Poliza, Productor, Tomador
+from ..models.maestras import CuentaBancaria, Mercado, Poliza, Productor, Tomador, Usuario
 from ..schemas import maestras as sch
 
 
@@ -102,6 +102,16 @@ polizas_router = _make_router(
     create_schema=sch.PolizaCreate,
     update_schema=sch.PolizaUpdate,
     search_cols=lambda m: [m.numero_poliza, m.asegurado, m.corredor],
+)
+
+usuarios_router = _make_router(
+    prefix="/usuarios",
+    tag="Usuarios",
+    model=Usuario,
+    read_schema=sch.UsuarioRead,
+    create_schema=sch.UsuarioCreate,
+    update_schema=sch.UsuarioUpdate,
+    search_cols=lambda m: [m.nombre],
 )
 
 # Los routers de ramos y binders viven aparte (estructura anidada).

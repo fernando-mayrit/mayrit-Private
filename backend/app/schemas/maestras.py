@@ -98,6 +98,28 @@ class MercadoRead(MercadoBase):
     updated_at: dt.datetime
 
 
+# ──────────────────────────────── Usuario ────────────────────────────────
+class UsuarioBase(BaseModel):
+    nombre: str
+    activa: bool = True
+
+
+class UsuarioCreate(UsuarioBase):
+    pass
+
+
+class UsuarioUpdate(BaseModel):
+    nombre: str | None = None
+    activa: bool | None = None
+
+
+class UsuarioRead(UsuarioBase):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    created_at: dt.datetime
+    updated_at: dt.datetime
+
+
 # ──────────────────────────────── Tomador ────────────────────────────────
 class TomadorBase(BaseModel):
     nombre: str

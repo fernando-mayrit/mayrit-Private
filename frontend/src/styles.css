@@ -37,6 +37,9 @@ h1, h2, h3 { font-family: var(--fuente-titulo); font-weight: 600; color: var(--g
 }
 .app-header img.logo { height: 46px; display: block; }
 .app-header .sep { width: 1px; height: 34px; background: var(--borde); }
+/* Usuario activo (a la derecha de la cabecera) */
+.header-user { margin-left: auto; display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--gris); }
+.header-user span { font-weight: 600; }
 
 /* Pestañas superiores (Maestras) */
 .tabs { display: flex; gap: 6px; }
@@ -205,6 +208,10 @@ input[type="date"] { text-align: center; }
 
 /* Pólizas sin recibo: fila resaltada en rojo suave */
 tr.fila-sin-recibo td { background: #fdecea; }
+/* Pólizas por Estado: En Vigor en rojo pastel (el resto, en blanco) */
+tr.fila-envigor td { background: #fdecea; }
+/* En Vigor con menos de 1 mes para vencer: rojo fuerte */
+tr.fila-vence td { background: #f1a0a0; }
 
 /* Desplegable con buscador + botón "+" (SelectConAlta) */
 .combo-row { display: flex; align-items: stretch; gap: 6px; }

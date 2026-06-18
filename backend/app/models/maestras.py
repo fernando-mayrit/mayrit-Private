@@ -76,6 +76,21 @@ class Mercado(Base):
     )
 
 
+class Usuario(Base):
+    """Usuario de la app (para identificar quién la usa). Sin login con contraseña: se elige
+    de la lista (o autologin por equipo vía MAYRIT_USUARIO)."""
+
+    __tablename__ = "usuarios"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    nombre: Mapped[str] = mapped_column(String(120), unique=True, index=True)
+    activa: Mapped[bool] = mapped_column(Boolean, server_default=text("true"), default=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
 class Tomador(Base):
     """Tomador de las pólizas (antes 'Clientes'; renombrado para no confundir con las agencias)."""
 

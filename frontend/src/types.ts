@@ -1,5 +1,19 @@
 // Tipos que reflejan los esquemas del backend (maestras, Fase 1).
 
+// Usuario de la app (identificación; sin contraseña).
+export interface Usuario {
+  id: number;
+  nombre: string;
+  activa: boolean;
+  created_at: string;
+  updated_at: string;
+}
+export interface UsuarioWrite {
+  nombre: string;
+  activa?: boolean;
+}
+
+
 export interface Mercado {
   id: number;
   nombre: string;

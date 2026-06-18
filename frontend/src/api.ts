@@ -223,6 +223,13 @@ export const polizasApi = {
     request<{ numero_poliza: string }>(`/polizas/siguiente-numero?anio=${anio}`),
 };
 
+// Usuarios de la app (identificación) + autologin por equipo.
+import type { Usuario, UsuarioWrite } from "./types";
+export const usuariosApi = crud<Usuario, UsuarioWrite>("/usuarios");
+export function usuarioEquipo() {
+  return request<{ nombre: string | null }>("/usuario-equipo");
+}
+
 // CRUD genérico para una colección (p. ej. "/mercados").
 export function crud<TRead, TWrite>(collection: string) {
   return {

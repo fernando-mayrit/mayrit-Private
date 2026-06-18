@@ -191,7 +191,6 @@ export default function TablaDatos<T extends { id: number }>({
           {Object.keys(filtros).length > 0 && (
             <button className="btn-link" onClick={() => setFiltros({})}>Quitar filtros</button>
           )}
-          <span className="hint">{datos.length}{datos.length !== filas.length ? ` / ${filas.length}` : ""} fila(s)</span>
         </div>
       </div>
 

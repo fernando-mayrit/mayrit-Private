@@ -21,10 +21,18 @@ def health():
     return {"status": "ok", "service": "mayrit-api"}
 
 
+@app.get("/usuario-equipo")
+def usuario_equipo():
+    """Usuario asignado a ESTE equipo (MAYRIT_USUARIO en ~/.mayrit/.env), para autologin."""
+    from .config import settings
+    return {"nombre": (settings.mayrit_usuario or "").strip() or None}
+
+
 app.include_router(maestras.productores_router)
 app.include_router(maestras.mercados_router)
 app.include_router(maestras.tomadores_router)
 app.include_router(maestras.cuentas_bancarias_router)
+app.include_router(maestras.usuarios_router)
 # recibos ANTES que polizas_router: define /polizas/siguiente-numero, que si no
 # quedaría capturado por GET /polizas/{item_id} (item_id no entero → 422).
 app.include_router(recibos.router)

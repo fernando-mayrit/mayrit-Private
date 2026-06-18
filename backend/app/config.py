@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     pg_password: str = ""
     pg_sslmode: str = "require"
 
+    # Usuario asignado a ESTE equipo (autologin): MAYRIT_USUARIO en ~/.mayrit/.env.
+    mayrit_usuario: str = ""
+
     # Datos de referencia COMPARTIDOS con Alea (mismo servidor, base 'alea'): p. ej. el
     # callejero de códigos postales. Se leen con el propio usuario de Mayrit (solo lectura).
     pg_database_ref: str = "alea"

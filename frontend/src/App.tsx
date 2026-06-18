@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import logo from "./assets/mayrit-logo.png";
 import MercadosPage from "./pages/MercadosPage";
 import ProductoresPage from "./pages/ProductoresPage";
@@ -8,7 +8,13 @@ import PolizasPage from "./pages/PolizasPage";
 import RecibosPage from "./pages/RecibosPage";
 import RamosPage from "./pages/RamosPage";
 import CuentasBancariasPage from "./pages/CuentasBancariasPage";
+import UsuariosPage from "./pages/UsuariosPage";
 import EnConstruccion from "./components/EnConstruccion";
+import LoginUsuario from "./components/LoginUsuario";
+import { usuariosApi, usuarioEquipo } from "./api";
+import type { Usuario } from "./types";
+
+const USUARIO_KEY = "mayrit.usuario";
 
 // Iconos estilo Alea: emoji por opción.
 const EMOJI: Record<string, string> = {
@@ -22,6 +28,7 @@ const EMOJI: Record<string, string> = {
   comisiones: "💶",
   ramos: "🏷️",
   cuentas: "🏧",
+  usuarios: "👤",
 };
 
 type Page =
@@ -34,7 +41,8 @@ type Page =
   | "consultoria"
   | "comisiones"
   | "ramos"
-  | "cuentas";
+  | "cuentas"
+  | "usuarios";
 
 // Barra superior: las Maestras (las partes).
 const MAESTRAS: { id: Page; label: string }[] = [
@@ -60,10 +68,55 @@ const FACTURACION: { id: Page; label: string }[] = [
 const CONFIG: { id: Page; label: string }[] = [
   { id: "ramos", label: "Ramos" },
   { id: "cuentas", label: "Cuentas Bancarias" },
+  { id: "usuarios", label: "Usuarios" },
 ];
 
 export default function App() {
   const [page, setPage] = useState<Page>("productores");
+
+  // Identificación de usuario (sin contraseña): autologin por equipo + selector.
+  const [usuarios, setUsuarios] = useState<Usuario[]>([]);
+  const [usuario, setUsuario] = useState<string | null>(null);
+  const [eligiendo, setEligiendo] = useState(false);
+  const [listoUsuario, setListoUsuario] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      let activos: Usuario[] = [];
+      try {
+        const todos = await usuariosApi.list(undefined, 5000);
+        activos = todos.filter((u) => u.activa);
+        setUsuarios(activos);
+      } catch {
+        /* sin backend: se queda sin lista */
+      }
+      const nombres = activos.map((u) => u.nombre);
+      const guardado = localStorage.getItem(USUARIO_KEY);
+      if (guardado && nombres.includes(guardado)) {
+        setUsuario(guardado);
+      } else {
+        // Autologin por equipo (MAYRIT_USUARIO del .env).
+        try {
+          const eq = await usuarioEquipo();
+          if (eq.nombre && nombres.includes(eq.nombre)) {
+            setUsuario(eq.nombre);
+            localStorage.setItem(USUARIO_KEY, eq.nombre);
+          } else {
+            setEligiendo(true);
+          }
+        } catch {
+          setEligiendo(true);
+        }
+      }
+      setListoUsuario(true);
+    })();
+  }, []);
+
+  function elegirUsuario(nombre: string) {
+    setUsuario(nombre);
+    localStorage.setItem(USUARIO_KEY, nombre);
+    setEligiendo(false);
+  }
 
   return (
     <div className="app">
@@ -82,6 +135,12 @@ export default function App() {
             </button>
           ))}
         </nav>
+        <div className="header-user">
+          <span>👤 {usuario ?? "—"}</span>
+          <button className="btn-link" onClick={() => setEligiendo(true)}>
+            cambiar
+          </button>
+        </div>
       </header>
       <div className="acento-naranja" />
 
@@ -143,8 +202,18 @@ export default function App() {
           {page === "comisiones" && <EnConstruccion titulo="Comisiones" />}
           {page === "ramos" && <RamosPage />}
           {page === "cuentas" && <CuentasBancariasPage />}
+          {page === "usuarios" && <UsuariosPage />}
         </main>
       </div>
+
+      {listoUsuario && eligiendo && (
+        <LoginUsuario
+          usuarios={usuarios}
+          actual={usuario}
+          onElegir={elegirUsuario}
+          onClose={usuario ? () => setEligiendo(false) : undefined}
+        />
+      )}
     </div>
   );
 }
