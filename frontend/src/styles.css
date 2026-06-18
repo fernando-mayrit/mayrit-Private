@@ -418,6 +418,17 @@ td.num, th.num { text-align: right; }
 }
 
 /* Pestaña Bloqueo: columnas Risk / Premium / Claims con sus meses */
+/* Recibos de un binder: scroll en el listado con cabecera fija (no scrollea la pantalla) */
+.bdx-scroll table.recibos-binder { border-collapse: separate; border-spacing: 0; overflow: visible; }
+.bdx-scroll table.recibos-binder thead th { position: sticky; top: 0; background: var(--gris-claro); z-index: 2; }
+
+/* Financiero: rejilla de cuadros (pendientes de cobro/liquidación/traspaso/pago) */
+.fin-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 18px; }
+.fin-card { background: #fff; border: 1px solid var(--borde); border-radius: 12px; padding: 10px 14px 14px; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+.fin-card h3 { margin: 2px 0 10px; font-size: 16px; color: var(--gris); }
+.fin-scroll { max-height: 320px; overflow: auto; }
+.fin-scroll thead th { position: sticky; top: 0; background: var(--gris-claro); z-index: 1; }
+
 /* Claims BDX: el listado de presentaciones ocupa el alto restante y scrollea dentro (la pantalla no). */
 .claims-box { flex: 1; min-height: 0; overflow-y: auto; border: 1px solid var(--borde); border-radius: 10px; background: #fff; padding: 8px 16px 12px; }
 

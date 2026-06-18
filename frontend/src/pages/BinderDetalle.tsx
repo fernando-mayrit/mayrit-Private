@@ -588,11 +588,11 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
         <button className={"tab" + (tab === "datos" ? " active" : "")} onClick={() => setTab("datos")}>
           Risk
         </button>
-        <button className={"tab" + (tab === "lpan" ? " active" : "")} onClick={() => setTab("lpan")}>
-          LPAN
-        </button>
         <button className={"tab" + (tab === "premium" ? " active" : "")} onClick={() => setTab("premium")}>
           Premium
+        </button>
+        <button className={"tab" + (tab === "lpan" ? " active" : "")} onClick={() => setTab("lpan")}>
+          LPAN
         </button>
         <button className={"tab" + (tab === "calculos" ? " active" : "")} onClick={() => setTab("calculos")}>
           PC
@@ -1001,13 +1001,17 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
 
       {tab === "recibos" && (
         <>
-          <h3 style={{ margin: "4px 0 8px" }}>Recibos de este binder ({binder.umr ?? binder.agreement_number ?? binder.id})</h3>
+          <h3 style={{ margin: "4px 0 4px" }}>Recibos de este binder ({binder.umr ?? binder.agreement_number ?? binder.id})</h3>
+          <div className="hint" style={{ marginBottom: 8 }}>
+            Vista filtrada por este binder. La gestión completa está en el módulo <b>Facturación → Recibos</b>.
+          </div>
           {recibos.length === 0 ? (
             <div className="empty">
               Aún no hay recibos. Genera uno desde la pestaña <b>Datos</b> («＋ Generar recibo» de un Risk BDX).
             </div>
           ) : (
-            <table className="compacto" style={{ maxWidth: 960 }}>
+            <div className="bdx-scroll">
+            <table className="compacto recibos-binder" style={{ maxWidth: 960 }}>
               <thead>
                 <tr>
                   <th>Número</th>
@@ -1045,10 +1049,8 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
                 </tr>
               </tbody>
             </table>
+            </div>
           )}
-          <div className="hint" style={{ marginTop: 8 }}>
-            Vista filtrada por este binder. La gestión completa está en el módulo <b>Facturación → Recibos</b>.
-          </div>
         </>
       )}
 

@@ -7,6 +7,7 @@ import BindersPage from "./pages/BindersPage";
 import PolizasPage from "./pages/PolizasPage";
 import RecibosPage from "./pages/RecibosPage";
 import CierreContablePage from "./pages/CierreContablePage";
+import FinancieroPage from "./pages/FinancieroPage";
 import RamosPage from "./pages/RamosPage";
 import CuentasBancariasPage from "./pages/CuentasBancariasPage";
 import UsuariosPage from "./pages/UsuariosPage";
@@ -32,6 +33,7 @@ const EMOJI: Record<string, string> = {
   cuentas: "🏧",
   usuarios: "👤",
   cierre: "🔒",
+  financiero: "💰",
 };
 
 type Page =
@@ -47,7 +49,8 @@ type Page =
   | "ramos"
   | "cuentas"
   | "usuarios"
-  | "cierre";
+  | "cierre"
+  | "financiero";
 
 // Barra superior: las Maestras (las partes).
 const MAESTRAS: { id: Page; label: string }[] = [
@@ -68,6 +71,11 @@ const NEGOCIO: { id: Page; label: string }[] = [
 const FACTURACION: { id: Page; label: string }[] = [
   { id: "recibos", label: "Recibos" },
   { id: "cierre", label: "Cierre Contable" },
+];
+
+// Menú lateral: Financiero / Caja (cuadros de pendientes de cobro/liquidación/traspaso/pago).
+const FINANCIERO: { id: Page; label: string }[] = [
+  { id: "financiero", label: "Financiero" },
 ];
 
 // Menú lateral: Configuración (catálogos compartidos).
@@ -186,6 +194,19 @@ export default function App() {
                 </button>
               ))}
             </div>
+            <div className="nav-group">
+              <div className="nav-group-title">Financiero</div>
+              {FINANCIERO.map((it) => (
+                <button
+                  key={it.id}
+                  className={"nav-item" + (page === it.id ? " active" : "")}
+                  onClick={() => setPage(it.id)}
+                >
+                  <span className="nav-emoji">{EMOJI[it.id]}</span>
+                  {it.label}
+                </button>
+              ))}
+            </div>
           </nav>
           <nav className="sidebar-nav sidebar-bottom">
             <div className="nav-group">
@@ -212,6 +233,7 @@ export default function App() {
           {page === "binders" && <BindersPage />}
           {page === "recibos" && <RecibosPage />}
           {page === "cierre" && <CierreContablePage />}
+          {page === "financiero" && <FinancieroPage />}
           {page === "polizas" && <PolizasPage />}
           {page === "consultoria" && <EnConstruccion titulo="Consultoría (Fees)" />}
           {page === "comisiones" && <EnConstruccion titulo="Comisiones" />}

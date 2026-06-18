@@ -2,9 +2,10 @@ import { useMemo } from "react";
 
 // Accesos rápidos de la portada (id de página + etiqueta + emoji).
 const ACCESOS: { id: string; label: string; emoji: string }[] = [
+  { id: "binders", label: "Binders", emoji: "📑" },
   { id: "polizas", label: "Pólizas (OM)", emoji: "📄" },
   { id: "recibos", label: "Recibos", emoji: "🧾" },
-  { id: "binders", label: "Binders", emoji: "📑" },
+  { id: "financiero", label: "Financiero", emoji: "💰" },
 ];
 
 // Frases de bienvenida (se elige una al azar en cada entrada).
