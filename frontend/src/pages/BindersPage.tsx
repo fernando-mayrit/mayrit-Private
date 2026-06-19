@@ -834,27 +834,24 @@ export default function BindersPage() {
   }
 
   // --- Consecutividad de binders (cadena de renovaciones) ---
-  // La renovación es consecutiva: el efecto del nuevo es el día siguiente al vencimiento del anterior.
-  const diaSiguiente = (iso?: string | null) => {
-    if (!iso) return "";
-    const [y, m, d] = iso.slice(0, 10).split("-").map(Number);
-    if (!y || !m || !d) return "";
-    return new Date(Date.UTC(y, m - 1, d + 1)).toISOString().slice(0, 10);
-  };
-  // Binder que renueva a este (misma agencia y su efecto = día siguiente al vencimiento), si existe.
+  // Binder que renueva a este: el programa ES la cadena de renovaciones, así que un binder está
+  // "ya renovado" si en su mismo programa hay otro con efecto POSTERIOR (no es el último). Solo el
+  // último de cada programa se puede renovar. (No dependemos de que las fechas encajen al día.)
   function renovacionDe(
-    productorId: number | null,
-    vencimiento?: string | null,
+    programaId: number | null,
+    fechaEfecto?: string | null,
     selfId?: number
   ): Binder | undefined {
-    const objetivo = diaSiguiente(vencimiento);
-    if (!objetivo || productorId == null) return undefined;
-    return items.find(
-      (x) =>
-        x.id !== selfId &&
-        x.productor_id === productorId &&
-        (x.fecha_efecto ?? "").slice(0, 10) === objetivo
-    );
+    if (programaId == null) return undefined;
+    const efecto = (fechaEfecto ?? "").slice(0, 10);
+    return items
+      .filter(
+        (x) =>
+          x.id !== selfId &&
+          x.programa_id === programaId &&
+          (x.fecha_efecto ?? "").slice(0, 10) > efecto
+      )
+      .sort((a, b) => (a.fecha_efecto ?? "").localeCompare(b.fecha_efecto ?? ""))[0];
   }
 
   // Mercado con mayor participación del binder (entre todas las secciones) → su Código (IdMercado).
@@ -1089,8 +1086,8 @@ export default function BindersPage() {
                 </button>
                 {(() => {
                   const renov = renovacionDe(
-                    Number(form.productor_id) || null,
-                    form.fecha_vencimiento,
+                    form.programa_id ? Number(form.programa_id) : null,
+                    form.fecha_efecto,
                     form.id
                   );
                   return (
