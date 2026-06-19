@@ -9,10 +9,16 @@ from .routers import bdx, binders, cierre, claims_bdx, codigos_postales, maestra
 
 app = FastAPI(title="Mayrit API", version="0.1.0")
 
-# Permite que el frontend (Vite, normalmente en localhost:5173) llame a la API.
+# En producción el backend sirve el frontend (mismo origen, no necesita CORS). En desarrollo,
+# el frontend de Vite (localhost:5173) llama a la API. Se incluye el dominio propio por robustez.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "https://app.mayritbroker.com",
+        "https://mayrit.azurewebsites.net",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

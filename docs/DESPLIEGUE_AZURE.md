@@ -60,6 +60,26 @@ del App Service). Guardar.
 
 Al terminar, abre `https://mayrit.azurewebsites.net`.
 
+## 5 bis) Dominio propio: `app.mayritbroker.com`
+
+Para usar una URL propia en vez de `mayrit.azurewebsites.net`.
+
+1. **Azure** → App Service `mayrit` → *Settings → Custom domains → Add custom domain*.
+   - Domain provider: *All other domains*. Hostname: `app.mayritbroker.com`. TLS/SSL: *App Service Managed Certificate*.
+   - Azure muestra **dos registros** que hay que crear en el DNS del dominio:
+     - **CNAME**: `app` → `mayrit.azurewebsites.net`
+     - **TXT** (verificación): `asuid.app` → `<Domain verification ID>` (el que indique Azure)
+2. **DNS de `mayritbroker.com`** (en el registrador / Microsoft 365 admin → Dominios): añade esos
+   dos registros (CNAME `app` y TXT `asuid.app`). Espera a que propaguen (minutos).
+3. Vuelve a Azure → *Validate* → *Add*. Queda el dominio añadido.
+4. **HTTPS**: Azure crea el **certificado gestionado gratuito** y lo enlaza (SNI SSL). Activa
+   *Settings → Configuration →* **HTTPS Only**.
+5. Si ya está el login de Microsoft (paso 6), añade `https://app.mayritbroker.com/.auth/login/aad/callback`
+   a las **URI de redirección** del registro de app de Entra.
+
+> El workflow de despliegue NO cambia (sigue apuntando al App Service `mayrit`); el dominio es solo
+> un alias de entrada.
+
 ## 6) Login con Microsoft (Entra ID)
 En el App Service → *Settings → Authentication* → **Add identity provider** → **Microsoft**:
 - Crea/usa un registro de app de Entra.
