@@ -171,6 +171,32 @@ class UsuarioRead(UsuarioBase):
     updated_at: dt.datetime
 
 
+# ───────────────────────────────── Programa ──────────────────────────────
+class ProgramaBase(BaseModel):
+    nombre: str
+    productor_id: int | None = None
+    notas: str | None = None
+    activa: bool = True
+
+
+class ProgramaCreate(ProgramaBase):
+    pass
+
+
+class ProgramaUpdate(BaseModel):
+    nombre: str | None = None
+    productor_id: int | None = None
+    notas: str | None = None
+    activa: bool | None = None
+
+
+class ProgramaRead(ProgramaBase):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    created_at: dt.datetime
+    updated_at: dt.datetime
+
+
 # ──────────────────────────────── Tomador ────────────────────────────────
 class TomadorBase(BaseModel):
     nombre: str
@@ -275,6 +301,7 @@ class PolizaBase(BaseModel):
     comision_cedida_porc: Decimal | None = None
     comision_total: Decimal | None = None
     prima_participacion: Decimal | None = None
+    pagador: str | None = None          # "Corredor" | "Tomador"
     notas: str | None = None
     sp_old_id: int | None = None
 
@@ -317,6 +344,7 @@ class PolizaUpdate(BaseModel):
     comision_cedida_porc: Decimal | None = None
     comision_total: Decimal | None = None
     prima_participacion: Decimal | None = None
+    pagador: str | None = None
     notas: str | None = None
 
 
@@ -422,6 +450,7 @@ class BinderBase(BaseModel):
     agreement_number: str
     umr: str | None = None
     productor_id: int | None = None
+    programa_id: int | None = None
     fecha_efecto: dt.date | None = None
     fecha_vencimiento: dt.date | None = None
     estado: str | None = None
@@ -457,6 +486,7 @@ class BinderRead(BinderBase):
     id: int
     coverholder_nombre: str | None = None
     coverholder_alias: str | None = None
+    programa_nombre: str | None = None
     cuenta_bancaria_nombre: str | None = None
     gwp_our_line: float | None = None  # Σ total_gwp_our_line del Risk BDX (calculado)
     notif_estado: str | None = None       # semáforo: 'verde' | 'ambar' | 'rojo' (límite más crítico)
@@ -687,6 +717,12 @@ class ReciboCampos(BaseModel):
     comision_cedida_a_pagar: Decimal | None = None
     comision_cedida_pagada: Decimal | None = None
     comision_cedida_fecha_pago: dt.date | None = None
+    # Cuentas bancarias por movimiento
+    cuenta_cobro_id: int | None = None
+    cuenta_liquidacion_id: int | None = None
+    cuenta_traspaso_origen_id: int | None = None
+    cuenta_traspaso_destino_id: int | None = None
+    cuenta_pago_id: int | None = None
     # Contable
     notas: str | None = None
     cuenta: str | None = None

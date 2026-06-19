@@ -64,6 +64,7 @@ export default function PolizasPage() {
   const [q, setQ] = useState("");
   const [estadoF, setEstadoF] = useState("En Vigor");
   const [form, setForm] = useState<Poliza | "nueva" | null>(null);
+  const [renovarDe, setRenovarDe] = useState<Poliza | null>(null); // origen de un alta de renovación
   const [recCount, setRecCount] = useState<Map<number, number>>(new Map());
 
   async function cargar() {
@@ -121,7 +122,7 @@ export default function PolizasPage() {
           <option value="">— Estado: todos —</option>
           {ESTADOS.map((e) => <option key={e} value={e}>{e}</option>)}
         </select>
-        <button className="btn-primary" onClick={() => setForm("nueva")}>
+        <button className="btn-primary" onClick={() => { setRenovarDe(null); setForm("nueva"); }}>
           + Nueva póliza
         </button>
       </div>
@@ -156,10 +157,14 @@ export default function PolizasPage() {
 
       {form && (
         <PolizaForm
+          key={form === "nueva" ? (renovarDe ? `renov-${renovarDe.id}` : "nueva") : form.id}
           poliza={form === "nueva" ? null : form}
-          onSaved={() => { setForm(null); cargar(); }}
-          onDeleted={() => { setForm(null); cargar(); }}
-          onClose={() => setForm(null)}
+          polizas={items}
+          renovarDe={form === "nueva" ? renovarDe : null}
+          onRenovar={() => { if (form !== "nueva" && form) { setRenovarDe(form); setForm("nueva"); } }}
+          onSaved={() => { setForm(null); setRenovarDe(null); cargar(); }}
+          onDeleted={() => { setForm(null); setRenovarDe(null); cargar(); }}
+          onClose={() => { setForm(null); setRenovarDe(null); }}
         />
       )}
     </div>

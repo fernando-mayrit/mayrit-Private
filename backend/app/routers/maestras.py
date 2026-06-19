@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from .. import crud
 from ..db import get_db
-from ..models.maestras import CuentaBancaria, Mercado, Poliza, Productor, Tomador, Usuario
+from ..models.maestras import CuentaBancaria, Mercado, Poliza, Productor, Programa, Tomador, Usuario
 from ..schemas import maestras as sch
 
 
@@ -111,6 +111,16 @@ usuarios_router = _make_router(
     read_schema=sch.UsuarioRead,
     create_schema=sch.UsuarioCreate,
     update_schema=sch.UsuarioUpdate,
+    search_cols=lambda m: [m.nombre],
+)
+
+programas_router = _make_router(
+    prefix="/programas",
+    tag="Programas",
+    model=Programa,
+    read_schema=sch.ProgramaRead,
+    create_schema=sch.ProgramaCreate,
+    update_schema=sch.ProgramaUpdate,
     search_cols=lambda m: [m.nombre],
 )
 

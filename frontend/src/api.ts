@@ -85,10 +85,16 @@ export interface CierreMes {
   fecha: string | null; // fecha de envío a contabilidad
 }
 export const cierresApi = {
-  resumen: (anio: number) => request<{ anio: number; meses: CierreMes[] }>(`/cierres/resumen?anio=${anio}`),
+  resumen: (anio: number) =>
+    request<{ anio: number; meses: CierreMes[]; anio_cerrado: boolean; puede_cerrar_anio: boolean; anio_fecha: string | null }>(
+      `/cierres/resumen?anio=${anio}`
+    ),
   cerrar: (anio: number, mes: number, fecha: string, usuario?: string) =>
     request(`/cierres`, { method: "POST", body: JSON.stringify({ anio, mes, fecha, usuario }) }),
   reabrir: (anio: number, mes: number) => request<void>(`/cierres/${anio}/${mes}`, { method: "DELETE" }),
+  cerrarAnio: (anio: number, fecha: string, usuario?: string) =>
+    request(`/cierres/${anio}/cerrar-anio`, { method: "POST", body: JSON.stringify({ fecha, usuario }) }),
+  reabrirAnio: (anio: number) => request<void>(`/cierres/${anio}/anio`, { method: "DELETE" }),
   excel: async (anio: number, mes: number): Promise<Blob> => {
     const res = await fetch(`${BASE}/cierres/${anio}/${mes}/excel`);
     if (!res.ok) throw new Error(`Error al generar el Excel (${res.status})`);
@@ -108,9 +114,13 @@ export function buscarCp(cp: string) {
 }
 
 // Suplementos (versiones) de un binder.
-import type { Suplemento, BinderWrite } from "./types";
+import type { Suplemento, BinderWrite, Binder } from "./types";
 export function listarSuplementos(binderId: number) {
   return request<Suplemento[]>(`/binders/${binderId}/suplementos`);
+}
+// Binders que pertenecen a un programa (cadena de la triangulación).
+export function bindersDePrograma(programaId: number) {
+  return request<Binder[]>(`/binders?programa_id=${programaId}`);
 }
 export function crearSuplemento(
   binderId: number,
@@ -232,8 +242,15 @@ export const recibosApi = {
   contabilizar: (id: number) => request<Recibo>(`/recibos/${id}/contabilizar`, { method: "POST" }),
   descontabilizar: (id: number) => request<Recibo>(`/recibos/${id}/descontabilizar`, { method: "POST" }),
   // Gestión íntegra de un recibo OM/Fees/Comisiones: cobrar | liquidar | traspasar | pagar (+ deshacer).
-  gestion: (id: number, accion: "cobrar" | "liquidar" | "traspasar" | "pagar", fecha?: string, deshacer = false) =>
-    request<Recibo>(`/recibos/${id}/gestion`, { method: "POST", body: JSON.stringify({ accion, fecha, deshacer }) }),
+  gestion: (
+    id: number,
+    accion: "cobrar" | "liquidar" | "traspasar" | "pagar",
+    opts?: { fecha?: string; deshacer?: boolean; cuenta_id?: number | null; cuenta_destino_id?: number | null }
+  ) =>
+    request<Recibo>(`/recibos/${id}/gestion`, {
+      method: "POST",
+      body: JSON.stringify({ accion, deshacer: false, ...opts }),
+    }),
   // ── Premium: grupos, cobro y macheo desde Excel ──
   listarPremium: (binderId: number) => request<PremiumGrupo[]>(`/binders/${binderId}/premium`),
   cobrarPremium: (binderId: number, periodo: string, fecha: string) =>

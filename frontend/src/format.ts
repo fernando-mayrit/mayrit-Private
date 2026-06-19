@@ -24,7 +24,8 @@ export function estadoCobro(importe: unknown, cobrado: unknown, estado?: string 
   if (estado === "Anulado") return { label: "Anulado", clase: "anulado" };
   const imp = Number(importe) || 0;
   const cob = Number(cobrado) || 0;
+  // Tolerancia de 5 céntimos: las diferencias de redondeo de la migración cuentan como completo.
   if (cob <= 0.005) return { label: "Pendiente", clase: "pendiente" };
-  if (cob < imp - 0.005) return { label: "Parcial", clase: "parcial" };
+  if (cob < imp - 0.05) return { label: "Parcial", clase: "parcial" };
   return { label: "Cobrado", clase: "cobrado" };
 }

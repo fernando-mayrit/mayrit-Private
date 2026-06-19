@@ -11,6 +11,9 @@ const hoyISO = () => new Date().toISOString().slice(0, 10);
 export default function CierreContablePage() {
   const [anio, setAnio] = useState<number>(new Date().getFullYear());
   const [meses, setMeses] = useState<CierreMes[]>([]);
+  const [anioCerrado, setAnioCerrado] = useState(false);
+  const [puedeCerrarAnio, setPuedeCerrarAnio] = useState(false);
+  const [anioFecha, setAnioFecha] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -19,6 +22,9 @@ export default function CierreContablePage() {
   const [cerrarMes, setCerrarMes] = useState<CierreMes | null>(null);
   const [fechaEnvio, setFechaEnvio] = useState<string>(hoyISO());
   const [reabrirMes, setReabrirMes] = useState<CierreMes | null>(null);
+  // Cierre/reapertura ANUAL.
+  const [cerrarAnioOpen, setCerrarAnioOpen] = useState(false);
+  const [reabrirAnioOpen, setReabrirAnioOpen] = useState(false);
 
   const anios = Array.from({ length: new Date().getFullYear() - 2017 + 1 }, (_, i) => new Date().getFullYear() - i);
 
@@ -26,7 +32,11 @@ export default function CierreContablePage() {
     setLoading(true);
     setError(null);
     try {
-      setMeses((await cierresApi.resumen(anio)).meses);
+      const r = await cierresApi.resumen(anio);
+      setMeses(r.meses);
+      setAnioCerrado(r.anio_cerrado);
+      setPuedeCerrarAnio(r.puede_cerrar_anio);
+      setAnioFecha(r.anio_fecha);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -64,7 +74,7 @@ export default function CierreContablePage() {
       await cierresApi.cerrar(anio, m.mes, fechaEnvio, localStorage.getItem(USUARIO_KEY) ?? undefined);
       setCerrarMes(null);
       await cargar();
-      await descargar(m); // genera y descarga el Excel para contabilidad
+      // No se descarga automáticamente: el Excel se obtiene aparte con el botón «⬇️ Excel».
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -87,6 +97,35 @@ export default function CierreContablePage() {
     }
   }
 
+  async function cerrarAnio() {
+    if (!fechaEnvio) return setError("Indica la fecha de cierre del año.");
+    setBusy(true);
+    setError(null);
+    try {
+      await cierresApi.cerrarAnio(anio, fechaEnvio, localStorage.getItem(USUARIO_KEY) ?? undefined);
+      setCerrarAnioOpen(false);
+      await cargar();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function reabrirAnio() {
+    setBusy(true);
+    setError(null);
+    try {
+      await cierresApi.reabrirAnio(anio);
+      setReabrirAnioOpen(false);
+      await cargar();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div className="container">
       <PageHeader emoji="🔒" title="Cierre Contable" />
@@ -97,7 +136,7 @@ export default function CierreContablePage() {
           ))}
         </select>
         <span className="hint">
-          Cerrar un mes envía sus recibos a contabilidad (pasan a <b>Contabilizado</b>, no editables, y no se podrán emitir nuevos en ese mes) y genera el Excel acumulado del año.
+          Cerrar un mes envía sus recibos a contabilidad (pasan a <b>Contabilizado</b>, no editables, y no se podrán emitir nuevos en ese mes). El Excel acumulado se descarga aparte con «⬇️ Excel».
         </span>
       </div>
 
@@ -139,7 +178,12 @@ export default function CierreContablePage() {
                       ⬇️ Excel
                     </button>
                     {m.cerrado ? (
-                      <button className="btn-link" onClick={() => setReabrirMes(m)}>Reabrir</button>
+                      // Año cerrado: ya no se pueden reabrir meses → el botón desaparece.
+                      anioCerrado ? null : (
+                        <button className="btn-link" onClick={() => setReabrirMes(m)}>
+                          Reabrir
+                        </button>
+                      )
                     ) : (
                       <button
                         className="btn-primary btn-sm"
@@ -157,20 +201,46 @@ export default function CierreContablePage() {
         </table>
       )}
 
+      {/* Cierre anual: abajo del todo, cuando todos los meses con recibos están cerrados. */}
+      {!loading && (anioCerrado || puedeCerrarAnio) && (
+        <div className={"cierre-anual" + (anioCerrado ? " cerrado" : "")}>
+          {anioCerrado ? (
+            <>
+              <span className="pill pill-anulado">🔒 Año {anio} cerrado{anioFecha ? ` · ${fmtFechaES(anioFecha)}` : ""}</span>
+              <span className="hint" style={{ flex: 1 }}>
+                El año está cerrado: no se pueden reabrir sus meses. Para poder reabrirlos, reabre antes el año.
+              </span>
+              <button className="btn-secondary btn-sm" disabled={busy} onClick={() => setReabrirAnioOpen(true)}>
+                Reabrir año
+              </button>
+            </>
+          ) : (
+            <>
+              <span className="hint" style={{ flex: 1 }}>
+                Todos los meses con recibos de {anio} están cerrados. Puedes <b>cerrar el año</b>: una vez cerrado, ya no se podrán reabrir sus meses.
+              </span>
+              <button className="btn-primary btn-sm" disabled={busy} onClick={() => { setFechaEnvio(hoyISO()); setCerrarAnioOpen(true); }}>
+                🔒 Cerrar año {anio}
+              </button>
+            </>
+          )}
+        </div>
+      )}
+
       {cerrarMes && (
         <FormPanel
           title={`Cerrar ${cerrarMes.nombre} ${anio}`}
           dirty={false}
           saving={busy}
-          saveLabel="Cerrar y descargar"
+          saveLabel="Cerrar mes"
           error={error}
           onSave={cerrar}
           onClose={() => setCerrarMes(null)}
         >
           <p className="hint" style={{ marginBottom: 12 }}>
             Se enviarán a contabilidad los <b>{cerrarMes.recibos}</b> recibo(s) de {cerrarMes.nombre} {anio}: pasarán a
-            <b> Contabilizado</b> (no editables) y no se podrán emitir nuevos recibos en ese mes. Se descargará el Excel
-            acumulado del año.
+            <b> Contabilizado</b> (no editables) y no se podrán emitir nuevos recibos en ese mes. El Excel acumulado se
+            descarga después con «⬇️ Excel».
           </p>
           <div className="field">
             <label>
@@ -194,6 +264,45 @@ export default function CierreContablePage() {
           confirmLabel="Reabrir"
           onConfirm={reabrir}
           onClose={() => setReabrirMes(null)}
+        />
+      )}
+
+      {cerrarAnioOpen && (
+        <FormPanel
+          title={`Cerrar año ${anio}`}
+          dirty={false}
+          saving={busy}
+          saveLabel="Cerrar año"
+          error={error}
+          onSave={cerrarAnio}
+          onClose={() => setCerrarAnioOpen(false)}
+        >
+          <p className="hint" style={{ marginBottom: 12 }}>
+            Vas a <b>cerrar el año {anio}</b>. Todos sus meses con recibos están ya cerrados. Una vez cerrado el año,
+            <b> ya no se podrán reabrir sus meses</b> (habría que reabrir antes el año).
+          </p>
+          <div className="field">
+            <label>
+              Fecha de cierre del año <span className="required">*</span>
+            </label>
+            <input
+              type="date"
+              className="inp-fecha"
+              value={fechaEnvio}
+              autoFocus
+              onChange={(e) => setFechaEnvio(e.target.value)}
+            />
+          </div>
+        </FormPanel>
+      )}
+
+      {reabrirAnioOpen && (
+        <ConfirmDialog
+          titulo={`Reabrir año ${anio}`}
+          mensaje={`Vas a reabrir el año ${anio}: volverás a poder reabrir sus meses cerrados.`}
+          confirmLabel="Reabrir año"
+          onConfirm={reabrirAnio}
+          onClose={() => setReabrirAnioOpen(false)}
         />
       )}
     </div>

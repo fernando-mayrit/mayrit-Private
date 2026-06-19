@@ -178,9 +178,15 @@ def listar(anio: int | None = None, db: Session = Depends(get_db)):
     return db.scalars(stmt.order_by(CierreContable.anio.desc(), CierreContable.mes.desc())).all()
 
 
+def _anio_cerrado(db: Session, anio: int) -> bool:
+    """Año cerrado = existe un cierre con mes=0 (marca de cierre anual; bloquea reabrir meses)."""
+    return db.scalar(select(CierreContable).where(CierreContable.anio == anio, CierreContable.mes == 0)) is not None
+
+
 @router.get("/cierres/resumen")
 def resumen(anio: int, db: Session = Depends(get_db)):
-    """Por cada mes del año: nº de recibos (por FechaContable), acumulado y si está cerrado."""
+    """Por cada mes del año: nº de recibos (por FechaContable), acumulado y si está cerrado.
+    Incluye `anio_cerrado` y `puede_cerrar_anio` (todos los meses con recibos están cerrados)."""
     filas = db.execute(
         select(func.extract("month", Recibo.fecha_contable), func.count())
         .where(Recibo.fecha_contable.is_not(None), func.extract("year", Recibo.fecha_contable) == anio)
@@ -189,6 +195,7 @@ def resumen(anio: int, db: Session = Depends(get_db)):
     por_mes = {int(m): c for m, c in filas}
     cierres = {c.mes: c for c in db.scalars(select(CierreContable).where(CierreContable.anio == anio)).all()}
     out, acum = [], 0
+    meses_con_recibos = [m for m in range(1, 13) if por_mes.get(m, 0) > 0]
     for m in range(1, 13):
         n = por_mes.get(m, 0)
         acum += n
@@ -198,13 +205,32 @@ def resumen(anio: int, db: Session = Depends(get_db)):
             "cerrado": c is not None,
             "fecha": c.fecha.isoformat() if c else None,  # fecha de envío a contabilidad
         })
-    return {"anio": anio, "meses": out}
+    anio_cerrado = _anio_cerrado(db, anio)
+    # Se puede cerrar el año si hay recibos y todos los meses con recibos están cerrados.
+    puede_cerrar_anio = (
+        not anio_cerrado
+        and len(meses_con_recibos) > 0
+        and all(m in cierres for m in meses_con_recibos)
+    )
+    cierre_anio = cierres.get(0)
+    return {
+        "anio": anio,
+        "meses": out,
+        "anio_cerrado": anio_cerrado,
+        "puede_cerrar_anio": puede_cerrar_anio,
+        "anio_fecha": cierre_anio.fecha.isoformat() if cierre_anio else None,
+    }
 
 
 class CierrePayload(BaseModel):
     anio: int
     mes: int
     fecha: dt.date | None = None     # fecha de envío físico a contabilidad
+    usuario: str | None = None
+
+
+class CierreAnioPayload(BaseModel):
+    fecha: dt.date | None = None
     usuario: str | None = None
 
 
@@ -235,8 +261,49 @@ def cerrar(payload: CierrePayload, db: Session = Depends(get_db)):
     return cierre
 
 
+@router.post("/cierres/{anio}/cerrar-anio", response_model=sch.CierreRead, status_code=201)
+def cerrar_anio(anio: int, payload: CierreAnioPayload, db: Session = Depends(get_db)):
+    """Cierre ANUAL: solo si todos los meses con recibos del año están cerrados. Bloquea la
+    reapertura de los meses. Se materializa como un cierre con mes=0."""
+    if _anio_cerrado(db, anio):
+        raise HTTPException(status_code=409, detail=f"El año {anio} ya está cerrado.")
+    filas = db.execute(
+        select(func.extract("month", Recibo.fecha_contable), func.count())
+        .where(Recibo.fecha_contable.is_not(None), func.extract("year", Recibo.fecha_contable) == anio)
+        .group_by(func.extract("month", Recibo.fecha_contable))
+    ).all()
+    meses_con_recibos = {int(m) for m, c in filas if c > 0}
+    if not meses_con_recibos:
+        raise HTTPException(status_code=409, detail=f"No hay recibos contables en {anio}.")
+    cerrados = {c.mes for c in db.scalars(select(CierreContable).where(CierreContable.anio == anio)).all()}
+    faltan = sorted(meses_con_recibos - cerrados)
+    if faltan:
+        nombres = ", ".join(MESES[m] for m in faltan)
+        raise HTTPException(status_code=409, detail=f"No se puede cerrar el año: faltan meses por cerrar ({nombres}).")
+    cierre = CierreContable(anio=anio, mes=0, fecha=payload.fecha or dt.date.today(), usuario=payload.usuario)
+    db.add(cierre)
+    db.commit()
+    db.refresh(cierre)
+    return cierre
+
+
+@router.delete("/cierres/{anio}/anio", status_code=204)
+def reabrir_anio(anio: int, db: Session = Depends(get_db)):
+    """Reabre el año (quita la marca mes=0): vuelve a permitir reabrir los meses."""
+    cierre = db.scalar(select(CierreContable).where(CierreContable.anio == anio, CierreContable.mes == 0))
+    if cierre is None:
+        raise HTTPException(status_code=404, detail=f"El año {anio} no está cerrado.")
+    db.delete(cierre)
+    db.commit()
+
+
 @router.delete("/cierres/{anio}/{mes}", status_code=204)
 def reabrir(anio: int, mes: int, db: Session = Depends(get_db)):
+    if _anio_cerrado(db, anio):
+        raise HTTPException(
+            status_code=409,
+            detail=f"El año {anio} está cerrado: reabre primero el año para poder reabrir sus meses.",
+        )
     cierre = db.scalar(select(CierreContable).where(CierreContable.anio == anio, CierreContable.mes == mes))
     if cierre is None:
         raise HTTPException(status_code=404, detail=f"{MESES[mes]} {anio} no está cerrado.")

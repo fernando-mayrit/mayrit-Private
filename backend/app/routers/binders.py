@@ -53,6 +53,7 @@ def _terminos(b: Binder) -> dict:
     idx = _grupo_idx(b)
     return {
         "productor_id": b.productor_id,
+        "programa_id": b.programa_id,
         "fecha_efecto": b.fecha_efecto.isoformat() if b.fecha_efecto else None,
         "fecha_vencimiento": b.fecha_vencimiento.isoformat() if b.fecha_vencimiento else None,
         "estado": b.estado,
@@ -205,6 +206,8 @@ def _serializar(b: Binder, met: dict | None = None) -> dict:
         "productor_id": b.productor_id,
         "coverholder_nombre": b.productor.nombre if b.productor else None,
         "coverholder_alias": b.productor.alias if b.productor else None,
+        "programa_id": b.programa_id,
+        "programa_nombre": b.programa.nombre if b.programa else None,
         "fecha_efecto": b.fecha_efecto,
         "fecha_vencimiento": b.fecha_vencimiento,
         "estado": b.estado,
@@ -296,11 +299,13 @@ def _aplicar(
 
 
 @router.get("", response_model=list[sch.BinderRead])
-def listar(q: str | None = None, db: Session = Depends(get_db)):
+def listar(q: str | None = None, programa_id: int | None = None, db: Session = Depends(get_db)):
     stmt = select(Binder).order_by(Binder.id)
     if q:
         like = f"%{q}%"
         stmt = stmt.where(or_(Binder.umr.ilike(like), Binder.agreement_number.ilike(like)))
+    if programa_id is not None:
+        stmt = stmt.where(Binder.programa_id == programa_id)
     binders = db.scalars(stmt).all()
     met = _metricas_binders(db, binders)
     return [_serializar(b, met.get(b.id)) for b in binders]

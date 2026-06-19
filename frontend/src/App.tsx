@@ -4,6 +4,7 @@ import MercadosPage from "./pages/MercadosPage";
 import ProductoresPage from "./pages/ProductoresPage";
 import TomadoresPage from "./pages/TomadoresPage";
 import BindersPage from "./pages/BindersPage";
+import ProgramasPage from "./pages/ProgramasPage";
 import PolizasPage from "./pages/PolizasPage";
 import RecibosPage from "./pages/RecibosPage";
 import CierreContablePage from "./pages/CierreContablePage";
@@ -25,6 +26,7 @@ const EMOJI: Record<string, string> = {
   mercados: "🏦",
   tomadores: "👥",
   binders: "📑",
+  programas: "🔗",
   recibos: "🧾",
   polizas: "📄",
   consultoria: "💼",
@@ -42,6 +44,7 @@ type Page =
   | "mercados"
   | "tomadores"
   | "binders"
+  | "programas"
   | "recibos"
   | "polizas"
   | "consultoria"
@@ -57,6 +60,7 @@ const MAESTRAS: { id: Page; label: string }[] = [
   { id: "productores", label: "Productores" },
   { id: "mercados", label: "Mercados" },
   { id: "tomadores", label: "Tomadores" },
+  { id: "programas", label: "Programas" },
 ];
 
 // Menú lateral: el Negocio (las 4 fuentes principales).
@@ -231,6 +235,7 @@ export default function App() {
           {page === "mercados" && <MercadosPage />}
           {page === "tomadores" && <TomadoresPage />}
           {page === "binders" && <BindersPage />}
+          {page === "programas" && <ProgramasPage />}
           {page === "recibos" && <RecibosPage />}
           {page === "cierre" && <CierreContablePage />}
           {page === "financiero" && <FinancieroPage />}

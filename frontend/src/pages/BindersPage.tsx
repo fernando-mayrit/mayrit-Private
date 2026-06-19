@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 import { crud, listarSuplementos, crearSuplemento } from "../api";
-import type { Binder, BinderWrite, CuentaBancaria, Mercado, Productor, Ramo, Suplemento } from "../types";
+import type { Binder, BinderWrite, CuentaBancaria, Mercado, Productor, Programa, Ramo, Suplemento } from "../types";
 import FormPanel from "../components/FormPanel";
 import PageHeader from "../components/PageHeader";
 import NumberInput from "../components/NumberInput";
 import OptionButtons from "../components/OptionButtons";
+import SelectConAlta from "../components/SelectConAlta";
+import ProgramaForm from "../components/ProgramaForm";
 import BinderDetalle from "./BinderDetalle";
 import { fmtMiles } from "../format";
 
@@ -13,6 +15,7 @@ const apiProductores = crud<Productor, unknown>("/productores");
 const apiMercados = crud<Mercado, unknown>("/mercados");
 const apiRamos = crud<Ramo, { nombre: string }>("/ramos");
 const apiCuentas = crud<CuentaBancaria, unknown>("/cuentas-bancarias");
+const apiProgramas = crud<Programa, unknown>("/programas");
 
 const ESTADOS = ["En Vigor", "Cancelado", "Renovado", "No Renovado", "Cerrado Producción", "Cerrado"];
 const INTERVALOS = ["Mensual", "Trimestral", "Semestral", "Anual"];
@@ -20,6 +23,7 @@ const PREFIJO_UMR = "B1634";
 
 // Ámbito del Límite de Primas: genérico para todo el binder, uno por sección, o por grupos.
 type LimiteAmbito = "binder" | "seccion" | "grupos";
+type NivelComision = "binder" | "seccion" | "riskcode";
 const AMBITO_LABEL: Record<LimiteAmbito, string> = {
   binder: "Todo el binder",
   seccion: "Por sección",
@@ -55,6 +59,7 @@ type FormState = {
   agreement_number: string;
   umr: string;
   productor_id: string;
+  programa_id: string;
   fecha_efecto: string;
   fecha_vencimiento: string;
   yoa: string;
@@ -101,6 +106,7 @@ const VACIO: FormState = {
   agreement_number: "",
   umr: "",
   productor_id: "",
+  programa_id: "",
   fecha_efecto: "",
   fecha_vencimiento: "",
   yoa: "",
@@ -254,6 +260,8 @@ export default function BindersPage() {
   const [mercados, setMercados] = useState<Mercado[]>([]);
   const [ramos, setRamos] = useState<Ramo[]>([]);
   const [cuentas, setCuentas] = useState<CuentaBancaria[]>([]);
+  const [programas, setProgramas] = useState<Programa[]>([]);
+  const [altaPrograma, setAltaPrograma] = useState(false); // alta rápida de programa apilada
   const [q, setQ] = useState("");
   // Filtros de la barra (desplegables): se aplican en cliente sobre lo ya cargado.
   const [fYoa, setFYoa] = useState("");
@@ -279,6 +287,8 @@ export default function BindersPage() {
   // Corrección de un error de grabación: desbloquea la ficha SIN crear suplemento (refresca la
   // versión vigente). Distinto de un cambio real de términos (eso es «+ Suplemento»).
   const [corrigiendo, setCorrigiendo] = useState(false);
+  // Nivel al que se aplica la Comisión Mayrit: binder | sección | risk code (excluyentes).
+  const [nivelComision, setNivelComision] = useState<NivelComision>("binder");
 
   const dirty =
     !!form &&
@@ -312,16 +322,18 @@ export default function BindersPage() {
 
   async function cargarRefs() {
     try {
-      const [prod, merc, ram, cta] = await Promise.all([
+      const [prod, merc, ram, cta, prog] = await Promise.all([
         apiProductores.list(),
         apiMercados.list(),
         apiRamos.list(),
         apiCuentas.list(),
+        apiProgramas.list(undefined, 5000),
       ]);
       setAgencias((prod as Productor[]).filter((p) => p.tipo === "Agencia de Suscripción"));
       setMercados(merc as Mercado[]);
       setRamos(ram as Ramo[]);
       setCuentas(cta as CuentaBancaria[]);
+      setProgramas(prog as Programa[]);
     } catch {
       /* si fallan, los selectores quedan vacíos */
     }
@@ -355,6 +367,12 @@ export default function BindersPage() {
   function abrir(estado: FormState) {
     setForm(estado);
     setInicial(estado);
+    // Deduce el nivel de la Comisión Mayrit a partir de dónde hay valor guardado.
+    const hayRiskCode = estado.secciones.some((s) =>
+      s.risk_codes.some((rc) => rc.comision_mayrit.trim() !== "")
+    );
+    const haySeccion = estado.secciones.some((s) => s.comision_mayrit.trim() !== "");
+    setNivelComision(hayRiskCode ? "riskcode" : haySeccion ? "seccion" : "binder");
     setError(null);
   }
   function cerrar() {
@@ -426,6 +444,7 @@ export default function BindersPage() {
       agreement_number: b.agreement_number ?? "",
       umr: b.umr ?? "",
       productor_id: b.productor_id != null ? String(b.productor_id) : "",
+      programa_id: b.programa_id != null ? String(b.programa_id) : "",
       fecha_efecto: b.fecha_efecto ?? "",
       fecha_vencimiento: b.fecha_vencimiento ?? "",
       yoa: b.yoa ?? "",
@@ -578,9 +597,28 @@ export default function BindersPage() {
 
   async function guardar() {
     if (!form) return;
+    // Vista de solo lectura: solo se cambia el Estado → guardado PARCIAL (sin revalidar ni
+    // reescribir términos). El backend actualiza solo el campo enviado (exclude_unset).
+    if (soloEstado && form.id) {
+      setSaving(true);
+      setError(null);
+      try {
+        await api.update(form.id, {
+          estado: form.estado || null,
+        } as unknown as BinderWrite);
+        cerrar();
+        await cargar();
+      } catch (e) {
+        setError((e as Error).message);
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
     // Todos los campos son obligatorios al dar de alta un binder (salvo notas).
     if (!form.agreement_number.trim()) return setError("El Agreement Number es obligatorio.");
     if (!form.productor_id) return setError("El coverholder es obligatorio.");
+    if (!form.programa_id) return setError("El programa es obligatorio.");
     if (!form.fecha_efecto) return setError("La fecha de efecto es obligatoria.");
     if (!form.fecha_vencimiento) return setError("La fecha de vencimiento es obligatoria.");
     if (!form.yoa.trim()) return setError("El YOA es obligatorio.");
@@ -631,7 +669,18 @@ export default function BindersPage() {
       if (!intervalo) return setError(`Indica el intervalo de ${label}.`);
       if (num(plazo) == null) return setError(`Indica el plazo (días) de ${label}.`);
     }
-    if (num(form.comision_mayrit) == null) return setError("La comisión Mayrit es obligatoria.");
+    if (nivelComision === "binder") {
+      if (num(form.comision_mayrit) == null) return setError("La comisión Mayrit es obligatoria.");
+    } else if (nivelComision === "seccion") {
+      if (form.secciones.some((s) => num(s.comision_mayrit) == null))
+        return setError("Indica la comisión Mayrit de cada sección.");
+    } else {
+      const conRiskCodes = form.secciones.filter((s) => s.risk_codes.length > 0);
+      if (conRiskCodes.length === 0)
+        return setError("Selecciona algún risk code para fijar su comisión Mayrit.");
+      if (conRiskCodes.some((s) => s.risk_codes.some((rc) => num(rc.comision_mayrit) == null)))
+        return setError("Indica la comisión Mayrit de cada risk code.");
+    }
     if (!form.cuenta_bancaria_id) return setError("La cuenta bancaria es obligatoria.");
     if (modo === "suplemento") {
       if (!supEfecto) return setError("Indica la fecha de efecto del suplemento.");
@@ -652,6 +701,7 @@ export default function BindersPage() {
       agreement_number: form.agreement_number.trim(),
       umr: umrDe(form.agreement_number) || null,
       productor_id: Number(form.productor_id),
+      programa_id: form.programa_id ? Number(form.programa_id) : null,
       fecha_efecto: form.fecha_efecto || null,
       fecha_vencimiento: form.fecha_vencimiento || null,
       yoa: form.yoa.trim() || null,
@@ -666,16 +716,19 @@ export default function BindersPage() {
       premium_bdx_plazo: num(form.premium_bdx_plazo),
       claims_bdx_intervalo: form.claims_bdx_intervalo || null,
       claims_bdx_plazo: num(form.claims_bdx_plazo),
-      comision_mayrit: num(form.comision_mayrit),
+      comision_mayrit: nivelComision === "binder" ? num(form.comision_mayrit) : null,
       cuenta_bancaria_id: form.cuenta_bancaria_id ? Number(form.cuenta_bancaria_id) : null,
       notas: form.notas.trim() || null,
       limites: limitesPayload,
       secciones: form.secciones.map((s) => ({
         ramo: s.ramo.trim() || null,
-        risk_codes: s.risk_codes.map((rc) => ({ codigo: rc.codigo, comision_mayrit: num(rc.comision_mayrit) })),
+        risk_codes: s.risk_codes.map((rc) => ({
+          codigo: rc.codigo,
+          comision_mayrit: nivelComision === "riskcode" ? num(rc.comision_mayrit) : null,
+        })),
         limite_grupo: remap.get(s.limite_grupo) ?? 0,
         comision: num(s.comision),
-        comision_mayrit: num(s.comision_mayrit),
+        comision_mayrit: nivelComision === "seccion" ? num(s.comision_mayrit) : null,
         sujeto_pc: s.sujeto_pc,
         mercados: s.mercados
           .filter((m) => m.mercado_id)
@@ -777,6 +830,30 @@ export default function BindersPage() {
           })),
         })
       )
+    );
+  }
+
+  // --- Consecutividad de binders (cadena de renovaciones) ---
+  // La renovación es consecutiva: el efecto del nuevo es el día siguiente al vencimiento del anterior.
+  const diaSiguiente = (iso?: string | null) => {
+    if (!iso) return "";
+    const [y, m, d] = iso.slice(0, 10).split("-").map(Number);
+    if (!y || !m || !d) return "";
+    return new Date(Date.UTC(y, m - 1, d + 1)).toISOString().slice(0, 10);
+  };
+  // Binder que renueva a este (misma agencia y su efecto = día siguiente al vencimiento), si existe.
+  function renovacionDe(
+    productorId: number | null,
+    vencimiento?: string | null,
+    selfId?: number
+  ): Binder | undefined {
+    const objetivo = diaSiguiente(vencimiento);
+    if (!objetivo || productorId == null) return undefined;
+    return items.find(
+      (x) =>
+        x.id !== selfId &&
+        x.productor_id === productorId &&
+        (x.fecha_efecto ?? "").slice(0, 10) === objetivo
     );
   }
 
@@ -968,6 +1045,7 @@ export default function BindersPage() {
           onSave={guardar}
           onClose={cerrar}
           onDelete={soloEstado || corrigiendo ? borrarActual : undefined}
+          escEnabled={!altaPrograma}
         >
           {soloEstado && (
             <>
@@ -1009,9 +1087,27 @@ export default function BindersPage() {
                 >
                   Corregir
                 </button>
-                <button className="btn-secondary btn-sm" onClick={renovar}>
-                  🔄 Renovar
-                </button>
+                {(() => {
+                  const renov = renovacionDe(
+                    Number(form.productor_id) || null,
+                    form.fecha_vencimiento,
+                    form.id
+                  );
+                  return (
+                    <button
+                      className="btn-secondary btn-sm"
+                      onClick={renovar}
+                      disabled={!!renov}
+                      title={
+                        renov
+                          ? `Ya renovado por ${renov.agreement_number || "otro binder"} (efecto ${renov.fecha_efecto ?? ""})`
+                          : undefined
+                      }
+                    >
+                      🔄 Renovar
+                    </button>
+                  );
+                })()}
               </div>
               <div className="hint" style={{ margin: "2px 0 12px" }}>
                 El binder es un documento fijo: aquí solo se cambia el Estado. Para un cambio real de
@@ -1100,6 +1196,21 @@ export default function BindersPage() {
             </select>
           </div>
 
+          <SelectConAlta
+            label="Programa"
+            required
+            value={programas.find((p) => String(p.id) === form.programa_id)?.nombre ?? ""}
+            options={programas
+              .filter((p) => p.activa || String(p.id) === form.programa_id)
+              .map((p) => ({ value: String(p.id), label: p.nombre }))}
+            onChange={(v) => setForm({ ...form, programa_id: v })}
+            onAdd={() => setAltaPrograma(true)}
+            addTitle="Nuevo programa"
+          />
+          <div className="hint" style={{ margin: "-6px 0 12px" }}>
+            Cadena de binders que se comparan en la triangulación. Al renovar se mantiene.
+          </div>
+
           {/* Vigencia: efecto · YOA · vencimiento (vencimiento = efecto + 365, editable) */}
           <div className="field">
             <label>
@@ -1165,6 +1276,26 @@ export default function BindersPage() {
 
           {/* Secciones */}
           <h3 style={{ marginBottom: 8 }}>Secciones</h3>
+
+          <div className="field" style={{ marginBottom: 8 }}>
+            <label>Comisión Mayrit por</label>
+            <select
+              value={nivelComision}
+              onChange={(e) => setNivelComision(e.target.value as NivelComision)}
+            >
+              <option value="binder">Binder (igual para todo)</option>
+              <option value="seccion">Sección</option>
+              <option value="riskcode">Risk code</option>
+            </select>
+            <span className="hint">
+              {nivelComision === "binder"
+                ? "Una sola comisión para todo el binder (campo más abajo)."
+                : nivelComision === "seccion"
+                ? "Una comisión por cada sección."
+                : "Una comisión por cada risk code seleccionado."}
+            </span>
+          </div>
+
           {form.secciones.map((s, i) => (
             <div className="seccion" key={i}>
               <div className="seccion-head">
@@ -1211,7 +1342,7 @@ export default function BindersPage() {
                                 <input type="checkbox" checked={!!rc} onChange={() => toggleRiskCode(i, c.codigo)} />
                                 {c.descripcion ? `${c.codigo} — ${c.descripcion}` : c.codigo}
                               </label>
-                              {rc && (
+                              {rc && nivelComision === "riskcode" && (
                                 <NumberInput
                                   value={rc.comision_mayrit}
                                   onChange={(v) => setRiskCodeComision(i, c.codigo, v)}
@@ -1239,16 +1370,21 @@ export default function BindersPage() {
                     thousands={false}
                   />
                 </div>
-                <div className="field">
-                  <label>Comisión Mayrit</label>
-                  <NumberInput
-                    value={s.comision_mayrit}
-                    onChange={(v) => setSeccionCampo(i, "comision_mayrit", v)}
-                    suffix="%"
-                    thousands={false}
-                    placeholder="(binder)"
-                  />
-                </div>
+                {nivelComision === "seccion" ? (
+                  <div className="field">
+                    <label>
+                      Comisión Mayrit <span className="required">*</span>
+                    </label>
+                    <NumberInput
+                      value={s.comision_mayrit}
+                      onChange={(v) => setSeccionCampo(i, "comision_mayrit", v)}
+                      suffix="%"
+                      thousands={false}
+                    />
+                  </div>
+                ) : (
+                  <div className="field" />
+                )}
                 <label className="field check pc-check">
                   <input
                     type="checkbox"
@@ -1509,20 +1645,22 @@ export default function BindersPage() {
             </div>
           ))}
 
-          <div className="field-row">
-            <div className="field">
-              <label>
-                Comisión Mayrit <span className="required">*</span>
-              </label>
-              <NumberInput
-                value={form.comision_mayrit}
-                onChange={(v) => setForm({ ...form, comision_mayrit: v })}
-                suffix="%"
-                thousands={false}
-              />
+          {nivelComision === "binder" && (
+            <div className="field-row">
+              <div className="field">
+                <label>
+                  Comisión Mayrit <span className="required">*</span>
+                </label>
+                <NumberInput
+                  value={form.comision_mayrit}
+                  onChange={(v) => setForm({ ...form, comision_mayrit: v })}
+                  suffix="%"
+                  thousands={false}
+                />
+              </div>
+              <div className="field" />
             </div>
-            <div className="field" />
-          </div>
+          )}
 
           <div className="field">
             <label>
@@ -1563,6 +1701,21 @@ export default function BindersPage() {
           </div>
           </fieldset>
         </FormPanel>
+      )}
+
+      {altaPrograma && (
+        <ProgramaForm
+          initial={null}
+          productores={agencias}
+          productorInicial={form && form.productor_id ? Number(form.productor_id) : null}
+          escEnabled
+          onSaved={(p) => {
+            setProgramas((prev) => [...prev, p]);
+            setForm((f) => (f ? { ...f, programa_id: String(p.id) } : f));
+            setAltaPrograma(false);
+          }}
+          onClose={() => setAltaPrograma(false)}
+        />
       )}
 
       {historial && (

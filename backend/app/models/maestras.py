@@ -141,6 +141,27 @@ class RiskCode(Base):
     ramo: Mapped["Ramo"] = relationship(back_populates="risk_codes")
 
 
+class Programa(Base):
+    """Programa: cadena de binders consecutivos que se comparan entre sí en la triangulación.
+    El vínculo es manual (un cambio de mercado/capacidad NO crea programa nuevo); al renovar
+    un binder, el nuevo hereda el programa. Distingue, p. ej., 'Crouco Beazley' de 'Crouco QBE'."""
+
+    __tablename__ = "programas"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    nombre: Mapped[str] = mapped_column(String(160), index=True)
+    productor_id: Mapped[int | None] = mapped_column(ForeignKey("productores.id"))  # agencia / coverholder
+    notas: Mapped[str | None] = mapped_column(Text)
+    activa: Mapped[bool] = mapped_column(Boolean, server_default=text("true"), default=True)
+
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    productor: Mapped["Productor | None"] = relationship()
+
+
 class Binder(Base):
     """Binder (binding authority): conecta una agencia (coverholder) con uno o varios mercados."""
 
@@ -148,6 +169,8 @@ class Binder(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     sp_old_id: Mapped[int | None] = mapped_column(Integer, index=True)
+    # Programa al que pertenece (cadena de renovaciones para la triangulación). Manual y opcional.
+    programa_id: Mapped[int | None] = mapped_column(ForeignKey("programas.id"), index=True)
 
     agreement_number: Mapped[str | None] = mapped_column(String(120), index=True)  # Agreement Number
     umr: Mapped[str | None] = mapped_column(String(120), index=True)     # UMR = "B1634" + Agreement Number
@@ -183,6 +206,7 @@ class Binder(Base):
     )
 
     productor: Mapped["Productor | None"] = relationship()
+    programa: Mapped["Programa | None"] = relationship()
     cuenta_bancaria: Mapped["CuentaBancaria | None"] = relationship()
     secciones: Mapped[list["BinderSeccion"]] = relationship(
         back_populates="binder", cascade="all, delete-orphan", order_by="BinderSeccion.id"
@@ -535,6 +559,9 @@ class Poliza(Base):
     comision_cedida_porc: Mapped[Decimal | None] = mapped_column(Numeric(7, 4))     # % de la comisión para el corredor (cedida)
     comision_total: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
     prima_participacion: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    # Quién paga a Mayrit: "Corredor" (paga neto, descontando su comisión cedida → se salda al
+    # cobrar) o "Tomador" (paga el 100% de la prima y luego pagamos la comisión al corredor).
+    pagador: Mapped[str | None] = mapped_column(String(40))
 
     notas: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -631,6 +658,13 @@ class Recibo(Base):
     comision_cedida_a_pagar: Mapped[Decimal] = mapped_column(Numeric(18, 2), server_default=text("0"), default=0)
     comision_cedida_pagada: Mapped[Decimal] = mapped_column(Numeric(18, 2), server_default=text("0"), default=0)
     comision_cedida_fecha_pago: Mapped[dt.date | None] = mapped_column(Date)
+
+    # ── Cuentas bancarias por movimiento (cobro, liquidación, traspaso origen→destino, pago) ──
+    cuenta_cobro_id: Mapped[int | None] = mapped_column(ForeignKey("cuentas_bancarias.id"))
+    cuenta_liquidacion_id: Mapped[int | None] = mapped_column(ForeignKey("cuentas_bancarias.id"))
+    cuenta_traspaso_origen_id: Mapped[int | None] = mapped_column(ForeignKey("cuentas_bancarias.id"))
+    cuenta_traspaso_destino_id: Mapped[int | None] = mapped_column(ForeignKey("cuentas_bancarias.id"))
+    cuenta_pago_id: Mapped[int | None] = mapped_column(ForeignKey("cuentas_bancarias.id"))
 
     # ── Contable / control ──
     notas: Mapped[str | None] = mapped_column(Text)

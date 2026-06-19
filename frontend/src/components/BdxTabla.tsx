@@ -254,6 +254,20 @@ export default function BdxTabla({
   // Totales (sobre las filas filtradas) para el cuadro de la derecha.
   const sum = (f: keyof BdxLinea) => filas.reduce((a, l) => a + num(l[f]), 0);
   const gwp = sum("total_gwp_our_line"); // GWP "our line" (nuestra participación), no el 100%
+  // Nº de pólizas: agrupa por (asegurado + fechas) → une los splits por risk code y los
+  // suplementos no cuentan como póliza; solo cuenta las de prima neta (our line) > 0, así una
+  // póliza anulada (que netea a 0) no se contabiliza.
+  const nPolizas = (() => {
+    const acc = new Map<string, number>();
+    for (const l of filas) {
+      const aseg = String(l.insured_id || l.insured_name || "").trim();
+      const key = `${aseg}|${l.risk_inception_date ?? ""}|${l.risk_expiry_date ?? ""}`;
+      acc.set(key, (acc.get(key) ?? 0) + num(l.total_gwp_our_line));
+    }
+    let c = 0;
+    for (const v of acc.values()) if (v > 0.005) c++;
+    return c;
+  })();
   const primaMayrit = sum("net_premium_to_broker");
   const cobrado = sum("ingresado");
   const aTraspasar = sum("brokerage_amount");
@@ -287,7 +301,7 @@ export default function BdxTabla({
         <div className="bdx-totales">
           <div className="tot-col">
             <div className="tot-row"><span>GWP (our line)</span><b>{fmtMiles(gwp)}</b></div>
-            <div className="tot-row"><span>Pólizas</span><b title="Pendiente de definir el criterio">—</b></div>
+            <div className="tot-row"><span>Pólizas</span><b title="Únicas por asegurado (CIF) + fechas: une los splits por risk code, los suplementos no cuentan y excluye las anuladas (prima neta ≤ 0)">{fmtMiles(nPolizas, 0)}</b></div>
             <div className="tot-row">
               <span>Líneas</span>
               <b>{Object.keys(filtros).length > 0 ? `${filas.length} / ${lineas.length}` : fmtMiles(filas.length, 0)}</b>

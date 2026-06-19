@@ -464,6 +464,8 @@ def _emision_lineas(p: PolizaEmitir) -> EmisionPreview:
     recargos_total = _q2(p.recargos or D0)
     imp_pct, ced_pct, ret_pct = p.impuestos_porc, p.comision_cedida_porc, p.comision_retenida_porc
 
+    # Quién paga: "Tomador" → adeudada = bruta (100%); "Corredor" → adeudada = bruta − cedida.
+    paga_tomador = (p.pagador or "Corredor") == "Tomador"
     cuota = _q2(base_total / n)
     rec_cuota = _q2(recargos_total / n)
     step = 12 // n
@@ -475,7 +477,7 @@ def _emision_lineas(p: PolizaEmitir) -> EmisionPreview:
         bruta_i = _q2(prima_i + imp_i + rec_i)
         ced_i = _q2(prima_i * ced_pct / 100) if ced_pct else D0
         ret_i = _q2(prima_i * ret_pct / 100) if ret_pct else D0
-        adeudada = _q2(bruta_i - ced_i)
+        adeudada = bruta_i if paga_tomador else _q2(bruta_i - ced_i)
         # fechas
         def fecha_plazo(idx):
             if p.plazos_fechas and idx < len(p.plazos_fechas):
@@ -494,7 +496,7 @@ def _emision_lineas(p: PolizaEmitir) -> EmisionPreview:
             recargos=rec_i, prima_bruta_recibo=bruta_i,
             comision_cedida_porc=ced_pct, comision_cedida=ced_i,
             comision_retenida_porc=ret_pct, comision_retenida=ret_i,
-            prima_adeudada=adeudada, liquidar=_q2(adeudada - ret_i),
+            prima_adeudada=adeudada, liquidar=_q2(bruta_i - ced_i - ret_i),
         ))
     imp_total = _q2(sum((l.impuestos_recibo for l in lineas), D0))
     com_total = _q2(sum((l.comision_cedida + l.comision_retenida for l in lineas), D0))
@@ -527,6 +529,8 @@ def _generar_recibos(db: Session, poliza: Poliza, n: int) -> None:
     com_pct = poliza.comision_porc or D0
     ced_pct = poliza.comision_cedida_porc or D0
     ret_pct = com_pct - ced_pct
+    pagador = poliza.pagador or "Corredor"
+    paga_tomador = pagador == "Tomador"
 
     if poliza.coaseguro and poliza.coaseguro_lineas:
         companias = [
@@ -560,7 +564,8 @@ def _generar_recibos(db: Session, poliza: Poliza, n: int) -> None:
             bruta_i = _q2(prima_i + imp_i)
             ced_i = _q2(prima_i * ced_pct / 100) if ced_pct else D0   # comisión corredor
             ret_i = _q2(prima_i * ret_pct / 100) if ret_pct else D0   # comisión Mayrit
-            adeudada = _q2(bruta_i - ced_i)
+            # Tomador → cobramos el 100% (bruta); Corredor → cobramos neto (bruta − cedida).
+            adeudada = bruta_i if paga_tomador else _q2(bruta_i - ced_i)
             fe = fecha_plazo(i)
             fv = (fecha_plazo(i + 1) - dt.timedelta(days=1)) if i < n - 1 else poliza.fecha_vencimiento
             anio = fe.year
@@ -579,8 +584,9 @@ def _generar_recibos(db: Session, poliza: Poliza, n: int) -> None:
                 impuestos_recibo=imp_i, prima_bruta_recibo=bruta_i,
                 comision_cedida_porc=(ced_pct or None), comision_cedida=ced_i,
                 comision_retenida_porc=(ret_pct or None), comision_retenida=ret_i,
-                prima_adeudada=adeudada, liquidar=_q2(adeudada - ret_i),
-                pagador="Corredor", fecha_contable=fe,
+                prima_adeudada=adeudada, liquidar=_q2(bruta_i - ced_i - ret_i),
+                comision_cedida_a_pagar=ced_i,
+                pagador=pagador, fecha_contable=fe,
             )
             _recompute(recibo)
             db.add(recibo)
@@ -701,6 +707,8 @@ class GestionRecibo(BaseModel):
     accion: str                      # cobrar | liquidar | traspasar | pagar
     fecha: dt.date | None = None     # por defecto, hoy
     deshacer: bool = False           # revertir la acción
+    cuenta_id: int | None = None     # cuenta del movimiento (origen en traspaso)
+    cuenta_destino_id: int | None = None  # solo traspaso: cuenta destino (ambas de Mayrit)
 
 
 @router.post("/recibos/{recibo_id}/gestion", response_model=sch.ReciboRead)
@@ -713,40 +721,67 @@ def gestion(recibo_id: int, payload: GestionRecibo, db: Session = Depends(get_db
     f = payload.fecha or dt.date.today()
     off = payload.deshacer
     a = payload.accion
+    cta = payload.cuenta_id
+    cta_dest = payload.cuenta_destino_id
+    # Si paga el Corredor, su comisión cedida se salda automáticamente al cobrar (la descuenta él).
+    paga_corredor = (r.pagador or "") == "Corredor" and r.poliza_id is not None
 
     if a == "cobrar":
         if off:
-            if (r.liquidar_liquidado or D0) > 0 or (r.comision_retenida_traspasada or D0) > 0 or (r.comision_cedida_pagada or D0) > 0:
+            # El pago de comisión solo bloquea si es manual (Tomador); con Corredor se revierte aquí.
+            pago_manual = (r.comision_cedida_pagada or D0) > 0 and not paga_corredor
+            if (r.liquidar_liquidado or D0) > 0 or (r.comision_retenida_traspasada or D0) > 0 or pago_manual:
                 raise HTTPException(status_code=409, detail="Deshaz antes la liquidación, el traspaso y el pago de comisión.")
             r.prima_cobrada = r.comision_retenida_cobrada = r.liquidar_cobrado = D0
             r.prima_fecha_cobro = None
+            r.cuenta_cobro_id = None
+            if paga_corredor:
+                r.comision_cedida_pagada = D0
+                r.comision_cedida_fecha_pago = None
+                r.cuenta_pago_id = None
         else:
             r.prima_cobrada = r.prima_adeudada
             r.comision_retenida_cobrada = r.comision_retenida
             r.liquidar_cobrado = r.liquidar
             r.prima_fecha_cobro = f
+            r.cuenta_cobro_id = cta
+            if paga_corredor:
+                base = r.comision_cedida_a_pagar or r.comision_cedida or D0
+                r.comision_cedida_a_pagar = base
+                r.comision_cedida_pagada = base   # el corredor la retuvo → saldada
+                r.comision_cedida_fecha_pago = f
+                r.cuenta_pago_id = cta            # misma cuenta del cobro (la retuvo el corredor)
     elif a == "traspasar":
         if off:
             r.comision_retenida_traspasada = D0
             r.comision_fecha_traspaso = None
+            r.cuenta_traspaso_origen_id = None
+            r.cuenta_traspaso_destino_id = None
         else:
             if (r.comision_retenida_cobrada or D0) <= 0:
                 raise HTTPException(status_code=409, detail="Primero hay que cobrar la comisión antes de traspasarla.")
             r.comision_retenida_traspasada = r.comision_retenida_cobrada
             r.comision_fecha_traspaso = f
+            r.cuenta_traspaso_origen_id = cta
+            r.cuenta_traspaso_destino_id = cta_dest
     elif a == "liquidar":
         if off:
             r.liquidar_liquidado = D0
             r.liquidar_fecha_liquidacion = None
+            r.cuenta_liquidacion_id = None
         else:
             if (r.liquidar_cobrado or D0) <= 0:
                 raise HTTPException(status_code=409, detail="Primero hay que cobrar la prima antes de liquidar a la compañía.")
             r.liquidar_liquidado = r.liquidar_cobrado
             r.liquidar_fecha_liquidacion = f
+            r.cuenta_liquidacion_id = cta
     elif a == "pagar":
+        if paga_corredor:
+            raise HTTPException(status_code=409, detail="Paga el corredor: la comisión cedida se salda automáticamente al cobrar.")
         if off:
             r.comision_cedida_pagada = D0
             r.comision_cedida_fecha_pago = None
+            r.cuenta_pago_id = None
         else:
             base = r.comision_cedida_a_pagar or r.comision_cedida or D0
             if base <= 0:
@@ -754,6 +789,7 @@ def gestion(recibo_id: int, payload: GestionRecibo, db: Session = Depends(get_db
             r.comision_cedida_a_pagar = base
             r.comision_cedida_pagada = base
             r.comision_cedida_fecha_pago = f
+            r.cuenta_pago_id = cta
     else:
         raise HTTPException(status_code=422, detail=f"Acción desconocida: {a!r}")
 

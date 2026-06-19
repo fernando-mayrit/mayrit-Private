@@ -42,6 +42,23 @@ export interface MercadoWrite {
   notas?: string | null;
 }
 
+// Programa: cadena de binders consecutivos que se comparan en la triangulación.
+export interface Programa {
+  id: number;
+  nombre: string;
+  productor_id: number | null;
+  notas: string | null;
+  activa: boolean;
+  created_at: string;
+  updated_at: string;
+}
+export interface ProgramaWrite {
+  nombre: string;
+  productor_id?: number | null;
+  notas?: string | null;
+  activa?: boolean;
+}
+
 export interface Productor {
   id: number;
   nombre: string;
@@ -125,6 +142,8 @@ export interface Binder extends BinderComun {
   umr: string | null;
   agreement_number: string | null;
   productor_id: number | null;
+  programa_id: number | null;
+  programa_nombre: string | null;
   coverholder_nombre: string | null;
   coverholder_alias: string | null;
   cuenta_bancaria_nombre: string | null;
@@ -146,6 +165,7 @@ export interface BinderWrite extends BinderComun {
   agreement_number: string;
   umr?: string | null;
   productor_id?: number | null;
+  programa_id?: number | null;
   fecha_efecto?: string | null;
   fecha_vencimiento?: string | null;
   estado?: string | null;
@@ -259,6 +279,12 @@ export interface ReciboCampos {
   comision_cedida_a_pagar?: string | null;
   comision_cedida_pagada?: string | null;
   comision_cedida_fecha_pago?: string | null;
+  // Cuentas bancarias por movimiento
+  cuenta_cobro_id?: number | null;
+  cuenta_liquidacion_id?: number | null;
+  cuenta_traspaso_origen_id?: number | null;
+  cuenta_traspaso_destino_id?: number | null;
+  cuenta_pago_id?: number | null;
   // Contable
   notas?: string | null;
   cuenta?: string | null;
@@ -457,6 +483,7 @@ export interface Poliza {
   comision_cedida_porc: string | number | null;
   comision_total: string | number | null;
   prima_participacion: string | number | null;
+  pagador: string | null; // "Corredor" | "Tomador"
   notas: string | null;
   created_at: string;
   updated_at: string;

@@ -33,6 +33,7 @@ app.include_router(maestras.mercados_router)
 app.include_router(maestras.tomadores_router)
 app.include_router(maestras.cuentas_bancarias_router)
 app.include_router(maestras.usuarios_router)
+app.include_router(maestras.programas_router)
 # recibos ANTES que polizas_router: define /polizas/siguiente-numero, que si no
 # quedaría capturado por GET /polizas/{item_id} (item_id no entero → 422).
 app.include_router(recibos.router)

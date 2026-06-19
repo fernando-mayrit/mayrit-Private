@@ -376,6 +376,19 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
   const riskLineas = lineasRisk.length;
   const riskPrima = lineasRisk.reduce((a, l) => a + n(l.total_gwp_our_line) + n(l.total_taxes_levies) - n(l.commission_coverholder_amount), 0);
   const riskComision = lineasRisk.reduce((a, l) => a + n(l.brokerage_amount), 0);
+  // Nº de pólizas (mismo criterio que el contador del BDX): únicas por (asegurado + fechas),
+  // une splits por risk code, ignora suplementos y excluye anuladas (prima neta our line ≤ 0).
+  const nPolizas = (() => {
+    const acc = new Map<string, number>();
+    for (const l of lineasRisk) {
+      const aseg = String(l.insured_id || l.insured_name || "").trim();
+      const key = `${aseg}|${l.risk_inception_date ?? ""}|${l.risk_expiry_date ?? ""}`;
+      acc.set(key, (acc.get(key) ?? 0) + n(l.total_gwp_our_line));
+    }
+    let c = 0;
+    for (const v of acc.values()) if (v > 0.005) c++;
+    return c;
+  })();
   const premLineas = premiums.reduce((a, p) => a + p.num_lineas, 0);
   const premPrima = premiums.reduce((a, p) => a + n(p.prima), 0);
   const premComision = premiums.reduce((a, p) => a + n(p.comision), 0);
@@ -1120,7 +1133,7 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
                         <div className="tot-row tot-pdte"><span>Total</span><b>{fmtMiles(total)}</b></div>
                       </div>
                       <div className="tot-col">
-                        <div className="tot-row"><span title="Nº siniestros / Nº pólizas (pendiente de calcular el nº de pólizas)">Ratio Frecuencia</span><b>—</b></div>
+                        <div className="tot-row"><span title="Nº siniestros / Nº pólizas">Ratio Frecuencia</span><b>{nPolizas > 0 ? `${fmtMiles((nSin / nPolizas) * 100)} %` : "—"}</b></div>
                         <div className="tot-row" style={{ visibility: "hidden" }}><span>·</span><b>·</b></div>
                         <div className="tot-row" style={{ visibility: "hidden" }}><span>·</span><b>·</b></div>
                         <div className="tot-row tot-pdte"><span title="Siniestralidad / (GWP our line − com. coverholder − brokerage)">Ratio Siniestralidad</span><b>{ratioStr}</b></div>

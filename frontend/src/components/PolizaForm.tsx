@@ -37,6 +37,7 @@ type FormState = {
   estado: string;
   seguro: string; // "1" directo / "2" reaseguro
   pago: string;
+  pagador: string; // "Corredor" | "Tomador" (quién nos paga)
   moneda: string;
   fecha_efecto: string;
   fecha_vencimiento: string;
@@ -66,6 +67,50 @@ function round2(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
+// --- Consecutividad / renovación de pólizas (mismo criterio que los binders) ---
+// +1 año a una fecha ISO (mismo día y mes). "" si no es válida.
+function masUnAnio(iso: string): string {
+  if (!iso) return "";
+  const [y, m, d] = iso.slice(0, 10).split("-");
+  return y && m && d ? `${Number(y) + 1}-${m}-${d}` : "";
+}
+// Día siguiente a una fecha ISO (en UTC, sin desfases de zona).
+function diaSiguiente(iso: string): string {
+  if (!iso) return "";
+  const [y, m, d] = iso.slice(0, 10).split("-").map(Number);
+  if (!y || !m || !d) return "";
+  return new Date(Date.UTC(y, m - 1, d + 1)).toISOString().slice(0, 10);
+}
+// Duración exactamente anual: el efecto +1 año coincide con el día siguiente al vencimiento.
+// Solo estas pólizas se renuevan; las temporales (plazos cortos o > 1 año) no.
+function esAnual(efecto?: string | null, vencimiento?: string | null): boolean {
+  if (!efecto || !vencimiento) return false;
+  return masUnAnio(s(efecto)) === diaSiguiente(s(vencimiento)) && masUnAnio(s(efecto)) !== "";
+}
+// La póliza que renueva a `p`: mismo asegurado y ramo, con efecto = día siguiente a su vencimiento.
+function renovacionDe(p: Poliza, todas: Poliza[]): Poliza | undefined {
+  const objetivo = diaSiguiente(s(p.fecha_vencimiento));
+  if (!objetivo) return undefined;
+  return todas.find(
+    (x) =>
+      x.id !== p.id &&
+      s(x.asegurado) === s(p.asegurado) &&
+      s(x.ramo) === s(p.ramo) &&
+      s(x.fecha_efecto).slice(0, 10) === objetivo
+  );
+}
+// Estado inicial de una renovación: copia la póliza, la fecha al año siguiente y limpia lo propio del alta.
+function desdeRenovacion(p: Poliza): FormState {
+  return {
+    ...desde(p),
+    numero_poliza: "",
+    estado: "En Vigor",
+    produccion: "Cartera",
+    fecha_efecto: diaSiguiente(s(p.fecha_vencimiento)),
+    fecha_vencimiento: masUnAnio(s(p.fecha_vencimiento)),
+  };
+}
+
 function desde(p: Poliza | null): FormState {
   return {
     numero_poliza: s(p?.numero_poliza),
@@ -77,6 +122,7 @@ function desde(p: Poliza | null): FormState {
     estado: s(p?.estado),
     seguro: s(p?.seguro) || "1",
     pago: s(p?.pago),
+    pagador: s(p?.pagador) || "Corredor",
     moneda: s(p?.moneda) || "EUR",
     fecha_efecto: s(p?.fecha_efecto).slice(0, 10),
     fecha_vencimiento: s(p?.fecha_vencimiento).slice(0, 10),
@@ -103,14 +149,21 @@ export default function PolizaForm({
   onSaved,
   onClose,
   onDeleted,
+  polizas = [],
+  renovarDe = null,
+  onRenovar,
 }: {
   poliza: Poliza | null;
   onSaved: () => void;
   onClose: () => void;
   onDeleted: () => void;
+  polizas?: Poliza[];           // lista completa (para detectar renovación ya existente)
+  renovarDe?: Poliza | null;    // si es un alta de renovación, la póliza de origen
+  onRenovar?: () => void;       // abre un alta nueva prerrellenada con la renovación
 }) {
-  const [form, setForm] = useState<FormState>(() => desde(poliza));
-  const [inicial] = useState<FormState>(() => desde(poliza));
+  const inicio = (): FormState => (poliza ? desde(poliza) : renovarDe ? desdeRenovacion(renovarDe) : desde(null));
+  const [form, setForm] = useState<FormState>(inicio);
+  const [inicial] = useState<FormState>(inicio);
   // Generar recibos al guardar: SIEMPRE desactivado por defecto (la emisión nunca es
   // automática; hay que activarlo y revisar la vista previa antes de pulsar "Emitir").
   const [genRecibos, setGenRecibos] = useState(false);
@@ -125,7 +178,7 @@ export default function PolizaForm({
   const [mercados, setMercados] = useState<Mercado[]>([]);
   const [ramos, setRamos] = useState<Ramo[]>([]);
   // Nº de póliza: manual (se escribe) o automático (lo genera el sistema). Solo en altas nuevas.
-  const [numeroAuto, setNumeroAuto] = useState(false);
+  const [numeroAuto, setNumeroAuto] = useState(!!renovarDe);
   // Alta rápida apilada encima (sin cerrar la póliza).
   const [alta, setAlta] = useState<null | "tomador" | "corredor" | "mercado">(null);
   const [confirmSinRecibos, setConfirmSinRecibos] = useState(false);
@@ -244,6 +297,7 @@ export default function PolizaForm({
       estado: form.estado.trim() || null,
       seguro: form.seguro || null,
       pago: form.pago || null,
+      pagador: form.pagador || null,
       moneda: form.moneda || null,
       fecha_efecto: form.fecha_efecto || null,
       fecha_vencimiento: form.fecha_vencimiento || null,
@@ -431,6 +485,24 @@ export default function PolizaForm({
                 ⚡ Emitir recibos
               </button>
             )}
+            {poliza && esAnual(poliza.fecha_efecto, poliza.fecha_vencimiento) && onRenovar && (() => {
+              const yaRenov = renovacionDe(poliza, polizas);
+              return (
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={onRenovar}
+                  disabled={!!yaRenov || saving}
+                  title={
+                    yaRenov
+                      ? `Ya renovada por ${yaRenov.numero_poliza || "otra póliza"} (efecto ${s(yaRenov.fecha_efecto).slice(0, 10)})`
+                      : "Crear la póliza del año siguiente (consecutiva)"
+                  }
+                >
+                  🔄 Renovar
+                </button>
+              );
+            })()}
             {bloqueado && (
               <button type="button" className="btn-primary" onClick={() => setBloqueado(false)}>
                 ✏️ Corregir
@@ -661,6 +733,17 @@ export default function PolizaForm({
                 {MONEDAS.map((m) => <option key={m} value={m}>{m}</option>)}
               </select>
             </div>
+          </div>
+
+          <div className="field-row">
+            <div className="field">
+              <label>¿Quién nos paga? <span className="required">*</span></label>
+              <select value={form.pagador} onChange={(e) => set("pagador", e.target.value)}>
+                <option value="Corredor">Corredor (paga neto, descuenta su comisión)</option>
+                <option value="Tomador">Tomador (paga el 100%; pagamos la comisión al corredor)</option>
+              </select>
+            </div>
+            <div className="field" />
           </div>
 
           {form.coaseguro && (
