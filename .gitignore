@@ -53,6 +53,9 @@ dist/
 build/
 .vite/
 *.local
+
+# Frontend compilado y copiado dentro del backend para el despliegue (lo genera el CI)
+backend/static/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*

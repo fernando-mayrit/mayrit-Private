@@ -1,6 +1,9 @@
 """Punto de entrada de la API de Mayrit (FastAPI)."""
+import os
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from .routers import bdx, binders, cierre, claims_bdx, codigos_postales, maestras, ramos, recibos, siniestros
 
@@ -45,3 +48,12 @@ app.include_router(cierre.router)
 app.include_router(siniestros.router)
 app.include_router(claims_bdx.router)
 app.include_router(codigos_postales.router)
+
+
+# ── Frontend compilado ──
+# En producción (Azure) el backend sirve también el frontend (carpeta backend/static, generada
+# por el build de Vite y copiada en el despliegue). Va al FINAL para que la API tenga prioridad.
+# En desarrollo local esa carpeta no existe → no se monta (se usa el dev server de Vite).
+_STATIC_DIR = os.path.join(os.path.dirname(__file__), "..", "static")
+if os.path.isdir(_STATIC_DIR):
+    app.mount("/", StaticFiles(directory=_STATIC_DIR, html=True), name="frontend")

@@ -1,6 +1,8 @@
 // Cliente mínimo de la API de Mayrit (backend FastAPI).
-// La URL se puede sobreescribir con VITE_API_URL; por defecto, el backend local.
-const BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
+// - En desarrollo: backend local (localhost:8000).
+// - En producción (build): mismo origen → rutas relativas (el backend sirve también el frontend).
+// Se puede forzar con VITE_API_URL.
+const BASE = import.meta.env.VITE_API_URL ?? (import.meta.env.DEV ? "http://localhost:8000" : "");
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
