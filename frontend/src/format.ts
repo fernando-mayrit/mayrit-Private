@@ -22,8 +22,10 @@ export function fmtFechaES(v: unknown): string {
 export type EstadoCobro = { label: string; clase: string };
 export function estadoCobro(importe: unknown, cobrado: unknown, estado?: string | null): EstadoCobro {
   if (estado === "Anulado") return { label: "Anulado", clase: "anulado" };
-  const imp = Number(importe) || 0;
-  const cob = Number(cobrado) || 0;
+  // Se compara EN MAGNITUD (valor absoluto) para que los recibos en negativo (extornos) se
+  // comporten igual que los positivos: pendientes hasta la devolución y "cobrados" al devolverse.
+  const imp = Math.abs(Number(importe) || 0);
+  const cob = Math.abs(Number(cobrado) || 0);
   // Tolerancia de 5 céntimos: las diferencias de redondeo de la migración cuentan como completo.
   if (cob <= 0.005) return { label: "Pendiente", clase: "pendiente" };
   if (cob < imp - 0.05) return { label: "Parcial", clase: "parcial" };

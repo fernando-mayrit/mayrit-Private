@@ -318,12 +318,14 @@ export default function RecibosPage() {
     if (p.noAplica?.(r)) return { descuadre: false, clase: "anulado", label: "No Aplica" };
     const total = num(p.total(r));
     const hecho = num(p.hecho(r));
+    // Se compara EN MAGNITUD (valor absoluto) para que los recibos en negativo (extornos) se
+    // comporten igual que los positivos.
     // Descuadre: lo realizado supera al total (incoherencia) → sin pastilla, para identificarlo.
     // Tolerancia de 5 céntimos para no marcar diferencias de redondeo de la migración.
-    if (hecho > total + 0.05) return { descuadre: true, clase: "", label: "⚠" };
+    if (Math.abs(hecho) > Math.abs(total) + 0.05) return { descuadre: true, clase: "", label: "⚠" };
     // Base 0: "nada que hacer" → verde SOLO si la prima ya está cobrada (Traspaso/Pago dependen del
     // cobro). Si aún no se ha cobrado, esas fases no aplican todavía → gris "—".
-    if (total <= 0.005) {
+    if (Math.abs(total) <= 0.005) {
       const cobrado = !!r.prima_fecha_cobro;
       return p.verdeEnCero && cobrado
         ? { descuadre: false, clase: "cobrado", label: p.verde }
