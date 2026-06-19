@@ -26,6 +26,8 @@ export function estadoCobro(importe: unknown, cobrado: unknown, estado?: string 
   // comporten igual que los positivos: pendientes hasta la devolución y "cobrados" al devolverse.
   const imp = Math.abs(Number(importe) || 0);
   const cob = Math.abs(Number(cobrado) || 0);
+  // Importe 0 = no hay nada que cobrar → el recibo está saldado, no "pendiente".
+  if (imp <= 0.005) return { label: "Cobrado", clase: "cobrado" };
   // Tolerancia de 5 céntimos: las diferencias de redondeo de la migración cuentan como completo.
   if (cob <= 0.005) return { label: "Pendiente", clase: "pendiente" };
   if (cob < imp - 0.05) return { label: "Parcial", clase: "parcial" };

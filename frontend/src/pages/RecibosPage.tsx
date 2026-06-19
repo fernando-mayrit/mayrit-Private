@@ -303,17 +303,15 @@ export default function RecibosPage() {
   // Columnas de "pendiente": en modo estados muestran pastilla (Pendiente/Parcial/Cobrado) por
   // su (total, hecho) en vez del importe.
   // verde = etiqueta del estado "completo" por columna (la roja=Pendiente y amarilla=Parcial son comunes).
-  // verdeEnCero: si el total es 0 se considera "hecho" (verde), no gris "—". Aplica a Traspaso y
-  // Pago Comi.: si no hay comisión que traspasar ni que pagar, esa fase está completada.
   // noAplica: la fase no tiene sentido para ese recibo → pastilla gris "No Aplica" (p. ej. el pago
   // de comisión cedida en recibos de binder, donde no hay pago de comisión).
-  const PEND: Record<string, { total: (r: Recibo) => unknown; hecho: (r: Recibo) => unknown; verde: string; verdeEnCero?: boolean; noAplica?: (r: Recibo) => boolean }> = {
+  const PEND: Record<string, { total: (r: Recibo) => unknown; hecho: (r: Recibo) => unknown; verde: string; noAplica?: (r: Recibo) => boolean }> = {
     comision_pendiente_cobro: { total: (r) => r.prima_adeudada, hecho: (r) => r.prima_cobrada, verde: "Cobrado" },
     pdte_liquidar: { total: (r) => r.liquidar_cobrado, hecho: (r) => r.liquidar_liquidado, verde: "Liquidado" },
-    pdte_traspaso: { total: (r) => r.comision_retenida_cobrada, hecho: (r) => r.comision_retenida_traspasada, verde: "Traspasado", verdeEnCero: true },
-    pendiente_pago: { total: (r) => r.comision_cedida_a_pagar, hecho: (r) => r.comision_cedida_pagada, verde: "Pagado", verdeEnCero: true, noAplica: (r) => r.binder_id != null },
+    pdte_traspaso: { total: (r) => r.comision_retenida_cobrada, hecho: (r) => r.comision_retenida_traspasada, verde: "Traspasado" },
+    pendiente_pago: { total: (r) => r.comision_cedida_a_pagar, hecho: (r) => r.comision_cedida_pagada, verde: "Pagado", noAplica: (r) => r.binder_id != null },
   };
-  const etiquetaEstado = (p: { total: (r: Recibo) => unknown; hecho: (r: Recibo) => unknown; verde: string; verdeEnCero?: boolean; noAplica?: (r: Recibo) => boolean }, r: Recibo) => {
+  const etiquetaEstado = (p: { total: (r: Recibo) => unknown; hecho: (r: Recibo) => unknown; verde: string; noAplica?: (r: Recibo) => boolean }, r: Recibo) => {
     // La fase no aplica a este recibo (p. ej. pago de comisión en recibos de binder) → gris "No Aplica".
     if (p.noAplica?.(r)) return { descuadre: false, clase: "anulado", label: "No Aplica" };
     const total = num(p.total(r));
@@ -323,13 +321,13 @@ export default function RecibosPage() {
     // Descuadre: lo realizado supera al total (incoherencia) → sin pastilla, para identificarlo.
     // Tolerancia de 5 céntimos para no marcar diferencias de redondeo de la migración.
     if (Math.abs(hecho) > Math.abs(total) + 0.05) return { descuadre: true, clase: "", label: "⚠" };
-    // Base 0: "nada que hacer" → verde SOLO si la prima ya está cobrada (Traspaso/Pago dependen del
-    // cobro). Si aún no se ha cobrado, esas fases no aplican todavía → gris "—".
+    // Base 0: "nada que hacer" en esta fase → verde (completada) SOLO si la prima ya está cobrada;
+    // las fases dependen del cobro. Si aún no se ha cobrado → gris "—" (fase no alcanzada).
+    // "Cobrada" se mide por IMPORTE (estadoCobro), no por la fecha: los recibos migrados traen
+    // prima_cobrada pero sin prima_fecha_cobro, y aun así están cobrados.
     if (Math.abs(total) <= 0.005) {
-      // "Cobrada" se mide por IMPORTE (estadoCobro), no por la fecha: los recibos migrados traen
-      // prima_cobrada pero sin prima_fecha_cobro, y aun así están cobrados.
       const cobrado = estadoCobro(r.prima_adeudada, r.prima_cobrada, r.estado).clase === "cobrado";
-      return p.verdeEnCero && cobrado
+      return cobrado
         ? { descuadre: false, clase: "cobrado", label: p.verde }
         : { descuadre: false, clase: "anulado", label: "—" };
     }
