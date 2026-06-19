@@ -326,7 +326,9 @@ export default function RecibosPage() {
     // Base 0: "nada que hacer" → verde SOLO si la prima ya está cobrada (Traspaso/Pago dependen del
     // cobro). Si aún no se ha cobrado, esas fases no aplican todavía → gris "—".
     if (Math.abs(total) <= 0.005) {
-      const cobrado = !!r.prima_fecha_cobro;
+      // "Cobrada" se mide por IMPORTE (estadoCobro), no por la fecha: los recibos migrados traen
+      // prima_cobrada pero sin prima_fecha_cobro, y aun así están cobrados.
+      const cobrado = estadoCobro(r.prima_adeudada, r.prima_cobrada, r.estado).clase === "cobrado";
       return p.verdeEnCero && cobrado
         ? { descuadre: false, clase: "cobrado", label: p.verde }
         : { descuadre: false, clase: "anulado", label: "—" };
