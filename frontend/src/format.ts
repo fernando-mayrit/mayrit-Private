@@ -33,3 +33,15 @@ export function estadoCobro(importe: unknown, cobrado: unknown, estado?: string 
   if (cob < imp - 0.05) return { label: "Parcial", clase: "parcial" };
   return { label: "Cobrado", clase: "cobrado" };
 }
+
+// Clase de color para el ESTADO de un siniestro (Open/Closed/Reopened/Denied…). Devuelve el
+// sufijo de la clase CSS `pill-sin-<x>`: abierto (rojo), cerrado (verde), revision (ámbar),
+// otro (gris). Tolerante a inglés/español y variantes.
+export function estadoSiniestroClase(estado?: string | null): string {
+  const s = (estado ?? "").toLowerCase();
+  if (!s) return "otro";
+  if (s.includes("closed") || s.includes("cerrad")) return "cerrado";
+  if (s.includes("reopen") || s.includes("reabier") || s.includes("review") || s.includes("revis")) return "revision";
+  if (s.includes("open") || s.includes("abiert")) return "abierto";
+  return "otro"; // Denied / Declined / Withdrawn / Nil / desconocido
+}

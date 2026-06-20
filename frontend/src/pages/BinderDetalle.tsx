@@ -11,7 +11,7 @@ import ConfirmDialog from "../components/ConfirmDialog";
 import FormPanel from "../components/FormPanel";
 import type { ReactNode } from "react";
 import type { ReciboPreview, ReciboUpdate } from "../types";
-import { fmtMiles, fmtFechaES, estadoCobro } from "../format";
+import { fmtMiles, fmtFechaES, estadoCobro, estadoSiniestroClase } from "../format";
 
 function n(v: unknown): number {
   const x = Number(String(v ?? "").replace(",", "."));
@@ -62,7 +62,8 @@ const SIN_COLS: Col<Siniestro>[] = [
   { key: "yoa", label: "YOA", tipo: "int" },
   { key: "risk_code", label: "Risk Code", tipo: "text" },
   { key: "currency", label: "Moneda", tipo: "text" },
-  { key: "status", label: "Estado", tipo: "text" },
+  { key: "status", label: "Estado", tipo: "text",
+    render: (s) => s.status ? <span className={`pill pill-sin-${estadoSiniestroClase(s.status)}`}>{s.status}</span> : <span className="hint">—</span> },
   { key: "claimant", label: "Reclamante", tipo: "text", width: 160 },
   { key: "reporting_period", label: "Periodo", tipo: "text" },
   { key: "risk_inception", label: "Inicio riesgo", tipo: "date" },

@@ -3,7 +3,7 @@ import { siniestrosApi } from "../api";
 import type { Siniestro } from "../types";
 import PageHeader from "../components/PageHeader";
 import TablaDatos, { type Col } from "../components/TablaDatos";
-import { fmtMiles } from "../format";
+import { fmtMiles, estadoSiniestroClase } from "../format";
 
 const n = (v: unknown) => Number(v) || 0;
 
@@ -18,7 +18,8 @@ const COLS: Col<Siniestro>[] = [
   { key: "yoa", label: "YOA", tipo: "int" },
   { key: "risk_code", label: "Risk Code", tipo: "text" },
   { key: "currency", label: "Moneda", tipo: "text" },
-  { key: "status", label: "Estado", tipo: "text" },
+  { key: "status", label: "Estado", tipo: "text",
+    render: (s) => s.status ? <span className={`pill pill-sin-${estadoSiniestroClase(s.status)}`}>{s.status}</span> : <span className="hint">—</span> },
   { key: "claimant", label: "Reclamante", tipo: "text", width: 160 },
   { key: "reporting_period", label: "Periodo", tipo: "text" },
   { key: "risk_inception", label: "Inicio riesgo", tipo: "date" },
