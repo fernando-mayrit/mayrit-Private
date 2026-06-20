@@ -229,6 +229,19 @@ function claseEstado(estado: string | null): string {
   }
 }
 
+// Clase de la pastilla de Estado (mismo `.estado-badge` que la cabecera del binder).
+function estadoBadgeClase(estado: string | null | undefined): string {
+  switch (estado) {
+    case "En Vigor": return "eb-vigor";
+    case "Renovado": return "eb-renovado";
+    case "No Renovado": return "eb-norenovado";
+    case "Cancelado": return "eb-cancelado";
+    case "Cerrado Producción": return "eb-cerrado-prod";
+    case "Cerrado": return "eb-cerrado";
+    default: return "eb-otro";
+  }
+}
+
 function fmt(d: Date): string {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
@@ -1001,7 +1014,7 @@ export default function BindersPage() {
                   <td>{b.yoa ?? "—"}</td>
                   <td>{b.coverholder_alias ?? b.coverholder_nombre ?? "—"}</td>
                   <td>{mercadoPrincipal(b)}</td>
-                  <td>{b.estado ?? "—"}</td>
+                  <td>{b.estado ? <span className={"estado-badge estado-badge-sm " + estadoBadgeClase(b.estado)}>{b.estado}</span> : "—"}</td>
                   <td>{ramosDe(b)}</td>
                   <td>{fechaCorta(b.fecha_efecto)}</td>
                   <td>{fechaCorta(b.fecha_vencimiento)}</td>

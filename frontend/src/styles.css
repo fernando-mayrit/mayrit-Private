@@ -510,6 +510,7 @@ td.num, th.num { text-align: right; }
 
 /* Etiqueta de Estado del binder en el encabezado (color por estado) */
 .estado-badge { display: inline-block; padding: 2px 12px; border-radius: 999px; font-weight: 700; font-size: 14px; }
+.estado-badge.estado-badge-sm { padding: 2px 9px; font-size: 12px; font-weight: 600; }   /* variante para listados */
 .estado-badge.eb-vigor { background: #dbeafe; color: #1d4ed8; }          /* azul */
 .estado-badge.eb-renovado { background: #dcebe0; color: #1a7f37; }       /* verde */
 .estado-badge.eb-norenovado { background: #e5e7eb; color: #4b5563; }     /* gris */
