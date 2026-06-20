@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import json
+from collections import Counter
 from decimal import Decimal
 
 import openpyxl
@@ -31,6 +32,26 @@ H_FECHA = {
     "Reporting Period (End Date)", "Risk Inception Date", "Risk Expiry Date",
     "Date Claim First Advised/Date Claim Made", "Date Claim Opened", "Date Closed",
 }
+
+
+_MESES_EN = {m: i for i, m in enumerate(
+    ["january", "february", "march", "april", "may", "june", "july", "august",
+     "september", "october", "november", "december"], start=1)}
+
+
+def _periodo_de_hoja(nombre: str):
+    """'September 2020' -> (2020, 9). Devuelve None si el nombre no es '<Mes> <Año>'."""
+    partes = str(nombre).strip().split()
+    if len(partes) >= 2 and partes[0].lower() in _MESES_EN and partes[-1].isdigit():
+        return int(partes[-1]), _MESES_EN[partes[0].lower()]
+    return None
+
+
+def _normh(s) -> str:
+    """Normaliza una cabecera: colapsa saltos de línea/espacios múltiples a un solo espacio.
+    Los Excel de bordereau traen las cabeceras con \\n dentro de la celda (p. ej.
+    'Certificate\\nReference'); así casan con los nombres canónicos de HEADERS."""
+    return " ".join(str(s).split()) if s is not None else ""
 
 
 def _num(v) -> float:
@@ -55,6 +76,10 @@ def main():
     ap.add_argument("--excel", required=True)
     ap.add_argument("--binder-id", type=int)
     ap.add_argument("--agreement")
+    ap.add_argument("--periodo-desde", choices=["celda", "hoja"], default="celda",
+                    help="De dónde sacar el periodo: 'celda' (Reporting Period End Date, por defecto) "
+                         "o 'hoja' (nombre de la pestaña, p. ej. 'September 2020'). Usa 'hoja' cuando "
+                         "la celda de periodo está sin mantener (repetida en muchas pestañas).")
     ap.add_argument("--apply", action="store_true")
     args = ap.parse_args()
 
@@ -65,35 +90,50 @@ def main():
         print("Binder no encontrado.")
         return
 
-    # Mapa de siniestros del binder para casar (por certificate y por reference).
+    # Mapa de siniestros del binder para casar. El certificate puede estar DUPLICADO entre
+    # siniestros (varios claims del mismo certificado), así que casamos primero por el par
+    # (certificate, reference) y, como respaldo, por reference o certificate SOLO si son únicos.
     sins = db.scalars(select(Siniestro).where(Siniestro.binder_id == b.id)).all()
-    por_cert = {(s.certificate or "").strip(): s.id for s in sins if s.certificate}
-    por_ref = {(s.reference or "").strip(): s.id for s in sins if s.reference}
+    cert_cnt = Counter((s.certificate or "").strip() for s in sins if s.certificate)
+    ref_cnt = Counter((s.reference or "").strip() for s in sins if s.reference)
+    por_par = {((s.certificate or "").strip(), (s.reference or "").strip()): s.id for s in sins}
+    por_cert = {(s.certificate or "").strip(): s.id for s in sins
+                if s.certificate and cert_cnt[(s.certificate or "").strip()] == 1}
+    por_ref = {(s.reference or "").strip(): s.id for s in sins
+               if s.reference and ref_cnt[(s.reference or "").strip()] == 1}
 
     wb = openpyxl.load_workbook(args.excel, data_only=True)
     # periodo -> lista de (fila_dict, meta)
     por_periodo: dict[str, list] = {}
     for hoja in wb.sheetnames:
         ws = wb[hoja]
-        ix = {str(c.value).strip(): i for i, c in enumerate(ws[1]) if c.value}
+        ix = {_normh(c.value): i for i, c in enumerate(ws[1]) if c.value}
         if "Certificate Reference" not in ix or "Reporting Period (End Date)" not in ix:
             continue
         filas = [r for r in ws.iter_rows(min_row=2, values_only=True) if r[ix["Certificate Reference"]]]
         if not filas:
             continue
-        rp = filas[0][ix["Reporting Period (End Date)"]]
-        if not isinstance(rp, (dt.datetime, dt.date)):
-            print(f"  ⚠ hoja {hoja!r}: sin Reporting Period válido, omitida")
-            continue
-        periodo = f"{rp.year:04d}-{rp.month:02d}"
-        po = rp.year * 100 + rp.month
+        if args.periodo_desde == "hoja":
+            ay = _periodo_de_hoja(hoja)
+            if ay is None:
+                print(f"  ⚠ hoja {hoja!r}: nombre no es '<Mes> <Año>', omitida")
+                continue
+            anio, mes = ay
+        else:
+            rp = filas[0][ix["Reporting Period (End Date)"]]
+            if not isinstance(rp, (dt.datetime, dt.date)):
+                print(f"  ⚠ hoja {hoja!r}: sin Reporting Period válido, omitida")
+                continue
+            anio, mes = rp.year, rp.month
+        periodo = f"{anio:04d}-{mes:02d}"
+        po = anio * 100 + mes
         registros = []
         for r in filas:
             def g(h):
                 return r[ix[h]] if h in ix else None
             cert = str(g("Certificate Reference") or "").strip()
             ref = str(g("Claim Reference / Number") or "").strip()
-            sid = por_cert.get(cert) or por_ref.get(ref)
+            sid = por_par.get((cert, ref)) or por_ref.get(ref) or por_cert.get(cert)
             fila = {h: _safe(h, g(h)) for h in HEADERS}
             meta = {
                 "siniestro_id": sid,
