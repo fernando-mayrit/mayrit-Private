@@ -120,14 +120,15 @@ def main():
         if "Certificate Reference" not in ix or "Reporting Period (End Date)" not in ix:
             continue
         filas = [r for r in ws.iter_rows(min_row=2, values_only=True) if r[ix["Certificate Reference"]]]
-        if not filas:
-            continue
+        # Periodo. Las hojas NIL (cabecera pero sin filas) no tienen celda de periodo, así que se
+        # toma del nombre de la hoja (igual que --periodo-desde hoja).
         if hoja in overrides:
             anio, mes = (int(x) for x in overrides[hoja].split("-"))
-        elif args.periodo_desde == "hoja":
+        elif args.periodo_desde == "hoja" or not filas:
             ay = _periodo_de_hoja(hoja)
             if ay is None:
-                print(f"  ⚠ hoja {hoja!r}: nombre no es '<Mes> <Año>', omitida")
+                if filas:
+                    print(f"  ⚠ hoja {hoja!r}: nombre no es '<Mes> <Año>', omitida")
                 continue
             anio, mes = ay
         else:
@@ -138,6 +139,9 @@ def main():
             anio, mes = rp.year, rp.month
         periodo = f"{anio:04d}-{mes:02d}"
         po = anio * 100 + mes
+        if not filas:
+            por_periodo[periodo] = []   # mes presentado en blanco (NIL)
+            continue
         registros = []
         for r in filas:
             def g(h):
@@ -163,12 +167,17 @@ def main():
     print(f"== Histórico Claims BDX — binder {b.umr} (DRY-RUN={'NO' if args.apply else 'SÍ'}) ==")
     print(f"Periodos detectados: {len(periodos)}")
     sin_match = 0
+    n_nil = 0
     for p in periodos:
         regs = por_periodo[p]
+        if not regs:
+            n_nil += 1
+            print(f"  {p}: NIL (presentado en blanco)")
+            continue
         nm = sum(1 for _, m, _ in regs if m["siniestro_id"] is None)
         sin_match += nm
         print(f"  {p}: {len(regs)} siniestro(s)" + (f"  ⚠ {nm} sin casar" if nm else ""))
-    print(f"Filas sin casar con un siniestro del binder: {sin_match}")
+    print(f"Filas sin casar con un siniestro del binder: {sin_match} · meses NIL: {n_nil}")
 
     if not args.apply:
         db.close()
@@ -178,8 +187,21 @@ def main():
     total = 0
     for p in periodos:
         regs = por_periodo[p]
-        po = regs[0][2]
+        po = int(p[:4]) * 100 + int(p[5:7])
         db.execute(delete(ClaimsPresentacion).where(ClaimsPresentacion.binder_id == b.id, ClaimsPresentacion.periodo == p))
+        if not regs:
+            # Mes presentado en blanco (NIL): placeholder sin siniestro.
+            db.add(ClaimsPresentacion(
+                binder_id=b.id, periodo=p, periodo_ord=po, siniestro_id=None,
+                paid_indemnity_acum=Decimal("0"), paid_fees_acum=Decimal("0"),
+                to_pay_indemnity=Decimal("0"), to_pay_fees=Decimal("0"),
+                reserves_indemnity=Decimal("0"), reserves_fees=Decimal("0"), status="Nil",
+                fila_json=json.dumps({"nil": True, "report": f"{p} — presentado en blanco"}, ensure_ascii=False),
+                fecha_presentacion=None, usuario="histórico-nil"))
+            total += 1
+            if not db.scalar(select(BdxBloqueo).where(BdxBloqueo.binder_id == b.id, BdxBloqueo.tipo == "claims", BdxBloqueo.periodo == p)):
+                db.add(BdxBloqueo(binder_id=b.id, tipo="claims", periodo=p))
+            continue
         for fila, meta, _ in regs:
             db.add(ClaimsPresentacion(
                 binder_id=b.id, periodo=p, periodo_ord=po, siniestro_id=meta["siniestro_id"],
