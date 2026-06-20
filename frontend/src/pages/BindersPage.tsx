@@ -1403,7 +1403,16 @@ export default function BindersPage() {
                   <select value={m.mercado_id} onChange={(e) => setLinea(i, j, "mercado_id", e.target.value)}>
                     <option value="">— Mercado —</option>
                     {mercados
-                      .filter((mc) => (mc.activa || String(mc.id) === m.mercado_id) && (!usados.has(String(mc.id)) || String(mc.id) === m.mercado_id))
+                      .filter((mc) => {
+                        const sel = String(mc.id) === m.mercado_id;
+                        const activo = mc.activa || sel;            // el ya elegido se mantiene aunque esté inactivo
+                        const libre = !usados.has(String(mc.id)) || sel; // no repetir en otra línea
+                        const mcRamos = mc.ramos ?? [];
+                        // Filtra por el ramo de la sección. Excepciones: aún sin ramo elegido, el ya
+                        // seleccionado, o un mercado sin ramos definidos (red de seguridad).
+                        const ramoOk = !s.ramo || sel || mcRamos.length === 0 || mcRamos.includes(s.ramo);
+                        return activo && libre && ramoOk;
+                      })
                       .map((mc) => (
                         <option key={mc.id} value={mc.id}>
                           {mc.nombre}
