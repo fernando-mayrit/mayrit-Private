@@ -138,6 +138,8 @@ def importar(binder_id: int, db: Session = Depends(get_db)):
     from .. import sharepoint
 
     b = _binder_o_404(binder_id, db)
+    if (b.estado or "") == "Cerrado":
+        raise HTTPException(status_code=409, detail="El binder está «Cerrado»: no se pueden cargar más claims.")
     list_title = _list_title(b)
     try:
         filas = sharepoint.leer_lista_claims(list_title)

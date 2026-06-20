@@ -294,6 +294,8 @@ class PresentarPayload(BaseModel):
 def presentar(binder_id: int, payload: PresentarPayload, db: Session = Depends(get_db)):
     """Congela el snapshot del periodo y lo BLOQUEA. Reemplaza si ya existía."""
     b = _binder_o_404(binder_id, db)
+    if (b.estado or "") == "Cerrado":
+        raise HTTPException(status_code=409, detail="El binder está «Cerrado»: no se pueden cargar más claims.")
     periodo = payload.periodo
     if _bloqueado(db, b.id, periodo):
         raise HTTPException(status_code=409, detail=f"El Claims BDX de {periodo} está bloqueado. Desbloquéalo para volver a presentarlo.")
