@@ -18,6 +18,9 @@ const FRASES = [
   "Que la prima te acompañe. 🪄",
   "Hoy también lo vas a bordar. 🌟",
   "Sonríe, que los siniestros son pocos. 😄",
+  "Cada póliza, un cliente bien protegido. 🛡️",
+  "Buenos acuerdos, mejores relaciones. 🤝",
+  "A por un día de los que suman. 📈",
 ];
 
 // Emoji + saludo según la hora del día.
