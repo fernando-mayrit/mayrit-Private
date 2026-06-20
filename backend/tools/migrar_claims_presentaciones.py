@@ -80,8 +80,17 @@ def main():
                     help="De dónde sacar el periodo: 'celda' (Reporting Period End Date, por defecto) "
                          "o 'hoja' (nombre de la pestaña, p. ej. 'September 2020'). Usa 'hoja' cuando "
                          "la celda de periodo está sin mantener (repetida en muchas pestañas).")
+    ap.add_argument("--periodo-override", default="",
+                    help="Corrige periodos de hojas con el nombre mal escrito. Formato: "
+                         "'Nombre Hoja=AAAA-MM,Otra Hoja=AAAA-MM'. Útil para typos (p. ej. 'November 20223').")
     ap.add_argument("--apply", action="store_true")
     args = ap.parse_args()
+
+    overrides: dict[str, str] = {}
+    for par in args.periodo_override.split(","):
+        if "=" in par:
+            k, v = par.split("=", 1)
+            overrides[k.strip()] = v.strip()
 
     db = SessionLocal()
     b = db.get(Binder, args.binder_id) if args.binder_id else \
@@ -113,7 +122,9 @@ def main():
         filas = [r for r in ws.iter_rows(min_row=2, values_only=True) if r[ix["Certificate Reference"]]]
         if not filas:
             continue
-        if args.periodo_desde == "hoja":
+        if hoja in overrides:
+            anio, mes = (int(x) for x in overrides[hoja].split("-"))
+        elif args.periodo_desde == "hoja":
             ay = _periodo_de_hoja(hoja)
             if ay is None:
                 print(f"  ⚠ hoja {hoja!r}: nombre no es '<Mes> <Año>', omitida")
