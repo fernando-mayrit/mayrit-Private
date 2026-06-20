@@ -35,6 +35,7 @@ const COLS: Col<Siniestro>[] = [
   { key: "reserves_fees", label: "Reservas fees", tipo: "num" },
   { key: "total_indemnity", label: "Total ind.", tipo: "num" },
   { key: "total_fees", label: "Total fees", tipo: "num" },
+  { key: "total", label: "Total", tipo: "num", calc: (s) => n(s.total_indemnity) + n(s.total_fees) },
   { key: "ucr", label: "UCR", tipo: "text" },
   { key: "abogado", label: "Abogado", tipo: "text" },
   { key: "description", label: "Descripción", tipo: "text", width: 220 },
@@ -44,8 +45,9 @@ const COLS: Col<Siniestro>[] = [
   { key: "ultima_revision", label: "Últ. revisión", tipo: "date" },
 ];
 const DEFAULT_KEYS = [
-  "binder_umr", "certificate", "insured", "section", "yoa", "status", "date_opened", "date_closed",
-  "amount_claimed", "paid_indemnity", "reserves_indemnity", "total_indemnity", "total_fees",
+  "binder_umr", "reference", "certificate", "insured", "risk_code", "claim_first_advised", "date_opened",
+  "paid_fees", "paid_indemnity", "reserves_fees", "reserves_indemnity",
+  "total_fees", "total_indemnity", "total", "date_closed", "status",
 ];
 
 export default function SiniestrosPage() {
@@ -117,7 +119,7 @@ export default function SiniestrosPage() {
             filas={items}
             columnas={COLS}
             defaultKeys={DEFAULT_KEYS}
-            storageKey="mayrit.siniestros.global.tabla.v1"
+            storageKey="mayrit.siniestros.global.tabla.v2"
           />
         </>
       )}
