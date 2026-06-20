@@ -276,7 +276,10 @@ def periodos_presentados(binder_id: int, db: Session = Depends(get_db)):
     agg: dict[str, dict] = {}
     for r in rows:
         g = agg.setdefault(r.periodo, {"periodo": r.periodo, "n": 0, "fecha": r.fecha_presentacion})
-        g["n"] += 1
+        # Solo cuentan los siniestros reales: una fila sin siniestro es el placeholder de un mes
+        # presentado en blanco (NIL report), que debe figurar con n = 0.
+        if r.siniestro_id is not None:
+            g["n"] += 1
         if r.fecha_presentacion and (not g["fecha"] or r.fecha_presentacion > g["fecha"]):
             g["fecha"] = r.fecha_presentacion
     return sorted(agg.values(), key=lambda x: x["periodo"], reverse=True)
