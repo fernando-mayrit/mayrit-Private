@@ -859,7 +859,8 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
               <b> «Subir Premium»</b> para machear un Premium con el Risk.
             </div>
           ) : (
-            <table className="compacto" style={{ maxWidth: 1120 }}>
+            <div className="bdx-scroll">
+            <table className="compacto premium-cobro" style={{ maxWidth: 1120 }}>
               <thead>
                 <tr>
                   <th>Mes Premium</th>
@@ -908,6 +909,7 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
                 </tr>
               </tbody>
             </table>
+            </div>
           )}
           <div className="hint" style={{ marginTop: 8 }}>
             💰 Cobrar (la agencia nos paga) · 🔁 Traspasar (nuestra comisión, de primas a gastos) ·
