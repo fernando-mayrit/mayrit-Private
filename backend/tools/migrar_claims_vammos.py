@@ -143,9 +143,11 @@ def convertir_xls(paths: list[str]) -> dict[str, str]:
 
 
 def extraer(xlsx_path: str):
-    """Lee un .xlsx y devuelve [claim_dict] con campos canónicos."""
+    """Lee un .xlsx y devuelve (claims, cabecera_ok). cabecera_ok=True si alguna pestaña tenía
+    la cabecera del bordereau (aunque no haya filas → mes NIL)."""
     wb = openpyxl.load_workbook(xlsx_path, read_only=True, data_only=True)
     claims = []
+    cabecera_ok = False
     for sh in wb.sheetnames:
         ws = wb[sh]
         grid = [list(r) for r in ws.iter_rows(values_only=True)]
@@ -158,6 +160,7 @@ def extraer(xlsx_path: str):
                 break
         if hr is None:
             continue
+        cabecera_ok = True
         col_ref = ix["Claim Reference / Number"]
         for r in range(hr + 1, len(grid)):
             row = grid[r]
@@ -178,7 +181,7 @@ def extraer(xlsx_path: str):
                     fila[h] = None if v in (None, "") else v
             claims.append({"_sheet": sh, "ref": ref, "g": {h: g(h) for h in set(A_SINIESTRO) | set(HEADERS)}, "fila": fila})
     wb.close()
-    return claims
+    return claims, cabecera_ok
 
 
 def _periodo(claims, fallback):
@@ -226,18 +229,25 @@ def main():
         if not xlsx:
             continue
         try:
-            claims = extraer(xlsx)
+            claims, cab_ok = extraer(xlsx)
         except Exception as e:  # noqa: BLE001
             print(f"  [!] {os.path.basename(path)}: error al leer ({str(e)[:70]})")
             continue
-        if not claims:
-            print(f"  [!] {os.path.basename(path)}: sin claims")
+        nombre_per = _periodo_de_nombre(os.path.basename(path)) or (None, None)
+        if claims:
+            per, po = _periodo(claims, nombre_per)
+            nil = False
+        elif cab_ok:
+            # Cabecera presente pero sin filas reales -> mes presentado en BLANCO (NIL).
+            per, po = nombre_per
+            nil = True
+        else:
+            print(f"  [!] {os.path.basename(path)}: sin cabecera de bordereau (no se reconoce)")
             continue
-        per, po = _periodo(claims, _periodo_de_nombre(os.path.basename(path)) or (None, None))
         if per is None:
             print(f"  [!] {os.path.basename(path)}: sin periodo")
             continue
-        meses.append({"path": path, "per": per, "po": po, "claims": claims})
+        meses.append({"path": path, "per": per, "po": po, "claims": claims, "nil": nil})
 
     # Dedup: si dos ficheros dieran el mismo periodo, gana el de más claims (más completo).
     by_per: dict[str, dict] = {}
@@ -249,12 +259,18 @@ def main():
     print(f"\n== Claims VAMMOS — binder {b.umr} (DRY-RUN={'NO' if args.apply else 'SÍ'}) ==")
     print(f"Meses con datos: {len(meses)}")
     refs_global = set()
+    n_nil = 0
     for m in meses:
+        if m["nil"]:
+            n_nil += 1
+            print(f"  {m['per']}: NIL (presentado en blanco)")
+            continue
         refs = sorted({c["ref"] for c in m["claims"]})
         refs_global |= set(refs)
         sheets = sorted({c["_sheet"] for c in m["claims"]})
         print(f"  {m['per']}: {len(refs)} claim(s)  [{', '.join(sheets)}]")
     print(f"Claims distintos (por reference): {len(refs_global)} -> {sorted(refs_global)}")
+    print(f"Meses NIL (en blanco): {n_nil}")
 
     if not args.apply:
         db.close()
@@ -290,6 +306,18 @@ def main():
     total = 0
     for m in meses:
         db.execute(delete(ClaimsPresentacion).where(ClaimsPresentacion.binder_id == b.id, ClaimsPresentacion.periodo == m["per"]))
+        if m["nil"]:
+            db.add(ClaimsPresentacion(
+                binder_id=b.id, periodo=m["per"], periodo_ord=m["po"], siniestro_id=None,
+                paid_indemnity_acum=Decimal("0"), paid_fees_acum=Decimal("0"),
+                to_pay_indemnity=Decimal("0"), to_pay_fees=Decimal("0"),
+                reserves_indemnity=Decimal("0"), reserves_fees=Decimal("0"), status="Nil",
+                fila_json=json.dumps({"nil": True, "report": f"{m['per']} — presentado en blanco"}, ensure_ascii=False),
+                fecha_presentacion=None, usuario="histórico-nil"))
+            total += 1
+            if not db.scalar(select(BdxBloqueo).where(BdxBloqueo.binder_id == b.id, BdxBloqueo.tipo == "claims", BdxBloqueo.periodo == m["per"])):
+                db.add(BdxBloqueo(binder_id=b.id, tipo="claims", periodo=m["per"]))
+            continue
         for cl in m["claims"]:
             s = sins.get(cl["ref"]); g = cl["g"]
             db.add(ClaimsPresentacion(
