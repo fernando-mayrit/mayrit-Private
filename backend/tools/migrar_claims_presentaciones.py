@@ -34,16 +34,27 @@ H_FECHA = {
 }
 
 
-_MESES_EN = {m: i for i, m in enumerate(
+_MESES = {m: i for i, m in enumerate(
     ["january", "february", "march", "april", "may", "june", "july", "august",
      "september", "october", "november", "december"], start=1)}
+_MESES.update({m: i for i, m in enumerate(
+    ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto",
+     "septiembre", "octubre", "noviembre", "diciembre"], start=1)})
 
 
-def _periodo_de_hoja(nombre: str):
-    """'September 2020' -> (2020, 9). Devuelve None si el nombre no es '<Mes> <Año>'."""
+def _periodo_de_hoja(nombre: str, anio_defecto: int | None = None):
+    """'September 2020' -> (2020, 9). Entiende meses en inglés y español. Si la hoja es solo el
+    mes (sin año, p. ej. 'March'), usa `anio_defecto`. Devuelve None si no reconoce el mes."""
     partes = str(nombre).strip().split()
-    if len(partes) >= 2 and partes[0].lower() in _MESES_EN and partes[-1].isdigit():
-        return int(partes[-1]), _MESES_EN[partes[0].lower()]
+    if not partes:
+        return None
+    mes = _MESES.get(partes[0].lower())
+    if mes is None:
+        return None
+    if partes[-1].isdigit() and len(partes[-1]) == 4:
+        return int(partes[-1]), mes
+    if anio_defecto:
+        return int(anio_defecto), mes
     return None
 
 
@@ -83,6 +94,8 @@ def main():
     ap.add_argument("--periodo-override", default="",
                     help="Corrige periodos de hojas con el nombre mal escrito. Formato: "
                          "'Nombre Hoja=AAAA-MM,Otra Hoja=AAAA-MM'. Útil para typos (p. ej. 'November 20223').")
+    ap.add_argument("--anio-defecto", type=int, default=None,
+                    help="Año a usar para hojas cuyo nombre es solo el mes (p. ej. 'March' sin año).")
     ap.add_argument("--apply", action="store_true")
     args = ap.parse_args()
 
@@ -125,16 +138,16 @@ def main():
         if hoja in overrides:
             anio, mes = (int(x) for x in overrides[hoja].split("-"))
         elif args.periodo_desde == "hoja" or not filas:
-            ay = _periodo_de_hoja(hoja)
+            ay = _periodo_de_hoja(hoja, args.anio_defecto)
             if ay is None:
                 if filas:
-                    print(f"  ⚠ hoja {hoja!r}: nombre no es '<Mes> <Año>', omitida")
+                    print(f"  [!] hoja {hoja!r}: no se reconoce el mes/año, omitida")
                 continue
             anio, mes = ay
         else:
             rp = filas[0][ix["Reporting Period (End Date)"]]
             if not isinstance(rp, (dt.datetime, dt.date)):
-                print(f"  ⚠ hoja {hoja!r}: sin Reporting Period válido, omitida")
+                print(f"  [!] hoja {hoja!r}: sin Reporting Period válido, omitida")
                 continue
             anio, mes = rp.year, rp.month
         periodo = f"{anio:04d}-{mes:02d}"
@@ -176,7 +189,7 @@ def main():
             continue
         nm = sum(1 for _, m, _ in regs if m["siniestro_id"] is None)
         sin_match += nm
-        print(f"  {p}: {len(regs)} siniestro(s)" + (f"  ⚠ {nm} sin casar" if nm else ""))
+        print(f"  {p}: {len(regs)} siniestro(s)" + (f"  [!] {nm} sin casar" if nm else ""))
     print(f"Filas sin casar con un siniestro del binder: {sin_match} · meses NIL: {n_nil}")
 
     if not args.apply:
