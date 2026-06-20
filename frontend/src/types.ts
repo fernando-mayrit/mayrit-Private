@@ -528,6 +528,9 @@ export interface Siniestro {
   reserves_fees: string | null;
   total_indemnity: string | null;
   total_fees: string | null;
+  // Solo en el listado global (GET /siniestros): contexto del binder.
+  binder_umr?: string | null;
+  binder_agreement?: string | null;
 }
 
 // Emisión de póliza OM (póliza + sus recibos en una operación).

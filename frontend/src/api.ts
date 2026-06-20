@@ -41,6 +41,7 @@ export async function exportarXlsx(payload: {
 
 // ── Siniestros (Claims BDX por binder) ──
 export const siniestrosApi = {
+  listarTodos: () => request<import("./types").Siniestro[]>(`/siniestros`),
   listar: (binderId: number) => request<import("./types").Siniestro[]>(`/binders/${binderId}/siniestros`),
   preview: (binderId: number) =>
     request<{ list_title: string; total: number; suma_total_indemnity: number; suma_total_fees: number; suma_reservas: number }>(

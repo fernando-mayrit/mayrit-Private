@@ -13,7 +13,7 @@ from decimal import Decimal, ROUND_HALF_UP
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import delete, func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from ..db import get_db
 from ..models.maestras import Binder, Siniestro
@@ -80,6 +80,21 @@ def _binder_o_404(binder_id: int, db: Session) -> Binder:
     if not b.agreement_number:
         raise HTTPException(status_code=400, detail="El binder no tiene Agreement Number; no se localiza su lista de Claims.")
     return b
+
+
+@router.get("/siniestros", response_model=list[sch.SiniestroReadGlobal])
+def listar_todos(db: Session = Depends(get_db)):
+    """Listado GLOBAL de siniestros (todos los binders), con el UMR/Agreement de cada binder."""
+    filas = db.scalars(
+        select(Siniestro).options(selectinload(Siniestro.binder)).order_by(Siniestro.id)
+    ).all()
+    out = []
+    for s in filas:
+        d = sch.SiniestroReadGlobal.model_validate(s)
+        d.binder_umr = s.binder.umr if s.binder else None
+        d.binder_agreement = s.binder.agreement_number if s.binder else None
+        out.append(d)
+    return out
 
 
 @router.get("/binders/{binder_id}/siniestros", response_model=list[sch.SiniestroRead])

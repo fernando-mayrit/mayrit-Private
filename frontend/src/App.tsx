@@ -7,6 +7,7 @@ import BindersPage from "./pages/BindersPage";
 import ProgramasPage from "./pages/ProgramasPage";
 import PolizasPage from "./pages/PolizasPage";
 import RecibosPage from "./pages/RecibosPage";
+import SiniestrosPage from "./pages/SiniestrosPage";
 import CierreContablePage from "./pages/CierreContablePage";
 import FinancieroPage from "./pages/FinancieroPage";
 import RamosPage from "./pages/RamosPage";
@@ -27,6 +28,7 @@ const EMOJI: Record<string, string> = {
   tomadores: "👥",
   binders: "📑",
   programas: "🔗",
+  siniestros: "🚨",
   recibos: "🧾",
   polizas: "📄",
   consultoria: "💼",
@@ -45,6 +47,7 @@ type Page =
   | "tomadores"
   | "binders"
   | "programas"
+  | "siniestros"
   | "recibos"
   | "polizas"
   | "consultoria"
@@ -69,6 +72,11 @@ const NEGOCIO: { id: Page; label: string }[] = [
   { id: "polizas", label: "Pólizas (OM)" },
   { id: "consultoria", label: "Consultoría" },
   { id: "comisiones", label: "Comisiones" },
+];
+
+// Menú lateral: Siniestros (Claims BDX de todos los binders).
+const SINIESTROS: { id: Page; label: string }[] = [
+  { id: "siniestros", label: "Siniestros" },
 ];
 
 // Menú lateral: Facturación / Contabilidad (módulo propio, diferenciado del Negocio).
@@ -186,6 +194,19 @@ export default function App() {
               ))}
             </div>
             <div className="nav-group">
+              <div className="nav-group-title">Siniestros</div>
+              {SINIESTROS.map((it) => (
+                <button
+                  key={it.id}
+                  className={"nav-item" + (page === it.id ? " active" : "")}
+                  onClick={() => setPage(it.id)}
+                >
+                  <span className="nav-emoji">{EMOJI[it.id]}</span>
+                  {it.label}
+                </button>
+              ))}
+            </div>
+            <div className="nav-group">
               <div className="nav-group-title">Facturación</div>
               {FACTURACION.map((it) => (
                 <button
@@ -237,6 +258,7 @@ export default function App() {
           {page === "binders" && <BindersPage />}
           {page === "programas" && <ProgramasPage />}
           {page === "recibos" && <RecibosPage />}
+          {page === "siniestros" && <SiniestrosPage />}
           {page === "cierre" && <CierreContablePage />}
           {page === "financiero" && <FinancieroPage />}
           {page === "polizas" && <PolizasPage />}

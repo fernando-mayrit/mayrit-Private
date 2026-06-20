@@ -138,6 +138,12 @@ class SiniestroRead(BaseModel):
     total_fees: Decimal | None = None
 
 
+class SiniestroReadGlobal(SiniestroRead):
+    """Siniestro con el contexto de su binder, para el listado global de siniestros."""
+    binder_umr: str | None = None
+    binder_agreement: str | None = None
+
+
 # ──────────────────────────── Cierre contable ────────────────────────────
 class CierreRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
