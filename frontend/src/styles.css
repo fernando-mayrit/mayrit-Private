@@ -457,8 +457,11 @@ td.num, th.num { text-align: right; }
 .fin-scroll { max-height: 320px; overflow: auto; }
 .fin-scroll thead th { position: sticky; top: 0; background: var(--gris-claro); z-index: 1; }
 
-/* Claims BDX: el listado de presentaciones ocupa el alto restante y scrollea dentro (la pantalla no). */
-.claims-box { flex: 1; min-height: 0; overflow-y: auto; border: 1px solid var(--borde); border-radius: 10px; background: #fff; padding: 8px 16px 12px; }
+/* Claims BDX: el título queda fijo arriba y el listado de presentaciones scrollea dentro (la
+   pantalla no), con la cabecera de columnas también fija. */
+.claims-box { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--borde); border-radius: 10px; background: #fff; padding: 8px 16px 12px; }
+.bdx-scroll table.claims-pres { border-collapse: separate; border-spacing: 0; overflow: visible; }
+.bdx-scroll table.claims-pres thead th { position: sticky; top: 0; background: var(--gris-claro); z-index: 2; }
 
 /* Ocupa el alto restante; cada bloque (Risk/Premium/Claims) scrollea dentro, no la pantalla. */
 .bloqueo-cols { display: flex; gap: 28px; align-items: stretch; flex: 1; min-height: 0; }

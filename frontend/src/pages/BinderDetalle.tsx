@@ -108,8 +108,6 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
   // ── Siniestros (Claims BDX del binder) ──
   const [siniestros, setSiniestros] = useState<Siniestro[]>([]);
   const [sinCargado, setSinCargado] = useState(false);
-  const [sinBusy, setSinBusy] = useState(false);
-  const [sinMsg, setSinMsg] = useState<string | null>(null);
 
   async function cargarSiniestros() {
     try {
@@ -117,20 +115,6 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
       setSinCargado(true);
     } catch (e) {
       setError((e as Error).message);
-    }
-  }
-  async function importarSiniestros() {
-    setSinBusy(true);
-    setSinMsg(null);
-    setError(null);
-    try {
-      const r = await siniestrosApi.importar(binder.id);
-      setSinMsg(`Importados: ${r.nuevos} nuevos, ${r.actualizados} actualizados (total ${r.total_binder}).`);
-      await cargarSiniestros();
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setSinBusy(false);
     }
   }
   useEffect(() => {
@@ -1072,20 +1056,14 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
 
       {tab === "siniestros" && (
         <>
-          <div className="toolbar" style={{ marginBottom: 10 }}>
-            {/* Botón TEMPORAL de migración: solo mientras el binder no tenga siniestros migrados. */}
-            {siniestros.length === 0 && (
-              <button className="btn-primary btn-sm" onClick={importarSiniestros} disabled={sinBusy || cerradoTotal}>
-                {sinBusy ? "Importando…" : "⬇️ Importar de SharePoint"}
-              </button>
-            )}
-            {cerradoTotal && <span className="hint">🔒 Binder Cerrado: solo consulta.</span>}
-            {sinMsg && <span className="hint">{sinMsg}</span>}
-          </div>
           {!sinCargado ? (
             <div className="loading">Cargando…</div>
           ) : siniestros.length === 0 ? (
-            <div className="empty">Sin siniestros. Pulsa «Importar de SharePoint» para traer los Claims de este binder.</div>
+            <div className="empty">
+              {cerradoTotal
+                ? "🔒 Binder cerrado sin siniestros: no tuvo ningún claim durante su vigencia."
+                : "Sin siniestros migrados todavía."}
+            </div>
           ) : (
             (() => {
               const nSin = siniestros.length;
@@ -1164,8 +1142,8 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
             <div className="toolbar" style={{ marginBottom: 10 }}>
               <button
                 className="btn-primary btn-sm"
-                title="Elige un mes no presentado: congela el snapshot, bloquea el mes y descarga el bordereau (Excel)."
-                disabled={cbBusy || cbVista.meses_pendientes.length === 0}
+                title={cerradoTotal ? "Binder Cerrado: no se pueden cargar más claims." : "Elige un mes no presentado: congela el snapshot, bloquea el mes y descarga el bordereau (Excel)."}
+                disabled={cbBusy || cerradoTotal || cbVista.meses_pendientes.length === 0}
                 onClick={() => {
                   const ult = cbVista.meses[0] ?? "";
                   const sig = cbVista.meses_pendientes.find((m) => m > ult) ?? cbVista.meses_pendientes[0];
@@ -1174,6 +1152,7 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
               >
                 📤 Presentar mes…
               </button>
+              {cerradoTotal && <span className="hint">🔒 Binder Cerrado: solo consulta.</span>}
               {cbMsg && <span className="hint">{cbMsg}</span>}
             </div>
             <div className="claims-box">
@@ -1181,7 +1160,8 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
               {cbPeriodos.length === 0 ? (
                 <div className="empty">Aún no hay presentaciones. Pulsa «Presentar mes…».</div>
               ) : (
-                <table className="compacto" style={{ maxWidth: 520 }}>
+                <div className="bdx-scroll">
+                <table className="compacto claims-pres" style={{ maxWidth: 520 }}>
                   <thead>
                     <tr><th>Periodo</th><th className="num">Siniestros</th><th>Presentado el</th><th></th></tr>
                   </thead>
@@ -1200,6 +1180,7 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
                     ))}
                   </tbody>
                 </table>
+                </div>
               )}
             </div>
           </>
