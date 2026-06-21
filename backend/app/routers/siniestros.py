@@ -105,50 +105,71 @@ def ratios(db: Session = Depends(get_db)):
       netUW = GWP our line − comisión coverholder − brokerage
       nPolizas = combinaciones distintas (asegurado·inicio·vencimiento) con GWP>0, por binder.
     Se calcula sobre las líneas del BDX Risk de todos los binders."""
-    from collections import defaultdict
+    SIN = "(sin programa)"
+    scope = func.coalesce(Programa.nombre, SIN)
 
-    rows = db.execute(
+    # Sumas por programa (en SQL, no en Python: antes traía ~todas las líneas Risk).
+    sumas = db.execute(
         select(
-            Programa.nombre, BdxLinea.bdx_id, BdxLinea.insured_id, BdxLinea.insured_name,
-            BdxLinea.risk_inception_date, BdxLinea.risk_expiry_date,
-            BdxLinea.total_gwp_our_line, BdxLinea.commission_coverholder_amount, BdxLinea.brokerage_amount,
+            scope.label("scope"),
+            func.sum(BdxLinea.total_gwp_our_line),
+            func.sum(BdxLinea.commission_coverholder_amount),
+            func.sum(BdxLinea.brokerage_amount),
         )
         .select_from(BdxLinea)
         .join(Bdx, Bdx.id == BdxLinea.bdx_id)
         .join(Binder, Binder.id == Bdx.binder_id)
         .outerjoin(Programa, Programa.id == Binder.programa_id)
         .where(Bdx.tipo == "Risk")
+        .group_by(scope)
     ).all()
+
+    # nº de pólizas = combinaciones distintas (binder · asegurado · inicio · vencimiento) con
+    # GWP>0, por programa. La clave de asegurado replica str(iid or inm or "").strip().
+    ikey = func.trim(func.coalesce(
+        func.nullif(BdxLinea.insured_id, ""), func.nullif(BdxLinea.insured_name, ""), ""
+    ))
+    sub = (
+        select(
+            scope.label("scope"),
+            func.sum(BdxLinea.total_gwp_our_line).label("g"),
+        )
+        .select_from(BdxLinea)
+        .join(Bdx, Bdx.id == BdxLinea.bdx_id)
+        .join(Binder, Binder.id == Bdx.binder_id)
+        .outerjoin(Programa, Programa.id == Binder.programa_id)
+        .where(Bdx.tipo == "Risk")
+        .group_by(scope, BdxLinea.bdx_id, ikey,
+                  BdxLinea.risk_inception_date, BdxLinea.risk_expiry_date)
+    ).subquery()
+    pol = dict(db.execute(
+        select(sub.c.scope, func.count()).where(sub.c.g > 0.005).group_by(sub.c.scope)
+    ).all())
 
     def f(x):
         return float(x) if x is not None else 0.0
 
-    SIN = "(sin programa)"
-    agg: dict = defaultdict(lambda: {"gwp": 0.0, "com_cover": 0.0, "brokerage": 0.0})
-    polacc: dict = defaultdict(lambda: defaultdict(float))  # scope -> polkey -> gwp
-    for prog, bdx_id, iid, inm, inc, exp, gwp, cc, brk in rows:
-        scope = prog or SIN
-        for k in (scope, "__total__"):
-            agg[k]["gwp"] += f(gwp)
-            agg[k]["com_cover"] += f(cc)
-            agg[k]["brokerage"] += f(brk)
-        polkey = (bdx_id, str(iid or inm or "").strip(), str(inc or ""), str(exp or ""))
-        polacc[scope][polkey] += f(gwp)
-        polacc["__total__"][polkey] += f(gwp)
-
-    def empaqueta(k):
-        v = agg[k]
-        return {
-            "gwp_our_line": round(v["gwp"], 2),
-            "com_coverholder": round(v["com_cover"], 2),
-            "brokerage": round(v["brokerage"], 2),
-            "net_uw": round(v["gwp"] - v["com_cover"] - v["brokerage"], 2),
-            "n_polizas": sum(1 for g in polacc[k].values() if g > 0.005),
+    por_programa: dict = {}
+    tot = {"gwp": 0.0, "com_cover": 0.0, "brokerage": 0.0, "npol": 0}
+    for sc, gwp, cc, brk in sumas:
+        npol = int(pol.get(sc, 0))
+        por_programa[sc] = {
+            "gwp_our_line": round(f(gwp), 2),
+            "com_coverholder": round(f(cc), 2),
+            "brokerage": round(f(brk), 2),
+            "net_uw": round(f(gwp) - f(cc) - f(brk), 2),
+            "n_polizas": npol,
         }
-
-    por_programa = {k: empaqueta(k) for k in agg if k != "__total__"}
-    total = empaqueta("__total__") if "__total__" in agg else {
-        "gwp_our_line": 0, "com_coverholder": 0, "brokerage": 0, "net_uw": 0, "n_polizas": 0}
+        tot["gwp"] += f(gwp); tot["com_cover"] += f(cc); tot["brokerage"] += f(brk); tot["npol"] += npol
+    # El total es la suma de los programas: cada póliza/línea pertenece a un único binder y, por
+    # tanto, a un único programa (claves disjuntas).
+    total = {
+        "gwp_our_line": round(tot["gwp"], 2),
+        "com_coverholder": round(tot["com_cover"], 2),
+        "brokerage": round(tot["brokerage"], 2),
+        "net_uw": round(tot["gwp"] - tot["com_cover"] - tot["brokerage"], 2),
+        "n_polizas": tot["npol"],
+    } if sumas else {"gwp_our_line": 0, "com_coverholder": 0, "brokerage": 0, "net_uw": 0, "n_polizas": 0}
     return {"total": total, "por_programa": por_programa}
 
 
