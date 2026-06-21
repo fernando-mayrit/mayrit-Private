@@ -1257,6 +1257,7 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
           const n = meses.length;
           const ratio = tri.net_uw ? (tri.incurrido_actual / tri.net_uw) * 100 : null;
           const ibnrPct = tri.gwp_our_line ? (tri.ibnr_sugerido / tri.gwp_our_line) * 100 : null;
+          const ultPct = tri.net_uw ? (tri.ultimate_sugerido / tri.net_uw) * 100 : null;
           // En "%", cada celda = incurrido valuado / Net to UWs (siniestralidad hasta ese mes).
           const celda = (v: number | null) =>
             v == null ? "" : esPct ? (tri.net_uw ? `${fmtMiles((v / tri.net_uw) * 100)} %` : "—") : esNum ? v : fmtMiles(v);
@@ -1306,7 +1307,7 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
                 </span>
                 <span className="hint" title="Estimación orientativa por chain-ladder. El % es sobre el GWP Our Line.">
                   IBNR sugerido: <b>{imp(tri.ibnr_sugerido)}{ibnrPct == null ? "" : ` (${fmtMiles(ibnrPct)} %)`}</b>
-                  {" · "}Ultimate: <b>{imp(tri.ultimate_sugerido)}</b>
+                  {" · "}Ultimate: <b>{imp(tri.ultimate_sugerido)}{ultPct == null ? "" : ` (${fmtMiles(ultPct)} %)`}</b>
                 </span>
                 <span className="hint">
                   Filas = mes de apertura · columnas = {triVista === "cal" ? "mes de valuación (reciente → antiguo)" : "meses desde la apertura"}.
