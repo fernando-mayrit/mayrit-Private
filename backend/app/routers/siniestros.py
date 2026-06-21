@@ -16,7 +16,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session, selectinload
 
 from ..db import get_db
-from ..models.maestras import Binder, Siniestro
+from ..models.maestras import Bdx, BdxLinea, Binder, Programa, Siniestro
 from ..schemas import maestras as sch
 
 router = APIRouter(tags=["Siniestros"])
@@ -86,15 +86,70 @@ def _binder_o_404(binder_id: int, db: Session) -> Binder:
 def listar_todos(db: Session = Depends(get_db)):
     """Listado GLOBAL de siniestros (todos los binders), con el UMR/Agreement de cada binder."""
     filas = db.scalars(
-        select(Siniestro).options(selectinload(Siniestro.binder)).order_by(Siniestro.id)
+        select(Siniestro).options(selectinload(Siniestro.binder).selectinload(Binder.programa)).order_by(Siniestro.id)
     ).all()
     out = []
     for s in filas:
         d = sch.SiniestroReadGlobal.model_validate(s)
         d.binder_umr = s.binder.umr if s.binder else None
         d.binder_agreement = s.binder.agreement_number if s.binder else None
+        d.binder_programa = s.binder.programa.nombre if (s.binder and s.binder.programa) else None
         out.append(d)
     return out
+
+
+@router.get("/siniestros/ratios")
+def ratios(db: Session = Depends(get_db)):
+    """Base de producción para los ratios de siniestralidad/frecuencia del módulo de Siniestros,
+    agregada por programa (y total). Misma fórmula que el binder:
+      netUW = GWP our line − comisión coverholder − brokerage
+      nPolizas = combinaciones distintas (asegurado·inicio·vencimiento) con GWP>0, por binder.
+    Se calcula sobre las líneas del BDX Risk de todos los binders."""
+    from collections import defaultdict
+
+    rows = db.execute(
+        select(
+            Programa.nombre, BdxLinea.bdx_id, BdxLinea.insured_id, BdxLinea.insured_name,
+            BdxLinea.risk_inception_date, BdxLinea.risk_expiry_date,
+            BdxLinea.total_gwp_our_line, BdxLinea.commission_coverholder_amount, BdxLinea.brokerage_amount,
+        )
+        .select_from(BdxLinea)
+        .join(Bdx, Bdx.id == BdxLinea.bdx_id)
+        .join(Binder, Binder.id == Bdx.binder_id)
+        .outerjoin(Programa, Programa.id == Binder.programa_id)
+        .where(Bdx.tipo == "Risk")
+    ).all()
+
+    def f(x):
+        return float(x) if x is not None else 0.0
+
+    SIN = "(sin programa)"
+    agg: dict = defaultdict(lambda: {"gwp": 0.0, "com_cover": 0.0, "brokerage": 0.0})
+    polacc: dict = defaultdict(lambda: defaultdict(float))  # scope -> polkey -> gwp
+    for prog, bdx_id, iid, inm, inc, exp, gwp, cc, brk in rows:
+        scope = prog or SIN
+        for k in (scope, "__total__"):
+            agg[k]["gwp"] += f(gwp)
+            agg[k]["com_cover"] += f(cc)
+            agg[k]["brokerage"] += f(brk)
+        polkey = (bdx_id, str(iid or inm or "").strip(), str(inc or ""), str(exp or ""))
+        polacc[scope][polkey] += f(gwp)
+        polacc["__total__"][polkey] += f(gwp)
+
+    def empaqueta(k):
+        v = agg[k]
+        return {
+            "gwp_our_line": round(v["gwp"], 2),
+            "com_coverholder": round(v["com_cover"], 2),
+            "brokerage": round(v["brokerage"], 2),
+            "net_uw": round(v["gwp"] - v["com_cover"] - v["brokerage"], 2),
+            "n_polizas": sum(1 for g in polacc[k].values() if g > 0.005),
+        }
+
+    por_programa = {k: empaqueta(k) for k in agg if k != "__total__"}
+    total = empaqueta("__total__") if "__total__" in agg else {
+        "gwp_our_line": 0, "com_coverholder": 0, "brokerage": 0, "net_uw": 0, "n_polizas": 0}
+    return {"total": total, "por_programa": por_programa}
 
 
 @router.get("/binders/{binder_id}/siniestros", response_model=list[sch.SiniestroRead])

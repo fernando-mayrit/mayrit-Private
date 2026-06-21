@@ -142,6 +142,7 @@ class SiniestroReadGlobal(SiniestroRead):
     """Siniestro con el contexto de su binder, para el listado global de siniestros."""
     binder_umr: str | None = None
     binder_agreement: str | None = None
+    binder_programa: str | None = None
 
 
 # ──────────────────────────── Cierre contable ────────────────────────────
