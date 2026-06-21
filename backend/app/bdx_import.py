@@ -87,7 +87,12 @@ def _coerce(field: str, value, coltype):
             n = n * 100
         # Cuantizar a la escala de la columna (dinero=2, % =4) → quita el ruido de coma flotante.
         escala = coltype.scale if coltype.scale is not None else 2
-        return n.quantize(Decimal(1).scaleb(-escala), rounding=ROUND_HALF_UP)
+        n = n.quantize(Decimal(1).scaleb(-escala), rounding=ROUND_HALF_UP)
+        # Fuera de rango para la precisión de la columna → se anula (dato erróneo en origen, p. ej.
+        # una fecha metida en una columna de %). Evita que un valor basura tumbe toda la importación.
+        if coltype.precision is not None and abs(n) >= Decimal(10) ** (coltype.precision - escala):
+            return None
+        return n
     return str(value)  # String / Text
 
 
