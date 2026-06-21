@@ -1278,42 +1278,46 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
           const totalCol = colDefs.map((c) => matriz.reduce((a, _f, i) => a + (c.get(i) ?? 0), 0));
           return (
             <>
-              <div className="bdx-topbar" style={{ alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-                <select className="filtro" value={triMetrica} onChange={(e) => setTriMetrica(e.target.value as MetricaTriangulo)}>
-                  <option value="incurrido">Incurrido (pagado + reservas)</option>
-                  <option value="pagado">Pagado</option>
-                  <option value="num">Nº de siniestros</option>
-                  <option value="pct">% Siniestralidad (s/ Net to UWs)</option>
-                </select>
-                <select className="filtro" value={triVista} onChange={(e) => setTriVista(e.target.value as "cal" | "edad")}>
-                  <option value="cal">Vista: Calendario</option>
-                  <option value="edad">Vista: Por antigüedad</option>
-                </select>
-                <select
-                  className="filtro"
-                  value={triScope.risk_code ? `rc:${triScope.risk_code}` : triScope.seccion != null ? `sec:${triScope.seccion}` : "total"}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    setTriScope(v === "total" ? {} : v.startsWith("rc:") ? { risk_code: v.slice(3) } : { seccion: Number(v.slice(4)) });
-                  }}
-                >
-                  <option value="total">Ámbito: Total</option>
-                  {tri.risk_codes.map((rc) => <option key={`rc:${rc}`} value={`rc:${rc}`}>Código {rc}</option>)}
-                  {tri.secciones.map((s) => <option key={`sec:${s}`} value={`sec:${s}`}>Sección {s}</option>)}
-                </select>
-                <button className="btn-secondary" onClick={exportarTriangulo} title="Exportar a Excel la métrica y el ámbito seleccionados">⤓ Excel</button>
-                <span className="hint">
-                  GWP Our Line: <b>{imp(tri.gwp_our_line)}</b> · Net to UWs: <b>{imp(tri.net_uw)}</b>
-                  {" · "}Incurrido actual: <b>{imp(tri.incurrido_actual)}</b>
-                  {" · "}Siniestralidad: <b>{ratio == null ? "—" : `${fmtMiles(ratio)} %`}</b>
-                </span>
-                <span className="hint" title="Estimación orientativa por chain-ladder. El % es sobre el GWP Our Line.">
-                  IBNR sugerido: <b>{imp(tri.ibnr_sugerido)}{ibnrPct == null ? "" : ` (${fmtMiles(ibnrPct)} %)`}</b>
-                  {" · "}Ultimate: <b>{imp(tri.ultimate_sugerido)}{ultPct == null ? "" : ` (${fmtMiles(ultPct)} %)`}</b>
-                </span>
-                <span className="hint">
-                  Filas = mes de apertura · columnas = {triVista === "cal" ? "mes de valuación (reciente → antiguo)" : "meses desde la apertura"}.
-                </span>
+              <div className="bdx-topbar" style={{ alignItems: "flex-start", gap: 12, flexWrap: "wrap", justifyContent: "space-between" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  <select className="filtro" value={triMetrica} onChange={(e) => setTriMetrica(e.target.value as MetricaTriangulo)}>
+                    <option value="incurrido">Incurrido (pagado + reservas)</option>
+                    <option value="pagado">Pagado</option>
+                    <option value="num">Nº de siniestros</option>
+                    <option value="pct">% Siniestralidad (s/ Net to UWs)</option>
+                  </select>
+                  <select className="filtro" value={triVista} onChange={(e) => setTriVista(e.target.value as "cal" | "edad")}>
+                    <option value="cal">Vista: Calendario</option>
+                    <option value="edad">Vista: Por antigüedad</option>
+                  </select>
+                  <select
+                    className="filtro"
+                    value={triScope.risk_code ? `rc:${triScope.risk_code}` : triScope.seccion != null ? `sec:${triScope.seccion}` : "total"}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setTriScope(v === "total" ? {} : v.startsWith("rc:") ? { risk_code: v.slice(3) } : { seccion: Number(v.slice(4)) });
+                    }}
+                  >
+                    <option value="total">Ámbito: Total</option>
+                    {tri.risk_codes.map((rc) => <option key={`rc:${rc}`} value={`rc:${rc}`}>Código {rc}</option>)}
+                    {tri.secciones.map((s) => <option key={`sec:${s}`} value={`sec:${s}`}>Sección {s}</option>)}
+                  </select>
+                  <button className="btn-secondary" onClick={exportarTriangulo} title="Exportar a Excel la métrica y el ámbito seleccionados">⤓ Excel</button>
+                  <span className="hint">
+                    Filas = mes de apertura · columnas = {triVista === "cal" ? "mes de valuación (reciente → antiguo)" : "meses desde la apertura"}.
+                  </span>
+                </div>
+                <div style={{ textAlign: "right" }}>
+                  <div className="hint">
+                    GWP Our Line: <b>{imp(tri.gwp_our_line)}</b> · Net to UWs: <b>{imp(tri.net_uw)}</b>
+                    {" · "}Incurrido actual: <b>{imp(tri.incurrido_actual)}</b>
+                    {" · "}Siniestralidad: <b>{ratio == null ? "—" : `${fmtMiles(ratio)} %`}</b>
+                  </div>
+                  <div className="hint" title="Estimación orientativa por chain-ladder. El % del IBNR es sobre GWP Our Line; el del Ultimate, sobre Net to UWs.">
+                    IBNR sugerido: <b>{imp(tri.ibnr_sugerido)}{ibnrPct == null ? "" : ` (${fmtMiles(ibnrPct)} %)`}</b>
+                    {" · "}Ultimate: <b>{imp(tri.ultimate_sugerido)}{ultPct == null ? "" : ` (${fmtMiles(ultPct)} %)`}</b>
+                  </div>
+                </div>
               </div>
               {meses.length === 0 ? (
                 <div className="empty">No hay siniestros en este ámbito.</div>
