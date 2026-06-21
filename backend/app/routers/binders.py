@@ -7,7 +7,7 @@ from collections import defaultdict
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, or_, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from ..db import get_db
 from ..models.maestras import (
@@ -301,9 +301,26 @@ def _aplicar(
         b.secciones.append(seccion)
 
 
-@router.get("", response_model=list[sch.BinderRead])
+@router.get("")
 def listar(q: str | None = None, programa_id: int | None = None, db: Session = Depends(get_db)):
-    stmt = select(Binder).order_by(Binder.id)
+    # Sin response_model: _serializar ya devuelve exactamente la forma de BinderRead, así que
+    # revalidarla con Pydantic era ~1,7 s de overhead para nada. FastAPI serializa el dict tal cual.
+    # Eager-loading: evita el N+1 que disparaba _serializar al recorrer las relaciones de cada
+    # binder (productor, programa, cuenta, límites, secciones→risk_codes/mercados→mercado).
+    stmt = (
+        select(Binder)
+        .options(
+            joinedload(Binder.productor),
+            joinedload(Binder.programa),
+            joinedload(Binder.cuenta_bancaria),
+            selectinload(Binder.limites),
+            selectinload(Binder.secciones).selectinload(BinderSeccion.risk_codes),
+            selectinload(Binder.secciones)
+            .selectinload(BinderSeccion.mercados)
+            .joinedload(SeccionMercado.mercado),
+        )
+        .order_by(Binder.id)
+    )
     if q:
         like = f"%{q}%"
         stmt = stmt.where(or_(Binder.umr.ilike(like), Binder.agreement_number.ilike(like)))

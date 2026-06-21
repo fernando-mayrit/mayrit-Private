@@ -39,6 +39,8 @@ const EMOJI: Record<string, string> = {
   usuarios: "👤",
   cierre: "🔒",
   financiero: "💰",
+  transferencias: "🔁",
+  contabilidad: "📒",
 };
 
 type Page =
@@ -58,7 +60,9 @@ type Page =
   | "cuentas"
   | "usuarios"
   | "cierre"
-  | "financiero";
+  | "financiero"
+  | "transferencias"
+  | "contabilidad";
 
 // Barra superior: las Maestras (las partes).
 const MAESTRAS: { id: Page; label: string }[] = [
@@ -95,6 +99,12 @@ const FACTURACION: { id: Page; label: string }[] = [
 // Menú lateral: Financiero / Caja (cuadros de pendientes de cobro/liquidación/traspaso/pago).
 const FINANCIERO: { id: Page; label: string }[] = [
   { id: "financiero", label: "Financiero" },
+  { id: "transferencias", label: "Transferencias" },
+];
+
+// Menú lateral: Contabilidad (pendiente de configurar).
+const CONTABILIDAD: { id: Page; label: string }[] = [
+  { id: "contabilidad", label: "Contabilidad" },
 ];
 
 // Menú lateral: Configuración (catálogos compartidos).
@@ -104,8 +114,98 @@ const CONFIG: { id: Page; label: string }[] = [
   { id: "usuarios", label: "Usuarios" },
 ];
 
+// Grupos del menú lateral (desplegables/acordeón). El de Configuración va aparte, abajo del todo.
+type Grupo = { titulo: string; items: { id: Page; label: string }[]; sm?: boolean };
+const GRUPOS: Grupo[] = [
+  { titulo: "Negocio", items: NEGOCIO },
+  { titulo: "Siniestros", items: [...SINIESTROS, ...TRIANGULACION] },
+  { titulo: "Facturación", items: FACTURACION },
+  { titulo: "Financiero", items: FINANCIERO },
+  { titulo: "Contabilidad", items: CONTABILIDAD },
+];
+const GRUPO_CONFIG: Grupo = { titulo: "Configuración", items: CONFIG, sm: true };
+const MENU_KEY = "mayrit.menu";
+
+// Título del grupo que contiene una página (para abrirlo automáticamente al navegar).
+function grupoDe(p: Page): string | undefined {
+  return [...GRUPOS, GRUPO_CONFIG].find((g) => g.items.some((it) => it.id === p))?.titulo;
+}
+
+function NavGroup({
+  grupo,
+  page,
+  colapsable = false,
+  abierto = true,
+  onToggle,
+  onIr,
+}: {
+  grupo: Grupo;
+  page: Page;
+  colapsable?: boolean;
+  abierto?: boolean;
+  onToggle?: () => void;
+  onIr: (p: Page) => void;
+}) {
+  const mostrar = !colapsable || abierto;
+  return (
+    <div className={"nav-group" + (colapsable && !abierto ? " nav-group-cerrado" : "")}>
+      {colapsable ? (
+        <button className="nav-group-title nav-group-title-btn" onClick={onToggle} aria-expanded={abierto}>
+          <span className="nav-chevron">{abierto ? "▾" : "▸"}</span>
+          {grupo.titulo}
+        </button>
+      ) : (
+        <div className="nav-group-title">{grupo.titulo}</div>
+      )}
+      {mostrar &&
+        grupo.items.map((it) => (
+          <button
+            key={it.id}
+            className={
+              "nav-item" + (grupo.sm ? " nav-item-sm" : "") + (page === it.id ? " active" : "")
+            }
+            onClick={() => onIr(it.id)}
+          >
+            <span className="nav-emoji">{EMOJI[it.id]}</span>
+            {it.label}
+          </button>
+        ))}
+    </div>
+  );
+}
+
 export default function App() {
   const [page, setPage] = useState<Page>("inicio");
+
+  // Estado abierto/cerrado de cada grupo del menú (persistido). Por defecto sólo se abre el grupo
+  // de la página activa; el resto, plegados para ahorrar espacio.
+  const [abiertos, setAbiertos] = useState<Record<string, boolean>>(() => {
+    try {
+      return JSON.parse(localStorage.getItem(MENU_KEY) || "{}");
+    } catch {
+      return {};
+    }
+  });
+  function guardarAbiertos(next: Record<string, boolean>) {
+    setAbiertos(next);
+    try {
+      localStorage.setItem(MENU_KEY, JSON.stringify(next));
+    } catch {
+      /* sin localStorage: no se persiste */
+    }
+  }
+  function esAbierto(titulo: string): boolean {
+    return titulo in abiertos ? abiertos[titulo] : grupoDe(page) === titulo;
+  }
+  function toggleGrupo(titulo: string) {
+    guardarAbiertos({ ...abiertos, [titulo]: !esAbierto(titulo) });
+  }
+  // Navegar: abre (y deja abierto) el grupo de la página destino para no ocultar el ítem activo.
+  function ir(p: Page) {
+    setPage(p);
+    const t = grupoDe(p);
+    if (t) guardarAbiertos({ ...abiertos, [t]: true });
+  }
 
   // Identificación de usuario (sin contraseña): autologin por equipo + selector.
   const [usuarios, setUsuarios] = useState<Usuario[]>([]);
@@ -160,7 +260,7 @@ export default function App() {
           alt="Mayrit"
           style={{ cursor: "pointer" }}
           title="Inicio"
-          onClick={() => setPage("inicio")}
+          onClick={() => ir("inicio")}
         />
         <div className="sep" />
         <nav className="tabs">
@@ -168,7 +268,7 @@ export default function App() {
             <button
               key={t.id}
               className={"tab" + (page === t.id ? " active" : "")}
-              onClick={() => setPage(t.id)}
+              onClick={() => ir(t.id)}
             >
               <span className="nav-emoji">{EMOJI[t.id]}</span>
               {t.label}
@@ -187,88 +287,24 @@ export default function App() {
       <div className="body">
         <aside className="sidebar">
           <nav className="sidebar-nav">
-            <div className="nav-group">
-              <div className="nav-group-title">Negocio</div>
-              {NEGOCIO.map((it) => (
-                <button
-                  key={it.id}
-                  className={"nav-item" + (page === it.id ? " active" : "")}
-                  onClick={() => setPage(it.id)}
-                >
-                  <span className="nav-emoji">{EMOJI[it.id]}</span>
-                  {it.label}
-                </button>
-              ))}
-            </div>
-            <div className="nav-group">
-              <div className="nav-group-title">Siniestros</div>
-              {SINIESTROS.map((it) => (
-                <button
-                  key={it.id}
-                  className={"nav-item" + (page === it.id ? " active" : "")}
-                  onClick={() => setPage(it.id)}
-                >
-                  <span className="nav-emoji">{EMOJI[it.id]}</span>
-                  {it.label}
-                </button>
-              ))}
-              {TRIANGULACION.map((it) => (
-                <button
-                  key={it.id}
-                  className={"nav-item" + (page === it.id ? " active" : "")}
-                  onClick={() => setPage(it.id)}
-                >
-                  <span className="nav-emoji">{EMOJI[it.id]}</span>
-                  {it.label}
-                </button>
-              ))}
-            </div>
-            <div className="nav-group">
-              <div className="nav-group-title">Facturación</div>
-              {FACTURACION.map((it) => (
-                <button
-                  key={it.id}
-                  className={"nav-item" + (page === it.id ? " active" : "")}
-                  onClick={() => setPage(it.id)}
-                >
-                  <span className="nav-emoji">{EMOJI[it.id]}</span>
-                  {it.label}
-                </button>
-              ))}
-            </div>
-            <div className="nav-group">
-              <div className="nav-group-title">Financiero</div>
-              {FINANCIERO.map((it) => (
-                <button
-                  key={it.id}
-                  className={"nav-item" + (page === it.id ? " active" : "")}
-                  onClick={() => setPage(it.id)}
-                >
-                  <span className="nav-emoji">{EMOJI[it.id]}</span>
-                  {it.label}
-                </button>
-              ))}
-            </div>
+            {GRUPOS.map((g) => (
+              <NavGroup key={g.titulo} grupo={g} page={page} onIr={ir} />
+            ))}
           </nav>
           <nav className="sidebar-nav sidebar-bottom">
-            <div className="nav-group">
-              <div className="nav-group-title">Configuración</div>
-              {CONFIG.map((it) => (
-                <button
-                  key={it.id}
-                  className={"nav-item nav-item-sm" + (page === it.id ? " active" : "")}
-                  onClick={() => setPage(it.id)}
-                >
-                  <span className="nav-emoji">{EMOJI[it.id]}</span>
-                  {it.label}
-                </button>
-              ))}
-            </div>
+            <NavGroup
+              grupo={GRUPO_CONFIG}
+              page={page}
+              colapsable
+              abierto={esAbierto(GRUPO_CONFIG.titulo)}
+              onToggle={() => toggleGrupo(GRUPO_CONFIG.titulo)}
+              onIr={ir}
+            />
           </nav>
         </aside>
 
         <main className="content">
-          {page === "inicio" && <Inicio usuario={usuario} onIr={(p) => setPage(p as Page)} />}
+          {page === "inicio" && <Inicio usuario={usuario} onIr={(p) => ir(p as Page)} />}
           {page === "productores" && <ProductoresPage />}
           {page === "mercados" && <MercadosPage />}
           {page === "tomadores" && <TomadoresPage />}
@@ -279,6 +315,8 @@ export default function App() {
           {page === "triangulacion" && <EnConstruccion titulo="Triangulación" />}
           {page === "cierre" && <CierreContablePage />}
           {page === "financiero" && <FinancieroPage />}
+          {page === "transferencias" && <EnConstruccion titulo="Transferencias" />}
+          {page === "contabilidad" && <EnConstruccion titulo="Contabilidad" />}
           {page === "polizas" && <PolizasPage />}
           {page === "consultoria" && <EnConstruccion titulo="Consultoría (Fees)" />}
           {page === "comisiones" && <EnConstruccion titulo="Comisiones" />}

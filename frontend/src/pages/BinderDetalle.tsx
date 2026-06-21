@@ -1119,9 +1119,10 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
                       </div>
                       <div className="tot-col">
                         <div className="tot-row"><span title="GWP our line − comisión coverholder − brokerage">Prima Neta</span><b>{fmtMiles(netUW)}</b></div>
-                        <div className="tot-row" style={{ visibility: "hidden" }}><span>·</span><b>·</b></div>
-                        <div className="tot-row"><span title="Nº siniestros / Nº pólizas">Ratio Frecuencia</span><b>{nPolizas > 0 ? `${fmtMiles((nSin / nPolizas) * 100)} %` : "—"}</b></div>
-                        <div className="tot-row tot-pdte"><span title="Siniestralidad / (GWP our line − com. coverholder − brokerage)">Ratio Siniestralidad</span><b>{ratioStr}</b></div>
+                        <div className="tot-ratios">
+                          <div className="tot-row tot-ratio"><span title="Nº siniestros / Nº pólizas">Ratio Frecuencia</span><b>{nPolizas > 0 ? `${fmtMiles((nSin / nPolizas) * 100)} %` : "—"}</b></div>
+                          <div className="tot-row tot-ratio"><span title="Siniestralidad / (GWP our line − com. coverholder − brokerage)">Ratio Siniestralidad</span><b>{ratioStr}</b></div>
+                        </div>
                       </div>
                     </div>
                   </div>

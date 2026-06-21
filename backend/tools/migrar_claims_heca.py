@@ -63,6 +63,28 @@ ALIAS = {
 }
 
 
+_MES = {m: i for i, m in enumerate(
+    ["january", "february", "march", "april", "may", "june", "july", "august",
+     "september", "october", "november", "december"], start=1)}
+_MES.update({m: i for i, m in enumerate(
+    ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto",
+     "septiembre", "octubre", "noviembre", "diciembre"], start=1)})
+
+
+def _periodo_carpeta(nombre: str, anio_defecto: int | None):
+    """Saca (año, mes) del nombre de una carpeta de mes, p. ej. '42. Agosto 2025 NO HAY' ->
+    (2025, 8) o '1. Enero' -> (anio_defecto, 1). Reconoce meses en inglés y español y busca el
+    año en cualquier posición. Devuelve None si no reconoce el mes."""
+    s = re.sub(r"^\s*\d+\.\s*", "", str(nombre)).strip()
+    toks = s.split()
+    mes = _MES.get(toks[0].lower()) if toks else None
+    if mes is None:
+        return None
+    m = re.search(r"(?:19|20)\d{2}", s)
+    anio = int(m.group()) if m else anio_defecto
+    return (anio, mes) if anio else None
+
+
 def _normh(s) -> str:
     return " ".join(str(s).split()) if s is not None else ""
 
@@ -189,9 +211,9 @@ def _leer_hoja(ws, agr_tok):
     for r in rows[hr + 1:]:
         if i_ref is None or i_ref >= len(r):
             continue
-        ref = r[i_ref]
-        if ref in (None, "") or _key(ref).startswith("claim"):
-            continue
+        ref = str(r[i_ref]).strip() if r[i_ref] is not None else ""
+        if not ref or _key(ref).startswith("claim"):
+            continue  # fila sin referencia (en blanco o basura): no se puede casar -> se omite
         agr = _tok(r[i_agr]) if (i_agr is not None and i_agr < len(r)) else ""
         umr = _tok(r[i_umr]) if (i_umr is not None and i_umr < len(r)) else ""
         if agr_tok not in agr and agr_tok not in umr:
@@ -199,7 +221,7 @@ def _leer_hoja(ws, agr_tok):
         def g(canonico, _r=r, _ni=nidx):
             i = _resolver(_ni, canonico)
             return _r[i] if (i is not None and i < len(_r)) else None
-        out.append((str(ref).strip(), g))
+        out.append((ref, g))
     return out
 
 
@@ -213,12 +235,16 @@ def _ficheros_mes(carpeta):
           and not re.search(r"timesheet|invoice|triangul|template|^~\$", f, re.I)]
     combinados = [f for f in xs if not _es_seccion(f)]
     secciones = [f for f in xs if _es_seccion(f)]
+    # Se leen el combinado Y las secciones (la lectura une y deduplica por referencia). El combinado
+    # a veces viene incompleto (solo una sección); las secciones E3/E5/E7/E9 son el desglose fiable,
+    # así que unirlos recupera el roster completo sin doble conteo.
+    elegidos = []
     if combinados:
         # Preferir la versión 'amended' (corregida) si hay más de un combinado.
         amended = [f for f in combinados if "amend" in f.lower()]
-        elegido = amended[0] if amended else sorted(combinados)[0]
-        return [elegido], len(combinados)
-    return secciones, 0
+        elegidos.append(amended[0] if amended else sorted(combinados)[0])
+    elegidos += sorted(secciones)
+    return elegidos, len(combinados)
 
 
 def main():
@@ -228,6 +254,17 @@ def main():
     ap.add_argument("--agreement")
     ap.add_argument("--crear-siniestros", action="store_true",
                     help="Da de alta los siniestros que aparezcan en los snapshots y no existan.")
+    ap.add_argument("--anio-defecto", type=int, default=None,
+                    help="Año para carpetas cuyo nombre es solo el mes (p. ej. 'Enero' sin año). "
+                         "Sólo se usa como respaldo cuando el mes no tiene filas con periodo.")
+    ap.add_argument("--alias-ref", default="",
+                    help="Mapea referencias de snapshot a la referencia del siniestro cuando el "
+                         "claim fue renumerado. Formato: 'refOrigen=refSiniestro,otra=otra'. "
+                         "Se compara ignorando espacios/guiones (p. ej. '116498=116498001').")
+    ap.add_argument("--periodo-override", default="",
+                    help="Corrige el periodo de una carpeta cuya celda Reporting Period viene mal en "
+                         "origen. Formato: 'NombreCarpeta=AAAA-MM' o 'NumCarpeta=AAAA-MM' "
+                         "(p. ej. '1. Enero=2024-01' o '1=2024-01').")
     ap.add_argument("--apply", action="store_true")
     args = ap.parse_args()
 
@@ -239,6 +276,12 @@ def main():
         return
     agr_tok = _tok(b.agreement_number)
 
+    overrides = {}
+    for par in args.periodo_override.split(","):
+        if "=" in par:
+            k, v = par.split("=", 1)
+            overrides[k.strip()] = v.strip()
+
     subs = sorted(
         [d for d in os.listdir(args.carpeta) if os.path.isdir(os.path.join(args.carpeta, d))
          and re.match(r"\s*\d+\.", d)],
@@ -248,7 +291,6 @@ def main():
     # ── PASO 1: leer todos los meses ──
     meses = []  # {per, po, claims: {ref: g}}
     for d in subs:
-        n = int(d.split(".")[0])
         carpeta = os.path.join(args.carpeta, d)
         ficheros, n_comb = _ficheros_mes(carpeta)
         claims = {}
@@ -267,24 +309,53 @@ def main():
                         if rp:
                             per_celda = rp
             wb.close()
-        if per_celda:
+        ov = overrides.get(d) or overrides.get(d.split(".")[0].strip())
+        if ov:  # corrección manual (celda Reporting Period mal en origen)
+            anio, mes = int(ov[:4]), int(ov[5:7])
+        elif per_celda:
             anio, mes = per_celda.year, per_celda.month
-        else:  # respaldo: nº de carpeta (1 = ene-2023)
-            anio, mes = 2023 + (n - 1) // 12, (n - 1) % 12 + 1
+        else:  # respaldo (meses NIL sin filas): periodo del nombre de la carpeta
+            ay = _periodo_carpeta(d, args.anio_defecto)
+            if ay is None:
+                print(f"  [!] {d}: sin filas y no se reconoce el mes en el nombre, omitida")
+                continue
+            anio, mes = ay
         meses.append({"per": f"{anio:04d}-{mes:02d}", "po": anio * 100 + mes, "claims": claims, "carpeta": d})
 
+    # Fusionar carpetas que caen en el mismo periodo (p. ej. 'Marzo 2024 I' y 'Marzo 2024 II'):
+    # se unen sus claims (la carpeta procesada después gana en duplicados por referencia). Evita que
+    # el DELETE+INSERT por periodo del volcado haga que una carpeta pise a la otra.
+    fusion: dict[str, dict] = {}
+    for m in meses:
+        if m["per"] in fusion:
+            fusion[m["per"]]["claims"].update(m["claims"])
+            fusion[m["per"]]["carpeta"] += " + " + m["carpeta"]
+        else:
+            fusion[m["per"]] = m
+    meses = sorted(fusion.values(), key=lambda x: x["po"])
+
+    # Alias de referencias renumeradas (snapshot -> siniestro), normalizadas sin espacios/guiones.
+    alias = {}
+    for par in args.alias_ref.split(","):
+        if "=" in par:
+            k, v = par.split("=", 1)
+            alias[_tok(k)] = _tok(v)
+
     # ── PASO 2: emparejar siniestros (y crear los que falten) ──
+    # La REFERENCIA del claim es la clave fiable, pero el origen la escribe con/sin espacios
+    # (p. ej. '116498 001' en snapshot vs '116498001' en el siniestro). Se casa por la referencia
+    # NORMALIZADA (sin espacios ni guiones). NO se usa respaldo por certificado: dos claims pueden
+    # compartir certificado y se confundirían.
     sins = db.scalars(select(Siniestro).where(Siniestro.binder_id == b.id)).all()
-    ref_cnt = Counter((s.reference or "").strip() for s in sins if s.reference)
-    por_par = {((s.certificate or "").strip(), (s.reference or "").strip()): s.id for s in sins}
-    por_ref = {(s.reference or "").strip(): s.id for s in sins
-               if s.reference and ref_cnt[(s.reference or "").strip()] == 1}
+    ref_cnt = Counter(_tok(s.reference) for s in sins if s.reference)
+    por_par = {((s.certificate or "").strip(), _tok(s.reference)): s.id for s in sins}
+    por_ref = {_tok(s.reference): s.id for s in sins
+               if s.reference and ref_cnt[_tok(s.reference)] == 1}
 
     def casar(cert, ref):
-        # La REFERENCIA del claim es la clave fiable (siempre presente). NO se usa el respaldo por
-        # certificado: dos claims distintos pueden compartir certificado (p. ej. 2025HCA0210 y
-        # 2023HCA0105 comparten GH000005317-LB) y el por_cert los confundiría.
-        return por_par.get((cert, ref)) or por_ref.get(ref)
+        n = _tok(ref)
+        n = alias.get(n, n)
+        return por_par.get((cert, n)) or por_ref.get(n)
 
     # refs sin siniestro: nos quedamos con la última aparición (mes mayor) para crearlo
     huerfanos = {}  # ref -> (po, g, cert)
@@ -341,7 +412,7 @@ def main():
         db.flush()
         # refrescar mapas con los nuevos
         for s in db.scalars(select(Siniestro).where(Siniestro.binder_id == b.id)).all():
-            por_par[((s.certificate or "").strip(), (s.reference or "").strip())] = s.id
+            por_par[((s.certificate or "").strip(), _tok(s.reference))] = s.id
 
     # ── PASO 3: presentaciones + bloqueo ──
     total = 0

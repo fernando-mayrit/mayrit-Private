@@ -67,12 +67,21 @@ h1, h2, h3 { font-family: var(--fuente-titulo); font-weight: 600; color: var(--g
 .sidebar-bottom { margin-top: auto; border-top: 1px solid var(--borde); }  /* Configuración abajo del todo, separada */
 .nav-group { margin-bottom: 22px; }
 .nav-group:last-child { margin-bottom: 0; }
+.nav-group-cerrado { margin-bottom: 0; }
 /* Separador visible entre bloques del mismo panel (p. ej. Negocio / Facturación) */
 .nav-group + .nav-group { border-top: 1px solid var(--borde); padding-top: 16px; }
 .nav-group-title {
   font-size: 12px; letter-spacing: .06em; text-transform: uppercase;
   color: var(--gris-medio); padding: 6px 12px; font-weight: 600;
 }
+/* Variante desplegable (sólo Configuración): el título es un botón que pliega/despliega. */
+.nav-group-title-btn {
+  display: flex; align-items: center; gap: 6px; width: 100%; text-align: left;
+  background: none; border: none; cursor: pointer; font-family: var(--fuente-titulo);
+  border-radius: 8px;
+}
+.nav-group-title-btn:hover { background: var(--gris-claro); color: var(--gris); }
+.nav-chevron { font-size: 10px; width: 10px; flex-shrink: 0; line-height: 1; }
 .nav-item {
   display: flex; align-items: center; gap: 9px; width: 100%; text-align: left;
   background: none; border: none; cursor: pointer; padding: 9px 12px; border-radius: 8px;
@@ -304,6 +313,9 @@ td.num, th.num { text-align: right; }
 .tot-row b { font-variant-numeric: tabular-nums; }
 .tot-row.tot-pdte { border-top: 1px solid var(--borde); margin-top: 2px; padding-top: 4px; }
 .tot-row.tot-pdte span, .tot-row.tot-pdte b { color: var(--naranja-osc); font-weight: 600; }
+/* Sub-cuadro amarillo con los dos ratios (Frecuencia + Siniestralidad), dentro de la columna. */
+.tot-ratios { margin-top: 6px; padding: 4px 8px; background: #fff6cc; border: 1px solid #e6cf6a; border-radius: 8px; }
+.tot-ratios .tot-ratio span, .tot-ratios .tot-ratio b { color: var(--naranja-osc); font-weight: 600; }
 /* Embudo de filtro en la cabecera */
 .col-filtro { margin-left: 6px; cursor: pointer; color: var(--gris-medio); font-size: 11px; }
 .col-filtro:hover { color: var(--naranja-osc); }

@@ -213,9 +213,10 @@ export default function SiniestrosPage() {
               </div>
               <div className="tot-col">
                 <div className="tot-row"><span title="GWP our line − comisión coverholder − brokerage">Prima Neta</span><b>{base ? fmtMiles(base.net_uw) : "—"}</b></div>
-                <div className="tot-row" style={{ visibility: "hidden" }}><span>·</span><b>·</b></div>
-                <div className="tot-row"><span title="Nº siniestros / Nº pólizas">Ratio Frecuencia</span><b>{ratioFrec}</b></div>
-                <div className="tot-row tot-pdte"><span title="Siniestralidad / (GWP our line − com. coverholder − brokerage)">Ratio Siniestralidad</span><b>{ratioSin}</b></div>
+                <div className="tot-ratios">
+                  <div className="tot-row tot-ratio"><span title="Nº siniestros / Nº pólizas">Ratio Frecuencia</span><b>{ratioFrec}</b></div>
+                  <div className="tot-row tot-ratio"><span title="Siniestralidad / (GWP our line − com. coverholder − brokerage)">Ratio Siniestralidad</span><b>{ratioSin}</b></div>
+                </div>
               </div>
             </div>
           </div>

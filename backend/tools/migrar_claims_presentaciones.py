@@ -72,6 +72,28 @@ def _num(v) -> float:
         return 0.0
 
 
+def _dec(v) -> Decimal:
+    return Decimal(str(_num(v))).quantize(Decimal("0.01"))
+
+
+def _fecha(v) -> dt.date | None:
+    """Parsea una fecha ya serializada por _safe ('aaaa-mm-dd') o un date/datetime."""
+    if isinstance(v, dt.datetime):
+        return v.date()
+    if isinstance(v, dt.date):
+        return v
+    if not v:
+        return None
+    try:
+        return dt.date.fromisoformat(str(v)[:10])
+    except ValueError:
+        return None
+
+
+def _txt(v):
+    return " ".join(str(v).split()) if v not in (None, "") else None
+
+
 def _safe(h: str, v):
     if v is None or v == "":
         return None
@@ -99,6 +121,13 @@ def main():
     ap.add_argument("--omitir-sin-casar", action="store_true",
                     help="Omite las filas de claim que no casan con ningún siniestro del binder "
                          "(en vez de volcarlas con siniestro_id nulo).")
+    ap.add_argument("--crear-siniestros", action="store_true",
+                    help="Da de alta los siniestros que aparezcan en los snapshots y no existan "
+                         "(claims aún no en SharePoint), a partir de su última fila.")
+    ap.add_argument("--alias-ref", default="",
+                    help="Mapea la referencia del snapshot a la del siniestro cuando el bordereau "
+                         "usa otra numeración. Formato: 'refSnapshot=refSiniestro,otra=otra'. "
+                         "Útil cuando el snapshot y SharePoint nombran distinto el mismo claim.")
     ap.add_argument("--apply", action="store_true")
     args = ap.parse_args()
 
@@ -107,6 +136,12 @@ def main():
         if "=" in par:
             k, v = par.split("=", 1)
             overrides[k.strip()] = v.strip()
+
+    alias_ref: dict[str, str] = {}
+    for par in args.alias_ref.split(","):
+        if "=" in par:
+            k, v = par.split("=", 1)
+            alias_ref[k.strip()] = v.strip()
 
     db = SessionLocal()
     b = db.get(Binder, args.binder_id) if args.binder_id else \
@@ -164,6 +199,7 @@ def main():
                 return r[ix[h]] if h in ix else None
             cert = str(g("Certificate Reference") or "").strip()
             ref = str(g("Claim Reference / Number") or "").strip()
+            ref = alias_ref.get(ref, ref)  # renumeración: snapshot -> siniestro
             sid = por_par.get((cert, ref)) or por_ref.get(ref) or por_cert.get(cert)
             if sid is None and args.omitir_sin_casar:
                 continue
@@ -197,10 +233,66 @@ def main():
         print(f"  {p}: {len(regs)} siniestro(s)" + (f"  [!] {nm} sin casar" if nm else ""))
     print(f"Filas sin casar con un siniestro del binder: {sin_match} · meses NIL: {n_nil}")
 
+    # Huérfanos: refs en snapshot que no casan con ningún siniestro (claims aún no en SharePoint).
+    # Se conserva la última fila vista de cada uno (mayor periodo) para darlo de alta si procede.
+    huerfanos: dict[tuple[str, str], tuple[int, dict]] = {}
+    for p in periodos:
+        for fila, meta, po2 in por_periodo[p]:
+            if meta["siniestro_id"] is None:
+                cert = str(fila.get("Certificate Reference") or "").strip()
+                ref = str(fila.get("Claim Reference / Number") or "").strip()
+                if ref and ((cert, ref) not in huerfanos or po2 > huerfanos[(cert, ref)][0]):
+                    huerfanos[(cert, ref)] = (po2, fila)
+    if huerfanos:
+        accion = ("se CREARÁN" if args.crear_siniestros else
+                  "se OMITEN" if args.omitir_sin_casar else "se vuelcan con siniestro nulo")
+        print(f"Claims huérfanos: {sorted(r for _, r in huerfanos)} -> {accion}")
+
     if not args.apply:
         db.close()
         print("\nDRY-RUN: no se ha escrito nada. Repite con --apply para volcar el histórico.")
         return
+
+    if args.crear_siniestros and huerfanos:
+        yoa_int = int(b.yoa) if (b.yoa and str(b.yoa).isdigit()) else None
+        for (cert, ref), (po2, fila) in huerfanos.items():
+            pi = _num(fila.get("Previously Paid - Indemnity")) + _num(fila.get("Paid this month - Indemnity"))
+            pf = _num(fila.get("Previously Paid - Fees")) + _num(fila.get("Paid this month - Fees"))
+            ri = _num(fila.get("Reserve - Indemnity"))
+            rf = _num(fila.get("Reserve - Fees"))
+            db.add(Siniestro(
+                binder_id=b.id, certificate=cert or None, reference=ref or None,
+                insured=_txt(fila.get("Insured Full Name or Company Name")),
+                risk_code=_txt(fila.get("Lloyd's Risk Code")),
+                currency=_txt(fila.get("Original Currency")),
+                claimant=_txt(fila.get("Claimant Name")),
+                reporting_period=f"{po2 // 100:04d}-{po2 % 100:02d}",
+                risk_inception=_fecha(fila.get("Risk Inception Date")),
+                risk_expiry=_fecha(fila.get("Risk Expiry Date")),
+                claim_first_advised=_fecha(fila.get("Date Claim First Advised/Date Claim Made")),
+                description=_txt(fila.get("Loss Description")),
+                status=_txt(fila.get("Claim Status")), yoa=yoa_int,
+                date_opened=_fecha(fila.get("Date Claim Opened")),
+                date_closed=_fecha(fila.get("Date Closed")),
+                amount_claimed=_dec(fila.get("Amount Claimed")),
+                paid_indemnity=_dec(pi), paid_fees=_dec(pf),
+                reserves_indemnity=_dec(ri), reserves_fees=_dec(rf),
+                total_indemnity=_dec(pi + ri), total_fees=_dec(pf + rf),
+            ))
+        db.flush()
+        # Reenganchar: re-resolver el siniestro de cada registro huérfano con los recién creados.
+        sins2 = db.scalars(select(Siniestro).where(Siniestro.binder_id == b.id)).all()
+        rc = Counter((s.reference or "").strip() for s in sins2 if s.reference)
+        npar = {((s.certificate or "").strip(), (s.reference or "").strip()): s.id for s in sins2}
+        nref = {(s.reference or "").strip(): s.id for s in sins2
+                if s.reference and rc[(s.reference or "").strip()] == 1}
+        for p in periodos:
+            for fila, meta, _po in por_periodo[p]:
+                if meta["siniestro_id"] is None:
+                    cert = str(fila.get("Certificate Reference") or "").strip()
+                    ref = str(fila.get("Claim Reference / Number") or "").strip()
+                    meta["siniestro_id"] = npar.get((cert, ref)) or nref.get(ref)
+        print(f"Siniestros creados: {len(huerfanos)}")
 
     total = 0
     for p in periodos:

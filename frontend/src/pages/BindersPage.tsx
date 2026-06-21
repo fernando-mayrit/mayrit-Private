@@ -869,17 +869,22 @@ export default function BindersPage() {
       .sort((a, b) => (a.fecha_efecto ?? "").localeCompare(b.fecha_efecto ?? ""))[0];
   }
 
-  // Mercado con mayor participación del binder (entre todas las secciones) → su Código (IdMercado).
-  function mercadoPrincipal(b: Binder): string {
-    let best: { id: number; part: number } | null = null;
+  // Mercados del binder (todas las secciones), distintos, ordenados por participación ↓ y unidos
+  // por " / " (cuando hay más de uno, se muestran todos).
+  function mercadosTexto(b: Binder): string {
+    const part = new Map<number, number>();
     for (const s of b.secciones)
-      for (const m of s.mercados) {
-        const p = m.participacion ?? 0;
-        if (!best || p > best.part) best = { id: m.mercado_id, part: p };
-      }
-    if (!best) return "—";
-    const mc = mercados.find((x) => x.id === best!.id);
-    return mc?.alias || mc?.nombre || "—";
+      for (const m of s.mercados)
+        part.set(m.mercado_id, (part.get(m.mercado_id) ?? 0) + (m.participacion ?? 0));
+    if (part.size === 0) return "—";
+    const nombre = (id: number) => {
+      const mc = mercados.find((x) => x.id === id);
+      return mc?.alias || mc?.nombre || "—";
+    };
+    return [...part.entries()]
+      .sort((a, c) => c[1] - a[1])
+      .map(([id]) => nombre(id))
+      .join(" / ");
   }
 
   // Opciones de los desplegables (de lo ya cargado) y lista visible: filtrada + ordenada por YOA ↓.
@@ -1015,7 +1020,7 @@ export default function BindersPage() {
                   <td>{b.umr ?? "—"}</td>
                   <td>{b.yoa ?? "—"}</td>
                   <td>{b.coverholder_alias ?? b.coverholder_nombre ?? "—"}</td>
-                  <td>{mercadoPrincipal(b)}</td>
+                  <td>{mercadosTexto(b)}</td>
                   <td>
                     {b.estado ? <span className={"estado-badge estado-badge-sm " + estadoBadgeClase(b.estado)}>{b.estado}</span> : "—"}
                     {/* PROVISIONAL: marca de binders sin snapshots de Claims */}

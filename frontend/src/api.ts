@@ -1,8 +1,10 @@
 // Cliente mínimo de la API de Mayrit (backend FastAPI).
-// - En desarrollo: backend local (localhost:8000).
+// - En desarrollo: backend local (127.0.0.1:8000). Usamos 127.0.0.1 y NO "localhost" a propósito:
+//   "localhost" resuelve antes a IPv6 (::1) y, como uvicorn escucha en IPv4, cada petición se
+//   colgaba ~2 s esperando el timeout antes de reintentar por IPv4.
 // - En producción (build): mismo origen → rutas relativas (el backend sirve también el frontend).
 // Se puede forzar con VITE_API_URL.
-const BASE = import.meta.env.VITE_API_URL ?? (import.meta.env.DEV ? "http://localhost:8000" : "");
+const BASE = import.meta.env.VITE_API_URL ?? (import.meta.env.DEV ? "http://127.0.0.1:8000" : "");
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
