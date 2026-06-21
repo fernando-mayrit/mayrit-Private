@@ -134,6 +134,7 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
   // ── Triangulación de siniestralidad ──
   const [tri, setTri] = useState<Triangulacion | null>(null);
   const [triMetrica, setTriMetrica] = useState<MetricaTriangulo>("incurrido");
+  const [triVista, setTriVista] = useState<"cal" | "edad">("cal"); // calendario o por antigüedad
   const [triBusy, setTriBusy] = useState(false);
   async function cargarTriangulacion() {
     setTriBusy(true);
@@ -1237,12 +1238,24 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
         ) : (() => {
           const matriz = tri.triangulos[triMetrica];
           const meses = tri.meses;
+          const n = meses.length;
           const esNum = triMetrica === "num";
           const ratio = tri.net_uw ? (tri.incurrido_actual / tri.net_uw) * 100 : null;
           const ibnrPct = tri.gwp_our_line ? (tri.ibnr_sugerido / tri.gwp_our_line) * 100 : null;
-          // Total por columna de valuación = siniestralidad total a ese mes (suma de los orígenes).
-          const totalCol = meses.map((_, j) => matriz.reduce((a, fila) => a + (fila[j] ?? 0), 0));
           const celda = (v: number | null) => (v == null ? "" : esNum ? v : fmtMiles(v));
+          // Columnas según la vista:
+          //  - "cal": meses de valuación, del MÁS RECIENTE (izquierda) al más antiguo (derecha).
+          //  - "edad": antigüedad 0,1,2… (meses desde la apertura); celda = valor a origen+d.
+          type ColDef = { label: string; get: (i: number) => number | null };
+          const colDefs: ColDef[] =
+            triVista === "cal"
+              ? Array.from({ length: n }, (_, k) => n - 1 - k).map((j) => ({
+                  label: meses[j], get: (i: number) => matriz[i][j],
+                }))
+              : Array.from({ length: n }, (_, d) => ({
+                  label: String(d), get: (i: number) => (i + d < n ? matriz[i][i + d] : null),
+                }));
+          const totalCol = colDefs.map((c) => matriz.reduce((a, _f, i) => a + (c.get(i) ?? 0), 0));
           return (
             <>
               <div className="bdx-topbar" style={{ alignItems: "center", gap: 12, flexWrap: "wrap" }}>
@@ -1250,6 +1263,10 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
                   <option value="incurrido">Incurrido (pagado + reservas)</option>
                   <option value="pagado">Pagado</option>
                   <option value="num">Nº de siniestros</option>
+                </select>
+                <select className="filtro" value={triVista} onChange={(e) => setTriVista(e.target.value as "cal" | "edad")}>
+                  <option value="cal">Vista: Calendario</option>
+                  <option value="edad">Vista: Por antigüedad</option>
                 </select>
                 <span className="hint">
                   GWP Our Line: <b>{imp(tri.gwp_our_line)}</b> · Net to UWs: <b>{imp(tri.net_uw)}</b>
@@ -1260,7 +1277,9 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
                   IBNR sugerido: <b>{imp(tri.ibnr_sugerido)}{ibnrPct == null ? "" : ` (${fmtMiles(ibnrPct)} %)`}</b>
                   {" · "}Ultimate: <b>{imp(tri.ultimate_sugerido)}</b>
                 </span>
-                <span className="hint">Filas = mes de apertura · columnas = mes de valuación.</span>
+                <span className="hint">
+                  Filas = mes de apertura · columnas = {triVista === "cal" ? "mes de valuación (reciente → antiguo)" : "meses desde la apertura"}.
+                </span>
               </div>
               <div className="tabla-scroll bdx-scroll">
                 <table className="compacto bdx-tabla tri-tabla">
@@ -1268,7 +1287,7 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
                     <tr>
                       <th style={{ position: "sticky", left: 0 }}>Mes</th>
                       <th className="num tri-actual" title="GWP Our Line del mes">GWP</th>
-                      {meses.map((m) => <th key={m} className="num">{m}</th>)}
+                      {colDefs.map((c, k) => <th key={k} className="num">{c.label}</th>)}
                     </tr>
                   </thead>
                   <tbody>
@@ -1276,7 +1295,7 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
                       <tr key={m}>
                         <th style={{ position: "sticky", left: 0 }}>{m}</th>
                         <td className="num tri-actual">{fmtMiles(tri.premium_mes[i])}</td>
-                        {meses.map((mc, j) => <td key={mc} className="num">{celda(matriz[i][j])}</td>)}
+                        {colDefs.map((c, k) => <td key={k} className="num">{celda(c.get(i))}</td>)}
                       </tr>
                     ))}
                   </tbody>
@@ -1284,7 +1303,7 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
                     <tr className="tri-total">
                       <th style={{ position: "sticky", left: 0 }}>Total</th>
                       <td className="num tri-actual">{fmtMiles(tri.total_premium)}</td>
-                      {totalCol.map((t, j) => <td key={j} className="num">{esNum ? t : fmtMiles(t)}</td>)}
+                      {totalCol.map((t, k) => <td key={k} className="num">{esNum ? t : fmtMiles(t)}</td>)}
                     </tr>
                   </tfoot>
                 </table>
