@@ -4,6 +4,7 @@ import { useMemo } from "react";
 const ACCESOS: { id: string; label: string; emoji: string }[] = [
   { id: "binders", label: "Binders", emoji: "📑" },
   { id: "polizas", label: "Pólizas (OM)", emoji: "📄" },
+  { id: "siniestros", label: "Siniestros", emoji: "🚨" },
   { id: "recibos", label: "Recibos", emoji: "🧾" },
   { id: "financiero", label: "Financiero", emoji: "💰" },
 ];

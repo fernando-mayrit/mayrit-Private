@@ -29,6 +29,7 @@ const EMOJI: Record<string, string> = {
   binders: "📑",
   programas: "🔗",
   siniestros: "🚨",
+  triangulacion: "🔺",
   recibos: "🧾",
   polizas: "📄",
   consultoria: "💼",
@@ -48,6 +49,7 @@ type Page =
   | "binders"
   | "programas"
   | "siniestros"
+  | "triangulacion"
   | "recibos"
   | "polizas"
   | "consultoria"
@@ -77,6 +79,11 @@ const NEGOCIO: { id: Page; label: string }[] = [
 // Menú lateral: Siniestros (Claims BDX de todos los binders).
 const SINIESTROS: { id: Page; label: string }[] = [
   { id: "siniestros", label: "Siniestros" },
+];
+
+// Menú lateral: Triangulación (pendiente de configurar).
+const TRIANGULACION: { id: Page; label: string }[] = [
+  { id: "triangulacion", label: "Triangulación" },
 ];
 
 // Menú lateral: Facturación / Contabilidad (módulo propio, diferenciado del Negocio).
@@ -205,6 +212,16 @@ export default function App() {
                   {it.label}
                 </button>
               ))}
+              {TRIANGULACION.map((it) => (
+                <button
+                  key={it.id}
+                  className={"nav-item" + (page === it.id ? " active" : "")}
+                  onClick={() => setPage(it.id)}
+                >
+                  <span className="nav-emoji">{EMOJI[it.id]}</span>
+                  {it.label}
+                </button>
+              ))}
             </div>
             <div className="nav-group">
               <div className="nav-group-title">Facturación</div>
@@ -259,6 +276,7 @@ export default function App() {
           {page === "programas" && <ProgramasPage />}
           {page === "recibos" && <RecibosPage />}
           {page === "siniestros" && <SiniestrosPage />}
+          {page === "triangulacion" && <EnConstruccion titulo="Triangulación" />}
           {page === "cierre" && <CierreContablePage />}
           {page === "financiero" && <FinancieroPage />}
           {page === "polizas" && <PolizasPage />}
