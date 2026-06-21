@@ -1278,8 +1278,8 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
           const totalCol = colDefs.map((c) => matriz.reduce((a, _f, i) => a + (c.get(i) ?? 0), 0));
           return (
             <>
-              <div className="bdx-topbar" style={{ alignItems: "flex-start", gap: 12, flexWrap: "wrap", justifyContent: "space-between" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <div style={{ marginBottom: 8 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 6 }}>
                   <select className="filtro" value={triMetrica} onChange={(e) => setTriMetrica(e.target.value as MetricaTriangulo)}>
                     <option value="incurrido">Incurrido (pagado + reservas)</option>
                     <option value="pagado">Pagado</option>
@@ -1303,19 +1303,21 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
                     {tri.secciones.map((s) => <option key={`sec:${s}`} value={`sec:${s}`}>Sección {s}</option>)}
                   </select>
                   <button className="btn-secondary" onClick={exportarTriangulo} title="Exportar a Excel la métrica y el ámbito seleccionados">⤓ Excel</button>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
                   <span className="hint">
                     Filas = mes de apertura · columnas = {triVista === "cal" ? "mes de valuación (reciente → antiguo)" : "meses desde la apertura"}.
                   </span>
-                </div>
-                <div style={{ textAlign: "right" }}>
-                  <div className="hint">
-                    GWP Our Line: <b>{imp(tri.gwp_our_line)}</b> · Net to UWs: <b>{imp(tri.net_uw)}</b>
-                    {" · "}Incurrido actual: <b>{imp(tri.incurrido_actual)}</b>
-                    {" · "}Siniestralidad: <b>{ratio == null ? "—" : `${fmtMiles(ratio)} %`}</b>
-                  </div>
-                  <div className="hint" title="Estimación orientativa por chain-ladder. El % del IBNR es sobre GWP Our Line; el del Ultimate, sobre Net to UWs.">
-                    IBNR sugerido: <b>{imp(tri.ibnr_sugerido)}{ibnrPct == null ? "" : ` (${fmtMiles(ibnrPct)} %)`}</b>
-                    {" · "}Ultimate: <b>{imp(tri.ultimate_sugerido)}{ultPct == null ? "" : ` (${fmtMiles(ultPct)} %)`}</b>
+                  <div style={{ textAlign: "right" }}>
+                    <div className="hint">
+                      GWP Our Line: <b>{imp(tri.gwp_our_line)}</b> · Net to UWs: <b>{imp(tri.net_uw)}</b>
+                      {" · "}Incurrido actual: <b>{imp(tri.incurrido_actual)}</b>
+                      {" · "}Siniestralidad: <b>{ratio == null ? "—" : `${fmtMiles(ratio)} %`}</b>
+                    </div>
+                    <div className="hint" title="Estimación orientativa por chain-ladder. El % del IBNR es sobre GWP Our Line; el del Ultimate, sobre Net to UWs.">
+                      IBNR sugerido: <b>{imp(tri.ibnr_sugerido)}{ibnrPct == null ? "" : ` (${fmtMiles(ibnrPct)} %)`}</b>
+                      {" · "}Ultimate: <b>{imp(tri.ultimate_sugerido)}{ultPct == null ? "" : ` (${fmtMiles(ultPct)} %)`}</b>
+                    </div>
                   </div>
                 </div>
               </div>
