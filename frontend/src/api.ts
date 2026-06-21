@@ -90,6 +90,8 @@ export interface Triangulacion {
   triangulos: Record<MetricaTriangulo, number[][]>;
   net_uw: number;                     // GWP our line − com. coverholder − brokerage
   incurrido_actual: number;           // incurrido total valuado al último mes
+  ibnr_sugerido: number;              // estimación chain-ladder (orientativa)
+  ultimate_sugerido: number;
 }
 export const triangulacionApi = {
   deBinder: (binderId: number) => request<Triangulacion>(`/binders/${binderId}/triangulacion`),

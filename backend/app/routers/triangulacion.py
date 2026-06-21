@@ -135,10 +135,47 @@ def triangulacion_binder(binder_id: int, db: Session = Depends(get_db)):
     # Incurrido actual del binder = valuación de todos los siniestros en el último mes.
     incurrido_actual = round(sum((val_at(sid, latest) or (0.0, 0.0))[0] for sid in snaps), 2)
 
+    ibnr, ultimate = _chain_ladder(tri_inc)
+
     return {
         "origenes": [_periodo_de_mi(o) for o in origenes_mi],
         "max_desarrollo": latest - min(origenes_mi),
         "triangulos": {"incurrido": tri_inc, "pagado": tri_paid, "num": tri_num},
         "net_uw": _net_uw(db, binder_id),
         "incurrido_actual": incurrido_actual,
+        "ibnr_sugerido": ibnr,
+        "ultimate_sugerido": ultimate,
     }
+
+
+def _chain_ladder(tri: list[list[float]]) -> tuple[float, float]:
+    """Estimación SUGERIDA de IBNR por chain-ladder (volumen ponderado) sobre el triángulo de
+    incurrido acumulado. Devuelve (ibnr_sugerido, ultimate_sugerido).
+
+    IBNR = Σ ultimate − Σ último incurrido conocido de cada cohorte. Es una orientación: con
+    pocos cohortes o desarrollo errático puede ser inestable (de ahí "sugerido")."""
+    if not tri:
+        return 0.0, 0.0
+    maxlen = max(len(f) for f in tri)
+    if maxlen < 2:
+        actual = sum(f[-1] for f in tri if f)
+        return 0.0, round(actual, 2)
+    # Factores edad-a-edad f[d]: Σ C(i,d+1) / Σ C(i,d) sobre cohortes con datos en d y d+1.
+    factores = []
+    for d in range(maxlen - 1):
+        num = sum(f[d + 1] for f in tri if len(f) > d + 1)
+        den = sum(f[d] for f in tri if len(f) > d + 1)
+        factores.append(num / den if den > 0 else 1.0)
+    # Proyección de cada cohorte desde su último desarrollo conocido hasta el final.
+    ultimate = 0.0
+    actual = 0.0
+    for f in tri:
+        if not f:
+            continue
+        last = len(f) - 1
+        v = f[last]
+        actual += v
+        for d in range(last, maxlen - 1):
+            v *= factores[d]
+        ultimate += v
+    return round(ultimate - actual, 2), round(ultimate, 2)

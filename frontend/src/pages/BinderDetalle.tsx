@@ -1239,6 +1239,10 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
           const cols = tri.max_desarrollo + 1;
           const esNum = triMetrica === "num";
           const ratio = tri.net_uw ? (tri.incurrido_actual / tri.net_uw) * 100 : null;
+          // Totales por columna de desarrollo (suma de las filas que llegan a ese desarrollo).
+          const totales = Array.from({ length: cols }, (_, d) =>
+            matriz.reduce((a, fila) => a + (d < fila.length ? fila[d] : 0), 0)
+          );
           return (
             <>
               <div className="bdx-topbar" style={{ alignItems: "center", gap: 12, flexWrap: "wrap" }}>
@@ -1250,6 +1254,9 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
                 <span className="hint">
                   Net to UWs: <b>{imp(tri.net_uw)}</b> · Incurrido actual: <b>{imp(tri.incurrido_actual)}</b>
                   {" · "}Siniestralidad: <b>{ratio == null ? "—" : `${fmtMiles(ratio)} %`}</b>
+                </span>
+                <span className="hint" title="Estimación orientativa por chain-ladder sobre el incurrido">
+                  IBNR sugerido: <b>{imp(tri.ibnr_sugerido)}</b> · Ultimate: <b>{imp(tri.ultimate_sugerido)}</b>
                 </span>
                 <span className="hint">Filas = mes de apertura · columnas = meses de desarrollo.</span>
               </div>
@@ -1279,6 +1286,14 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
                       );
                     })}
                   </tbody>
+                  <tfoot>
+                    <tr className="tri-total">
+                      <th style={{ position: "sticky", left: 0 }}>Total</th>
+                      {totales.map((t, d) => (
+                        <td key={d} className="num">{esNum ? t : fmtMiles(t)}</td>
+                      ))}
+                    </tr>
+                  </tfoot>
                 </table>
               </div>
             </>
