@@ -211,6 +211,8 @@ def _serializar(b: Binder, met: dict | None = None) -> dict:
         "fecha_efecto": b.fecha_efecto,
         "fecha_vencimiento": b.fecha_vencimiento,
         "estado": b.estado,
+        "participacion": b.participacion,
+        "faltan_snapshots": b.faltan_snapshots,
         "moneda": b.moneda,
         "yoa": b.yoa,
         "profit_commission": b.profit_commission,

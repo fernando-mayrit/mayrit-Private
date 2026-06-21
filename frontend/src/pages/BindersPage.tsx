@@ -64,6 +64,8 @@ type FormState = {
   fecha_vencimiento: string;
   yoa: string;
   estado: string;
+  participacion: string;
+  faltan_snapshots: boolean;
   moneda: string;
   // Datos comunes del binder (debajo de las secciones)
   profit_commission: boolean;
@@ -111,6 +113,8 @@ const VACIO: FormState = {
   fecha_vencimiento: "",
   yoa: "",
   estado: "En Vigor",
+  participacion: "100",
+  faltan_snapshots: false,
   moneda: "EUR",
   profit_commission: false,
   pc_porcentaje: "",
@@ -462,6 +466,8 @@ export default function BindersPage() {
       fecha_vencimiento: b.fecha_vencimiento ?? "",
       yoa: b.yoa ?? "",
       estado: b.estado ?? "",
+      participacion: b.participacion != null ? String(b.participacion) : "100",
+      faltan_snapshots: !!b.faltan_snapshots,
       moneda: b.moneda ?? "",
       profit_commission: !!b.profit_commission,
       pc_porcentaje: b.pc_porcentaje != null ? String(b.pc_porcentaje) : "",
@@ -618,6 +624,7 @@ export default function BindersPage() {
       try {
         await api.update(form.id, {
           estado: form.estado || null,
+          faltan_snapshots: form.faltan_snapshots,   // PROVISIONAL
         } as unknown as BinderWrite);
         cerrar();
         await cargar();
@@ -635,6 +642,11 @@ export default function BindersPage() {
     if (!form.fecha_efecto) return setError("La fecha de efecto es obligatoria.");
     if (!form.fecha_vencimiento) return setError("La fecha de vencimiento es obligatoria.");
     if (!form.yoa.trim()) return setError("El YOA es obligatorio.");
+    // Participación del binder (% del contrato que llevamos): la suma de participaciones por
+    // mercado de cada sección debe igualar este valor (no 100 fijo).
+    const part = num(form.participacion);
+    if (part == null || part <= 0 || part > 100)
+      return setError("La participación debe estar entre 0 y 100 %.");
     for (let i = 0; i < form.secciones.length; i++) {
       const s = form.secciones[i];
       const N = `La sección ${i + 1}`;
@@ -650,8 +662,8 @@ export default function BindersPage() {
       if (lineas.some((m) => num(m.participacion) == null))
         return setError(`${N}: cada mercado necesita su participación (%).`);
       const suma = lineas.reduce((a, m) => a + (num(m.participacion) ?? 0), 0);
-      if (Math.abs(suma - 100) > 0.005)
-        return setError(`${N}: la suma de participaciones debe ser 100 % (ahora ${pct(suma)}).`);
+      if (Math.abs(suma - part) > 0.005)
+        return setError(`${N}: la suma de participaciones debe ser ${pct(part)} (la del binder), ahora ${pct(suma)}.`);
     }
 
     // Límite de Primas: validar cada grupo USADO por alguna sección (límite + notificación).
@@ -719,6 +731,8 @@ export default function BindersPage() {
       fecha_vencimiento: form.fecha_vencimiento || null,
       yoa: form.yoa.trim() || null,
       estado: form.estado || null,
+      participacion: form.participacion ? num(form.participacion) : 100,
+      faltan_snapshots: form.faltan_snapshots,
       moneda: form.moneda || null,
       profit_commission: form.profit_commission,
       pc_porcentaje: form.profit_commission ? num(form.pc_porcentaje) : null,
@@ -1014,7 +1028,11 @@ export default function BindersPage() {
                   <td>{b.yoa ?? "—"}</td>
                   <td>{b.coverholder_alias ?? b.coverholder_nombre ?? "—"}</td>
                   <td>{mercadoPrincipal(b)}</td>
-                  <td>{b.estado ? <span className={"estado-badge estado-badge-sm " + estadoBadgeClase(b.estado)}>{b.estado}</span> : "—"}</td>
+                  <td>
+                    {b.estado ? <span className={"estado-badge estado-badge-sm " + estadoBadgeClase(b.estado)}>{b.estado}</span> : "—"}
+                    {/* PROVISIONAL: marca de binders sin snapshots de Claims */}
+                    {b.faltan_snapshots && <span className="estado-badge estado-badge-sm eb-cerrado-prod" style={{ marginLeft: 6 }} title="Faltan snapshots de Claims">Faltan Snapshots</span>}
+                  </td>
                   <td>{ramosDe(b)}</td>
                   <td>{fechaCorta(b.fecha_efecto)}</td>
                   <td>{fechaCorta(b.fecha_vencimiento)}</td>
@@ -1057,6 +1075,15 @@ export default function BindersPage() {
           onDelete={soloEstado || corrigiendo ? borrarActual : undefined}
           escEnabled={!altaPrograma}
         >
+          {/* PROVISIONAL (se eliminará): marca de binders sin snapshots de Claims */}
+          <label className="field check" style={{ marginBottom: 10 }}>
+            <input
+              type="checkbox"
+              checked={form.faltan_snapshots}
+              onChange={(e) => setForm({ ...form, faltan_snapshots: e.target.checked })}
+            />
+            Faltan Snapshots <span className="hint">· provisional</span>
+          </label>
           {soloEstado && (
             <>
               <div className="field">
@@ -1284,6 +1311,19 @@ export default function BindersPage() {
             </div>
           )}
 
+          {!soloEstado && (
+            <div className="field">
+              <label>Participación <span className="hint">· % del contrato que llevamos</span></label>
+              <NumberInput
+                value={form.participacion}
+                onChange={(v) => setForm({ ...form, participacion: v })}
+                suffix="%"
+                thousands={false}
+                disabled={modo === "suplemento"}
+              />
+            </div>
+          )}
+
           {/* Secciones */}
           <h3 style={{ marginBottom: 8 }}>Secciones</h3>
 
@@ -1451,12 +1491,13 @@ export default function BindersPage() {
                 + Añadir mercado
               </button>
               {(() => {
+                const part = num(form.participacion) ?? 100;
                 const suma = s.mercados.reduce((a, m) => a + (num(m.participacion) ?? 0), 0);
-                const ok = Math.abs(suma - 100) < 0.005;
+                const ok = Math.abs(suma - part) < 0.005;
                 return (
                   <div className={ok ? "part-total ok" : "part-total"}>
                     Total participación: {pct(suma)}
-                    {!ok && " (debe sumar 100 %)"}
+                    {!ok && ` (debe sumar ${pct(part)})`}
                   </div>
                 );
               })()}

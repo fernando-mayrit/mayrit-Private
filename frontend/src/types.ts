@@ -150,6 +150,8 @@ export interface Binder extends BinderComun {
   fecha_efecto: string | null;
   fecha_vencimiento: string | null;
   estado: string | null;
+  participacion: number | null;   // % del contrato (reaseguro) que lleva Mayrit (def. 100)
+  faltan_snapshots: boolean;      // PROVISIONAL: marca binders sin snapshots de Claims
   moneda: string | null;
   yoa: string | null;
   notas: string | null;
@@ -169,6 +171,8 @@ export interface BinderWrite extends BinderComun {
   fecha_efecto?: string | null;
   fecha_vencimiento?: string | null;
   estado?: string | null;
+  participacion?: number | null;
+  faltan_snapshots?: boolean;
   moneda?: string | null;
   yoa?: string | null;
   notas?: string | null;

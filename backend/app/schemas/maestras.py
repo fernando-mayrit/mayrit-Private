@@ -461,6 +461,8 @@ class BinderBase(BaseModel):
     fecha_efecto: dt.date | None = None
     fecha_vencimiento: dt.date | None = None
     estado: str | None = None
+    participacion: Decimal | None = None   # % del contrato (reaseguro) que lleva Mayrit (def. 100)
+    faltan_snapshots: bool = False         # PROVISIONAL: marca binders sin snapshots de Claims
     moneda: str | None = None
     yoa: str | None = None
     # Datos comunes del binder
