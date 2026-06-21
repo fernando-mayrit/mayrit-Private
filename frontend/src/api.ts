@@ -40,8 +40,10 @@ export async function exportarXlsx(payload: {
 }
 
 // ── Siniestros (Claims BDX por binder) ──
+export type RatiosBase = { gwp_our_line: number; com_coverholder: number; brokerage: number; net_uw: number; n_polizas: number };
 export const siniestrosApi = {
   listarTodos: () => request<import("./types").Siniestro[]>(`/siniestros`),
+  ratios: () => request<{ total: RatiosBase; por_programa: Record<string, RatiosBase> }>(`/siniestros/ratios`),
   listar: (binderId: number) => request<import("./types").Siniestro[]>(`/binders/${binderId}/siniestros`),
   preview: (binderId: number) =>
     request<{ list_title: string; total: number; suma_total_indemnity: number; suma_total_fees: number; suma_reservas: number }>(
