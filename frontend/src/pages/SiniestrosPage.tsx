@@ -38,9 +38,10 @@ const COLS: Col<Siniestro>[] = [
   { key: "paid_fees", label: "Pagado fees", tipo: "num" },
   { key: "reserves_indemnity", label: "Reservas ind.", tipo: "num" },
   { key: "reserves_fees", label: "Reservas fees", tipo: "num" },
-  { key: "total_indemnity", label: "Total ind.", tipo: "num" },
-  { key: "total_fees", label: "Total fees", tipo: "num" },
-  { key: "total", label: "Total", tipo: "num", calc: (s) => n(s.total_indemnity) + n(s.total_fees) },
+  // Incurrido = pagado + reservas (no usamos total_*: incluyen el "a pagar este mes", ya contado).
+  { key: "total_indemnity", label: "Total ind.", tipo: "num", calc: (s) => n(s.paid_indemnity) + n(s.reserves_indemnity) },
+  { key: "total_fees", label: "Total fees", tipo: "num", calc: (s) => n(s.paid_fees) + n(s.reserves_fees) },
+  { key: "total", label: "Total", tipo: "num", calc: (s) => n(s.paid_indemnity) + n(s.reserves_indemnity) + n(s.paid_fees) + n(s.reserves_fees) },
   { key: "ucr", label: "UCR", tipo: "text" },
   { key: "abogado", label: "Abogado", tipo: "text" },
   { key: "description", label: "Descripción", tipo: "text", width: 220 },
@@ -98,10 +99,10 @@ export default function SiniestrosPage() {
       reclamado: filtrados.reduce((a, s) => a + n(s.amount_claimed), 0),
       reservaFees: filtrados.reduce((a, s) => a + n(s.reserves_fees), 0),
       pagosFees: filtrados.reduce((a, s) => a + n(s.paid_fees), 0),
-      totalFees: filtrados.reduce((a, s) => a + n(s.total_fees), 0),
+      totalFees: filtrados.reduce((a, s) => a + n(s.reserves_fees) + n(s.paid_fees), 0), // incurrido
       reservaIndem: filtrados.reduce((a, s) => a + n(s.reserves_indemnity), 0),
       pagosIndem: filtrados.reduce((a, s) => a + n(s.paid_indemnity), 0),
-      totalIndem: filtrados.reduce((a, s) => a + n(s.total_indemnity), 0),
+      totalIndem: filtrados.reduce((a, s) => a + n(s.reserves_indemnity) + n(s.paid_indemnity), 0), // incurrido
     };
   }, [filtrados]);
   const totalGen = tot.totalFees + tot.totalIndem;

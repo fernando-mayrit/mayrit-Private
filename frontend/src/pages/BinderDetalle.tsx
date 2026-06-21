@@ -78,9 +78,11 @@ const SIN_COLS: Col<Siniestro>[] = [
   { key: "paid_fees", label: "Pagado fees", tipo: "num" },
   { key: "reserves_indemnity", label: "Reservas ind.", tipo: "num" },
   { key: "reserves_fees", label: "Reservas fees", tipo: "num" },
-  { key: "total_indemnity", label: "Total ind.", tipo: "num" },
-  { key: "total_fees", label: "Total fees", tipo: "num" },
-  { key: "total", label: "Total", tipo: "num", calc: (s) => n(s.total_indemnity) + n(s.total_fees) },
+  // Incurrido = pagado + reservas (NO usamos total_indemnity/total_fees del maestro: incluyen el
+  // "a pagar este mes", que ya está en el pagado acumulado → inflaría el dato).
+  { key: "total_indemnity", label: "Total ind.", tipo: "num", calc: (s) => n(s.paid_indemnity) + n(s.reserves_indemnity) },
+  { key: "total_fees", label: "Total fees", tipo: "num", calc: (s) => n(s.paid_fees) + n(s.reserves_fees) },
+  { key: "total", label: "Total", tipo: "num", calc: (s) => n(s.paid_indemnity) + n(s.reserves_indemnity) + n(s.paid_fees) + n(s.reserves_fees) },
   { key: "ucr", label: "UCR", tipo: "text" },
   { key: "abogado", label: "Abogado", tipo: "text" },
   { key: "description", label: "Descripción", tipo: "text", width: 220 },
@@ -1123,11 +1125,11 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
               const reclamado = siniestros.reduce((a, s) => a + n(s.amount_claimed), 0);
               const reservaFees = siniestros.reduce((a, s) => a + n(s.reserves_fees), 0);
               const pagosFees = siniestros.reduce((a, s) => a + n(s.paid_fees), 0);
-              const totalFees = siniestros.reduce((a, s) => a + n(s.total_fees), 0);
+              const totalFees = reservaFees + pagosFees; // incurrido fees = pagado + reservas
               const reservaIndem = siniestros.reduce((a, s) => a + n(s.reserves_indemnity), 0);
               const pagosIndem = siniestros.reduce((a, s) => a + n(s.paid_indemnity), 0);
-              const totalIndem = siniestros.reduce((a, s) => a + n(s.total_indemnity), 0);
-              const total = totalFees + totalIndem; // total incurrido (siniestralidad total)
+              const totalIndem = reservaIndem + pagosIndem; // incurrido indem = pagado + reservas
+              const total = totalFees + totalIndem; // siniestralidad total (incurrido real)
               const pct = (x: number) => (total > 0 ? `${fmtMiles((x / total) * 100)} %` : "—");
               // Ratio de siniestralidad = siniestralidad / (GWP our line − com. coverholder − brokerage).
               const lin = sel?.lineas ?? [];
