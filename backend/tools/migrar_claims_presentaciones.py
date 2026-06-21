@@ -96,6 +96,9 @@ def main():
                          "'Nombre Hoja=AAAA-MM,Otra Hoja=AAAA-MM'. Útil para typos (p. ej. 'November 20223').")
     ap.add_argument("--anio-defecto", type=int, default=None,
                     help="Año a usar para hojas cuyo nombre es solo el mes (p. ej. 'March' sin año).")
+    ap.add_argument("--omitir-sin-casar", action="store_true",
+                    help="Omite las filas de claim que no casan con ningún siniestro del binder "
+                         "(en vez de volcarlas con siniestro_id nulo).")
     ap.add_argument("--apply", action="store_true")
     args = ap.parse_args()
 
@@ -162,6 +165,8 @@ def main():
             cert = str(g("Certificate Reference") or "").strip()
             ref = str(g("Claim Reference / Number") or "").strip()
             sid = por_par.get((cert, ref)) or por_ref.get(ref) or por_cert.get(cert)
+            if sid is None and args.omitir_sin_casar:
+                continue
             fila = {h: _safe(h, g(h)) for h in HEADERS}
             meta = {
                 "siniestro_id": sid,
