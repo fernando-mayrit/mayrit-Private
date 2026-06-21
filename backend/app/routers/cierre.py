@@ -48,6 +48,19 @@ def _es(r: Recibo, *tipos: str) -> bool:
     return (r.tipo_poliza or "") in tipos
 
 
+def _rango_anio(anio: int) -> tuple[dt.date, dt.date]:
+    """[1-ene-anio, 1-ene-(anio+1)). Para filtrar por año usando el índice de fecha_contable
+    (un rango medio-abierto, en vez de extract(year), que impide usar el índice)."""
+    return dt.date(anio, 1, 1), dt.date(anio + 1, 1, 1)
+
+
+def _rango_mes(anio: int, mes: int) -> tuple[dt.date, dt.date]:
+    """[1-mes, 1-(mes+1)). El fin es exclusivo; diciembre pasa al 1-ene del año siguiente."""
+    ini = dt.date(anio, mes, 1)
+    fin = dt.date(anio + 1, 1, 1) if mes == 12 else dt.date(anio, mes + 1, 1)
+    return ini, fin
+
+
 # ── Formatos numéricos del template ──
 MONEY = "#,##0.00"
 PCT = "0.00%"
@@ -147,13 +160,11 @@ def _volcar_hoja(ws, recibos: list[Recibo]) -> None:
 
 def _excel_acumulado(db: Session, anio: int, mes: int) -> bytes:
     """Acumulado del año hasta el mes (inclusive), por FechaContable, en 2 hojas EUR/USD."""
+    ini, _ = _rango_anio(anio)
+    _, fin = _rango_mes(anio, mes)  # acumulado del año hasta el final del mes elegido
     recibos = db.scalars(
         select(Recibo)
-        .where(
-            Recibo.fecha_contable.is_not(None),
-            func.extract("year", Recibo.fecha_contable) == anio,
-            func.extract("month", Recibo.fecha_contable) <= mes,
-        )
+        .where(Recibo.fecha_contable >= ini, Recibo.fecha_contable < fin)
         .order_by(Recibo.numero)
     ).all()
     eur = [r for r in recibos if (r.moneda or "EUR") != "USD"]
@@ -187,9 +198,10 @@ def _anio_cerrado(db: Session, anio: int) -> bool:
 def resumen(anio: int, db: Session = Depends(get_db)):
     """Por cada mes del año: nº de recibos (por FechaContable), acumulado y si está cerrado.
     Incluye `anio_cerrado` y `puede_cerrar_anio` (todos los meses con recibos están cerrados)."""
+    ini, fin = _rango_anio(anio)
     filas = db.execute(
         select(func.extract("month", Recibo.fecha_contable), func.count())
-        .where(Recibo.fecha_contable.is_not(None), func.extract("year", Recibo.fecha_contable) == anio)
+        .where(Recibo.fecha_contable >= ini, Recibo.fecha_contable < fin)
         .group_by(func.extract("month", Recibo.fecha_contable))
     ).all()
     por_mes = {int(m): c for m, c in filas}
@@ -242,12 +254,9 @@ def cerrar(payload: CierrePayload, db: Session = Depends(get_db)):
     if ya is not None:
         raise HTTPException(status_code=409, detail=f"{MESES[payload.mes]} {payload.anio} ya está cerrado.")
     # Marca como Contabilizado los recibos de ese mes (por FechaContable).
+    ini, fin = _rango_mes(payload.anio, payload.mes)
     recibos = db.scalars(
-        select(Recibo).where(
-            Recibo.fecha_contable.is_not(None),
-            func.extract("year", Recibo.fecha_contable) == payload.anio,
-            func.extract("month", Recibo.fecha_contable) == payload.mes,
-        )
+        select(Recibo).where(Recibo.fecha_contable >= ini, Recibo.fecha_contable < fin)
     ).all()
     for r in recibos:
         r.estado = CONTABILIZADO
@@ -267,9 +276,10 @@ def cerrar_anio(anio: int, payload: CierreAnioPayload, db: Session = Depends(get
     reapertura de los meses. Se materializa como un cierre con mes=0."""
     if _anio_cerrado(db, anio):
         raise HTTPException(status_code=409, detail=f"El año {anio} ya está cerrado.")
+    ini, fin = _rango_anio(anio)
     filas = db.execute(
         select(func.extract("month", Recibo.fecha_contable), func.count())
-        .where(Recibo.fecha_contable.is_not(None), func.extract("year", Recibo.fecha_contable) == anio)
+        .where(Recibo.fecha_contable >= ini, Recibo.fecha_contable < fin)
         .group_by(func.extract("month", Recibo.fecha_contable))
     ).all()
     meses_con_recibos = {int(m) for m, c in filas if c > 0}
@@ -308,11 +318,10 @@ def reabrir(anio: int, mes: int, db: Session = Depends(get_db)):
     if cierre is None:
         raise HTTPException(status_code=404, detail=f"{MESES[mes]} {anio} no está cerrado.")
     # Reabre: los recibos contabilizados de ese mes vuelven a 'Emitido'.
+    ini, fin = _rango_mes(anio, mes)
     recibos = db.scalars(
         select(Recibo).where(
-            Recibo.fecha_contable.is_not(None),
-            func.extract("year", Recibo.fecha_contable) == anio,
-            func.extract("month", Recibo.fecha_contable) == mes,
+            Recibo.fecha_contable >= ini, Recibo.fecha_contable < fin,
             Recibo.estado == CONTABILIZADO,
         )
     ).all()
