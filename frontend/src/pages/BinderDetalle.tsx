@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { bdxApi, recibosApi, siniestrosApi, claimsBdxApi, type BdxDetalle, type BdxPreview, type BdxImportResult, type ExcelDir, type PremiumGrupo, type ClaimsBdxVista } from "../api";
 import type { Binder, Bdx, BdxLinea, Recibo, Siniestro } from "../types";
 import BdxLineaPanel from "../components/BdxLineaPanel";
@@ -248,11 +248,17 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
     try {
       const lista = await bdxApi.listar(binder.id);
       setBdxs(lista);
-      setSel(lista.length > 0 ? await bdxApi.detalle(lista[0].id) : null);
-      const bl = await bdxApi.listarBloqueos(binder.id);
+      // El resto de cargas son independientes entre sí → en paralelo (antes eran 4 awaits en serie).
+      const [detalle, bl, recs, prems] = await Promise.all([
+        lista.length > 0 ? bdxApi.detalle(lista[0].id) : Promise.resolve(null),
+        bdxApi.listarBloqueos(binder.id),
+        recibosApi.deBinder(binder.id),
+        recibosApi.listarPremium(binder.id),
+      ]);
+      setSel(detalle);
       setBloqueos(new Set(bl.map((b) => `${b.tipo}:${b.periodo}`)));
-      setRecibos(await recibosApi.deBinder(binder.id));
-      setPremiums(await recibosApi.listarPremium(binder.id));
+      setRecibos(recs);
+      setPremiums(prems);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -330,7 +336,8 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
   }
 
   // Cifras por mes (Reporting Start): GWP (our line), Net Premium to Broker, comisión (brokerage).
-  const porMes = (() => {
+  // Memoizado por `sel`: las líneas pueden ser miles; no recalcular en cada render.
+  const { porMes, totGwp, totNet } = useMemo(() => {
     const m = new Map<string, { gwp: number; net: number; brk: number; recibos: Set<string> }>();
     for (const l of sel?.lineas ?? []) {
       const k = String(l.reporting_period_start ?? "").slice(0, 7); // aaaa-mm
@@ -342,13 +349,12 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
       if (l.recibo) cur.recibos.add(String(l.recibo));
       m.set(k, cur);
     }
-    return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0]));
-  })();
-  const totGwp = porMes.reduce((a, [, v]) => a + v.gwp, 0);
-  const totNet = porMes.reduce((a, [, v]) => a + v.net, 0);
+    const pm = [...m.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+    return { porMes: pm, totGwp: pm.reduce((a, [, v]) => a + v.gwp, 0), totNet: pm.reduce((a, [, v]) => a + v.net, 0) };
+  }, [sel]);
 
   // Recibo ya generado de cada periodo (1 por Risk BDX).
-  const reciboDe = new Map(recibos.map((r) => [r.periodo, r]));
+  const reciboDe = useMemo(() => new Map(recibos.map((r) => [r.periodo, r])), [recibos]);
 
   // Estado de cierre del binder: "Cerrado Producción" → no más Risk/Premium; "Cerrado" → además
   // cierra Siniestros.
@@ -359,23 +365,35 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
 
   // Totales del Premium (lo macheado) vs totales del Risk (todas las líneas). Cuando todo está
   // macheado, deben coincidir. Prima = our line + impuestos − comisión cedida; Comisión = brokerage.
-  const lineasRisk = sel?.lineas ?? [];
-  const riskLineas = lineasRisk.length;
-  const riskPrima = lineasRisk.reduce((a, l) => a + n(l.total_gwp_our_line) + n(l.total_taxes_levies) - n(l.commission_coverholder_amount), 0);
-  const riskComision = lineasRisk.reduce((a, l) => a + n(l.brokerage_amount), 0);
-  // Nº de pólizas (mismo criterio que el contador del BDX): únicas por (asegurado + fechas),
-  // une splits por risk code, ignora suplementos y excluye anuladas (prima neta our line ≤ 0).
-  const nPolizas = (() => {
+  // Totales del Risk (todas las líneas) + nº de pólizas. Memoizado por `sel`.
+  const { riskLineas, riskPrima, riskComision, nPolizas } = useMemo(() => {
+    const lineasRisk = sel?.lineas ?? [];
+    // Nº de pólizas (mismo criterio que el contador del BDX): únicas por (asegurado + fechas),
+    // une splits por risk code, ignora suplementos y excluye anuladas (prima neta our line ≤ 0).
     const acc = new Map<string, number>();
     for (const l of lineasRisk) {
       const aseg = String(l.insured_id || l.insured_name || "").trim();
       const key = `${aseg}|${l.risk_inception_date ?? ""}|${l.risk_expiry_date ?? ""}`;
       acc.set(key, (acc.get(key) ?? 0) + n(l.total_gwp_our_line));
     }
-    let c = 0;
-    for (const v of acc.values()) if (v > 0.005) c++;
-    return c;
-  })();
+    let np = 0;
+    for (const v of acc.values()) if (v > 0.005) np++;
+    return {
+      riskLineas: lineasRisk.length,
+      riskPrima: lineasRisk.reduce((a, l) => a + n(l.total_gwp_our_line) + n(l.total_taxes_levies) - n(l.commission_coverholder_amount), 0),
+      riskComision: lineasRisk.reduce((a, l) => a + n(l.brokerage_amount), 0),
+      nPolizas: np,
+    };
+  }, [sel]);
+  // Líneas que se muestran en la tabla del BDX (filtradas por los meses seleccionados). Memoizado
+  // para no crear un array nuevo en cada render (que invalidaría el memo de BdxTabla).
+  const lineasVista = useMemo(() => {
+    const ls = sel?.lineas ?? [];
+    return selMeses.size > 0
+      ? ls.filter((l) => selMeses.has(String(l.reporting_period_start ?? "").slice(0, 7)))
+      : ls;
+  }, [sel, selMeses]);
+
   const premLineas = premiums.reduce((a, p) => a + p.num_lineas, 0);
   const premPrima = premiums.reduce((a, p) => a + n(p.prima), 0);
   const premComision = premiums.reduce((a, p) => a + n(p.comision), 0);
@@ -816,11 +834,7 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
             </>
           ) : (
             <BdxTabla
-              lineas={
-                selMeses.size > 0
-                  ? sel.lineas.filter((l) => selMeses.has(String(l.reporting_period_start ?? "").slice(0, 7)))
-                  : sel.lineas
-              }
+              lineas={lineasVista}
               onRowClick={(l) => setLinea(l)}
               bloqueada={lineaBloqueada}
               hayFiltroExterno={selMeses.size > 0}

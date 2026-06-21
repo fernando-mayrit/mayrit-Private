@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { crud, listarSuplementos, crearSuplemento } from "../api";
 import type { Binder, BinderWrite, CuentaBancaria, Mercado, Productor, Programa, Ramo, Suplemento } from "../types";
 import FormPanel from "../components/FormPanel";
@@ -17,6 +17,7 @@ const apiRamos = crud<Ramo, { nombre: string }>("/ramos");
 const apiCuentas = crud<CuentaBancaria, unknown>("/cuentas-bancarias");
 const apiProgramas = crud<Programa, unknown>("/programas");
 
+const coverDe = (b: Binder) => b.coverholder_alias ?? b.coverholder_nombre ?? "";
 const ESTADOS = ["En Vigor", "Cancelado", "Renovado", "No Renovado", "Cerrado Producción", "Cerrado"];
 const INTERVALOS = ["Mensual", "Trimestral", "Semestral", "Anual"];
 const PREFIJO_UMR = "B1634";
@@ -869,6 +870,11 @@ export default function BindersPage() {
       .sort((a, b) => (a.fecha_efecto ?? "").localeCompare(b.fecha_efecto ?? ""))[0];
   }
 
+  // Nombre por id de mercado (precomputado) para no hacer find por fila en el listado.
+  const mercadoNombre = useMemo(
+    () => new Map(mercados.map((m) => [m.id, m.alias || m.nombre || "—"])),
+    [mercados],
+  );
   // Mercados del binder (todas las secciones), distintos, ordenados por participación ↓ y unidos
   // por " / " (cuando hay más de uno, se muestran todos).
   function mercadosTexto(b: Binder): string {
@@ -877,28 +883,31 @@ export default function BindersPage() {
       for (const m of s.mercados)
         part.set(m.mercado_id, (part.get(m.mercado_id) ?? 0) + (m.participacion ?? 0));
     if (part.size === 0) return "—";
-    const nombre = (id: number) => {
-      const mc = mercados.find((x) => x.id === id);
-      return mc?.alias || mc?.nombre || "—";
-    };
     return [...part.entries()]
       .sort((a, c) => c[1] - a[1])
-      .map(([id]) => nombre(id))
+      .map(([id]) => mercadoNombre.get(id) ?? "—")
       .join(" / ");
   }
 
   // Opciones de los desplegables (de lo ya cargado) y lista visible: filtrada + ordenada por YOA ↓.
-  const coverDe = (b: Binder) => b.coverholder_alias ?? b.coverholder_nombre ?? "";
-  const yoasOpts = [...new Set(items.map((b) => b.yoa).filter(Boolean) as string[])].sort(
-    (a, b) => Number(b) - Number(a)
+  // Memoizadas para no recalcular en cada render (p. ej. al teclear en otro filtro).
+  const yoasOpts = useMemo(
+    () => [...new Set(items.map((b) => b.yoa).filter(Boolean) as string[])].sort((a, b) => Number(b) - Number(a)),
+    [items],
   );
-  const coverOpts = [...new Set(items.map(coverDe).filter(Boolean))].sort((a, b) => a.localeCompare(b));
-  const visibles = items
-    .filter((b) => !fYoa || b.yoa === fYoa)
-    .filter((b) => !fCover || coverDe(b) === fCover)
-    .filter((b) => !fEstado || b.estado === fEstado)
-    .slice()
-    .sort((a, b) => (Number(b.yoa) || 0) - (Number(a.yoa) || 0));
+  const coverOpts = useMemo(
+    () => [...new Set(items.map(coverDe).filter(Boolean))].sort((a, b) => a.localeCompare(b)),
+    [items],
+  );
+  const visibles = useMemo(
+    () => items
+      .filter((b) => !fYoa || b.yoa === fYoa)
+      .filter((b) => !fCover || coverDe(b) === fCover)
+      .filter((b) => !fEstado || b.estado === fEstado)
+      .slice()
+      .sort((a, b) => (Number(b.yoa) || 0) - (Number(a.yoa) || 0)),
+    [items, fYoa, fCover, fEstado],
+  );
 
   // Campo "Notificado (fecha)" de un grupo de límite. Si el límite está en rojo (umbral de
   // notificación superado) y aún no tiene fecha, se DESTACA: es el que hay que rellenar.
