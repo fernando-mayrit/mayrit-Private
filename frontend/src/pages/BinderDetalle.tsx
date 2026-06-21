@@ -1239,10 +1239,15 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
           const cols = tri.max_desarrollo + 1;
           const esNum = triMetrica === "num";
           const ratio = tri.net_uw ? (tri.incurrido_actual / tri.net_uw) * 100 : null;
+          const ibnrPct = tri.gwp_our_line ? (tri.ibnr_sugerido / tri.gwp_our_line) * 100 : null;
           // Totales por columna de desarrollo (suma de las filas que llegan a ese desarrollo).
           const totales = Array.from({ length: cols }, (_, d) =>
             matriz.reduce((a, fila) => a + (d < fila.length ? fila[d] : 0), 0)
           );
+          // Valor "Actual" de cada cohorte = su último dato conocido (borde derecho del triángulo).
+          // Su total cuadra con el "Incurrido actual" (para incurrido) — es la valuación a hoy.
+          const actualDe = (fila: number[]) => (fila.length ? fila[fila.length - 1] : 0);
+          const totalActual = matriz.reduce((a, fila) => a + actualDe(fila), 0);
           return (
             <>
               <div className="bdx-topbar" style={{ alignItems: "center", gap: 12, flexWrap: "wrap" }}>
@@ -1255,8 +1260,9 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
                   Net to UWs: <b>{imp(tri.net_uw)}</b> · Incurrido actual: <b>{imp(tri.incurrido_actual)}</b>
                   {" · "}Siniestralidad: <b>{ratio == null ? "—" : `${fmtMiles(ratio)} %`}</b>
                 </span>
-                <span className="hint" title="Estimación orientativa por chain-ladder sobre el incurrido">
-                  IBNR sugerido: <b>{imp(tri.ibnr_sugerido)}</b> · Ultimate: <b>{imp(tri.ultimate_sugerido)}</b>
+                <span className="hint" title="Estimación orientativa por chain-ladder sobre el incurrido. El % es sobre el GWP Our Line.">
+                  IBNR sugerido: <b>{imp(tri.ibnr_sugerido)}{ibnrPct == null ? "" : ` (${fmtMiles(ibnrPct)} %)`}</b>
+                  {" · "}Ultimate: <b>{imp(tri.ultimate_sugerido)}</b>
                 </span>
                 <span className="hint">Filas = mes de apertura · columnas = meses de desarrollo.</span>
               </div>
@@ -1266,6 +1272,7 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
                     <tr>
                       <th style={{ position: "sticky", left: 0 }}>Origen</th>
                       {Array.from({ length: cols }, (_, d) => <th key={d} className="num">{d}</th>)}
+                      <th className="num tri-actual" title="Valor a hoy de cada cohorte">Actual</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1282,6 +1289,7 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
                               </td>
                             );
                           })}
+                          <td className="num tri-actual">{esNum ? actualDe(fila) : fmtMiles(actualDe(fila))}</td>
                         </tr>
                       );
                     })}
@@ -1292,6 +1300,7 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
                       {totales.map((t, d) => (
                         <td key={d} className="num">{esNum ? t : fmtMiles(t)}</td>
                       ))}
+                      <td className="num tri-actual">{esNum ? totalActual : fmtMiles(totalActual)}</td>
                     </tr>
                   </tfoot>
                 </table>

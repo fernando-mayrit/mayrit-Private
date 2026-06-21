@@ -88,6 +88,7 @@ export interface Triangulacion {
   origenes: string[];                 // meses de origen (filas), 'aaaa-mm'
   max_desarrollo: number;             // nº de columnas de desarrollo − 1
   triangulos: Record<MetricaTriangulo, number[][]>;
+  gwp_our_line: number;               // GWP our line bruto (Σ líneas Risk)
   net_uw: number;                     // GWP our line − com. coverholder − brokerage
   incurrido_actual: number;           // incurrido total valuado al último mes
   ibnr_sugerido: number;              // estimación chain-ladder (orientativa)

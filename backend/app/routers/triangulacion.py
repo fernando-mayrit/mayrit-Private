@@ -41,8 +41,9 @@ def _periodo_de_mi(mi: int) -> str:
     return f"{mi // 12:04d}-{mi % 12 + 1:02d}"
 
 
-def _net_uw(db: Session, binder_id: int) -> float:
-    """GWP our line − comisión coverholder − brokerage de las líneas Risk del binder."""
+def _bases(db: Session, binder_id: int) -> tuple[float, float]:
+    """Devuelve (GWP our line, Net to UWs) de las líneas Risk del binder.
+    Net to UWs = GWP our line − comisión coverholder − brokerage."""
     row = db.execute(
         select(
             func.coalesce(func.sum(BdxLinea.total_gwp_our_line), 0),
@@ -54,7 +55,7 @@ def _net_uw(db: Session, binder_id: int) -> float:
         .where(Bdx.binder_id == binder_id, Bdx.tipo == "Risk")
     ).first()
     gwp, cc, brk = (float(x) for x in row)
-    return round(gwp - cc - brk, 2)
+    return round(gwp, 2), round(gwp - cc - brk, 2)
 
 
 @router.get("/binders/{binder_id}/triangulacion")
@@ -83,8 +84,10 @@ def triangulacion_binder(binder_id: int, db: Session = Depends(get_db)):
         snaps.setdefault(sid, []).append((mi, inc, paid))
 
     if not snaps:
+        gwp0, net0 = _bases(db, binder_id)
         return {"origenes": [], "max_desarrollo": -1, "triangulos": {"incurrido": [], "pagado": [], "num": []},
-                "net_uw": _net_uw(db, binder_id), "incurrido_actual": 0.0}
+                "gwp_our_line": gwp0, "net_uw": net0, "incurrido_actual": 0.0,
+                "ibnr_sugerido": 0.0, "ultimate_sugerido": 0.0}
 
     # Mes de origen de cada siniestro: apertura → primer aviso → primer snapshot.
     sins = {s.id: s for s in db.scalars(select(Siniestro).where(Siniestro.binder_id == binder_id)).all()}
@@ -136,12 +139,14 @@ def triangulacion_binder(binder_id: int, db: Session = Depends(get_db)):
     incurrido_actual = round(sum((val_at(sid, latest) or (0.0, 0.0))[0] for sid in snaps), 2)
 
     ibnr, ultimate = _chain_ladder(tri_inc)
+    gwp_our_line, net_uw = _bases(db, binder_id)
 
     return {
         "origenes": [_periodo_de_mi(o) for o in origenes_mi],
         "max_desarrollo": latest - min(origenes_mi),
         "triangulos": {"incurrido": tri_inc, "pagado": tri_paid, "num": tri_num},
-        "net_uw": _net_uw(db, binder_id),
+        "gwp_our_line": gwp_our_line,
+        "net_uw": net_uw,
         "incurrido_actual": incurrido_actual,
         "ibnr_sugerido": ibnr,
         "ultimate_sugerido": ultimate,
