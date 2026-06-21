@@ -8,6 +8,7 @@ import ProgramasPage from "./pages/ProgramasPage";
 import PolizasPage from "./pages/PolizasPage";
 import RecibosPage from "./pages/RecibosPage";
 import SiniestrosPage from "./pages/SiniestrosPage";
+import TriangulacionPage from "./pages/TriangulacionPage";
 import CierreContablePage from "./pages/CierreContablePage";
 import FinancieroPage from "./pages/FinancieroPage";
 import RamosPage from "./pages/RamosPage";
@@ -312,7 +313,7 @@ export default function App() {
           {page === "programas" && <ProgramasPage />}
           {page === "recibos" && <RecibosPage />}
           {page === "siniestros" && <SiniestrosPage />}
-          {page === "triangulacion" && <EnConstruccion titulo="Triangulación" />}
+          {page === "triangulacion" && <TriangulacionPage />}
           {page === "cierre" && <CierreContablePage />}
           {page === "financiero" && <FinancieroPage />}
           {page === "transferencias" && <EnConstruccion titulo="Transferencias" />}

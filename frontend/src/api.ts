@@ -95,8 +95,25 @@ export interface Triangulacion {
   ibnr_sugerido: number;              // estimación chain-ladder (orientativa)
   ultimate_sugerido: number;
 }
+export interface TriangulacionPrograma {
+  programa: string;
+  binders: { id: number; umr: string; agreement: string; yoa: string | null }[];
+  max_edad: number;
+  triangulos: Record<MetricaTriangulo, (number | null)[][]>; // filas = binders, cols = antigüedad
+  premium_binder: number[];
+  net_uw_binder: number[];
+  incurrido_binder: number[];
+  ultimate_binder: number[];
+  ibnr_binder: number[];
+  incurrido_total: number;
+  ultimate_total: number;
+  ibnr_total: number;
+  premium_total: number;
+  net_uw_total: number;
+}
 export const triangulacionApi = {
   deBinder: (binderId: number) => request<Triangulacion>(`/binders/${binderId}/triangulacion`),
+  dePrograma: (programaId: number) => request<TriangulacionPrograma>(`/programas/${programaId}/triangulacion`),
 };
 
 // ── Cierre contable mensual ──
