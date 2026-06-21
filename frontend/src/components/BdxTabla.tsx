@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { BdxLinea } from "../types";
 import { fmtMiles, fmtFechaES } from "../format";
 
@@ -179,7 +179,7 @@ export default function BdxTabla({
     return () => document.removeEventListener("mousedown", cerrar);
   }, [menu, filtro]);
 
-  const cols = visibles.map((k) => CATALOGO.find((c) => c.key === k)!).filter(Boolean);
+  const cols = useMemo(() => visibles.map((k) => CATALOGO.find((c) => c.key === k)!).filter(Boolean), [visibles]);
 
   function ordenarPor(key: string) {
     setSort((s) => (s && s.key === key ? { key, dir: s.dir === 1 ? -1 : 1 } : { key, dir: 1 }));
@@ -231,49 +231,56 @@ export default function BdxTabla({
     setFiltro(null);
   }
 
-  let filas = lineas.filter((l) =>
-    Object.entries(filtros).every(([k, set]) => {
-      const col = CATALOGO.find((c) => c.key === k)!;
-      return set.has(fmtValor(l, col) || VACIO);
-    })
-  );
-  if (sort) {
-    const col = CATALOGO.find((c) => c.key === sort.key);
-    if (col) {
-      const numCol = col.tipo === "num" || col.tipo === "pct" || col.tipo === "int";
-      filas = [...filas].sort((a, b) => {
-        let c: number;
-        if (col.tipo === "bool") c = (valorRaw(a, col) ? 1 : 0) - (valorRaw(b, col) ? 1 : 0);
-        else if (numCol) c = num(valorRaw(a, col)) - num(valorRaw(b, col));
-        else c = String(valorRaw(a, col) ?? "").localeCompare(String(valorRaw(b, col) ?? ""), "es", { numeric: true });
-        return c * sort.dir;
-      });
+  // Filtro + orden memoizados (solo se recalculan al cambiar líneas/filtros/orden). Misma lógica.
+  const filas = useMemo(() => {
+    let f = lineas.filter((l) =>
+      Object.entries(filtros).every(([k, set]) => {
+        const col = CATALOGO.find((c) => c.key === k)!;
+        return set.has(fmtValor(l, col) || VACIO);
+      })
+    );
+    if (sort) {
+      const col = CATALOGO.find((c) => c.key === sort.key);
+      if (col) {
+        const numCol = col.tipo === "num" || col.tipo === "pct" || col.tipo === "int";
+        f = [...f].sort((a, b) => {
+          let c: number;
+          if (col.tipo === "bool") c = (valorRaw(a, col) ? 1 : 0) - (valorRaw(b, col) ? 1 : 0);
+          else if (numCol) c = num(valorRaw(a, col)) - num(valorRaw(b, col));
+          else c = String(valorRaw(a, col) ?? "").localeCompare(String(valorRaw(b, col) ?? ""), "es", { numeric: true });
+          return c * sort.dir;
+        });
+      }
     }
-  }
+    return f;
+  }, [lineas, filtros, sort]);
 
-  // Totales (sobre las filas filtradas) para el cuadro de la derecha.
-  const sum = (f: keyof BdxLinea) => filas.reduce((a, l) => a + num(l[f]), 0);
-  const gwp = sum("total_gwp_our_line"); // GWP "our line" (nuestra participación), no el 100%
-  // Nº de pólizas: agrupa por (asegurado + fechas) → une los splits por risk code y los
-  // suplementos no cuentan como póliza; solo cuenta las de prima neta (our line) > 0, así una
-  // póliza anulada (que netea a 0) no se contabiliza.
-  const nPolizas = (() => {
+  // Totales (sobre las filas filtradas) para el cuadro de la derecha. Memoizados por `filas`.
+  const tot = useMemo(() => {
+    const sum = (f: keyof BdxLinea) => filas.reduce((a, l) => a + num(l[f]), 0);
+    // Nº de pólizas: agrupa por (asegurado + fechas) → une los splits por risk code y los
+    // suplementos no cuentan como póliza; solo cuenta las de prima neta (our line) > 0, así una
+    // póliza anulada (que netea a 0) no se contabiliza.
     const acc = new Map<string, number>();
     for (const l of filas) {
       const aseg = String(l.insured_id || l.insured_name || "").trim();
       const key = `${aseg}|${l.risk_inception_date ?? ""}|${l.risk_expiry_date ?? ""}`;
       acc.set(key, (acc.get(key) ?? 0) + num(l.total_gwp_our_line));
     }
-    let c = 0;
-    for (const v of acc.values()) if (v > 0.005) c++;
-    return c;
-  })();
-  const primaMayrit = sum("net_premium_to_broker");
-  const cobrado = sum("ingresado");
-  const aTraspasar = sum("brokerage_amount");
-  const traspasado = sum("traspasado");
-  const aLiquidar = sum("final_net_premium_uw");
-  const liquidado = sum("liquidado_uw");
+    let nPolizas = 0;
+    for (const v of acc.values()) if (v > 0.005) nPolizas++;
+    return {
+      gwp: sum("total_gwp_our_line"),
+      nPolizas,
+      primaMayrit: sum("net_premium_to_broker"),
+      cobrado: sum("ingresado"),
+      aTraspasar: sum("brokerage_amount"),
+      traspasado: sum("traspasado"),
+      aLiquidar: sum("final_net_premium_uw"),
+      liquidado: sum("liquidado_uw"),
+    };
+  }, [filas]);
+  const { gwp, nPolizas, primaMayrit, cobrado, aTraspasar, traspasado, aLiquidar, liquidado } = tot;
 
   function celda(l: BdxLinea, col: Col) {
     if (col.tipo === "bool") return <input type="checkbox" checked={!!valorRaw(l, col)} disabled readOnly />;

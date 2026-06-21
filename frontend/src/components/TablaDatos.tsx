@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { fmtMiles, fmtFechaES } from "../format";
 
 // Tabla genérica reutilizable (basada en la de BDX): elegir columnas (clic derecho),
@@ -132,7 +132,10 @@ export default function TablaDatos<T extends { id: number }>({
     return () => document.removeEventListener("mousedown", cerrar);
   }, [menu, filtro]);
 
-  const cols = visibles.map((k) => columnas.find((c) => c.key === k)!).filter(Boolean);
+  const cols = useMemo(
+    () => visibles.map((k) => columnas.find((c) => c.key === k)!).filter(Boolean),
+    [visibles, columnas],
+  );
 
   function ordenarPor(key: string) {
     setSort((s) => (s && s.key === key ? { key, dir: s.dir === 1 ? -1 : 1 } : { key, dir: 1 }));
@@ -179,25 +182,30 @@ export default function TablaDatos<T extends { id: number }>({
     setFiltro(null);
   }
 
-  let datos = filas.filter((r) =>
-    Object.entries(filtros).every(([k, set]) => {
-      const col = columnas.find((c) => c.key === k)!;
-      return set.has(fmtValor(r, col) || VACIO);
-    })
-  );
-  if (sort) {
-    const col = columnas.find((c) => c.key === sort.key);
-    if (col) {
-      const numCol = col.tipo === "num" || col.tipo === "pct" || col.tipo === "int";
-      datos = [...datos].sort((a, b) => {
-        let c: number;
-        if (col.tipo === "bool") c = (valorRaw(a, col) ? 1 : 0) - (valorRaw(b, col) ? 1 : 0);
-        else if (numCol) c = num(valorRaw(a, col)) - num(valorRaw(b, col));
-        else c = String(valorRaw(a, col) ?? "").localeCompare(String(valorRaw(b, col) ?? ""), "es", { numeric: true });
-        return c * sort.dir;
-      });
+  // Filtro + orden memoizados: solo se recalculan cuando cambian las filas, los filtros o el orden
+  // (no en cada render del padre). Misma lógica que antes.
+  const datos = useMemo(() => {
+    let d = filas.filter((r) =>
+      Object.entries(filtros).every(([k, set]) => {
+        const col = columnas.find((c) => c.key === k)!;
+        return set.has(fmtValor(r, col) || VACIO);
+      })
+    );
+    if (sort) {
+      const col = columnas.find((c) => c.key === sort.key);
+      if (col) {
+        const numCol = col.tipo === "num" || col.tipo === "pct" || col.tipo === "int";
+        d = [...d].sort((a, b) => {
+          let c: number;
+          if (col.tipo === "bool") c = (valorRaw(a, col) ? 1 : 0) - (valorRaw(b, col) ? 1 : 0);
+          else if (numCol) c = num(valorRaw(a, col)) - num(valorRaw(b, col));
+          else c = String(valorRaw(a, col) ?? "").localeCompare(String(valorRaw(b, col) ?? ""), "es", { numeric: true });
+          return c * sort.dir;
+        });
+      }
     }
-  }
+    return d;
+  }, [filas, filtros, sort, columnas]);
 
   function celda(r: T, col: Col<T>) {
     if (col.render) return col.render(r);

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { recibosApi, exportarXlsx, crud } from "../api";
 import type { Recibo, ReciboUpdate, CuentaBancaria } from "../types";
 import PageHeader from "../components/PageHeader";
@@ -12,6 +12,40 @@ const eur = (v: unknown) => `${fmtMiles(v)} €`;
 const num = (v: unknown) => Number(v) || 0;
 const cuentasApi = crud<CuentaBancaria, unknown>("/cuentas-bancarias");
 const hoyISO = () => new Date().toISOString().slice(0, 10);
+
+// Referencia visible de un recibo (numero de póliza o UMR del binder).
+const refDe = (r: Recibo) => r.numero_poliza ?? r.binder_umr ?? null;
+
+// Columnas de "pendiente": en modo estados muestran pastilla (Pendiente/Parcial/Completo) por su
+// (total, hecho). verde = etiqueta del estado "completo". noAplica: la fase no aplica a ese recibo
+// (p. ej. pago de comisión cedida en recibos de binder) → pastilla gris "No Aplica".
+type PendDef = { total: (r: Recibo) => unknown; hecho: (r: Recibo) => unknown; verde: string; noAplica?: (r: Recibo) => boolean };
+const PEND: Record<string, PendDef> = {
+  comision_pendiente_cobro: { total: (r) => r.prima_adeudada, hecho: (r) => r.prima_cobrada, verde: "Cobrado" },
+  pdte_liquidar: { total: (r) => r.liquidar_cobrado, hecho: (r) => r.liquidar_liquidado, verde: "Liquidado" },
+  pdte_traspaso: { total: (r) => r.comision_retenida_cobrada, hecho: (r) => r.comision_retenida_traspasada, verde: "Traspasado" },
+  pendiente_pago: { total: (r) => r.comision_cedida_a_pagar, hecho: (r) => r.comision_cedida_pagada, verde: "Pagado", noAplica: (r) => r.binder_id != null },
+};
+const etiquetaEstado = (p: PendDef, r: Recibo) => {
+  // La fase no aplica a este recibo (p. ej. pago de comisión en recibos de binder) → gris "No Aplica".
+  if (p.noAplica?.(r)) return { descuadre: false, clase: "anulado", label: "No Aplica" };
+  const total = num(p.total(r));
+  const hecho = num(p.hecho(r));
+  // Se compara EN MAGNITUD (valor absoluto) para que los recibos en negativo (extornos) se
+  // comporten igual que los positivos. Descuadre: lo realizado supera al total → sin pastilla.
+  // Tolerancia de 5 céntimos para no marcar diferencias de redondeo de la migración.
+  if (Math.abs(hecho) > Math.abs(total) + 0.05) return { descuadre: true, clase: "", label: "⚠" };
+  // Base 0: "nada que hacer" en esta fase → verde SOLO si la prima ya está cobrada (las fases
+  // dependen del cobro). "Cobrada" se mide por IMPORTE (estadoCobro), no por la fecha.
+  if (Math.abs(total) <= 0.005) {
+    const cobrado = estadoCobro(r.prima_adeudada, r.prima_cobrada, r.estado).clase === "cobrado";
+    return cobrado
+      ? { descuadre: false, clase: "cobrado", label: p.verde }
+      : { descuadre: false, clase: "anulado", label: "—" };
+  }
+  const ec = estadoCobro(total, hecho, r.estado);
+  return { descuadre: false, clase: ec.clase, label: ec.clase === "cobrado" ? p.verde : ec.label };
+};
 // Etiqueta de la cuenta según el movimiento.
 const LBL_CUENTA: Record<string, string> = {
   cobrar: "Cuenta de cobro",
@@ -284,77 +318,51 @@ export default function RecibosPage() {
     }
   }
 
-  const refDe = (r: Recibo) => r.numero_poliza ?? r.binder_umr ?? null;
-  const umrs = [...new Set(items.map(refDe).filter(Boolean) as string[])].sort();
-  const filtrados = items.filter(
-    (r) =>
-      (!gestionMode || r.binder_id == null) && // en modo gestión, solo recibos que NO son de binder
-      (!umr || refDe(r) === umr) &&
-      (!q || `${r.numero} ${r.nombre_mercado ?? ""} ${r.asegurado ?? ""}`.toLowerCase().includes(q.toLowerCase()))
+  const umrs = useMemo(
+    () => [...new Set(items.map(refDe).filter(Boolean) as string[])].sort(),
+    [items],
   );
-  const totalComision = filtrados.reduce((a, r) => a + num(r.comision_retenida), 0);
-  const totalCobrada = filtrados.reduce((a, r) => a + num(r.comision_retenida_cobrada), 0);
-  const totalPdteTraspaso = filtrados.reduce(
-    (a, r) => a + (num(r.comision_retenida_cobrada) - num(r.comision_retenida_traspasada)),
-    0
+  const filtrados = useMemo(
+    () => items.filter(
+      (r) =>
+        (!gestionMode || r.binder_id == null) && // en modo gestión, solo recibos que NO son de binder
+        (!umr || refDe(r) === umr) &&
+        (!q || `${r.numero} ${r.nombre_mercado ?? ""} ${r.asegurado ?? ""}`.toLowerCase().includes(q.toLowerCase()))
+    ),
+    [items, gestionMode, umr, q],
   );
+  const { totalComision, totalCobrada, totalPdteTraspaso } = useMemo(() => ({
+    totalComision: filtrados.reduce((a, r) => a + num(r.comision_retenida), 0),
+    totalCobrada: filtrados.reduce((a, r) => a + num(r.comision_retenida_cobrada), 0),
+    totalPdteTraspaso: filtrados.reduce(
+      (a, r) => a + (num(r.comision_retenida_cobrada) - num(r.comision_retenida_traspasada)), 0),
+  }), [filtrados]);
   const anios = Array.from({ length: new Date().getFullYear() - 2016 }, (_, i) => new Date().getFullYear() - i);
 
-  // Columnas de "pendiente": en modo estados muestran pastilla (Pendiente/Parcial/Cobrado) por
-  // su (total, hecho) en vez del importe.
-  // verde = etiqueta del estado "completo" por columna (la roja=Pendiente y amarilla=Parcial son comunes).
-  // noAplica: la fase no tiene sentido para ese recibo → pastilla gris "No Aplica" (p. ej. el pago
-  // de comisión cedida en recibos de binder, donde no hay pago de comisión).
-  const PEND: Record<string, { total: (r: Recibo) => unknown; hecho: (r: Recibo) => unknown; verde: string; noAplica?: (r: Recibo) => boolean }> = {
-    comision_pendiente_cobro: { total: (r) => r.prima_adeudada, hecho: (r) => r.prima_cobrada, verde: "Cobrado" },
-    pdte_liquidar: { total: (r) => r.liquidar_cobrado, hecho: (r) => r.liquidar_liquidado, verde: "Liquidado" },
-    pdte_traspaso: { total: (r) => r.comision_retenida_cobrada, hecho: (r) => r.comision_retenida_traspasada, verde: "Traspasado" },
-    pendiente_pago: { total: (r) => r.comision_cedida_a_pagar, hecho: (r) => r.comision_cedida_pagada, verde: "Pagado", noAplica: (r) => r.binder_id != null },
-  };
-  const etiquetaEstado = (p: { total: (r: Recibo) => unknown; hecho: (r: Recibo) => unknown; verde: string; noAplica?: (r: Recibo) => boolean }, r: Recibo) => {
-    // La fase no aplica a este recibo (p. ej. pago de comisión en recibos de binder) → gris "No Aplica".
-    if (p.noAplica?.(r)) return { descuadre: false, clase: "anulado", label: "No Aplica" };
-    const total = num(p.total(r));
-    const hecho = num(p.hecho(r));
-    // Se compara EN MAGNITUD (valor absoluto) para que los recibos en negativo (extornos) se
-    // comporten igual que los positivos.
-    // Descuadre: lo realizado supera al total (incoherencia) → sin pastilla, para identificarlo.
-    // Tolerancia de 5 céntimos para no marcar diferencias de redondeo de la migración.
-    if (Math.abs(hecho) > Math.abs(total) + 0.05) return { descuadre: true, clase: "", label: "⚠" };
-    // Base 0: "nada que hacer" en esta fase → verde (completada) SOLO si la prima ya está cobrada;
-    // las fases dependen del cobro. Si aún no se ha cobrado → gris "—" (fase no alcanzada).
-    // "Cobrada" se mide por IMPORTE (estadoCobro), no por la fecha: los recibos migrados traen
-    // prima_cobrada pero sin prima_fecha_cobro, y aun así están cobrados.
-    if (Math.abs(total) <= 0.005) {
-      const cobrado = estadoCobro(r.prima_adeudada, r.prima_cobrada, r.estado).clase === "cobrado";
-      return cobrado
-        ? { descuadre: false, clase: "cobrado", label: p.verde }
-        : { descuadre: false, clase: "anulado", label: "—" };
-    }
-    const ec = estadoCobro(total, hecho, r.estado);
-    return { descuadre: false, clase: ec.clase, label: ec.clase === "cobrado" ? p.verde : ec.label };
-  };
-  const columnas: Col<Recibo>[] = vistaEstados
-    ? CATALOGO.map((c) => {
-        const p = PEND[c.key];
-        if (!p) return c;
-        return {
-          ...c,
-          tipo: "text",
-          calc: (r) => etiquetaEstado(p, r).label,
-          render: (r) => {
-            const e = etiquetaEstado(p, r);
-            if (e.descuadre) return <span className="descuadre" title="Descuadre: lo realizado supera al total">⚠</span>;
-            return <span className={`pill pill-${e.clase}`}>{e.label}</span>;
-          },
-        };
-      })
-    : // En modo cantidades, las columnas de pendientes muestran lo YA REALIZADO
-      // (Cobrado / Liquidado / Traspasado / Pagado) en vez del pendiente.
-      CATALOGO.map((c) => {
-        const p = PEND[c.key];
-        return p ? { ...c, label: p.verde, calc: p.hecho } : c;
-      });
+  // Columnas: en modo estados, las de "pendiente" muestran pastilla (Pendiente/Parcial/Completo);
+  // en modo cantidades muestran lo ya realizado. Memoizado por `vistaEstados` para no recrear el
+  // array (y sus closures) en cada render, lo que invalidaría el memo de TablaDatos.
+  const columnas: Col<Recibo>[] = useMemo(() => (
+    vistaEstados
+      ? CATALOGO.map((c) => {
+          const p = PEND[c.key];
+          if (!p) return c;
+          return {
+            ...c,
+            tipo: "text" as const,
+            calc: (r: Recibo) => etiquetaEstado(p, r).label,
+            render: (r: Recibo) => {
+              const e = etiquetaEstado(p, r);
+              if (e.descuadre) return <span className="descuadre" title="Descuadre: lo realizado supera al total">⚠</span>;
+              return <span className={`pill pill-${e.clase}`}>{e.label}</span>;
+            },
+          };
+        })
+      : CATALOGO.map((c) => {
+          const p = PEND[c.key];
+          return p ? { ...c, label: p.verde, calc: p.hecho } : c;
+        })
+  ), [vistaEstados]);
 
   return (
     <div className="container lista-page">
