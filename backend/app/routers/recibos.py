@@ -19,7 +19,7 @@ from openpyxl.styles import Font, PatternFill
 from openpyxl.utils import get_column_letter
 from pydantic import BaseModel
 from sqlalchemy import delete, func, select, update
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, load_only
 
 from ..config import settings
 from ..db import get_db
@@ -908,10 +908,20 @@ class AccionPremium(BaseModel):
 @router.get("/binders/{binder_id}/premium", response_model=list[PremiumGrupo])
 def listar_premium(binder_id: int, db: Session = Depends(get_db)):
     """Grupos de Premium del binder (líneas incluidas en premium, agrupadas por mes)."""
+    # load_only: solo las 11 columnas que usa el bucle (+ _comp_linea), en vez de las ~90 de la
+    # entidad. Misma lógica y mismo resultado; solo reduce transferencia/hidratación.
     lineas = db.scalars(
         select(BdxLinea)
         .join(Bdx, BdxLinea.bdx_id == Bdx.id)
         .where(Bdx.binder_id == binder_id, BdxLinea.incluido_en_premium.is_(True), BdxLinea.premium_bdx.is_not(None))
+        .options(load_only(
+            BdxLinea.premium_bdx,
+            BdxLinea.total_gwp_our_line, BdxLinea.total_taxes_levies,
+            BdxLinea.commission_coverholder_amount, BdxLinea.brokerage_amount,
+            BdxLinea.prima_cobrada, BdxLinea.premium_payment_date,
+            BdxLinea.traspaso, BdxLinea.fecha_traspaso,
+            BdxLinea.liquidado, BdxLinea.fecha_liquidacion,
+        ))
     ).all()
     grupos: dict[str, dict] = {}
     for l in lineas:
