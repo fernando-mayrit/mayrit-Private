@@ -1279,35 +1279,32 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
           return (
             <>
               <div style={{ marginBottom: 8 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                  <select className="filtro" value={triMetrica} onChange={(e) => setTriMetrica(e.target.value as MetricaTriangulo)}>
-                    <option value="incurrido">Incurrido (pagado + reservas)</option>
-                    <option value="pagado">Pagado</option>
-                    <option value="num">Nº de siniestros</option>
-                    <option value="pct">% Siniestralidad (s/ Net to UWs)</option>
-                  </select>
-                  <select className="filtro" value={triVista} onChange={(e) => setTriVista(e.target.value as "cal" | "edad")}>
-                    <option value="cal">Vista: Calendario</option>
-                    <option value="edad">Vista: Por antigüedad</option>
-                  </select>
-                  <select
-                    className="filtro"
-                    value={triScope.risk_code ? `rc:${triScope.risk_code}` : triScope.seccion != null ? `sec:${triScope.seccion}` : "total"}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      setTriScope(v === "total" ? {} : v.startsWith("rc:") ? { risk_code: v.slice(3) } : { seccion: Number(v.slice(4)) });
-                    }}
-                  >
-                    <option value="total">Ámbito: Total</option>
-                    {tri.risk_codes.map((rc) => <option key={`rc:${rc}`} value={`rc:${rc}`}>Código {rc}</option>)}
-                    {tri.secciones.map((s) => <option key={`sec:${s}`} value={`sec:${s}`}>Sección {s}</option>)}
-                  </select>
-                  <button className="btn-secondary" onClick={exportarTriangulo} title="Exportar a Excel la métrica y el ámbito seleccionados">⤓ Excel</button>
-                </div>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap", marginTop: -2 }}>
-                  <span className="hint">
-                    Filas = mes de apertura · columnas = {triVista === "cal" ? "mes de valuación (reciente → antiguo)" : "meses desde la apertura"}.
-                  </span>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    <select className="filtro" value={triMetrica} onChange={(e) => setTriMetrica(e.target.value as MetricaTriangulo)}>
+                      <option value="incurrido">Incurrido (pagado + reservas)</option>
+                      <option value="pagado">Pagado</option>
+                      <option value="num">Nº de siniestros</option>
+                      <option value="pct">% Siniestralidad (s/ Net to UWs)</option>
+                    </select>
+                    <select className="filtro" value={triVista} onChange={(e) => setTriVista(e.target.value as "cal" | "edad")}>
+                      <option value="cal">Vista: Calendario</option>
+                      <option value="edad">Vista: Por antigüedad</option>
+                    </select>
+                    <select
+                      className="filtro"
+                      value={triScope.risk_code ? `rc:${triScope.risk_code}` : triScope.seccion != null ? `sec:${triScope.seccion}` : "total"}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setTriScope(v === "total" ? {} : v.startsWith("rc:") ? { risk_code: v.slice(3) } : { seccion: Number(v.slice(4)) });
+                      }}
+                    >
+                      <option value="total">Ámbito: Total</option>
+                      {tri.risk_codes.map((rc) => <option key={`rc:${rc}`} value={`rc:${rc}`}>Código {rc}</option>)}
+                      {tri.secciones.map((s) => <option key={`sec:${s}`} value={`sec:${s}`}>Sección {s}</option>)}
+                    </select>
+                    <button className="btn-secondary" onClick={exportarTriangulo} title="Exportar a Excel la métrica y el ámbito seleccionados">⤓ Excel</button>
+                  </div>
                   <div style={{ textAlign: "right" }}>
                     <div className="hint">
                       GWP Our Line: <b>{imp(tri.gwp_our_line)}</b> · Net to UWs: <b>{imp(tri.net_uw)}</b>
@@ -1319,6 +1316,9 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
                       {" · "}Ultimate: <b>{imp(tri.ultimate_sugerido)}{ultPct == null ? "" : ` (${fmtMiles(ultPct)} %)`}</b>
                     </div>
                   </div>
+                </div>
+                <div className="hint" style={{ marginTop: 4 }}>
+                  Filas = mes de apertura · columnas = {triVista === "cal" ? "mes de valuación (reciente → antiguo)" : "meses desde la apertura"}.
                 </div>
               </div>
               {meses.length === 0 ? (
