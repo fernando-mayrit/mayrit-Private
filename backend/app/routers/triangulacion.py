@@ -1,20 +1,17 @@
 """
 Triangulación de siniestralidad.
 
-Construye triángulos de desarrollo a partir de las presentaciones mensuales de Claims
-(`claims_presentaciones`), que guardan por (binder, mes, siniestro) el pagado acumulado y las
-reservas. De ahí se deriva el INCURRIDO (= pagado + reservas) y el PAGADO acumulados.
-
-Triángulo por BINDER:
-  - Filas (origen)   = mes de apertura del siniestro (date_opened; respaldo: claim_first_advised
-                       o su primer mes de aparición en los snapshots).
-  - Columnas (desarrollo) = meses transcurridos desde el origen (0, 1, 2, …).
-  - Celda = valor del cohorte valuado en el mes calendario `origen + desarrollo`, usando para cada
-            siniestro su último snapshot ≤ ese mes (acumulado; los meses sin presentación
-            arrastran el último valor conocido).
-  - 3 triángulos conmutables: Incurrido, Pagado, Nº de siniestros.
-  - Importe de referencia: Net to UWs = GWP our line − comisión coverholder − brokerage (mismo
-    criterio que el binder/ratios), para el ratio de siniestralidad. Los siniestros van sin escalar.
+Estructura (la del usuario): eje de MESES de calendario, desde el inicio del binder hasta el
+último mes con snapshot.
+  - Filas    = mes de apertura del siniestro (date_opened; respaldo: claim_first_advised o su
+               primer mes de aparición). Se muestran TODOS los meses del binder, aunque no haya
+               siniestros (salen en 0). Cada fila lleva su GWP Our Line del mes.
+  - Columnas = mes de valuación (calendario). La celda (mes_origen, mes_valuación) es la
+               siniestralidad de los siniestros abiertos en `mes_origen` valuada a `mes_valuación`
+               (último snapshot ≤ ese mes; arrastra el anterior). Vacío si valuación < origen.
+  - Fila inferior = Total por columna (siniestralidad total a ese mes). La última columna = hoy.
+  - 3 métricas conmutables: Incurrido (pagado+reservas), Pagado, Nº de siniestros.
+  - IBNR sugerido por chain-ladder (sobre el desarrollo por antigüedad).
 """
 from __future__ import annotations
 
@@ -29,7 +26,6 @@ router = APIRouter(tags=["Triangulación"])
 
 
 def _mi(anio: int, mes: int) -> int:
-    """Índice de mes absoluto (para restar meses fácilmente): aaaa-mm -> aaaa*12 + (mm-1)."""
     return anio * 12 + (mes - 1)
 
 
@@ -42,8 +38,7 @@ def _periodo_de_mi(mi: int) -> str:
 
 
 def _bases(db: Session, binder_id: int) -> tuple[float, float]:
-    """Devuelve (GWP our line, Net to UWs) de las líneas Risk del binder.
-    Net to UWs = GWP our line − comisión coverholder − brokerage."""
+    """(GWP our line, Net to UWs) de las líneas Risk. Net = GWP − com. coverholder − brokerage."""
     row = db.execute(
         select(
             func.coalesce(func.sum(BdxLinea.total_gwp_our_line), 0),
@@ -58,13 +53,29 @@ def _bases(db: Session, binder_id: int) -> tuple[float, float]:
     return round(gwp, 2), round(gwp - cc - brk, 2)
 
 
+def _premium_por_mes(db: Session, binder_id: int) -> dict[int, float]:
+    """GWP our line por mes (reporting_period_start) de las líneas Risk."""
+    rows = db.execute(
+        select(BdxLinea.reporting_period_start, func.coalesce(func.sum(BdxLinea.total_gwp_our_line), 0))
+        .join(Bdx, Bdx.id == BdxLinea.bdx_id)
+        .where(Bdx.binder_id == binder_id, Bdx.tipo == "Risk", BdxLinea.reporting_period_start.is_not(None))
+        .group_by(BdxLinea.reporting_period_start)
+    ).all()
+    out: dict[int, float] = {}
+    for d, s in rows:
+        out[_mi(d.year, d.month)] = out.get(_mi(d.year, d.month), 0.0) + float(s)
+    return out
+
+
 @router.get("/binders/{binder_id}/triangulacion")
 def triangulacion_binder(binder_id: int, db: Session = Depends(get_db)):
     b = db.get(Binder, binder_id)
     if b is None:
         raise HTTPException(status_code=404, detail=f"Binder {binder_id} no encontrado")
 
-    # Snapshots del binder con siniestro (los NIL tienen siniestro_id NULL → se ignoran).
+    gwp_our_line, net_uw = _bases(db, binder_id)
+    prem_mi = _premium_por_mes(db, binder_id)
+
     pres = db.execute(
         select(
             ClaimsPresentacion.siniestro_id, ClaimsPresentacion.periodo_ord,
@@ -75,19 +86,21 @@ def triangulacion_binder(binder_id: int, db: Session = Depends(get_db)):
         .order_by(ClaimsPresentacion.siniestro_id, ClaimsPresentacion.periodo_ord)
     ).all()
 
-    # Por siniestro: lista de (mi, incurrido, pagado) acumulados, ordenada cronológicamente.
+    # Por siniestro: lista de (mi, incurrido, pagado) acumulados, cronológica.
     snaps: dict[int, list[tuple[int, float, float]]] = {}
     for sid, ord_, pi, pf, ri, rf in pres:
         mi = _mi_de_ord(ord_)
-        inc = float(pi or 0) + float(pf or 0) + float(ri or 0) + float(rf or 0)
-        paid = float(pi or 0) + float(pf or 0)
-        snaps.setdefault(sid, []).append((mi, inc, paid))
+        snaps.setdefault(sid, []).append(
+            (mi, float(pi or 0) + float(pf or 0) + float(ri or 0) + float(rf or 0), float(pi or 0) + float(pf or 0))
+        )
 
+    vacio = {
+        "meses": [], "premium_mes": [], "triangulos": {"incurrido": [], "pagado": [], "num": []},
+        "total_premium": round(sum(prem_mi.values()), 2), "gwp_our_line": gwp_our_line, "net_uw": net_uw,
+        "incurrido_actual": 0.0, "ibnr_sugerido": 0.0, "ultimate_sugerido": 0.0,
+    }
     if not snaps:
-        gwp0, net0 = _bases(db, binder_id)
-        return {"origenes": [], "max_desarrollo": -1, "triangulos": {"incurrido": [], "pagado": [], "num": []},
-                "gwp_our_line": gwp0, "net_uw": net0, "incurrido_actual": 0.0,
-                "ibnr_sugerido": 0.0, "ultimate_sugerido": 0.0}
+        return vacio
 
     # Mes de origen de cada siniestro: apertura → primer aviso → primer snapshot.
     sins = {s.id: s for s in db.scalars(select(Siniestro).where(Siniestro.binder_id == binder_id)).all()}
@@ -97,54 +110,57 @@ def triangulacion_binder(binder_id: int, db: Session = Depends(get_db)):
         f = (s.date_opened if s else None) or (s.claim_first_advised if s else None)
         origen[sid] = _mi(f.year, f.month) if f else lista[0][0]
 
+    # Eje de meses: desde el inicio del binder hasta el último snapshot.
     latest = max(mi for lista in snaps.values() for (mi, _, _) in lista)
+    inicio_cand = [origen[s] for s in origen] + list(prem_mi) + [latest]
+    if b.fecha_efecto:
+        inicio_cand.append(_mi(b.fecha_efecto.year, b.fecha_efecto.month))
+    start = min(inicio_cand)
+    meses = list(range(start, latest + 1))
+    idx = {mi: k for k, mi in enumerate(meses)}
 
-    # Valor acumulado de un siniestro en el mes calendario C: último snapshot con mi ≤ C.
     def val_at(sid: int, C: int):
         v = None
-        for mi, inc, paid in snaps[sid]:  # ordenada ascendente
+        for mi, inc, paid in snaps[sid]:
             if mi <= C:
                 v = (inc, paid)
             else:
                 break
-        return v  # None si aún no ha aparecido en esa fecha
+        return v
 
     # Cohortes por mes de origen.
     cohortes: dict[int, list[int]] = {}
     for sid, o in origen.items():
         cohortes.setdefault(o, []).append(sid)
-    origenes_mi = sorted(cohortes)
 
-    tri_inc, tri_paid, tri_num = [], [], []
-    for o in origenes_mi:
-        fila_inc, fila_paid, fila_num = [], [], []
-        for d in range(latest - o + 1):  # 0 .. hasta el último mes con datos
-            C = o + d
+    n = len(meses)
+    tri_inc = [[None] * n for _ in range(n)]
+    tri_paid = [[None] * n for _ in range(n)]
+    tri_num = [[None] * n for _ in range(n)]
+    for i, o in enumerate(meses):
+        claims_o = cohortes.get(o, [])
+        for j in range(i, n):  # valuación >= origen
+            C = meses[j]
             sinc = spaid = 0.0
             cnt = 0
-            for sid in cohortes[o]:
+            for sid in claims_o:
                 v = val_at(sid, C)
                 if v is not None:
                     sinc += v[0]
                     spaid += v[1]
                     cnt += 1
-            fila_inc.append(round(sinc, 2))
-            fila_paid.append(round(spaid, 2))
-            fila_num.append(cnt)
-        tri_inc.append(fila_inc)
-        tri_paid.append(fila_paid)
-        tri_num.append(fila_num)
+            tri_inc[i][j] = round(sinc, 2)
+            tri_paid[i][j] = round(spaid, 2)
+            tri_num[i][j] = cnt
 
-    # Incurrido actual del binder = valuación de todos los siniestros en el último mes.
     incurrido_actual = round(sum((val_at(sid, latest) or (0.0, 0.0))[0] for sid in snaps), 2)
-
-    ibnr, ultimate = _chain_ladder(tri_inc)
-    gwp_our_line, net_uw = _bases(db, binder_id)
+    ibnr, ultimate = _chain_ladder_desde_meses(meses, cohortes, val_at)
 
     return {
-        "origenes": [_periodo_de_mi(o) for o in origenes_mi],
-        "max_desarrollo": latest - min(origenes_mi),
+        "meses": [_periodo_de_mi(m) for m in meses],
+        "premium_mes": [round(prem_mi.get(m, 0.0), 2) for m in meses],
         "triangulos": {"incurrido": tri_inc, "pagado": tri_paid, "num": tri_num},
+        "total_premium": round(sum(prem_mi.values()), 2),
         "gwp_our_line": gwp_our_line,
         "net_uw": net_uw,
         "incurrido_actual": incurrido_actual,
@@ -153,30 +169,35 @@ def triangulacion_binder(binder_id: int, db: Session = Depends(get_db)):
     }
 
 
-def _chain_ladder(tri: list[list[float]]) -> tuple[float, float]:
-    """Estimación SUGERIDA de IBNR por chain-ladder (volumen ponderado) sobre el triángulo de
-    incurrido acumulado. Devuelve (ibnr_sugerido, ultimate_sugerido).
-
-    IBNR = Σ ultimate − Σ último incurrido conocido de cada cohorte. Es una orientación: con
-    pocos cohortes o desarrollo errático puede ser inestable (de ahí "sugerido")."""
-    if not tri:
+def _chain_ladder_desde_meses(meses, cohortes, val_at) -> tuple[float, float]:
+    """IBNR sugerido (chain-ladder volumen-ponderado) sobre el desarrollo POR ANTIGÜEDAD.
+    Construye el triángulo por desarrollo (meses desde el origen) a partir de los cohortes y
+    proyecta cada cohorte a 'ultimate'. Devuelve (ibnr, ultimate)."""
+    latest = meses[-1]
+    # tri[d] por cohorte: incurrido acumulado a `origen + d` meses, solo cohortes con siniestros.
+    filas = []
+    for o, claims_o in cohortes.items():
+        if not claims_o:
+            continue
+        fila = []
+        for d in range(latest - o + 1):
+            C = o + d
+            s = sum((val_at(sid, C) or (0.0, 0.0))[0] for sid in claims_o)
+            fila.append(s)
+        filas.append(fila)
+    if not filas:
         return 0.0, 0.0
-    maxlen = max(len(f) for f in tri)
+    maxlen = max(len(f) for f in filas)
     if maxlen < 2:
-        actual = sum(f[-1] for f in tri if f)
+        actual = sum(f[-1] for f in filas if f)
         return 0.0, round(actual, 2)
-    # Factores edad-a-edad f[d]: Σ C(i,d+1) / Σ C(i,d) sobre cohortes con datos en d y d+1.
     factores = []
     for d in range(maxlen - 1):
-        num = sum(f[d + 1] for f in tri if len(f) > d + 1)
-        den = sum(f[d] for f in tri if len(f) > d + 1)
+        num = sum(f[d + 1] for f in filas if len(f) > d + 1)
+        den = sum(f[d] for f in filas if len(f) > d + 1)
         factores.append(num / den if den > 0 else 1.0)
-    # Proyección de cada cohorte desde su último desarrollo conocido hasta el final.
-    ultimate = 0.0
-    actual = 0.0
-    for f in tri:
-        if not f:
-            continue
+    ultimate = actual = 0.0
+    for f in filas:
         last = len(f) - 1
         v = f[last]
         actual += v

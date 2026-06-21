@@ -1232,22 +1232,17 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
       {tab === "triangulacion" && (
         triBusy && !tri ? (
           <div className="empty">Cargando triangulación…</div>
-        ) : !tri || tri.origenes.length === 0 ? (
+        ) : !tri || tri.meses.length === 0 ? (
           <div className="empty">No hay snapshots de Claims para triangular.</div>
         ) : (() => {
           const matriz = tri.triangulos[triMetrica];
-          const cols = tri.max_desarrollo + 1;
+          const meses = tri.meses;
           const esNum = triMetrica === "num";
           const ratio = tri.net_uw ? (tri.incurrido_actual / tri.net_uw) * 100 : null;
           const ibnrPct = tri.gwp_our_line ? (tri.ibnr_sugerido / tri.gwp_our_line) * 100 : null;
-          // Totales por columna de desarrollo (suma de las filas que llegan a ese desarrollo).
-          const totales = Array.from({ length: cols }, (_, d) =>
-            matriz.reduce((a, fila) => a + (d < fila.length ? fila[d] : 0), 0)
-          );
-          // Valor "Actual" de cada cohorte = su último dato conocido (borde derecho del triángulo).
-          // Su total cuadra con el "Incurrido actual" (para incurrido) — es la valuación a hoy.
-          const actualDe = (fila: number[]) => (fila.length ? fila[fila.length - 1] : 0);
-          const totalActual = matriz.reduce((a, fila) => a + actualDe(fila), 0);
+          // Total por columna de valuación = siniestralidad total a ese mes (suma de los orígenes).
+          const totalCol = meses.map((_, j) => matriz.reduce((a, fila) => a + (fila[j] ?? 0), 0));
+          const celda = (v: number | null) => (v == null ? "" : esNum ? v : fmtMiles(v));
           return (
             <>
               <div className="bdx-topbar" style={{ alignItems: "center", gap: 12, flexWrap: "wrap" }}>
@@ -1257,50 +1252,39 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
                   <option value="num">Nº de siniestros</option>
                 </select>
                 <span className="hint">
-                  Net to UWs: <b>{imp(tri.net_uw)}</b> · Incurrido actual: <b>{imp(tri.incurrido_actual)}</b>
+                  GWP Our Line: <b>{imp(tri.gwp_our_line)}</b> · Net to UWs: <b>{imp(tri.net_uw)}</b>
+                  {" · "}Incurrido actual: <b>{imp(tri.incurrido_actual)}</b>
                   {" · "}Siniestralidad: <b>{ratio == null ? "—" : `${fmtMiles(ratio)} %`}</b>
                 </span>
-                <span className="hint" title="Estimación orientativa por chain-ladder sobre el incurrido. El % es sobre el GWP Our Line.">
+                <span className="hint" title="Estimación orientativa por chain-ladder. El % es sobre el GWP Our Line.">
                   IBNR sugerido: <b>{imp(tri.ibnr_sugerido)}{ibnrPct == null ? "" : ` (${fmtMiles(ibnrPct)} %)`}</b>
                   {" · "}Ultimate: <b>{imp(tri.ultimate_sugerido)}</b>
                 </span>
-                <span className="hint">Filas = mes de apertura · columnas = meses de desarrollo.</span>
+                <span className="hint">Filas = mes de apertura · columnas = mes de valuación.</span>
               </div>
               <div className="tabla-scroll bdx-scroll">
                 <table className="compacto bdx-tabla tri-tabla">
                   <thead>
                     <tr>
-                      <th style={{ position: "sticky", left: 0 }}>Origen</th>
-                      <th className="num tri-actual" title="Valor a hoy de cada cohorte">Actual</th>
-                      {Array.from({ length: cols }, (_, d) => <th key={d} className="num">{d}</th>)}
+                      <th style={{ position: "sticky", left: 0 }}>Mes</th>
+                      <th className="num tri-actual" title="GWP Our Line del mes">GWP</th>
+                      {meses.map((m) => <th key={m} className="num">{m}</th>)}
                     </tr>
                   </thead>
                   <tbody>
-                    {tri.origenes.map((o, i) => {
-                      const fila = matriz[i];
-                      return (
-                        <tr key={o}>
-                          <th style={{ position: "sticky", left: 0 }}>{o}</th>
-                          <td className="num tri-actual">{esNum ? actualDe(fila) : fmtMiles(actualDe(fila))}</td>
-                          {Array.from({ length: cols }, (_, d) => {
-                            const v = d < fila.length ? fila[d] : null;
-                            return (
-                              <td key={d} className="num">
-                                {v == null ? "" : esNum ? v : fmtMiles(v)}
-                              </td>
-                            );
-                          })}
-                        </tr>
-                      );
-                    })}
+                    {meses.map((m, i) => (
+                      <tr key={m}>
+                        <th style={{ position: "sticky", left: 0 }}>{m}</th>
+                        <td className="num tri-actual">{fmtMiles(tri.premium_mes[i])}</td>
+                        {meses.map((mc, j) => <td key={mc} className="num">{celda(matriz[i][j])}</td>)}
+                      </tr>
+                    ))}
                   </tbody>
                   <tfoot>
                     <tr className="tri-total">
                       <th style={{ position: "sticky", left: 0 }}>Total</th>
-                      <td className="num tri-actual">{esNum ? totalActual : fmtMiles(totalActual)}</td>
-                      {totales.map((t, d) => (
-                        <td key={d} className="num">{esNum ? t : fmtMiles(t)}</td>
-                      ))}
+                      <td className="num tri-actual">{fmtMiles(tri.total_premium)}</td>
+                      {totalCol.map((t, j) => <td key={j} className="num">{esNum ? t : fmtMiles(t)}</td>)}
                     </tr>
                   </tfoot>
                 </table>

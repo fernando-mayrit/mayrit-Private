@@ -85,9 +85,10 @@ export const claimsBdxApi = {
 // ── Triangulación de siniestralidad ──
 export type MetricaTriangulo = "incurrido" | "pagado" | "num";
 export interface Triangulacion {
-  origenes: string[];                 // meses de origen (filas), 'aaaa-mm'
-  max_desarrollo: number;             // nº de columnas de desarrollo − 1
-  triangulos: Record<MetricaTriangulo, number[][]>;
+  meses: string[];                    // eje de meses (filas = origen, columnas = valuación)
+  premium_mes: number[];             // GWP our line por mes (alineado con meses)
+  triangulos: Record<MetricaTriangulo, (number | null)[][]>; // [origen][valuación]; null si val<origen
+  total_premium: number;
   gwp_our_line: number;               // GWP our line bruto (Σ líneas Risk)
   net_uw: number;                     // GWP our line − com. coverholder − brokerage
   incurrido_actual: number;           // incurrido total valuado al último mes
