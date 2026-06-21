@@ -790,18 +790,6 @@ export default function BindersPage() {
     }
   }
 
-  async function borrarActual() {
-    if (!form?.id) return;
-    if (!confirm(`¿Borrar el binder "${form.umr || form.agreement_number}"?`)) return;
-    try {
-      await api.remove(form.id);
-      cerrar();
-      await cargar();
-    } catch (e) {
-      setError((e as Error).message);
-    }
-  }
-
   // Desde dentro del binder (vista de edición): pasar a "Nuevo suplemento" reutilizando los valores actuales.
   async function pasarASuplemento() {
     setModo("suplemento");
@@ -1072,7 +1060,6 @@ export default function BindersPage() {
           saveLabel={modo === "suplemento" ? "Crear suplemento" : corrigiendo ? "Guardar corrección" : "Guardar"}
           onSave={guardar}
           onClose={cerrar}
-          onDelete={soloEstado || corrigiendo ? borrarActual : undefined}
           escEnabled={!altaPrograma}
         >
           {/* PROVISIONAL (se eliminará): marca de binders sin snapshots de Claims */}

@@ -435,11 +435,8 @@ def crear_suplemento(binder_id: int, payload: sch.SuplementoCreate, db: Session 
 
 @router.delete("/{binder_id}", status_code=204)
 def borrar(binder_id: int, db: Session = Depends(get_db)):
-    b = db.get(Binder, binder_id)
-    if b is None:
-        raise HTTPException(status_code=404, detail=f"Binder {binder_id} no encontrado")
-    db.delete(b)
-    db.commit()
+    # Un binder NUNCA se borra (arrastra en cascada su producción: BDX, siniestros, recibos…).
+    raise HTTPException(status_code=409, detail="Los binders no se pueden borrar.")
 
 
 @router.get("/{binder_id}/bdx/sharepoint-preview")
