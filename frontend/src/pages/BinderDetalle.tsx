@@ -623,7 +623,8 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
           ) : porMes.length === 0 ? (
             <div className="empty">Aún no hay BDX importado. Ve a la pestaña BDX para importarlo.</div>
           ) : (
-            <table className="compacto" style={{ maxWidth: 760 }}>
+            <div className="bdx-scroll">
+            <table className="compacto risk-mes" style={{ maxWidth: 760 }}>
               <thead>
                 <tr>
                   <th style={{ width: 28 }}>
@@ -692,6 +693,7 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
                 </tr>
               </tbody>
             </table>
+            </div>
           )}
         </>
       )}

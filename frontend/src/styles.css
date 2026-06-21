@@ -451,6 +451,8 @@ td.num, th.num { text-align: right; }
 .bdx-scroll table.recibos-binder thead th { position: sticky; top: 0; background: var(--gris-claro); z-index: 2; }
 .bdx-scroll table.premium-cobro { border-collapse: separate; border-spacing: 0; overflow: visible; }
 .bdx-scroll table.premium-cobro thead th { position: sticky; top: 0; background: var(--gris-claro); z-index: 2; }
+.bdx-scroll table.risk-mes { border-collapse: separate; border-spacing: 0; overflow: visible; }
+.bdx-scroll table.risk-mes thead th { position: sticky; top: 0; background: var(--gris-claro); z-index: 2; }
 
 /* Financiero: rejilla de cuadros (pendientes de cobro/liquidación/traspaso/pago) */
 .fin-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 18px; }
