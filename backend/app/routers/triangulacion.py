@@ -15,7 +15,12 @@ Estructura (la del usuario): eje de MESES de calendario, desde el inicio del bin
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+import io
+
+import openpyxl
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from openpyxl.styles import Alignment, Font, PatternFill
+from openpyxl.utils import get_column_letter
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -23,6 +28,16 @@ from ..db import get_db
 from ..models.maestras import Bdx, BdxLinea, Binder, ClaimsPresentacion, Programa, Siniestro
 
 router = APIRouter(tags=["Triangulación"])
+
+METRICAS = {"incurrido": "Incurrido", "pagado": "Pagado", "num": "Nº siniestros", "pct": "% Siniestralidad"}
+
+
+def _scope_label(seccion: int | None, risk_code: str | None) -> str:
+    if risk_code:
+        return f"Código {risk_code}"
+    if seccion is not None:
+        return f"Sección {seccion}"
+    return "Total"
 
 
 def _mi(anio: int, mes: int) -> int:
@@ -37,56 +52,86 @@ def _periodo_de_mi(mi: int) -> str:
     return f"{mi // 12:04d}-{mi % 12 + 1:02d}"
 
 
-def _bases(db: Session, binder_id: int) -> tuple[float, float]:
-    """(GWP our line, Net to UWs) de las líneas Risk. Net = GWP − com. coverholder − brokerage."""
-    row = db.execute(
+def _risk_scope(stmt, seccion: int | None, risk_code: str | None):
+    if seccion is not None:
+        stmt = stmt.where(BdxLinea.section_no == seccion)
+    if risk_code:
+        stmt = stmt.where(BdxLinea.risk_code == risk_code)
+    return stmt
+
+
+def _bases(db: Session, binder_id: int, seccion=None, risk_code=None) -> tuple[float, float]:
+    """(GWP our line, Net to UWs) de las líneas Risk del ámbito. Net = GWP − com − brokerage."""
+    q = (
         select(
             func.coalesce(func.sum(BdxLinea.total_gwp_our_line), 0),
             func.coalesce(func.sum(BdxLinea.commission_coverholder_amount), 0),
             func.coalesce(func.sum(BdxLinea.brokerage_amount), 0),
         )
-        .select_from(BdxLinea)
-        .join(Bdx, Bdx.id == BdxLinea.bdx_id)
+        .select_from(BdxLinea).join(Bdx, Bdx.id == BdxLinea.bdx_id)
         .where(Bdx.binder_id == binder_id, Bdx.tipo == "Risk")
-    ).first()
-    gwp, cc, brk = (float(x) for x in row)
+    )
+    gwp, cc, brk = (float(x) for x in db.execute(_risk_scope(q, seccion, risk_code)).first())
     return round(gwp, 2), round(gwp - cc - brk, 2)
 
 
-def _premium_por_mes(db: Session, binder_id: int) -> dict[int, float]:
-    """GWP our line por mes (reporting_period_start) de las líneas Risk."""
-    rows = db.execute(
-        select(BdxLinea.reporting_period_start, func.coalesce(func.sum(BdxLinea.total_gwp_our_line), 0))
+def _net_por_mes(db: Session, binder_id: int, seccion=None, risk_code=None) -> dict[int, float]:
+    """Net to UWs por mes (reporting_period_start) de las líneas Risk del ámbito."""
+    q = (
+        select(
+            BdxLinea.reporting_period_start,
+            func.coalesce(func.sum(BdxLinea.total_gwp_our_line), 0)
+            - func.coalesce(func.sum(BdxLinea.commission_coverholder_amount), 0)
+            - func.coalesce(func.sum(BdxLinea.brokerage_amount), 0),
+        )
         .join(Bdx, Bdx.id == BdxLinea.bdx_id)
         .where(Bdx.binder_id == binder_id, Bdx.tipo == "Risk", BdxLinea.reporting_period_start.is_not(None))
-        .group_by(BdxLinea.reporting_period_start)
-    ).all()
+    )
+    q = _risk_scope(q, seccion, risk_code).group_by(BdxLinea.reporting_period_start)
     out: dict[int, float] = {}
-    for d, s in rows:
+    for d, s in db.execute(q).all():
         out[_mi(d.year, d.month)] = out.get(_mi(d.year, d.month), 0.0) + float(s)
     return out
 
 
-@router.get("/binders/{binder_id}/triangulacion")
-def triangulacion_binder(binder_id: int, db: Session = Depends(get_db)):
-    b = db.get(Binder, binder_id)
-    if b is None:
-        raise HTTPException(status_code=404, detail=f"Binder {binder_id} no encontrado")
+def _opciones(db: Session, binder_id: int) -> tuple[list[int], list[str]]:
+    """Secciones y códigos de riesgo disponibles (de los siniestros del binder)."""
+    secs, rcs = set(), set()
+    for s in db.scalars(select(Siniestro).where(Siniestro.binder_id == binder_id)).all():
+        if s.section is not None:
+            secs.add(s.section)
+        if s.risk_code:
+            rcs.add(s.risk_code)
+    return sorted(secs), sorted(rcs)
 
-    gwp_our_line, net_uw = _bases(db, binder_id)
-    prem_mi = _premium_por_mes(db, binder_id)
 
-    pres = db.execute(
+def _payload_binder(db: Session, b: Binder, seccion: int | None, risk_code: str | None) -> dict:
+    """Triángulo del binder para un ámbito (Total / Sección / Código de riesgo)."""
+    binder_id = b.id
+    gwp_our_line, net_uw = _bases(db, binder_id, seccion, risk_code)
+    net_mi = _net_por_mes(db, binder_id, seccion, risk_code)
+    secciones, risk_codes = _opciones(db, binder_id)
+    base = {
+        "gwp_our_line": gwp_our_line, "net_uw": net_uw,
+        "secciones": secciones, "risk_codes": risk_codes,
+        "ambito": _scope_label(seccion, risk_code),
+    }
+
+    q = (
         select(
             ClaimsPresentacion.siniestro_id, ClaimsPresentacion.periodo_ord,
             ClaimsPresentacion.paid_indemnity_acum, ClaimsPresentacion.paid_fees_acum,
             ClaimsPresentacion.reserves_indemnity, ClaimsPresentacion.reserves_fees,
         )
+        .join(Siniestro, Siniestro.id == ClaimsPresentacion.siniestro_id)
         .where(ClaimsPresentacion.binder_id == binder_id, ClaimsPresentacion.siniestro_id.is_not(None))
-        .order_by(ClaimsPresentacion.siniestro_id, ClaimsPresentacion.periodo_ord)
-    ).all()
+    )
+    if seccion is not None:
+        q = q.where(Siniestro.section == seccion)
+    if risk_code:
+        q = q.where(Siniestro.risk_code == risk_code)
+    pres = db.execute(q.order_by(ClaimsPresentacion.siniestro_id, ClaimsPresentacion.periodo_ord)).all()
 
-    # Por siniestro: lista de (mi, incurrido, pagado) acumulados, cronológica.
     snaps: dict[int, list[tuple[int, float, float]]] = {}
     for sid, ord_, pi, pf, ri, rf in pres:
         mi = _mi_de_ord(ord_)
@@ -94,15 +139,11 @@ def triangulacion_binder(binder_id: int, db: Session = Depends(get_db)):
             (mi, float(pi or 0) + float(pf or 0) + float(ri or 0) + float(rf or 0), float(pi or 0) + float(pf or 0))
         )
 
-    vacio = {
-        "meses": [], "premium_mes": [], "triangulos": {"incurrido": [], "pagado": [], "num": []},
-        "total_premium": round(sum(prem_mi.values()), 2), "gwp_our_line": gwp_our_line, "net_uw": net_uw,
-        "incurrido_actual": 0.0, "ibnr_sugerido": 0.0, "ultimate_sugerido": 0.0,
-    }
     if not snaps:
-        return vacio
+        return {**base, "meses": [], "net_premium_mes": [],
+                "triangulos": {"incurrido": [], "pagado": [], "num": []},
+                "incurrido_actual": 0.0, "ibnr_sugerido": 0.0, "ultimate_sugerido": 0.0}
 
-    # Mes de origen de cada siniestro: apertura → primer aviso → primer snapshot.
     sins = {s.id: s for s in db.scalars(select(Siniestro).where(Siniestro.binder_id == binder_id)).all()}
     origen: dict[int, int] = {}
     for sid, lista in snaps.items():
@@ -110,14 +151,12 @@ def triangulacion_binder(binder_id: int, db: Session = Depends(get_db)):
         f = (s.date_opened if s else None) or (s.claim_first_advised if s else None)
         origen[sid] = _mi(f.year, f.month) if f else lista[0][0]
 
-    # Eje de meses: desde el inicio del binder hasta el último snapshot.
     latest = max(mi for lista in snaps.values() for (mi, _, _) in lista)
-    inicio_cand = [origen[s] for s in origen] + list(prem_mi) + [latest]
+    inicio_cand = list(origen.values()) + list(net_mi) + [latest]
     if b.fecha_efecto:
         inicio_cand.append(_mi(b.fecha_efecto.year, b.fecha_efecto.month))
     start = min(inicio_cand)
     meses = list(range(start, latest + 1))
-    idx = {mi: k for k, mi in enumerate(meses)}
 
     def val_at(sid: int, C: int):
         v = None
@@ -128,7 +167,6 @@ def triangulacion_binder(binder_id: int, db: Session = Depends(get_db)):
                 break
         return v
 
-    # Cohortes por mes de origen.
     cohortes: dict[int, list[int]] = {}
     for sid, o in origen.items():
         cohortes.setdefault(o, []).append(sid)
@@ -139,34 +177,112 @@ def triangulacion_binder(binder_id: int, db: Session = Depends(get_db)):
     tri_num = [[None] * n for _ in range(n)]
     for i, o in enumerate(meses):
         claims_o = cohortes.get(o, [])
-        for j in range(i, n):  # valuación >= origen
+        for j in range(i, n):
             C = meses[j]
             sinc = spaid = 0.0
             cnt = 0
             for sid in claims_o:
                 v = val_at(sid, C)
                 if v is not None:
-                    sinc += v[0]
-                    spaid += v[1]
-                    cnt += 1
+                    sinc += v[0]; spaid += v[1]; cnt += 1
             tri_inc[i][j] = round(sinc, 2)
             tri_paid[i][j] = round(spaid, 2)
             tri_num[i][j] = cnt
 
     incurrido_actual = round(sum((val_at(sid, latest) or (0.0, 0.0))[0] for sid in snaps), 2)
     ibnr, ultimate = _chain_ladder_desde_meses(meses, cohortes, val_at)
-
     return {
+        **base,
         "meses": [_periodo_de_mi(m) for m in meses],
-        "premium_mes": [round(prem_mi.get(m, 0.0), 2) for m in meses],
+        "net_premium_mes": [round(net_mi.get(m, 0.0), 2) for m in meses],
         "triangulos": {"incurrido": tri_inc, "pagado": tri_paid, "num": tri_num},
-        "total_premium": round(sum(prem_mi.values()), 2),
-        "gwp_our_line": gwp_our_line,
-        "net_uw": net_uw,
         "incurrido_actual": incurrido_actual,
         "ibnr_sugerido": ibnr,
         "ultimate_sugerido": ultimate,
     }
+
+
+@router.get("/binders/{binder_id}/triangulacion")
+def triangulacion_binder(
+    binder_id: int,
+    seccion: int | None = Query(None),
+    risk_code: str | None = Query(None),
+    db: Session = Depends(get_db),
+):
+    b = db.get(Binder, binder_id)
+    if b is None:
+        raise HTTPException(status_code=404, detail=f"Binder {binder_id} no encontrado")
+    return _payload_binder(db, b, seccion, risk_code)
+
+
+@router.get("/binders/{binder_id}/triangulacion/excel")
+def triangulacion_binder_excel(
+    binder_id: int,
+    metrica: str = Query("incurrido"),
+    seccion: int | None = Query(None),
+    risk_code: str | None = Query(None),
+    db: Session = Depends(get_db),
+):
+    b = db.get(Binder, binder_id)
+    if b is None:
+        raise HTTPException(status_code=404, detail=f"Binder {binder_id} no encontrado")
+    if metrica not in METRICAS:
+        raise HTTPException(status_code=422, detail=f"Métrica '{metrica}' no válida")
+    d = _payload_binder(db, b, seccion, risk_code)
+    meses = d["meses"]
+    es_num = metrica == "num"
+    es_pct = metrica == "pct"
+    net_uw = d["net_uw"] or 0
+    src = d["triangulos"]["incurrido" if es_pct else metrica]
+
+    def cel(i, j):
+        v = src[i][j] if (src and j < len(src[i])) else None
+        if v is None:
+            return None
+        if es_pct:
+            return round(v / net_uw * 100, 2) if net_uw else None
+        return v
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Triangulación"[:31]
+    head = Font(bold=True)
+    fill = PatternFill("solid", fgColor="DDDDDD")
+    # Columnas de valuación: del más reciente (izquierda) al más antiguo (derecha).
+    cols_val = list(range(len(meses) - 1, -1, -1))
+    cab = ["Mes", "Net to UWs"] + [meses[j] for j in cols_val]
+    ws.append(cab)
+    for c in ws[1]:
+        c.font = head
+        c.fill = fill
+    for i, m in enumerate(meses):
+        fila = [m, d["net_premium_mes"][i]] + [cel(i, j) for j in cols_val]
+        ws.append(fila)
+    total = ["Total", round(net_uw, 2)]
+    for j in cols_val:
+        s = sum((cel(i, j) or 0) for i in range(len(meses)))
+        total.append(round(s, 2))
+    ws.append(total)
+    for c in ws[ws.max_row]:
+        c.font = head
+    fmt = "0.00%" if False else ("#,##0.00" if not es_num else "#,##0")
+    for fila in ws.iter_rows(min_row=2, min_col=2):
+        for c in fila:
+            if isinstance(c.value, (int, float)):
+                c.number_format = ("0.00\\%" if es_pct and c.column > 2 else fmt)
+    for j in range(1, len(cab) + 1):
+        ws.column_dimensions[get_column_letter(j)].width = 12
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    scope = d["ambito"].replace(" ", "")
+    nombre = f"Triangulacion {b.umr} {METRICAS[metrica]} {scope}.xlsx"
+    return Response(
+        content=buf.getvalue(),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{nombre}"'},
+    )
 
 
 def _chain_ladder_desde_meses(meses, cohortes, val_at) -> tuple[float, float]:

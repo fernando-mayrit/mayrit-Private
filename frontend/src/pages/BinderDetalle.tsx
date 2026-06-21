@@ -135,21 +135,35 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
   const [tri, setTri] = useState<Triangulacion | null>(null);
   const [triMetrica, setTriMetrica] = useState<MetricaTriangulo>("incurrido");
   const [triVista, setTriVista] = useState<"cal" | "edad">("cal"); // calendario o por antigüedad
+  const [triScope, setTriScope] = useState<{ seccion?: number; risk_code?: string }>({});
   const [triBusy, setTriBusy] = useState(false);
-  async function cargarTriangulacion() {
+  async function cargarTriangulacion(scope: { seccion?: number; risk_code?: string }) {
     setTriBusy(true);
     try {
-      setTri(await triangulacionApi.deBinder(binder.id));
+      setTri(await triangulacionApi.deBinder(binder.id, scope));
     } catch (e) {
       setError((e as Error).message);
     } finally {
       setTriBusy(false);
     }
   }
+  async function exportarTriangulo() {
+    try {
+      const blob = await triangulacionApi.excelBinder(binder.id, triMetrica, triScope);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `Triangulacion ${binder.umr} ${triMetrica} ${tri?.ambito ?? ""}.xlsx`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
   useEffect(() => {
-    if (tab === "triangulacion") cargarTriangulacion();
+    if (tab === "triangulacion") cargarTriangulacion(triScope);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab]);
+  }, [tab, triScope]);
 
   async function cargarClaimsBdx(periodo?: string) {
     try {
@@ -1233,16 +1247,19 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
       {tab === "triangulacion" && (
         triBusy && !tri ? (
           <div className="empty">Cargando triangulación…</div>
-        ) : !tri || tri.meses.length === 0 ? (
+        ) : !tri ? (
           <div className="empty">No hay snapshots de Claims para triangular.</div>
         ) : (() => {
-          const matriz = tri.triangulos[triMetrica];
+          const esPct = triMetrica === "pct";
+          const esNum = triMetrica === "num";
+          const matriz = tri.triangulos[esPct ? "incurrido" : triMetrica];
           const meses = tri.meses;
           const n = meses.length;
-          const esNum = triMetrica === "num";
           const ratio = tri.net_uw ? (tri.incurrido_actual / tri.net_uw) * 100 : null;
           const ibnrPct = tri.gwp_our_line ? (tri.ibnr_sugerido / tri.gwp_our_line) * 100 : null;
-          const celda = (v: number | null) => (v == null ? "" : esNum ? v : fmtMiles(v));
+          // En "%", cada celda = incurrido valuado / Net to UWs (siniestralidad hasta ese mes).
+          const celda = (v: number | null) =>
+            v == null ? "" : esPct ? (tri.net_uw ? `${fmtMiles((v / tri.net_uw) * 100)} %` : "—") : esNum ? v : fmtMiles(v);
           // Columnas según la vista:
           //  - "cal": meses de valuación, del MÁS RECIENTE (izquierda) al más antiguo (derecha).
           //  - "edad": antigüedad 0,1,2… (meses desde la apertura); celda = valor a origen+d.
@@ -1263,11 +1280,25 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
                   <option value="incurrido">Incurrido (pagado + reservas)</option>
                   <option value="pagado">Pagado</option>
                   <option value="num">Nº de siniestros</option>
+                  <option value="pct">% Siniestralidad (s/ Net to UWs)</option>
                 </select>
                 <select className="filtro" value={triVista} onChange={(e) => setTriVista(e.target.value as "cal" | "edad")}>
                   <option value="cal">Vista: Calendario</option>
                   <option value="edad">Vista: Por antigüedad</option>
                 </select>
+                <select
+                  className="filtro"
+                  value={triScope.risk_code ? `rc:${triScope.risk_code}` : triScope.seccion != null ? `sec:${triScope.seccion}` : "total"}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setTriScope(v === "total" ? {} : v.startsWith("rc:") ? { risk_code: v.slice(3) } : { seccion: Number(v.slice(4)) });
+                  }}
+                >
+                  <option value="total">Ámbito: Total</option>
+                  {tri.risk_codes.map((rc) => <option key={`rc:${rc}`} value={`rc:${rc}`}>Código {rc}</option>)}
+                  {tri.secciones.map((s) => <option key={`sec:${s}`} value={`sec:${s}`}>Sección {s}</option>)}
+                </select>
+                <button className="btn-secondary" onClick={exportarTriangulo} title="Exportar a Excel la métrica y el ámbito seleccionados">⤓ Excel</button>
                 <span className="hint">
                   GWP Our Line: <b>{imp(tri.gwp_our_line)}</b> · Net to UWs: <b>{imp(tri.net_uw)}</b>
                   {" · "}Incurrido actual: <b>{imp(tri.incurrido_actual)}</b>
@@ -1281,33 +1312,37 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
                   Filas = mes de apertura · columnas = {triVista === "cal" ? "mes de valuación (reciente → antiguo)" : "meses desde la apertura"}.
                 </span>
               </div>
-              <div className="tabla-scroll bdx-scroll">
-                <table className="compacto bdx-tabla tri-tabla">
-                  <thead>
-                    <tr>
-                      <th style={{ position: "sticky", left: 0 }}>Mes</th>
-                      <th className="num tri-actual" title="GWP Our Line del mes">GWP</th>
-                      {colDefs.map((c, k) => <th key={k} className="num">{c.label}</th>)}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {meses.map((m, i) => (
-                      <tr key={m}>
-                        <th style={{ position: "sticky", left: 0 }}>{m}</th>
-                        <td className="num tri-actual">{fmtMiles(tri.premium_mes[i])}</td>
-                        {colDefs.map((c, k) => <td key={k} className="num">{celda(c.get(i))}</td>)}
+              {meses.length === 0 ? (
+                <div className="empty">No hay siniestros en este ámbito.</div>
+              ) : (
+                <div className="tabla-scroll bdx-scroll">
+                  <table className="compacto bdx-tabla tri-tabla">
+                    <thead>
+                      <tr>
+                        <th style={{ position: "sticky", left: 0 }}>Mes</th>
+                        <th className="num tri-actual" title="Net to UWs del mes (GWP our line − comisiones)">Net to UWs</th>
+                        {colDefs.map((c, k) => <th key={k} className="num">{c.label}</th>)}
                       </tr>
-                    ))}
-                  </tbody>
-                  <tfoot>
-                    <tr className="tri-total">
-                      <th style={{ position: "sticky", left: 0 }}>Total</th>
-                      <td className="num tri-actual">{fmtMiles(tri.total_premium)}</td>
-                      {totalCol.map((t, k) => <td key={k} className="num">{esNum ? t : fmtMiles(t)}</td>)}
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
+                    </thead>
+                    <tbody>
+                      {meses.map((m, i) => (
+                        <tr key={m}>
+                          <th style={{ position: "sticky", left: 0 }}>{m}</th>
+                          <td className="num tri-actual">{fmtMiles(tri.net_premium_mes[i])}</td>
+                          {colDefs.map((c, k) => <td key={k} className="num">{celda(c.get(i))}</td>)}
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr className="tri-total">
+                        <th style={{ position: "sticky", left: 0 }}>Total</th>
+                        <td className="num tri-actual">{fmtMiles(tri.net_uw)}</td>
+                        {totalCol.map((t, k) => <td key={k} className="num">{celda(t)}</td>)}
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              )}
             </>
           );
         })()

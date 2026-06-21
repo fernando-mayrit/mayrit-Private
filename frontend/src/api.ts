@@ -83,17 +83,27 @@ export const claimsBdxApi = {
 };
 
 // ── Triangulación de siniestralidad ──
-export type MetricaTriangulo = "incurrido" | "pagado" | "num";
+export type MetricaTriangulo = "incurrido" | "pagado" | "num" | "pct";
+export interface TriAmbito { seccion?: number; risk_code?: string }
+function _ambitoQS(a?: TriAmbito): string {
+  const p = new URLSearchParams();
+  if (a?.seccion != null) p.set("seccion", String(a.seccion));
+  if (a?.risk_code) p.set("risk_code", a.risk_code);
+  const s = p.toString();
+  return s ? `?${s}` : "";
+}
 export interface Triangulacion {
   meses: string[];                    // eje de meses (filas = origen, columnas = valuación)
-  premium_mes: number[];             // GWP our line por mes (alineado con meses)
-  triangulos: Record<MetricaTriangulo, (number | null)[][]>; // [origen][valuación]; null si val<origen
-  total_premium: number;
-  gwp_our_line: number;               // GWP our line bruto (Σ líneas Risk)
+  net_premium_mes: number[];          // Net to UWs por mes (alineado con meses)
+  triangulos: Record<"incurrido" | "pagado" | "num", (number | null)[][]>; // [origen][valuación]
+  gwp_our_line: number;               // GWP our line bruto (Σ líneas Risk del ámbito)
   net_uw: number;                     // GWP our line − com. coverholder − brokerage
-  incurrido_actual: number;           // incurrido total valuado al último mes
-  ibnr_sugerido: number;              // estimación chain-ladder (orientativa)
+  incurrido_actual: number;
+  ibnr_sugerido: number;
   ultimate_sugerido: number;
+  secciones: number[];                // ámbitos disponibles
+  risk_codes: string[];
+  ambito: string;                     // etiqueta del ámbito actual
 }
 export interface TriangulacionPrograma {
   programa: string;
@@ -112,8 +122,17 @@ export interface TriangulacionPrograma {
   net_uw_total: number;
 }
 export const triangulacionApi = {
-  deBinder: (binderId: number) => request<Triangulacion>(`/binders/${binderId}/triangulacion`),
+  deBinder: (binderId: number, ambito?: TriAmbito) =>
+    request<Triangulacion>(`/binders/${binderId}/triangulacion${_ambitoQS(ambito)}`),
   dePrograma: (programaId: number) => request<TriangulacionPrograma>(`/programas/${programaId}/triangulacion`),
+  excelBinder: async (binderId: number, metrica: MetricaTriangulo, ambito?: TriAmbito): Promise<Blob> => {
+    const p = new URLSearchParams({ metrica });
+    if (ambito?.seccion != null) p.set("seccion", String(ambito.seccion));
+    if (ambito?.risk_code) p.set("risk_code", ambito.risk_code);
+    const res = await fetch(`${BASE}/binders/${binderId}/triangulacion/excel?${p.toString()}`);
+    if (!res.ok) throw new Error(`Error al generar el Excel (${res.status})`);
+    return res.blob();
+  },
 };
 
 // ── Cierre contable mensual ──
