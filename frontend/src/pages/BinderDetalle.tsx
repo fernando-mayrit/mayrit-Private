@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { bdxApi, recibosApi, siniestrosApi, claimsBdxApi, type BdxDetalle, type BdxPreview, type BdxImportResult, type ExcelDir, type PremiumGrupo, type ClaimsBdxVista } from "../api";
+import { bdxApi, recibosApi, siniestrosApi, claimsBdxApi, triangulacionApi, type BdxDetalle, type BdxPreview, type BdxImportResult, type ExcelDir, type PremiumGrupo, type ClaimsBdxVista, type Triangulacion, type MetricaTriangulo } from "../api";
 import type { Binder, Bdx, BdxLinea, Recibo, Siniestro } from "../types";
 import BdxLineaPanel from "../components/BdxLineaPanel";
 import BdxTabla from "../components/BdxTabla";
@@ -130,6 +130,25 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
   const [cbBusy, setCbBusy] = useState(false);
   const [cbMsg, setCbMsg] = useState<string | null>(null);
   const [cbPresentarMes, setCbPresentarMes] = useState<string | null>(null); // mes elegido a presentar
+
+  // ── Triangulación de siniestralidad ──
+  const [tri, setTri] = useState<Triangulacion | null>(null);
+  const [triMetrica, setTriMetrica] = useState<MetricaTriangulo>("incurrido");
+  const [triBusy, setTriBusy] = useState(false);
+  async function cargarTriangulacion() {
+    setTriBusy(true);
+    try {
+      setTri(await triangulacionApi.deBinder(binder.id));
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setTriBusy(false);
+    }
+  }
+  useEffect(() => {
+    if (tab === "triangulacion") cargarTriangulacion();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab]);
 
   async function cargarClaimsBdx(periodo?: string) {
     try {
@@ -1211,7 +1230,60 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
       )}
 
       {tab === "triangulacion" && (
-        <div className="empty">Triangulación — pendiente de definir el contenido.</div>
+        triBusy && !tri ? (
+          <div className="empty">Cargando triangulación…</div>
+        ) : !tri || tri.origenes.length === 0 ? (
+          <div className="empty">No hay snapshots de Claims para triangular.</div>
+        ) : (() => {
+          const matriz = tri.triangulos[triMetrica];
+          const cols = tri.max_desarrollo + 1;
+          const esNum = triMetrica === "num";
+          const ratio = tri.net_uw ? (tri.incurrido_actual / tri.net_uw) * 100 : null;
+          return (
+            <>
+              <div className="bdx-topbar" style={{ alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                <select className="filtro" value={triMetrica} onChange={(e) => setTriMetrica(e.target.value as MetricaTriangulo)}>
+                  <option value="incurrido">Incurrido (pagado + reservas)</option>
+                  <option value="pagado">Pagado</option>
+                  <option value="num">Nº de siniestros</option>
+                </select>
+                <span className="hint">
+                  Net to UWs: <b>{imp(tri.net_uw)}</b> · Incurrido actual: <b>{imp(tri.incurrido_actual)}</b>
+                  {" · "}Siniestralidad: <b>{ratio == null ? "—" : `${fmtMiles(ratio)} %`}</b>
+                </span>
+                <span className="hint">Filas = mes de apertura · columnas = meses de desarrollo.</span>
+              </div>
+              <div className="tabla-scroll bdx-scroll">
+                <table className="compacto bdx-tabla tri-tabla">
+                  <thead>
+                    <tr>
+                      <th style={{ position: "sticky", left: 0 }}>Origen</th>
+                      {Array.from({ length: cols }, (_, d) => <th key={d} className="num">{d}</th>)}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {tri.origenes.map((o, i) => {
+                      const fila = matriz[i];
+                      return (
+                        <tr key={o}>
+                          <th style={{ position: "sticky", left: 0 }}>{o}</th>
+                          {Array.from({ length: cols }, (_, d) => {
+                            const v = d < fila.length ? fila[d] : null;
+                            return (
+                              <td key={d} className="num">
+                                {v == null ? "" : esNum ? v : fmtMiles(v)}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          );
+        })()
       )}
 
       {cbPresentarMes && cbVista && (
