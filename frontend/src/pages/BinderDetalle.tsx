@@ -1271,8 +1271,8 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
                   <thead>
                     <tr>
                       <th style={{ position: "sticky", left: 0 }}>Origen</th>
-                      {Array.from({ length: cols }, (_, d) => <th key={d} className="num">{d}</th>)}
                       <th className="num tri-actual" title="Valor a hoy de cada cohorte">Actual</th>
+                      {Array.from({ length: cols }, (_, d) => <th key={d} className="num">{d}</th>)}
                     </tr>
                   </thead>
                   <tbody>
@@ -1281,6 +1281,7 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
                       return (
                         <tr key={o}>
                           <th style={{ position: "sticky", left: 0 }}>{o}</th>
+                          <td className="num tri-actual">{esNum ? actualDe(fila) : fmtMiles(actualDe(fila))}</td>
                           {Array.from({ length: cols }, (_, d) => {
                             const v = d < fila.length ? fila[d] : null;
                             return (
@@ -1289,7 +1290,6 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
                               </td>
                             );
                           })}
-                          <td className="num tri-actual">{esNum ? actualDe(fila) : fmtMiles(actualDe(fila))}</td>
                         </tr>
                       );
                     })}
@@ -1297,10 +1297,10 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
                   <tfoot>
                     <tr className="tri-total">
                       <th style={{ position: "sticky", left: 0 }}>Total</th>
+                      <td className="num tri-actual">{esNum ? totalActual : fmtMiles(totalActual)}</td>
                       {totales.map((t, d) => (
                         <td key={d} className="num">{esNum ? t : fmtMiles(t)}</td>
                       ))}
-                      <td className="num tri-actual">{esNum ? totalActual : fmtMiles(totalActual)}</td>
                     </tr>
                   </tfoot>
                 </table>
