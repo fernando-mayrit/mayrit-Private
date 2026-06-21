@@ -20,6 +20,7 @@ from ..models.maestras import (
     BinderSuplemento,
     SeccionMercado,
     SeccionRiskCode,
+    Siniestro,
 )
 from ..schemas import maestras as sch
 
@@ -357,6 +358,31 @@ def editar(binder_id: int, payload: sch.BinderUpdate, db: Session = Depends(get_
             raise HTTPException(
                 status_code=409,
                 detail="No se puede cerrar el binder con BDX sin bloquear. " + " · ".join(partes),
+            )
+        # No se puede cerrar producción si el Risk no está todo cuadrado (machado con Premium):
+        # quedan líneas de Risk sin incluir en ningún Premium.
+        sin_machear = db.scalar(
+            select(func.count()).select_from(BdxLinea).join(Bdx, Bdx.id == BdxLinea.bdx_id)
+            .where(Bdx.binder_id == binder_id, Bdx.tipo == "Risk", BdxLinea.incluido_en_premium.is_(False))
+        )
+        if sin_machear:
+            raise HTTPException(
+                status_code=409,
+                detail=f"No se puede cerrar: quedan {sin_machear} línea(s) de Risk sin machear con "
+                       "Premium. Inclúyelas en un Premium antes de cerrar.",
+            )
+    # No se puede pasar a "Cerrado" (total) si quedan siniestros abiertos (sin fecha de cierre).
+    # "Cerrado Producción" sí lo permite (los claims se siguen gestionando).
+    if nuevo_estado == "Cerrado" and (b.estado or "") != "Cerrado":
+        abiertos = db.scalar(
+            select(func.count()).select_from(Siniestro)
+            .where(Siniestro.binder_id == binder_id, Siniestro.date_closed.is_(None))
+        )
+        if abiertos:
+            raise HTTPException(
+                status_code=409,
+                detail=f"No se puede cerrar el binder: tiene {abiertos} siniestro(s) abierto(s) "
+                       "(sin fecha de cierre). Ciérralos antes.",
             )
     for k, v in data.items():
         setattr(b, k, v)
