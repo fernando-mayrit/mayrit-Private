@@ -1279,7 +1279,7 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
           return (
             <>
               <div style={{ marginBottom: 8 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 6 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                   <select className="filtro" value={triMetrica} onChange={(e) => setTriMetrica(e.target.value as MetricaTriangulo)}>
                     <option value="incurrido">Incurrido (pagado + reservas)</option>
                     <option value="pagado">Pagado</option>
@@ -1304,7 +1304,7 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
                   </select>
                   <button className="btn-secondary" onClick={exportarTriangulo} title="Exportar a Excel la métrica y el ámbito seleccionados">⤓ Excel</button>
                 </div>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap", marginTop: -2 }}>
                   <span className="hint">
                     Filas = mes de apertura · columnas = {triVista === "cal" ? "mes de valuación (reciente → antiguo)" : "meses desde la apertura"}.
                   </span>
