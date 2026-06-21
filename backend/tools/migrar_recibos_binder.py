@@ -55,9 +55,12 @@ def _dec(v, places="0.01"):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--anios", default="2020")
+    ap.add_argument("--excluir", default="",
+                    help="Números de recibo a NO migrar (coma). P. ej. duplicados de SharePoint pendientes de revisar.")
     ap.add_argument("--apply", action="store_true")
     args = ap.parse_args()
     anios = {a.strip() for a in args.anios.split(",")}
+    excluir = {x.strip() for x in args.excluir.split(",") if x.strip()}
 
     filas = sharepoint.leer_lista("Mayrit - TRecibos", TITULO_DE, FECHAS)
     db = SessionLocal()
@@ -77,6 +80,8 @@ def main():
     for f in filas:
         numero = str(f.get("numero") or "").strip()
         if not numero or numero[:4] not in anios:
+            continue
+        if numero in excluir:
             continue
         if str(f.get("tipo_poliza") or "").strip() != "Binder":
             continue
