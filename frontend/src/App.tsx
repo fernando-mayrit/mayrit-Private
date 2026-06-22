@@ -352,7 +352,7 @@ export default function App() {
         </aside>
 
         <main className="content">
-          {page === "inicio" && <Inicio usuario={usuario} onIr={(p) => ir(p as Page)} avisos={avisos} />}
+          {page === "inicio" && <Inicio usuario={usuario} onIr={(p) => ir(p as Page)} />}
           {page === "productores" && <ProductoresPage />}
           {page === "mercados" && <MercadosPage />}
           {page === "tomadores" && <TomadoresPage />}
