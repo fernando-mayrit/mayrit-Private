@@ -311,6 +311,39 @@ def vista(binder_id: int, db: Session = Depends(get_db)):
     return VistaLpan(fdos=fdos_out, periodos=periodos)
 
 
+@router.get("/elegir-carpeta")
+def elegir_carpeta(inicial: str | None = None):
+    """Abre el explorador de Windows para elegir una carpeta y devuelve su ruta (solo en ejecución
+    LOCAL; en servidor no hay escritorio). El diálogo se lanza en un hilo propio con su Tk."""
+    import threading
+
+    resultado: dict[str, str] = {}
+    error: dict[str, str] = {}
+
+    def _dialogo():
+        try:
+            import tkinter as tk
+            from tkinter import filedialog
+            root = tk.Tk()
+            root.withdraw()
+            root.attributes("-topmost", True)
+            ruta = filedialog.askdirectory(
+                initialdir=inicial or os.path.expanduser("~"),
+                title="Elige la carpeta donde guardar el FDO",
+            )
+            root.destroy()
+            resultado["carpeta"] = ruta or ""
+        except Exception as e:  # noqa: BLE001
+            error["msg"] = str(e)
+
+    th = threading.Thread(target=_dialogo)
+    th.start()
+    th.join()
+    if error:
+        raise HTTPException(status_code=501, detail=f"No se pudo abrir el selector de carpeta: {error['msg']}")
+    return {"carpeta": resultado.get("carpeta") or None}
+
+
 @router.post("/binders/{binder_id}/fdo", response_model=FdoRead)
 def crear_fdo(binder_id: int, payload: FdoCreate, db: Session = Depends(get_db)):
     """Genera el FDO de un risk code (a la espera del signing number de Xchanging)."""

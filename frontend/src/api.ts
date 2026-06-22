@@ -121,6 +121,8 @@ export interface VistaLpan {
 }
 export const lpanApi = {
   vista: (binderId: number) => request<VistaLpan>(`/binders/${binderId}/lpan`),
+  elegirCarpeta: (inicial?: string) =>
+    request<{ carpeta: string | null }>(`/elegir-carpeta${inicial ? `?inicial=${encodeURIComponent(inicial)}` : ""}`),
   crearFdo: (binderId: number, section: number, risk_code: string, carpeta?: string) =>
     request<FdoRegistro>(`/binders/${binderId}/fdo`, { method: "POST", body: JSON.stringify({ section, risk_code, carpeta: carpeta ?? null }) }),
   actualizarFdo: (fdoId: number, datos: { signing_number?: string | null; work_package?: string | null; fecha_proceso?: string | null; work_package_status?: string | null; fecha_signing?: string | null; notas?: string | null }) =>

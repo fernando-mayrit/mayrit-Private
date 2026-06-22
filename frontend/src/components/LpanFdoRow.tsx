@@ -44,18 +44,20 @@ export default function LpanFdoRow({
     }
   }
 
-  // Generar FDO: pide la carpeta XIS donde guardar el documento (recuerda la última por binder).
-  function generarFdo() {
+  // Generar FDO: abre el explorador de Windows para elegir la carpeta (recuerda la última por binder).
+  async function generarFdo() {
     const key = `mayrit.lpan.xis.${binderId}`;
     const prev = localStorage.getItem(key) ?? "";
-    const carpeta = window.prompt(
-      `Carpeta donde guardar el FDO «${rc.broker_reference}.docx» (p. ej. …\\Documentacion Binder\\XIS):`,
-      prev,
-    );
-    if (carpeta === null) return; // cancelado
-    const c = carpeta.trim();
-    if (c) localStorage.setItem(key, c);
-    accion(() => lpanApi.crearFdo(binderId, rc.section, rc.risk_code, c || undefined));
+    setSaving(true);
+    try {
+      const { carpeta } = await lpanApi.elegirCarpeta(prev || undefined);
+      if (!carpeta) return; // cancelado
+      localStorage.setItem(key, carpeta);
+      await lpanApi.crearFdo(binderId, rc.section, rc.risk_code, carpeta);
+      await onChanged();
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
