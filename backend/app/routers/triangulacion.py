@@ -190,10 +190,14 @@ def _payload_binder(db: Session, b: Binder, seccion: int | None, risk_code: str 
             tri_num[i][j] = cnt
 
     incurrido_actual = round(sum((val_at(sid, latest) or (0.0, 0.0))[0] for sid in snaps), 2)
-    ibnr, ultimate = _chain_ladder_desde_meses(meses, cohortes, val_at)
-    # Binder en run-off ("Cerrado" exacto): sin IBNR (ultimate = incurrido actual).
-    if (b.estado or "").strip() == "Cerrado":
-        ultimate, ibnr = incurrido_actual, 0.0
+    # IBNR por Bornhuetter-Ferguson con el patrón de desarrollo y la ELR del PROGRAMA del binder
+    # (los años maduros del programa estiman la cola del año joven). Sin programa → sin IBNR.
+    edad = (latest - _mi(b.fecha_efecto.year, b.fecha_efecto.month)) if b.fecha_efecto else len(meses) - 1
+    if b.programa_id is not None:
+        factores_p, maxlen_p, elr = _programa_factores_elr(db, b.programa_id)
+        ibnr, ultimate = _ibnr_bf(b.estado, net_uw, incurrido_actual, edad, factores_p, maxlen_p, elr)
+    else:
+        ibnr, ultimate = 0.0, incurrido_actual
     return {
         **base,
         "meses": [_periodo_de_mi(m) for m in meses],
@@ -288,42 +292,61 @@ def triangulacion_binder_excel(
     )
 
 
-def _chain_ladder_desde_meses(meses, cohortes, val_at) -> tuple[float, float]:
-    """IBNR sugerido (chain-ladder volumen-ponderado) sobre el desarrollo POR ANTIGÜEDAD.
-    Construye el triángulo por desarrollo (meses desde el origen) a partir de los cohortes y
-    proyecta cada cohorte a 'ultimate'. Devuelve (ibnr, ultimate)."""
-    latest = meses[-1]
-    # tri[d] por cohorte: incurrido acumulado a `origen + d` meses, solo cohortes con siniestros.
-    filas = []
-    for o, claims_o in cohortes.items():
-        if not claims_o:
-            continue
-        fila = []
-        for d in range(latest - o + 1):
-            C = o + d
-            s = sum((val_at(sid, C) or (0.0, 0.0))[0] for sid in claims_o)
-            fila.append(s)
-        filas.append(fila)
-    if not filas:
-        return 0.0, 0.0
-    maxlen = max(len(f) for f in filas)
-    if maxlen < 2:
-        actual = sum(f[-1] for f in filas if f)
-        return 0.0, round(actual, 2)
+def _factores_programa(curvas: list[list[float]]) -> tuple[list[float], int]:
+    """Factores de desarrollo volumen-ponderados y longitud máxima, sobre el incurrido por antigüedad
+    de TODAS las curvas (los años maduros guían a los jóvenes)."""
+    tri = [c for c in curvas if c]
+    maxlen = max((len(x) for x in tri), default=0)
     factores = []
-    for d in range(maxlen - 1):
-        num = sum(f[d + 1] for f in filas if len(f) > d + 1)
-        den = sum(f[d] for f in filas if len(f) > d + 1)
+    for d in range(max(maxlen - 1, 0)):
+        num = sum(x[d + 1] for x in tri if len(x) > d + 1)
+        den = sum(x[d] for x in tri if len(x) > d + 1)
         factores.append(num / den if den > 0 else 1.0)
-    ultimate = actual = 0.0
-    for f in filas:
-        last = len(f) - 1
-        v = f[last]
-        actual += v
-        for d in range(last, maxlen - 1):
-            v *= factores[d]
-        ultimate += v
-    return round(ultimate - actual, 2), round(ultimate, 2)
+    return factores, maxlen
+
+
+def _pct_desarrollado(factores: list[float], maxlen: int, edad: int) -> float:
+    """% del 'ultimate' ya incurrido a la edad `edad` = 1 / (producto de factores de `edad` al final).
+    1.0 si ya se llegó al final del desarrollo."""
+    if edad >= maxlen - 1:
+        return 1.0
+    cdf = 1.0
+    for k in range(max(edad, 0), maxlen - 1):
+        cdf *= factores[k] if factores[k] > 0 else 1.0
+    return 1.0 / cdf if cdf > 0 else 1.0
+
+
+def _programa_factores_elr(db: Session, programa_id: int) -> tuple[list[float], int, float]:
+    """Patrón de desarrollo (factores, maxlen) y siniestralidad esperada a priori (ELR) del programa.
+    ELR = siniestralidad observada de los años MADUROS (≥66% desarrollados, incurrido ≈ ultimate)."""
+    pbs = db.scalars(select(Binder).where(Binder.programa_id == programa_id)).all()
+    curvas, nets, incs = [], [], []
+    for pb in pbs:
+        c = _curva_binder(db, pb)
+        curvas.append(c["inc"]); nets.append(c["net"]); incs.append(c["incurrido_actual"])
+    factores, maxlen = _factores_programa(curvas)
+    num = den = 0.0
+    for inc_i, net_i, cur in zip(incs, nets, curvas):
+        e = len(cur) - 1
+        if e >= 0 and net_i > 0 and _pct_desarrollado(factores, maxlen, e) >= 0.66:
+            num += inc_i; den += net_i
+    if den > 0:
+        elr = num / den
+    else:  # ningún año maduro: cae a la LR media del programa
+        tot_net = sum(nets)
+        elr = (sum(incs) / tot_net) if tot_net > 0 else 0.0
+    return factores, maxlen, elr
+
+
+def _ibnr_bf(estado: str | None, net: float, incurrido_actual: float, edad: int,
+             factores: list[float], maxlen: int, elr: float) -> tuple[float, float]:
+    """Bornhuetter-Ferguson: IBNR = Net to UWs × ELR × (1 − %desarrollado). Devuelve (ibnr, ultimate).
+    Binder en run-off ('Cerrado' exacto) → sin IBNR (ya está todo declarado)."""
+    if (estado or "").strip() == "Cerrado":
+        return 0.0, round(incurrido_actual, 2)
+    pd = _pct_desarrollado(factores, maxlen, edad) if edad >= 0 else 0.0
+    ibnr = round(net * elr * (1.0 - pd), 2)
+    return ibnr, round(incurrido_actual + ibnr, 2)
 
 
 def _curva_binder(db: Session, binder: Binder, risk_code: str | None = None) -> dict | None:
@@ -429,36 +452,27 @@ def triangulacion_programa(
         c = _curva_binder(db, b, risk_code=risk_code)
         filas.append({"binder": b, "curva": c})
 
-    # Factores de desarrollo (volumen-ponderado) con el incurrido de TODOS los binders del programa.
-    tri_inc = [f["curva"]["inc"] for f in filas if f["curva"]["inc"]]
-    maxlen = max((len(x) for x in tri_inc), default=0)
-    factores = []
-    for d in range(max(maxlen - 1, 0)):
-        numer = sum(x[d + 1] for x in tri_inc if len(x) > d + 1)
-        denom = sum(x[d] for x in tri_inc if len(x) > d + 1)
-        factores.append(numer / denom if denom > 0 else 1.0)
-
-    def proyecta(inc: list[float]) -> tuple[float, float]:
-        """(ultimate, ibnr) de una curva con los factores del programa."""
-        if not inc:
-            return 0.0, 0.0
-        last = len(inc) - 1
-        v = inc[last]
-        for d in range(last, maxlen - 1):
-            v *= factores[d]
-        return round(v, 2), round(v - inc[last], 2)
+    # Patrón de desarrollo (volumen-ponderado) con el incurrido de TODOS los binders del programa,
+    # y siniestralidad esperada a priori (ELR) de los años maduros → IBNR por Bornhuetter-Ferguson.
+    factores, maxlen = _factores_programa([f["curva"]["inc"] for f in filas])
+    n_elr = d_elr = 0.0
+    for f in filas:
+        c = f["curva"]; e = len(c["inc"]) - 1
+        if e >= 0 and c["net"] > 0 and _pct_desarrollado(factores, maxlen, e) >= 0.66:
+            n_elr += c["incurrido_actual"]; d_elr += c["net"]
+    if d_elr > 0:
+        elr = n_elr / d_elr
+    else:
+        tot_net = sum(f["curva"]["net"] for f in filas)
+        elr = (sum(f["curva"]["incurrido_actual"] for f in filas) / tot_net) if tot_net > 0 else 0.0
 
     edades = maxlen  # nº de columnas de antigüedad (0..maxlen-1)
     out_binders, m_inc, m_paid, m_num, m_prima = [], [], [], [], []
     premium_b, netuw_b, inc_act_b, ult_b, ibnr_b = [], [], [], [], []
     for f in filas:
         b, c = f["binder"], f["curva"]
-        # Binder en run-off ("Cerrado" exacto): todo declarado → sin IBNR (ultimate = incurrido actual).
-        # "Cerrado Producción" sí proyecta (su cola de siniestros puede seguir viva).
-        if (b.estado or "").strip() == "Cerrado":
-            ult, ibnr = c["incurrido_actual"], 0.0
-        else:
-            ult, ibnr = proyecta(c["inc"])
+        # IBNR por Bornhuetter-Ferguson (estable en años verdes). "Cerrado" exacto → sin IBNR.
+        ibnr, ult = _ibnr_bf(b.estado, c["net"], c["incurrido_actual"], len(c["inc"]) - 1, factores, maxlen, elr)
         out_binders.append({"id": b.id, "umr": b.umr, "agreement": b.agreement_number, "yoa": b.yoa})
         # padding a la longitud común con None
         m_inc.append(c["inc"] + [None] * (edades - len(c["inc"])))
@@ -475,6 +489,7 @@ def triangulacion_programa(
         "mes_inicio": mes_inicio,
         "risk_codes": risk_codes,
         "risk_code": risk_code,
+        "elr_pct": round(elr * 100, 2),
         "triangulos": {"incurrido": m_inc, "pagado": m_paid, "num": m_num},
         "prima_acum_binder": m_prima,
         "premium_binder": premium_b,
