@@ -534,9 +534,14 @@ class Fdo(Base):
     __table_args__ = (UniqueConstraint("binder_id", "section", "risk_code", name="uq_fdo_binder_seccion_riskcode"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    binder_id: Mapped[int] = mapped_column(ForeignKey("binders.id", ondelete="CASCADE"), index=True)
+    sp_old_id: Mapped[int | None] = mapped_column(Integer, index=True)  # Id del elemento en SharePoint (idempotencia)
+    # Apunta a un binder O a una póliza OM (uno de los dos).
+    binder_id: Mapped[int | None] = mapped_column(ForeignKey("binders.id", ondelete="CASCADE"), index=True)
+    poliza_id: Mapped[int | None] = mapped_column(ForeignKey("polizas.id", ondelete="SET NULL"), index=True)
     section: Mapped[int] = mapped_column(Integer, server_default="0", default=0)  # nº de sección del bordereau
     risk_code: Mapped[str] = mapped_column(String(20))
+    broker_ref1: Mapped[str | None] = mapped_column(String(120))     # caja (10): parte del UMR
+    broker_ref2: Mapped[str | None] = mapped_column(String(120))     # caja (11): nombre del FDO
     signing_number: Mapped[str | None] = mapped_column(String(60))   # caja (8) del LPAN, p.ej. 21285*18/06/2026
     work_package: Mapped[str | None] = mapped_column(String(40))     # paquete de trabajo de Xchanging (p.ej. BNIXQUR)
     fecha_proceso: Mapped[dt.date | None] = mapped_column(Date)      # fecha en la que se procesa
@@ -557,11 +562,13 @@ class Lpan(Base):
     BDX de un risk code en un periodo, bajo el signing number de su FDO."""
 
     __tablename__ = "lpans"
-    __table_args__ = (UniqueConstraint("fdo_id", "periodo", "section", "tipo", name="uq_lpan_fdo_periodo_seccion_tipo"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    fdo_id: Mapped[int] = mapped_column(ForeignKey("fdos.id", ondelete="CASCADE"), index=True)
-    binder_id: Mapped[int] = mapped_column(ForeignKey("binders.id", ondelete="CASCADE"), index=True)
+    sp_old_id: Mapped[int | None] = mapped_column(Integer, index=True)  # Id del elemento en SharePoint (idempotencia)
+    fdo_id: Mapped[int | None] = mapped_column(ForeignKey("fdos.id", ondelete="SET NULL"), index=True)
+    # Apunta a un binder O a una póliza OM (uno de los dos).
+    binder_id: Mapped[int | None] = mapped_column(ForeignKey("binders.id", ondelete="CASCADE"), index=True)
+    poliza_id: Mapped[int | None] = mapped_column(ForeignKey("polizas.id", ondelete="SET NULL"), index=True)
     risk_code: Mapped[str] = mapped_column(String(20))
     section: Mapped[int] = mapped_column(Integer, server_default="0", default=0)  # nº de sección del bordereau
     periodo: Mapped[str] = mapped_column(String(7))     # 'YYYY-MM' del Premium BDX
@@ -572,12 +579,20 @@ class Lpan(Base):
     brokerage: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
     tax: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
     net_premium: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    # Datos del LPAN histórico (de SharePoint TLPAN)
+    signing_number: Mapped[str | None] = mapped_column(String(60))   # BureauOriginalRef (caja 8)
+    work_package: Mapped[str | None] = mapped_column(String(40))
+    broker_ref1: Mapped[str | None] = mapped_column(String(120))
+    broker_ref2: Mapped[str | None] = mapped_column(String(120))
+    sdd: Mapped[dt.date | None] = mapped_column(Date)
+    liberado: Mapped[dt.date | None] = mapped_column(Date)
+    pagado: Mapped[dt.date | None] = mapped_column(Date)
     moneda: Mapped[str] = mapped_column(String(10), server_default="EUR", default="EUR")
-    fecha: Mapped[dt.date | None] = mapped_column(Date)
+    fecha: Mapped[dt.date | None] = mapped_column(Date)   # Procesado
     estado: Mapped[str] = mapped_column(String(20), server_default="Generado", default="Generado")
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
-    fdo: Mapped["Fdo"] = relationship(back_populates="lpans")
+    fdo: Mapped["Fdo | None"] = relationship(back_populates="lpans")
 
 
 class Poliza(Base):
