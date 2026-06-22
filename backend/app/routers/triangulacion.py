@@ -191,6 +191,9 @@ def _payload_binder(db: Session, b: Binder, seccion: int | None, risk_code: str 
 
     incurrido_actual = round(sum((val_at(sid, latest) or (0.0, 0.0))[0] for sid in snaps), 2)
     ibnr, ultimate = _chain_ladder_desde_meses(meses, cohortes, val_at)
+    # Binder en run-off ("Cerrado" exacto): sin IBNR (ultimate = incurrido actual).
+    if (b.estado or "").strip() == "Cerrado":
+        ultimate, ibnr = incurrido_actual, 0.0
     return {
         **base,
         "meses": [_periodo_de_mi(m) for m in meses],
@@ -417,7 +420,12 @@ def triangulacion_programa(programa_id: int, db: Session = Depends(get_db)):
     premium_b, netuw_b, inc_act_b, ult_b, ibnr_b = [], [], [], [], []
     for f in filas:
         b, c = f["binder"], f["curva"]
-        ult, ibnr = proyecta(c["inc"])
+        # Binder en run-off ("Cerrado" exacto): todo declarado → sin IBNR (ultimate = incurrido actual).
+        # "Cerrado Producción" sí proyecta (su cola de siniestros puede seguir viva).
+        if (b.estado or "").strip() == "Cerrado":
+            ult, ibnr = c["incurrido_actual"], 0.0
+        else:
+            ult, ibnr = proyecta(c["inc"])
         out_binders.append({"id": b.id, "umr": b.umr, "agreement": b.agreement_number, "yoa": b.yoa})
         # padding a la longitud común con None
         m_inc.append(c["inc"] + [None] * (edades - len(c["inc"])))
