@@ -166,6 +166,10 @@ tr.estado-cerrado-prod:hover td { background: #bcc0c6; }
 tr.estado-cerrado td { background: var(--gris); color: #ededed; }   /* gris oscuro — cerrado (todo) */
 tr.estado-cerrado:hover td { background: #595959; }
 tr.estado-cerrado .btn-link { color: #ffd9cc; }          /* enlaces legibles sobre gris oscuro */
+/* Sumatorios del listado de binders (nº de binders y primas) */
+.bind-sumatorios { display: flex; gap: 8px; align-items: center; }
+.bind-sum { font-size: 12px; color: var(--gris); background: #f2f2f2; border-radius: 6px; padding: 3px 9px; white-space: nowrap; }
+.bind-sum strong { color: #222; }
 /* Contenedor con scroll horizontal para tablas anchas (p. ej. binders) */
 .tabla-scroll { overflow-x: auto; }
 /* Tirador para ajustar el ancho de columna (borde derecho de la cabecera) */

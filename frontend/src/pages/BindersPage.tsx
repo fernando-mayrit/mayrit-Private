@@ -326,16 +326,23 @@ export default function BindersPage() {
     }
   }, [algunaPC]);
 
-  async function cargar(search = q) {
+  async function cargar() {
     setLoading(true);
     setError(null);
     try {
-      setItems(await api.list(search || undefined));
+      setItems(await api.list());
     } catch (e) {
       setError((e as Error).message);
     } finally {
       setLoading(false);
     }
+  }
+
+  function limpiarFiltros() {
+    setQ("");
+    setFYoa("");
+    setFCover("");
+    setFEstado("");
   }
 
   async function cargarRefs() {
@@ -372,15 +379,9 @@ export default function BindersPage() {
 
   useEffect(() => {
     cargarRefs();
+    cargar();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  // Búsqueda en vivo: filtra mientras se teclea (pequeño retardo para no saturar).
-  useEffect(() => {
-    const t = setTimeout(() => cargar(q), 250);
-    return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [q]);
 
   function abrir(estado: FormState) {
     setForm(estado);
@@ -899,15 +900,24 @@ export default function BindersPage() {
     () => [...new Set(items.map(coverDe).filter(Boolean))].sort((a, b) => a.localeCompare(b)),
     [items],
   );
-  const visibles = useMemo(
-    () => items
+  const visibles = useMemo(() => {
+    const qn = q.trim().toLowerCase();
+    return items
+      .filter((b) =>
+        !qn ||
+        (b.umr ?? "").toLowerCase().includes(qn) ||
+        (b.agreement_number ?? "").toLowerCase().includes(qn) ||
+        mercadosTexto(b).toLowerCase().includes(qn))
       .filter((b) => !fYoa || b.yoa === fYoa)
       .filter((b) => !fCover || coverDe(b) === fCover)
       .filter((b) => !fEstado || b.estado === fEstado)
       .slice()
-      .sort((a, b) => (Number(b.yoa) || 0) - (Number(a.yoa) || 0)),
-    [items, fYoa, fCover, fEstado],
-  );
+      .sort((a, b) => (Number(b.yoa) || 0) - (Number(a.yoa) || 0));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items, q, fYoa, fCover, fEstado]);
+
+  // Sumatorios de lo visible: nº de binders y suma de primas (GWP our line).
+  const totalPrimas = useMemo(() => visibles.reduce((s, b) => s + (b.gwp_our_line ?? 0), 0), [visibles]);
 
   // Campo "Notificado (fecha)" de un grupo de límite. Si el límite está en rojo (umbral de
   // notificación superado) y aún no tiene fecha, se DESTACA: es el que hay que rellenar.
@@ -953,10 +963,9 @@ export default function BindersPage() {
       <div className="toolbar">
         <input
           type="search"
-          placeholder="Buscar por UMR o Agreement Number…"
+          placeholder="Buscar por UMR, Agreement o Mercado…"
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && cargar()}
         />
         <select className="filtro" value={fYoa} onChange={(e) => setFYoa(e.target.value)} title="Filtrar por YOA">
           <option value="">YOA: todos</option>
@@ -992,7 +1001,12 @@ export default function BindersPage() {
             </option>
           ))}
         </select>
-        <button className="btn-primary" onClick={abrirNuevo}>
+        <button className="btn-secondary" title="Limpiar todos los filtros" onClick={limpiarFiltros}>🧹</button>
+        <div className="bind-sumatorios">
+          <span className="bind-sum"><strong>{visibles.length}</strong> binders</span>
+          <span className="bind-sum"><strong>{eur(totalPrimas)}</strong> primas</span>
+        </div>
+        <button className="btn-primary" onClick={abrirNuevo} style={{ marginLeft: "auto" }}>
           + Nuevo binder
         </button>
       </div>
