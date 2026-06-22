@@ -290,7 +290,7 @@ def vista(binder_id: int, db: Session = Depends(get_db)):
     ) for (sec, rc) in claves]
 
     periodos: list[PeriodoLpan] = []
-    for per in sorted({p for (p, _, _) in grupos}):
+    for per in sorted({p for (p, _, _) in grupos}, reverse=True):  # más reciente arriba
         secciones: list[SeccionLpan] = []
         for sec in sorted({s for (p, s, _) in grupos if p == per}):
             rcs: list[RcEnSeccion] = []
