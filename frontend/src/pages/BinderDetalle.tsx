@@ -1345,6 +1345,7 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
                 </div>
               );
             })()}
+            <div className="lpan-bloques-scroll">
             {lpanData.periodos.map((p) => {
               // Un bloque con prima 0 € (cobrado pero sin importe) no necesita LPAN.
               const completo = p.secciones.length > 0 && p.secciones.every((s) =>
@@ -1428,6 +1429,7 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
               </div>
               );
             })}
+            </div>
           </div>
         )
       )}
