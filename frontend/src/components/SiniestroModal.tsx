@@ -2,69 +2,63 @@ import { useMemo, useState } from "react";
 import { siniestrosApi } from "../api";
 import type { Siniestro } from "../types";
 import FormPanel from "./FormPanel";
+import NumberInput from "./NumberInput";
+import { estadoSiniestroClase } from "../format";
 
-// Modal de edición manual de un siniestro. Reutiliza el panel estándar (FormPanel).
-type Tipo = "text" | "date" | "num" | "int" | "textarea";
-type Campo = { key: keyof Siniestro; label: string; tipo: Tipo };
+// Modal de edición de un siniestro, con el mismo formato que el de Recibos:
+//  · pastilla de estado + botón "Editar" (en color) bajo el título
+//  · abre BLOQUEADO (solo consulta); "Editar" desbloquea los campos
+//  · maqueta: izquierda Identificación · derecha Siniestro + Importes · abajo Textos
 
-const SECCIONES: { titulo: string; campos: Campo[] }[] = [
-  {
-    titulo: "Identificación",
-    campos: [
-      { key: "certificate", label: "Certificate", tipo: "text" },
-      { key: "reference", label: "Reference", tipo: "text" },
-      { key: "insured", label: "Asegurado", tipo: "text" },
-      { key: "section", label: "Sección", tipo: "int" },
-      { key: "yoa", label: "YOA", tipo: "int" },
-      { key: "risk_code", label: "Risk Code", tipo: "text" },
-      { key: "currency", label: "Moneda", tipo: "text" },
-      { key: "reporting_period", label: "Periodo", tipo: "text" },
-      { key: "ucr", label: "UCR", tipo: "text" },
-      { key: "risk_inception", label: "Inicio riesgo", tipo: "date" },
-      { key: "risk_expiry", label: "Fin riesgo", tipo: "date" },
-    ],
-  },
-  {
-    titulo: "Siniestro",
-    campos: [
-      { key: "status", label: "Estado", tipo: "text" },
-      { key: "claimant", label: "Reclamante", tipo: "text" },
-      { key: "abogado", label: "Abogado", tipo: "text" },
-      { key: "claim_first_advised", label: "1er aviso", tipo: "date" },
-      { key: "date_opened", label: "Abierto", tipo: "date" },
-      { key: "date_closed", label: "Cerrado", tipo: "date" },
-      { key: "last_bdx_change", label: "Últ. cambio BDX", tipo: "date" },
-      { key: "ultima_revision", label: "Últ. revisión", tipo: "date" },
-      { key: "refer", label: "Refer", tipo: "text" },
-      { key: "denial", label: "Denial", tipo: "text" },
-    ],
-  },
-  {
-    titulo: "Importes",
-    campos: [
-      { key: "amount_claimed", label: "Reclamado", tipo: "num" },
-      { key: "to_pay_indemnity", label: "A pagar ind.", tipo: "num" },
-      { key: "to_pay_fees", label: "A pagar fees", tipo: "num" },
-      { key: "paid_indemnity", label: "Pagado ind.", tipo: "num" },
-      { key: "paid_fees", label: "Pagado fees", tipo: "num" },
-      { key: "reserves_indemnity", label: "Reservas ind.", tipo: "num" },
-      { key: "reserves_fees", label: "Reservas fees", tipo: "num" },
-    ],
-  },
+type Tipo = "text" | "date" | "num" | "int";
+type Campo = { key: keyof Siniestro; label: string; tipo: Tipo; full?: boolean };
+
+const IDENT: Campo[] = [
+  { key: "certificate", label: "Certificate", tipo: "text", full: true },
+  { key: "reference", label: "Reference", tipo: "text" },
+  { key: "ucr", label: "UCR", tipo: "text" },
+  { key: "insured", label: "Asegurado", tipo: "text", full: true },
+  { key: "section", label: "Sección", tipo: "int" },
+  { key: "yoa", label: "YOA", tipo: "int" },
+  { key: "risk_code", label: "Risk Code", tipo: "text" },
+  { key: "currency", label: "Moneda", tipo: "text" },
+  { key: "reporting_period", label: "Periodo", tipo: "text" },
+  { key: "risk_inception", label: "Inicio riesgo", tipo: "date" },
+  { key: "risk_expiry", label: "Fin riesgo", tipo: "date" },
 ];
-const TEXTAREAS: Campo[] = [
-  { key: "description", label: "Descripción", tipo: "textarea" },
-  { key: "informacion", label: "Información", tipo: "textarea" },
+const DETALLE: Campo[] = [
+  { key: "status", label: "Estado", tipo: "text" },
+  { key: "claimant", label: "Reclamante", tipo: "text", full: true },
+  { key: "abogado", label: "Abogado", tipo: "text", full: true },
+  { key: "claim_first_advised", label: "1er aviso", tipo: "date" },
+  { key: "date_opened", label: "Abierto", tipo: "date" },
+  { key: "date_closed", label: "Cerrado", tipo: "date" },
+  { key: "last_bdx_change", label: "Últ. cambio BDX", tipo: "date" },
+  { key: "ultima_revision", label: "Últ. revisión", tipo: "date" },
+  { key: "refer", label: "Refer", tipo: "text" },
+  { key: "denial", label: "Denial", tipo: "text" },
 ];
-
-const TODOS = [...SECCIONES.flatMap((s) => s.campos), ...TEXTAREAS];
+const IMPORTES: Campo[] = [
+  { key: "amount_claimed", label: "Reclamado", tipo: "num", full: true },
+  { key: "to_pay_indemnity", label: "A pagar ind.", tipo: "num" },
+  { key: "to_pay_fees", label: "A pagar fees", tipo: "num" },
+  { key: "paid_indemnity", label: "Pagado ind.", tipo: "num" },
+  { key: "paid_fees", label: "Pagado fees", tipo: "num" },
+  { key: "reserves_indemnity", label: "Reservas ind.", tipo: "num" },
+  { key: "reserves_fees", label: "Reservas fees", tipo: "num" },
+];
+const TEXTOS: Campo[] = [
+  { key: "description", label: "Descripción", tipo: "text", full: true },
+  { key: "informacion", label: "Información", tipo: "text", full: true },
+];
+const TODOS = [...IDENT, ...DETALLE, ...IMPORTES, ...TEXTOS];
 
 type Form = Record<string, string>;
 function aForm(s: Siniestro): Form {
   const f: Form = {};
   for (const c of TODOS) {
     const v = s[c.key];
-    f[c.key as string] = v == null ? "" : String(c.tipo === "date" ? String(v).slice(0, 10) : v);
+    f[c.key as string] = v == null ? "" : c.tipo === "date" ? String(v).slice(0, 10) : String(v);
   }
   return f;
 }
@@ -82,7 +76,7 @@ export default function SiniestroModal({
   const [form, setForm] = useState<Form>(inicial);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Abre bloqueado (solo consulta) para evitar cambios accidentales; el botón "Editar" desbloquea.
+  // Abre bloqueado (solo consulta) para evitar cambios accidentales; "Editar" desbloquea.
   const [bloqueado, setBloqueado] = useState(true);
 
   const dirty = useMemo(() => TODOS.some((c) => form[c.key as string] !== inicial[c.key as string]), [form, inicial]);
@@ -95,15 +89,10 @@ export default function SiniestroModal({
       const payload: Record<string, unknown> = {};
       for (const c of TODOS) {
         const raw = (form[c.key as string] ?? "").trim();
-        if (raw === "") {
-          payload[c.key as string] = null;
-        } else if (c.tipo === "int") {
-          payload[c.key as string] = Number.parseInt(raw, 10);
-        } else if (c.tipo === "num") {
-          payload[c.key as string] = raw.replace(",", ".");
-        } else {
-          payload[c.key as string] = raw;
-        }
+        if (raw === "") payload[c.key as string] = null;
+        else if (c.tipo === "int") payload[c.key as string] = Number.parseInt(raw, 10);
+        else if (c.tipo === "num") payload[c.key as string] = raw.replace(",", ".");
+        else payload[c.key as string] = raw;
       }
       const actualizado = await siniestrosApi.actualizar(siniestro.id, payload as Partial<Siniestro>);
       onSaved(actualizado);
@@ -114,23 +103,23 @@ export default function SiniestroModal({
     }
   }
 
-  const campoInput = (c: Campo) => (
-    <div className="field" key={c.key as string}>
+  // Campo según su tipo (deshabilitado mientras está bloqueado).
+  const Campo = (c: Campo) => (
+    <div className={"field" + (c.full ? " full-w" : "")} key={c.key as string} style={c.full ? { gridColumn: "1 / -1" } : undefined}>
       <label>{c.label}</label>
-      {c.tipo === "textarea" ? (
-        <textarea rows={2} value={form[c.key as string]} disabled={bloqueado} onChange={(e) => set(c.key as string, e.target.value)} />
+      {c.tipo === "num" ? (
+        <NumberInput value={form[c.key as string] ?? ""} onChange={(v) => set(c.key as string, v)} suffix="€" disabled={bloqueado} />
+      ) : c.tipo === "date" ? (
+        <input type="date" className="inp-fecha" value={form[c.key as string]} disabled={bloqueado} onChange={(e) => set(c.key as string, e.target.value)} />
+      ) : c.tipo === "int" ? (
+        <NumberInput value={form[c.key as string] ?? ""} onChange={(v) => set(c.key as string, v)} decimals={0} thousands={false} disabled={bloqueado} />
       ) : (
-        <input
-          type={c.tipo === "date" ? "date" : c.tipo === "num" ? "number" : c.tipo === "int" ? "number" : "text"}
-          step={c.tipo === "num" ? "0.01" : undefined}
-          className={c.tipo === "date" ? "inp-fecha" : undefined}
-          value={form[c.key as string]}
-          disabled={bloqueado}
-          onChange={(e) => set(c.key as string, e.target.value)}
-        />
+        <input type="text" value={form[c.key as string]} disabled={bloqueado} onChange={(e) => set(c.key as string, e.target.value)} />
       )}
     </div>
   );
+
+  const claseEstado = siniestro.status ? estadoSiniestroClase(siniestro.status) : null;
 
   return (
     <FormPanel
@@ -143,25 +132,62 @@ export default function SiniestroModal({
       readOnly={bloqueado}
       wide
     >
-      <div className="sin-modal-barra">
-        <span className="hint" style={{ margin: 0 }}>
-          {siniestro.binder_umr ? `Binder ${siniestro.binder_umr}${siniestro.binder_programa ? ` · ${siniestro.binder_programa}` : ""} · ` : ""}
-          {bloqueado ? "🔒 Solo consulta" : "✏️ Edición habilitada"}
-        </span>
-        {bloqueado && (
-          <button className="btn-secondary btn-sm" onClick={() => setBloqueado(false)}>
+      {/* Barra de estado/acciones bajo el título (mismo patrón que el modal de Recibos) */}
+      <div className="recibo-acciones-top">
+        {siniestro.status ? (
+          <span className={`pill pill-sin-${claseEstado} pill-estado-lg`}>{siniestro.status}</span>
+        ) : (
+          <span className="pill pill-estado-lg">Sin estado</span>
+        )}
+        {siniestro.binder_umr && (
+          <span className="hint">{siniestro.binder_umr}{siniestro.binder_programa ? ` · ${siniestro.binder_programa}` : ""}</span>
+        )}
+        {bloqueado ? (
+          <button className="btn-sm btn-corregir" style={{ marginLeft: "auto" }} onClick={() => setBloqueado(false)}>
             ✏️ Editar
           </button>
+        ) : (
+          <span className="hint" style={{ marginLeft: "auto" }}>✏️ Edición habilitada</span>
         )}
       </div>
-      {SECCIONES.map((sec) => (
-        <div key={sec.titulo} style={{ marginBottom: 14 }}>
-          <h3 style={{ margin: "4px 0 8px" }}>{sec.titulo}</h3>
-          <div className="sin-modal-grid">{sec.campos.map(campoInput)}</div>
+
+      <div className="recibo-modal">
+        {/* ── Columna izquierda: Identificación ── */}
+        <div className="recibo-col">
+          <div className="recibo-box">
+            <h4>Identificación</h4>
+            <div className="campos-grid" style={{ gridTemplateColumns: "1fr 1fr" }}>
+              {IDENT.map(Campo)}
+            </div>
+          </div>
         </div>
-      ))}
-      <h3 style={{ margin: "4px 0 8px" }}>Textos</h3>
-      {TEXTAREAS.map(campoInput)}
+
+        {/* ── Columna derecha: Siniestro + Importes ── */}
+        <div className="recibo-col">
+          <div className="recibo-box">
+            <h4>Siniestro</h4>
+            <div className="campos-grid" style={{ gridTemplateColumns: "1fr 1fr" }}>
+              {DETALLE.map(Campo)}
+            </div>
+          </div>
+          <div className="recibo-box">
+            <h4>Importes</h4>
+            <div className="campos-grid" style={{ gridTemplateColumns: "1fr 1fr" }}>
+              {IMPORTES.map(Campo)}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="recibo-box" style={{ marginTop: 12 }}>
+        <h4>Textos</h4>
+        {TEXTOS.map((c) => (
+          <div className="field" key={c.key as string}>
+            <label>{c.label}</label>
+            <textarea rows={2} value={form[c.key as string]} disabled={bloqueado} onChange={(e) => set(c.key as string, e.target.value)} />
+          </div>
+        ))}
+      </div>
     </FormPanel>
   );
 }
