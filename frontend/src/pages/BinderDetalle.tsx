@@ -1311,7 +1311,7 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
                       {" · "}Incurrido actual: <b>{imp(tri.incurrido_actual)}</b>
                       {" · "}Siniestralidad: <b>{ratio == null ? "—" : `${fmtMiles(ratio)} %`}</b>
                     </div>
-                    <div className="hint" title="Estimación orientativa por chain-ladder. El % del IBNR es sobre GWP Our Line; el del Ultimate, sobre Net to UWs.">
+                    <div className="hint" title="El % del IBNR es sobre GWP Our Line; el del Ultimate, sobre Net to UWs.">
                       IBNR sugerido: <b>{imp(tri.ibnr_sugerido)}{ibnrPct == null ? "" : ` (${fmtMiles(ibnrPct)} %)`}</b>
                       {" · "}Ultimate: <b>{imp(tri.ultimate_sugerido)}{ultPct == null ? "" : ` (${fmtMiles(ultPct)} %)`}</b>
                     </div>
@@ -1319,6 +1319,7 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
                 </div>
                 <div className="hint" style={{ marginTop: 4 }}>
                   Filas = mes de apertura · columnas = {triVista === "cal" ? "mes de valuación (reciente → antiguo)" : "meses desde la apertura"}.
+                  {" · "}IBNR calculado usando el Método Bornhuetter-Ferguson.
                 </div>
               </div>
               {meses.length === 0 ? (

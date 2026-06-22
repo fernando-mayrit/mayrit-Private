@@ -90,6 +90,9 @@ export default function TriangulacionPage() {
           </span>
         </button>
       </div>
+      <div className="hint" style={{ margin: "0 0 8px" }}>
+        IBNR calculado usando el Método Bornhuetter-Ferguson.
+      </div>
 
       {error && <div className="error">{error}</div>}
       {loading && !data ? (
