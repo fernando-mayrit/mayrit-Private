@@ -157,8 +157,8 @@ tr:last-child td { border-bottom: none; }
 tr:hover td { background: #fdf6f3; }
 td.acciones { text-align: right; white-space: nowrap; }
 /* Filas de binders coloreadas por estado (la celda lleva el color para ganar al hover) */
-tr.estado-en-vigor td { background: #f7d9d0; }            /* rojo pastel (marca) — en vigor */
-tr.estado-en-vigor:hover td { background: #f2cabd; }
+tr.estado-en-vigor td { background: #fff; }               /* blanco — en vigor */
+tr.estado-en-vigor:hover td { background: #f4f4f4; }
 tr.estado-renovado td { background: #dcebe0; }            /* verde pastel — renovado */
 tr.estado-renovado:hover td { background: #cee2d4; }
 tr.estado-cerrado-prod td { background: #c9ccd1; }        /* gris medio — producción cerrada (siniestros abierto) */
