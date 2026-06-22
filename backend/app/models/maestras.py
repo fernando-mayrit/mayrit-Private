@@ -644,6 +644,35 @@ class Poliza(Base):
     )
 
 
+class ConsultoriaContrato(Base):
+    """Contrato de Consultoría (honorarios/fees). Datos mínimos; genera recibos tipo 'Consultoría'
+    por periodo según su frecuencia. El cliente facturado es un Productor (p. ej. una agencia)."""
+
+    __tablename__ = "consultoria_contratos"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    productor_id: Mapped[int] = mapped_column(ForeignKey("productores.id"), index=True)  # cliente facturado
+    concepto: Mapped[str | None] = mapped_column(String(300))
+    fecha_inicio: Mapped[dt.date] = mapped_column(Date)
+    duracion_meses: Mapped[int | None] = mapped_column(Integer)        # None = indefinido
+    frecuencia: Mapped[str] = mapped_column(String(20))                # Mensual/Trimestral/Semestral/Anual/Único
+    importe: Mapped[Decimal] = mapped_column(Numeric(18, 2))           # por cobro (base imponible)
+    sujeto_impuestos: Mapped[bool] = mapped_column(Boolean, server_default=text("true"), default=True)
+    impuestos_porc: Mapped[Decimal] = mapped_column(Numeric(7, 4), server_default=text("21"), default=Decimal("21"))
+    moneda: Mapped[str] = mapped_column(String(10), server_default="EUR", default="EUR")
+    cuenta_bancaria_id: Mapped[int | None] = mapped_column(ForeignKey("cuentas_bancarias.id"))
+    estado: Mapped[str] = mapped_column(String(20), server_default="Activo", default="Activo")  # Activo | Finalizado
+    notas: Mapped[str | None] = mapped_column(Text)
+
+    productor: Mapped["Productor"] = relationship()
+    cuenta_bancaria: Mapped["CuentaBancaria | None"] = relationship()
+
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
 class Recibo(Base):
     """Recibo (núcleo de facturación/contabilidad). Modelado sobre la lista de SharePoint
     `Mayrit - TRecibos`: ciclo completo prima → impuestos → comisiones (cedida/retenida) →
@@ -665,6 +694,7 @@ class Recibo(Base):
     # ── Enlace en la app ── (un recibo es de un Binder O de una Póliza OM)
     binder_id: Mapped[int | None] = mapped_column(ForeignKey("binders.id", ondelete="CASCADE"), index=True)
     poliza_id: Mapped[int | None] = mapped_column(ForeignKey("polizas.id", ondelete="CASCADE"), index=True)
+    consultoria_id: Mapped[int | None] = mapped_column(ForeignKey("consultoria_contratos.id", ondelete="SET NULL"), index=True)
     periodo: Mapped[str] = mapped_column(String(7))               # 'YYYY-MM' del Risk BDX (vacío en OM puntuales)
     anio: Mapped[int] = mapped_column(Integer, index=True)        # año contable
     estado: Mapped[str] = mapped_column(String(30), server_default="Emitido", default="Emitido")  # Emitido | Anulado

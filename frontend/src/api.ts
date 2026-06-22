@@ -247,6 +247,46 @@ export const triangulacionApi = {
   },
 };
 
+// ── Consultoría (honorarios) ──
+export interface ConsultoriaContrato {
+  id: number;
+  productor_id: number;
+  productor_nombre?: string | null;
+  concepto?: string | null;
+  fecha_inicio: string;
+  duracion_meses?: number | null;
+  frecuencia: string;
+  importe: number | string;
+  sujeto_impuestos: boolean;
+  impuestos_porc: number | string;
+  moneda: string;
+  cuenta_bancaria_id?: number | null;
+  cuenta_bancaria_nombre?: string | null;
+  estado: string;
+  notas?: string | null;
+  n_cobros: number;
+  n_generados: number;
+  proximo_cobro?: string | null;
+}
+export interface ConsultoriaCobro {
+  periodo: string;
+  fecha: string;
+  base: number;
+  iva: number;
+  total: number;
+  recibo_id: number | null;
+  recibo_numero: string | null;
+}
+export const consultoriaApi = {
+  list: () => request<ConsultoriaContrato[]>("/consultoria"),
+  crear: (d: unknown) => request<ConsultoriaContrato>("/consultoria", { method: "POST", body: JSON.stringify(d) }),
+  editar: (id: number, d: unknown) => request<ConsultoriaContrato>(`/consultoria/${id}`, { method: "PUT", body: JSON.stringify(d) }),
+  borrar: (id: number) => request(`/consultoria/${id}`, { method: "DELETE" }),
+  cobros: (id: number) => request<{ contrato_id: number; moneda: string; cobros: ConsultoriaCobro[] }>(`/consultoria/${id}/cobros`),
+  generarCobro: (id: number, periodo: string) =>
+    request(`/consultoria/${id}/cobros/generar`, { method: "POST", body: JSON.stringify({ periodo }) }),
+};
+
 // ── Cierre contable mensual ──
 export interface CierreMes {
   mes: number;
