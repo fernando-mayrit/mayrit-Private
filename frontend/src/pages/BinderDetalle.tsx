@@ -1327,6 +1327,17 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
             })()}
 
             {/* ── Periodo → Sección → Risk Code ── */}
+            {lpanData.periodos.length > 0 && (() => {
+              const todosCerrados = lpanData.periodos.every((p) => periodosCerrados.has(p.periodo));
+              return (
+                <div className="toolbar" style={{ marginBottom: 8 }}>
+                  <button className="btn-secondary btn-sm" onClick={() => setPeriodosCerrados(
+                    todosCerrados ? new Set() : new Set(lpanData.periodos.map((p) => p.periodo)))}>
+                    {todosCerrados ? "▾ Desplegar todos" : "▸ Replegar todos"}
+                  </button>
+                </div>
+              );
+            })()}
             {lpanData.periodos.map((p) => {
               const abierto = !periodosCerrados.has(p.periodo);
               return (
