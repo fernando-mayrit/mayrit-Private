@@ -108,10 +108,10 @@ export default function TriangulacionPage() {
                 <th className="num">GWP Our Line</th><th className="num">Net to UWs</th>
                 <th className="num">Incurrido</th>
                 <th className="num">Siniestralidad %</th>
-                <th className="num">IBNR</th>
+                <th className="num tri-amarillo tri-amarillo-ini">IBNR</th>
                 <th className="num tri-amarillo">IBNR % s/GWP</th>
-                <th className="num">Ultimate</th>
-                <th className="num">Siniestralidad % Ult.</th>
+                <th className="num tri-amarillo">Ultimate</th>
+                <th className="num tri-amarillo">Siniestralidad % Ult.</th>
               </tr>
             </thead>
             <tbody>
@@ -127,10 +127,10 @@ export default function TriangulacionPage() {
                     <td className="num">{imp(data.net_uw_binder[i])}</td>
                     <td className="num">{imp(data.incurrido_binder[i])}</td>
                     <td className="num">{sinPct == null ? "—" : `${fmtMiles(sinPct)} %`}</td>
-                    <td className="num">{imp(data.ibnr_binder[i])}</td>
+                    <td className="num tri-amarillo tri-amarillo-ini">{imp(data.ibnr_binder[i])}</td>
                     <td className="num tri-amarillo">{ibnrPct == null ? "—" : `${fmtMiles(ibnrPct)} %`}</td>
-                    <td className="num">{imp(data.ultimate_binder[i])}</td>
-                    <td className="num">{ultPct == null ? "—" : `${fmtMiles(ultPct)} %`}</td>
+                    <td className="num tri-amarillo">{imp(data.ultimate_binder[i])}</td>
+                    <td className="num tri-amarillo">{ultPct == null ? "—" : `${fmtMiles(ultPct)} %`}</td>
                   </tr>
                 );
               })}
@@ -142,10 +142,10 @@ export default function TriangulacionPage() {
                 <td className="num">{imp(data.net_uw_total)}</td>
                 <td className="num">{imp(data.incurrido_total)}</td>
                 <td className="num">{ratioSin == null ? "—" : `${fmtMiles(ratioSin)} %`}</td>
-                <td className="num">{imp(data.ibnr_total)}</td>
+                <td className="num tri-amarillo tri-amarillo-ini">{imp(data.ibnr_total)}</td>
                 <td className="num tri-amarillo">{ratioIbnr == null ? "—" : `${fmtMiles(ratioIbnr)} %`}</td>
-                <td className="num">{imp(data.ultimate_total)}</td>
-                <td className="num">{ratioUlt == null ? "—" : `${fmtMiles(ratioUlt)} %`}</td>
+                <td className="num tri-amarillo">{imp(data.ultimate_total)}</td>
+                <td className="num tri-amarillo">{ratioUlt == null ? "—" : `${fmtMiles(ratioUlt)} %`}</td>
               </tr>
             </tfoot>
           </table>
