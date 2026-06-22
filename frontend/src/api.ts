@@ -119,8 +119,32 @@ export interface VistaLpan {
   fdos: RiskCodeFdo[];
   periodos: PeriodoLpan[];
 }
+export interface LpanGlobal {
+  id: number;
+  tipo: string;
+  periodo: string;
+  binder_umr: string | null;
+  poliza_numero: string | null;
+  programa: string | null;
+  section: number;
+  risk_code: string;
+  broker_ref1: string | null;
+  broker_ref2: string | null;
+  signing_number: string | null;
+  work_package: string | null;
+  gross_premium: number | string | null;
+  brokerage: number | string | null;
+  tax: number | string | null;
+  net_premium: number | string | null;
+  fecha: string | null;
+  sdd: string | null;
+  liberado: string | null;
+  pagado: string | null;
+  estado: string;
+}
 export const lpanApi = {
   vista: (binderId: number) => request<VistaLpan>(`/binders/${binderId}/lpan`),
+  listarTodos: () => request<LpanGlobal[]>(`/lpans`),
   elegirCarpeta: (inicial?: string) =>
     request<{ carpeta: string | null }>(`/elegir-carpeta${inicial ? `?inicial=${encodeURIComponent(inicial)}` : ""}`),
   crearFdo: (binderId: number, section: number, risk_code: string, carpeta?: string) =>

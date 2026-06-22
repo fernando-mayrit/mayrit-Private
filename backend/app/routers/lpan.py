@@ -26,11 +26,11 @@ from decimal import Decimal
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
-from sqlalchemy.orm import Session, load_only
+from sqlalchemy.orm import Session, load_only, selectinload
 
 from ..config import settings
 from ..db import get_db
-from ..models.maestras import Bdx, BdxLinea, Binder, BinderSeccion, Fdo, Lpan, SeccionRiskCode
+from ..models.maestras import Bdx, BdxLinea, Binder, BinderSeccion, Fdo, Lpan, Poliza, SeccionRiskCode
 
 router = APIRouter(tags=["LPAN"])
 
@@ -188,6 +188,31 @@ class VistaLpan(BaseModel):
     periodos: list[PeriodoLpan]
 
 
+class LpanGlobal(BaseModel):
+    """Una fila del listado general de LPANs (todos los binders/pólizas)."""
+    id: int
+    tipo: str
+    periodo: str
+    binder_umr: str | None = None
+    poliza_numero: str | None = None
+    programa: str | None = None
+    section: int
+    risk_code: str
+    broker_ref1: str | None = None
+    broker_ref2: str | None = None
+    signing_number: str | None = None
+    work_package: str | None = None
+    gross_premium: Decimal | None = None
+    brokerage: Decimal | None = None
+    tax: Decimal | None = None
+    net_premium: Decimal | None = None
+    fecha: dt.date | None = None       # Procesado
+    sdd: dt.date | None = None
+    liberado: dt.date | None = None
+    pagado: dt.date | None = None
+    estado: str
+
+
 class FdoCreate(BaseModel):
     section: int = 0
     risk_code: str
@@ -268,6 +293,29 @@ def _grupos_premium(db: Session, binder_id: int) -> dict[tuple[str, int, str], d
 
 
 # ──────────────────────────── Endpoints ────────────────────────────
+@router.get("/lpans", response_model=list[LpanGlobal])
+def listar_lpans(db: Session = Depends(get_db)):
+    """Listado GENERAL de LPANs (todos los binders y pólizas), con su contexto."""
+    binders = {
+        b.id: (b.umr, b.programa.nombre if b.programa else None)
+        for b in db.scalars(select(Binder).options(selectinload(Binder.programa))).all()
+    }
+    polizas = {p.id: p.numero_poliza for p in db.scalars(select(Poliza)).all()}
+    out: list[LpanGlobal] = []
+    for lp in db.scalars(select(Lpan).order_by(Lpan.periodo.desc(), Lpan.id)).all():
+        umr, prog = binders.get(lp.binder_id, (None, None))
+        out.append(LpanGlobal(
+            id=lp.id, tipo=lp.tipo, periodo=lp.periodo,
+            binder_umr=umr, poliza_numero=polizas.get(lp.poliza_id), programa=prog,
+            section=lp.section, risk_code=lp.risk_code,
+            broker_ref1=lp.broker_ref1, broker_ref2=lp.broker_ref2,
+            signing_number=lp.signing_number, work_package=lp.work_package,
+            gross_premium=lp.gross_premium, brokerage=lp.brokerage, tax=lp.tax, net_premium=lp.net_premium,
+            fecha=lp.fecha, sdd=lp.sdd, liberado=lp.liberado, pagado=lp.pagado, estado=lp.estado,
+        ))
+    return out
+
+
 @router.get("/binders/{binder_id}/lpan", response_model=VistaLpan)
 def vista(binder_id: int, db: Session = Depends(get_db)):
     """Vista LPAN del binder, agrupada Periodo → Sección → Risk Code, con los importes agregados,

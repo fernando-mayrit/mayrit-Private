@@ -9,6 +9,7 @@ import PolizasPage from "./pages/PolizasPage";
 import RecibosPage from "./pages/RecibosPage";
 import SiniestrosPage from "./pages/SiniestrosPage";
 import TriangulacionPage from "./pages/TriangulacionPage";
+import LpanPage from "./pages/LpanPage";
 import CierreContablePage from "./pages/CierreContablePage";
 import FinancieroPage from "./pages/FinancieroPage";
 import RamosPage from "./pages/RamosPage";
@@ -322,7 +323,7 @@ export default function App() {
           {page === "binders" && <BindersPage />}
           {page === "programas" && <ProgramasPage />}
           {page === "recibos" && <RecibosPage />}
-          {page === "lpan" && <EnConstruccion titulo="LPAN" />}
+          {page === "lpan" && <LpanPage />}
           {page === "siniestros" && <SiniestrosPage />}
           {page === "triangulacion" && <TriangulacionPage />}
           {page === "ucr" && <EnConstruccion titulo="UCR" />}
