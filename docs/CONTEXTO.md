@@ -531,3 +531,70 @@ Negocio directo de Mayrit (no de binder). Arrancado para **cuadrar los recibos O
 ## Decisión abierta (para más adelante)
 Hay `TLiquidaciones` (4330) y `TLiquidaciones1` (4018): decidir cuál es la buena. Relevante en
 la Fase 3 (Liquidaciones+LPAN), no ahora.
+
+## Sesión jun-2026 (LPAN/FDO, avisos, migraciones) — resumen y pendientes
+
+### Migraciones de SharePoint hechas en esta sesión
+- **Risk BDX** (vía `POST /binders/{id}/bdx/import`): PI3126DAX (12), MA0326MYR (100, GWP vacío→usar
+  GWP our line), PI2926CRO (506), PI3026CRO (101), CY0926ALE (79, línea parcial), PI2825NUV (250).
+  Ojo: varios vienen **sin `_OldID`** → reimportar duplicaría (limpiar el BDX antes).
+- **Claims (modelo dos fuentes GES40+AULES)** `tools/migrar_claims_dos_fuentes.py` (reutiliza
+  `migrar_claims_heca.py`): PI2525CRO (b52), PI1924CRO (b46), PI1523CRO (b41), PI2926CRO (b59).
+  Reglas: AULES = ficheros por risk code (E7/E9/D3/CY…, ignora YOA*); si un mes no tiene risk code →
+  no hay snapshot AULES; `--periodo-de-carpeta` cuando la celda Reporting Period viene mal; dedup por
+  siniestro (gana ref canónica); casado de cabeceras robusto a guiones. PI3026CRO (b58, Crouco-QBE) =
+  **una sola fuente** (`migrar_claims_heca.py`). Todos reconcilian incurrido = SharePoint.
+- **PENDIENTE**: replicar el modelo dos fuentes en el resto de binders del programa Crouco-Beazley.
+
+### Módulo LPAN / FDO (nuevo) — HECHO
+- **Modelo**: tablas `fdos` y `lpans` (enlazables a **binder O póliza**; binder_id/poliza_id
+  opcionales; `sp_old_id` para idempotencia). FDO = por **(binder, sección, risk code)** declarado en
+  el binder (no del premium). LPAN = por (sección, risk code, periodo), cuelga del FDO. Migraciones
+  a7c1e3f5b9d2 → b8d2f4a6c0e3 → c9e3a5b7d1f4 → d1f5b7c9e3a6 → e2a4c6d8f0b1.
+- **Router `lpan.py`**: `GET /binders/{id}/lpan`, `GET /lpans`, crear/editar FDO, generar/borrar LPAN,
+  `GET /elegir-carpeta` (explorador Windows con tkinter, solo en local).
+- **Pestaña LPAN del binder**: cuadro de FDO (Broker Reference = `{parte UMR} FDO-S{secc}-{risk}`,
+  Signing number formato `21285*18/06/2026`, Work Package, Fecha proceso, WP Status [Work in
+  Progress/Queried/Completed/Rejected]); se repliega al completarse; FDO Completed = no editable.
+  Botón **Generar FDO** (gris) crea el **documento Word** copiando `Plantilla LPAN.dotx` (formulario de
+  TOKENS) en la carpeta elegida. Bloques por periodo (más reciente arriba; pendientes abiertos;
+  completos plegados con ✓; prima 0€→"Sin prima"), columnas GWP our line, Brokerage %, IPT, Net to UW
+  + del LPAN: WP, Procesado, SDD, WP Status, Liberado, Pagado; nombre LPAN = Broker Ref 2; Borrar con
+  confirmación; bloques con scroll y cabeceras sticky.
+- **Listado general** en el menú (opción **LPAN** de Facturación): `LpanPage`. Misma tabla `lpans`.
+- **Migración TLPAN** (`tools/migrar_lpan.py`): `Mayrit - TLPAN` (3078) → 224 FDO + 2854 LPAN,
+  **0 colgados** (3014 a binder + 64 a póliza OM). Idempotente por sp_old_id.
+- **PENDIENTE LPAN fase 2**: generar el **Excel** del Premium BDX por risk code junto con sus LPAN por
+  sección y risk code; afinar el documento Word. Definiciones de campos:
+  `…\Xchanging\Application 2020\LPAN Template Definitions.xlsx`. Plantilla:
+  `…\Documentacion\Plantillas\Plantilla LPAN.dotx`.
+
+### Premium ↔ Recibo (regla añadida)
+No se puede **cobrar/liquidar/traspasar** un periodo de Premium sin **Recibo generado** (la pestaña
+Premium muestra "Falta recibo"). El recibo se indexa por `reporting_period_start` de las líneas Risk.
+
+### Sistema de avisos (nuevo, ARRANCADO)
+- `app/routers/avisos.py` → `GET /avisos` (al vuelo, sin tabla). Frontend: **campana 🔔** en cabecera +
+  **chip sutil** en Inicio que abre la campana.
+- Generadores: **`risk_sin_recibo`** (hay Risk BDX en un mes sin Recibo; excluye
+  `PRODUCTORES_SIN_RECIBO={"insurart"}` — honorarios → Consultoría) y **`vencimientos_sin_renovar`**
+  (binders En Vigor último de su programa, y pólizas anuales En Vigor, que vencen en ≤1 mes sin
+  renovación).
+- **PENDIENTE avisos**: más generadores (premium sin LPAN, FDO sin signing, límites cerca del umbral,
+  snapshots de Claims que faltan, secreto Entra por caducar); refrescar al instante tras generar un
+  recibo; sustituir el `{"insurart"}` hardcodeado por un **flag "factura por honorarios"** al hacer
+  Consultoría.
+
+### Otros cambios de UI
+- Menú: opciones **UCR** (placeholder, bajo Triangulaciones) y **LPAN** (Facturación); menú lateral
+  compacto con encabezados en caja naranja; ítem activo en naranja sólido; "Pólizas (OM)"→"Pólizas".
+- Binders: limpiador 🧹 a la izquierda, búsqueda por **Mercado**, sumatorios (nº + Σ GWP our line);
+  filas "En Vigor" en blanco; pestaña Triangulación restaurada en Contingencias.
+- Siniestros: botón **Editar** en la pestaña del binder → **SiniestroModal** (abre bloqueado; oculta
+  Reference y Moneda; Periodo como fecha). Endpoint `PUT /siniestros/{id}`.
+
+### Avisos reales abiertos a revisar (a fecha de la sesión)
+- Recibo pendiente: PI1924CRO 2025-02, PI2224HEC 2026-04, PI2825NUV 2025-11/2026-05.
+- Vencimiento sin renovar: **MA0222HEL** (En Vigor pero venció 31/12/2022 — revisar estado),
+  PI2625HEC (vence 30/06/2026).
+- TLPAN: ~141 "Premium sin LPAN" (98 desfase de mes, 43 reales/pendientes).
