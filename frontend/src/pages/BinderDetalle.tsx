@@ -133,6 +133,8 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
   // ── LPAN / FDO (notas de pago a Lloyd's por risk code) ──
   const [lpanData, setLpanData] = useState<VistaLpan | null>(null);
   const [lpanBusy, setLpanBusy] = useState(false);
+  const [fdoAbierto, setFdoAbierto] = useState<boolean | null>(null); // null = automático (según completos)
+  const [periodosCerrados, setPeriodosCerrados] = useState<Set<string>>(new Set());
   async function cargarLpan() {
     try {
       setLpanData(await lpanApi.vista(binder.id));
@@ -1291,32 +1293,51 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
             </p>
 
             {/* ── Panel FDO por sección y risk code (según lo declarado en el binder) ── */}
-            <div className="recibo-box" style={{ marginBottom: 16 }}>
-              <h4>FDO por Sección y Risk Code</h4>
-              <p className="hint" style={{ marginTop: 0 }}>Según lo declarado en el binder (secciones y risk codes).</p>
-              <div className="tabla-scroll">
-                <table className="compacto bdx-tabla">
-                  <thead>
-                    <tr>
-                      <th>Secc.</th><th>Ramo</th><th>Risk Code</th><th>Broker Reference</th>
-                      <th>Signing number</th><th>Work Package</th><th>Fecha proceso</th><th>WP Status</th><th></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {lpanData.fdos.map((rc) => (
-                      <LpanFdoRow key={`${rc.section}-${rc.risk_code}-${rc.fdo?.id ?? "no"}`}
-                        rc={rc} binderId={binder.id} onChanged={cargarLpan} />
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+            {(() => {
+              const fdosCompletos = lpanData.fdos.length > 0 && lpanData.fdos.every((rc) =>
+                rc.fdo && rc.fdo.signing_number && rc.fdo.work_package && rc.fdo.fecha_proceso && rc.fdo.work_package_status);
+              const fdoOpen = fdoAbierto ?? !fdosCompletos; // al completarse todos, se repliega solo
+              return (
+                <div className="recibo-box" style={{ marginBottom: 16 }}>
+                  <h4 className="lpan-colap" onClick={() => setFdoAbierto(!fdoOpen)}>
+                    <span className="nav-chevron">{fdoOpen ? "▾" : "▸"}</span>
+                    FDO por Sección y Risk Code{fdosCompletos ? " ✓" : ""}
+                  </h4>
+                  {fdoOpen && <>
+                    <p className="hint" style={{ marginTop: 0 }}>Según lo declarado en el binder (secciones y risk codes).</p>
+                    <div className="tabla-scroll">
+                      <table className="compacto bdx-tabla">
+                        <thead>
+                          <tr>
+                            <th>Secc.</th><th>Ramo</th><th>Risk Code</th><th>Broker Reference</th>
+                            <th>Signing number</th><th>Work Package</th><th>Fecha proceso</th><th>WP Status</th><th></th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {lpanData.fdos.map((rc) => (
+                            <LpanFdoRow key={`${rc.section}-${rc.risk_code}-${rc.fdo?.id ?? "no"}`}
+                              rc={rc} binderId={binder.id} onChanged={cargarLpan} />
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>}
+                </div>
+              );
+            })()}
 
             {/* ── Periodo → Sección → Risk Code ── */}
-            {lpanData.periodos.map((p) => (
+            {lpanData.periodos.map((p) => {
+              const abierto = !periodosCerrados.has(p.periodo);
+              return (
               <div key={p.periodo} className="recibo-box" style={{ marginBottom: 14 }}>
-                <h4>{p.periodo_label}</h4>
-                {p.secciones.map((s) => (
+                <h4 className="lpan-colap" onClick={() => setPeriodosCerrados((s) => {
+                  const nx = new Set(s); if (nx.has(p.periodo)) nx.delete(p.periodo); else nx.add(p.periodo); return nx;
+                })}>
+                  <span className="nav-chevron">{abierto ? "▾" : "▸"}</span>
+                  {p.periodo_label}
+                </h4>
+                {abierto && p.secciones.map((s) => (
                   <div key={s.section} style={{ marginBottom: 8 }}>
                     <div className="lpan-seccion-tit">Sección {s.section}</div>
                     <table className="compacto bdx-tabla">
@@ -1364,7 +1385,8 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
                   </div>
                 ))}
               </div>
-            ))}
+              );
+            })}
           </div>
         )
       )}
