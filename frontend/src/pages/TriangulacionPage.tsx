@@ -20,6 +20,7 @@ export default function TriangulacionPage() {
   const [progId, setProgId] = useState<number | null>(null);
   const [riskCode, setRiskCode] = useState<string>(""); // "" = TOTAL
   const [data, setData] = useState<TriangulacionPrograma | null>(null);
+  const [comparativa, setComparativa] = useState(false); // false = Resumen, true = Comparativa
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -67,10 +68,26 @@ export default function TriangulacionPage() {
         <select className="filtro" value={progId ?? ""} onChange={(e) => setProgId(Number(e.target.value))}>
           {programas.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
         </select>
-        <select className="filtro" value={riskCode} onChange={(e) => setRiskCode(e.target.value)}>
-          <option value="">TOTAL (todos los risk codes)</option>
-          {(data?.risk_codes ?? []).map((rc) => <option key={rc} value={rc}>{rc}</option>)}
-        </select>
+        {comparativa && (
+          <select className="filtro" value={riskCode} onChange={(e) => setRiskCode(e.target.value)}>
+            <option value="">TOTAL (todos los risk codes)</option>
+            {(data?.risk_codes ?? []).map((rc) => <option key={rc} value={rc}>{rc}</option>)}
+          </select>
+        )}
+        <button
+          type="button"
+          role="switch"
+          aria-checked={comparativa}
+          className={"switch switch-sm" + (comparativa ? " on" : "")}
+          onClick={() => setComparativa((v) => !v)}
+          title="Alterna entre el Resumen por año y la Comparación por antigüedad"
+          style={{ marginLeft: "auto" }}
+        >
+          <span className="switch-track"><span className="switch-knob" /></span>
+          <span className="switch-label" style={{ fontSize: 12 }}>
+            Vista: {comparativa ? "Comparativa" : "Resumen"}
+          </span>
+        </button>
       </div>
 
       {error && <div className="error">{error}</div>}
@@ -80,6 +97,7 @@ export default function TriangulacionPage() {
         <div className="empty">Este programa no tiene binders con datos para triangular.</div>
       ) : (
         <div className="lista-scroll">
+          {!comparativa && <>
           {/* Resumen por año: GWP, siniestralidad actual, ultimate e IBNR (con factores del programa). */}
           <h3 style={{ margin: "4px 0 6px" }}>Resumen por año</h3>
           <table className="compacto bdx-tabla tri-tabla" style={{ marginBottom: 18 }}>
@@ -124,7 +142,9 @@ export default function TriangulacionPage() {
               </tr>
             </tfoot>
           </table>
+          </>}
 
+          {comparativa && <>
           {/* Comparación: filas = antigüedad (Año/Mes), columnas = cada binder × {Nº · Siniestralidad · Ratio}. */}
           <h3 style={{ margin: "4px 0 6px" }}>
             Comparación de siniestralidad {riskCode ? `· Risk code ${riskCode}` : "· TOTAL"}
@@ -174,6 +194,7 @@ export default function TriangulacionPage() {
               </tbody>
             </table>
           </div>
+          </>}
         </div>
       )}
     </div>
