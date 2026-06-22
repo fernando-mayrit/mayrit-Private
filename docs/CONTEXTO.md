@@ -598,3 +598,77 @@ Premium muestra "Falta recibo"). El recibo se indexa por `reporting_period_start
 - Vencimiento sin renovar: **MA0222HEL** (En Vigor pero venció 31/12/2022 — revisar estado),
   PI2625HEC (vence 30/06/2026).
 - TLPAN: ~141 "Premium sin LPAN" (98 desfase de mes, 43 reales/pendientes).
+
+## Sesión 21-22/06/2026 (equipo "ferna") — triangulación, rendimiento, seguridad, importaciones
+
+> Trabajo hecho en ESTE equipo en paralelo a la sesión LPAN/FDO; ya integrado por git pull.
+
+### Decisión transversal: siniestralidad = **pagado + reservas** (incurrido real)
+La pestaña Siniestros (binder y listado global) sumaba `total_indemnity + total_fees` del maestro,
+que incluyen el **"a pagar este mes" (to_pay)** ya contenido en el pagado acumulado → **doble conteo**
+(inflaba ~3%). Corregido: contador y columnas Total ind./fees/Total usan **pagado + reservas**, igual
+que la Triangulación y el cálculo de Profit Commission. Ej. PI2324IBE: 554.495,74 (antes 572.021,75).
+
+### Triangulación — AMPLIADA (binder COMPLETO; programa básico)
+Módulo en `backend/app/routers/triangulacion.py` + pestaña del binder + página `TriangulacionPage`
+(menú lateral). Calcula **en vivo** (sin caché) desde `claims_presentaciones`+`siniestros`+Risk; se
+actualiza al presentar un snapshot (recargando).
+- **Por binder** (`GET /binders/{id}/triangulacion`): filas = mes de apertura (`date_opened`);
+  columnas = mes de valuación (calendario, reciente→antiguo) con conmutador **Calendario / Por
+  antigüedad**. Métricas conmutables: Incurrido / Pagado / Nº / **% Siniestralidad** (incurrido/Net
+  to UWs). Columna izquierda = **Net to UWs por mes**. **IBNR sugerido** (chain-ladder volumen-
+  ponderado) + Ultimate con %. **Ámbito**: Total / por Código de riesgo / por Sección (filtra claims
+  y prima). **Export a Excel** (`/binders/{id}/triangulacion/excel`).
+- **Por programa** (`GET /programas/{id}/triangulacion`): filas = binders/YOA, columnas = antigüedad;
+  los **factores de desarrollo se calculan con TODO el programa** (los años maduros proyectan el IBNR
+  de los jóvenes). Hoy: resumen por año (GWP/Net/Incurrido/Ultimate/IBNR + %) + triángulo conmutable.
+- **PENDIENTE (tarea principal próxima):** ampliar el de **programa** — llevarle lo del binder
+  (métrica %, vista calendario/antigüedad, ámbito por código/sección, export Excel, layout) y valorar
+  **realimentar los factores del programa al IBNR de cada binder** (hoy el binder usa solo su año).
+
+### Rendimiento (revisión general, todo verificado equivalente)
+- **Índices** (migración `e3f4a5b6c7d8`, aditiva/reversible): `bdx(binder_id,tipo)`,
+  `bdx_lineas.premium_bdx`, `recibos.fecha_contable`, `claims_presentaciones(binder_id,periodo_ord)`.
+- **Cierre**: `extract(year/mes)` → filtros de rango (usa el índice; idéntico verificado).
+- **`siniestros/ratios`**: agrega en SQL (antes traía ~31k líneas) — 0,72s→0,23s, JSON idéntico.
+- **`listar_premium`**: `load_only` de las columnas usadas.
+- **Listado de binders**: era N+1 (6,8s) → eager-loading `joinedload/selectinload` (~0,2s); quitado
+  `response_model` redundante. **Frontend dev → `127.0.0.1`** (evita el penalti IPv6 de "localhost").
+- **Frontend memoización** (`useMemo`) en `TablaDatos`, `BdxTabla`, `RecibosPage`, `BinderDetalle`
+  (+ `cargar()` en paralelo con `Promise.all`), `BindersPage`.
+
+### Seguridad (revisado)
+Acceso protegido por **Entra Easy Auth** (Require authentication, 302). Enterprise App "mayrit"
+(client id `ff43376f-…`): puesto **"¿Asignación requerida? = Sí"** y asignados **3 usuarios** (los
+grupos no van por el plan). La API FastAPI no valida identidad propia (va detrás de Easy Auth) —
+refinamiento futuro de defensa en profundidad. `alea-db` = Flexible Server **Burstable** (sin geo-
+redundancia ni HA por nivel). **PENDIENTE backup**: `pg_dump` programado a un **NAS** de la oficina +
+subir **retención Azure a 35 días** (faltan ruta del NAS y qué PC).
+
+### UI varios
+- Menú lateral: grupo **Contabilidad** + opción **Transferencias** (Financiero); **Configuración**
+  desplegable.
+- Listado de binders: columna **Mercado** muestra todos separados por " / ".
+- Ratios Frecuencia/Siniestralidad con mismo formato, en sub-cuadro amarillo.
+- Reglas de cierre de binder: no cerrar si Risk sin machear con Premium; no pasar a "Cerrado" con
+  siniestros abiertos. Binder NUNCA borrable (DELETE→409).
+
+### Importaciones de SharePoint hechas esta sesión (Risk + Claims + snapshots)
+Risk+Claims+snapshots: **PI1422IBE, PI1222CRO, PI1122CRO** (sin snapshot), **CY0522ALE, CY0623ALE,
+CY0724ALE, CY0825ALE** (+2 huérfanos creados), **PI1823IBE, PI1723HEC, PI1623CRO** (huérfano 119262 de
+otro binder omitido), **PI2324IBE, PI2224HEC** (+1 huérfano), **PI2024CRO** (typo periodo 2021→2024
+con `--periodo-override`), **PI1924CRO** (sin snapshot), **MA0222HEL** (Risk+claims; **snapshots NO**).
+**LMIEITOO -23/-24/-26**: Risk leído a mano de listas `Mayrit - BLMIEITOO-23/-24/001-26` (el UMR del
+binder NO casa con el nombre de la lista; -25 vacío/no existe). Mejoras al importador
+`migrar_claims_heca.py`: periodo por carpeta, `--anio-defecto`, matching insensible a espacios,
+`--alias-ref`, `--periodo-override`, unión combinado+secciones, saltar refs vacías.
+
+### PENDIENTES de este equipo (además de lo de arriba)
+- **Snapshots de Claims de MA0222HEL** (Helix/TME): en pausa por **cambio de esquema de columnas**
+  (viejo "Payment Indemnity" col33 vs nuevo "Paid Indemnity" col36 + "this month"); decidir
+  interpretación o usar lectura por nombre de cabecera (quizá adaptable de `migrar_claims_dos_fuentes`).
+- **5 recibos duplicados** a decidir entre dos personas: PI1924CRO 2025-02 (2025-0031/0032/0066),
+  PI2825NUV 2025-11 (2025-0195/0196). Regla: 1 recibo por binder+periodo.
+- **Paginación** de GET /recibos y /siniestros (no urgente, cuando crezcan).
+- **Limpieza de código muerto** (CRUD BDX sin uso, `BdxTabla` duplica `TablaDatos`, helpers/CSS) — no
+  hecha (lo de más riesgo).
