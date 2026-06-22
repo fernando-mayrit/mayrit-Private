@@ -80,7 +80,7 @@ const MAESTRAS: { id: Page; label: string }[] = [
 // Menú lateral: el Negocio (las 4 fuentes principales).
 const NEGOCIO: { id: Page; label: string }[] = [
   { id: "binders", label: "Binders" },
-  { id: "polizas", label: "Pólizas (OM)" },
+  { id: "polizas", label: "Pólizas" },
   { id: "consultoria", label: "Consultoría" },
   { id: "comisiones", label: "Comisiones" },
 ];
