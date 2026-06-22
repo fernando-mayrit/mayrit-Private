@@ -961,6 +961,7 @@ export default function BindersPage() {
     <div className="container lista-page">
       <PageHeader emoji="📑" title="Binders" />
       <div className="toolbar">
+        <button className="btn-secondary" title="Limpiar todos los filtros" onClick={limpiarFiltros}>🧹</button>
         <input
           type="search"
           placeholder="Buscar por UMR, Agreement o Mercado…"
@@ -1001,7 +1002,6 @@ export default function BindersPage() {
             </option>
           ))}
         </select>
-        <button className="btn-secondary" title="Limpiar todos los filtros" onClick={limpiarFiltros}>🧹</button>
         <div className="bind-sumatorios">
           <span className="bind-sum"><strong>{visibles.length}</strong> binders</span>
           <span className="bind-sum"><strong>{eur(totalPrimas)}</strong> primas</span>
