@@ -396,8 +396,6 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
   // cierra Siniestros.
   const produccionCerrada = (binder.estado || "").startsWith("Cerrado");
   const cerradoTotal = binder.estado === "Cerrado";
-  // Los binders de Contingencias no se triangulan → se oculta esa pestaña.
-  const esContingencias = binder.secciones.some((s) => (s.ramo ?? "").toLowerCase().includes("contingencias"));
 
   // Totales del Premium (lo macheado) vs totales del Risk (todas las líneas). Cuando todo está
   // macheado, deben coincidir. Prima = our line + impuestos − comisión cedida; Comisión = brokerage.
@@ -660,11 +658,9 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
         <button className={"tab" + (tab === "claimsbdx" ? " active" : "")} onClick={() => setTab("claimsbdx")}>
           Claims BDX
         </button>
-        {!esContingencias && (
-          <button className={"tab" + (tab === "triangulacion" ? " active" : "")} onClick={() => setTab("triangulacion")}>
-            Triangulación
-          </button>
-        )}
+        <button className={"tab" + (tab === "triangulacion" ? " active" : "")} onClick={() => setTab("triangulacion")}>
+          Triangulación
+        </button>
       </div>
 
       {error && <div className="error">⚠ {error}</div>}
