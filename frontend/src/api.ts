@@ -84,8 +84,13 @@ export interface LpanRegistro {
   fecha: string | null;
   estado: string;
 }
-export interface PeriodoLpan {
-  periodo: string;
+export interface RiskCodeFdo {
+  risk_code: string;
+  fdo: FdoRegistro | null;
+}
+export interface RcEnSeccion {
+  risk_code: string;
+  signing_number: string | null;
   num_lineas: number;
   gross_premium: number | string;
   brokerage: number | string;
@@ -94,19 +99,27 @@ export interface PeriodoLpan {
   cobrado: boolean;
   lpan: LpanRegistro | null;
 }
-export interface RiskCodeLpan {
-  risk_code: string;
-  fdo: FdoRegistro | null;
+export interface SeccionLpan {
+  section: number;
+  risk_codes: RcEnSeccion[];
+}
+export interface PeriodoLpan {
+  periodo: string;
+  periodo_label: string;
+  secciones: SeccionLpan[];
+}
+export interface VistaLpan {
+  fdos: RiskCodeFdo[];
   periodos: PeriodoLpan[];
 }
 export const lpanApi = {
-  vista: (binderId: number) => request<RiskCodeLpan[]>(`/binders/${binderId}/lpan`),
+  vista: (binderId: number) => request<VistaLpan>(`/binders/${binderId}/lpan`),
   crearFdo: (binderId: number, risk_code: string) =>
     request<FdoRegistro>(`/binders/${binderId}/fdo`, { method: "POST", body: JSON.stringify({ risk_code }) }),
   actualizarFdo: (fdoId: number, datos: { signing_number?: string | null; fecha_signing?: string | null; notas?: string | null }) =>
     request<FdoRegistro>(`/fdo/${fdoId}`, { method: "PUT", body: JSON.stringify(datos) }),
   borrarFdo: (fdoId: number) => request(`/fdo/${fdoId}`, { method: "DELETE" }),
-  generarLpan: (binderId: number, data: { risk_code: string; periodo: string; tipo?: string }) =>
+  generarLpan: (binderId: number, data: { risk_code: string; section: number; periodo: string; tipo?: string }) =>
     request<LpanRegistro>(`/binders/${binderId}/lpan`, { method: "POST", body: JSON.stringify(data) }),
   borrarLpan: (lpanId: number) => request(`/lpan/${lpanId}`, { method: "DELETE" }),
 };

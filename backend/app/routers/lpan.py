@@ -31,10 +31,21 @@ from ..models.maestras import Bdx, BdxLinea, Binder, Fdo, Lpan
 router = APIRouter(tags=["LPAN"])
 
 D0 = Decimal("0")
+MESES_ES = ["", "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+            "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
 
 
 def _d(v) -> Decimal:
     return v if isinstance(v, Decimal) else Decimal(str(v or 0))
+
+
+def _periodo_label(per: str) -> str:
+    """'2025-01' -> 'Enero-2025'."""
+    try:
+        a, m = per.split("-")
+        return f"{MESES_ES[int(m)]}-{a}"
+    except (ValueError, IndexError):
+        return per
 
 
 # ──────────────────────────── Schemas ────────────────────────────
@@ -60,8 +71,14 @@ class LpanRead(BaseModel):
     estado: str
 
 
-class PeriodoLpan(BaseModel):
-    periodo: str
+class RiskCodeFdo(BaseModel):
+    risk_code: str
+    fdo: FdoRead | None = None
+
+
+class RcEnSeccion(BaseModel):
+    risk_code: str
+    signing_number: str | None = None     # del FDO del risk code (si lo tiene)
     num_lineas: int
     gross_premium: Decimal
     brokerage: Decimal
@@ -71,9 +88,19 @@ class PeriodoLpan(BaseModel):
     lpan: LpanRead | None = None
 
 
-class RiskCodeLpan(BaseModel):
-    risk_code: str
-    fdo: FdoRead | None = None
+class SeccionLpan(BaseModel):
+    section: int
+    risk_codes: list[RcEnSeccion]
+
+
+class PeriodoLpan(BaseModel):
+    periodo: str
+    periodo_label: str
+    secciones: list[SeccionLpan]
+
+
+class VistaLpan(BaseModel):
+    fdos: list[RiskCodeFdo]           # FDO/signing por risk code (transversal a periodos/secciones)
     periodos: list[PeriodoLpan]
 
 
@@ -89,6 +116,7 @@ class FdoUpdate(BaseModel):
 
 class LpanCreate(BaseModel):
     risk_code: str
+    section: int = 0
     periodo: str
     tipo: str = "PM"
 
@@ -101,24 +129,25 @@ def _binder_o_404(binder_id: int, db: Session) -> Binder:
     return b
 
 
-def _grupos_premium(db: Session, binder_id: int) -> dict[tuple[str, str], dict]:
-    """Líneas del Premium (incluidas en premium) agrupadas por (risk_code, periodo 'YYYY-MM')."""
+def _grupos_premium(db: Session, binder_id: int) -> dict[tuple[str, int, str], dict]:
+    """Líneas del Premium (incluidas en premium) agrupadas por (periodo 'YYYY-MM', sección, risk_code)."""
     lineas = db.scalars(
         select(BdxLinea)
         .join(Bdx, BdxLinea.bdx_id == Bdx.id)
         .where(Bdx.binder_id == binder_id, BdxLinea.incluido_en_premium.is_(True), BdxLinea.premium_bdx.is_not(None))
         .options(load_only(
-            BdxLinea.risk_code, BdxLinea.premium_bdx,
+            BdxLinea.risk_code, BdxLinea.section_no, BdxLinea.premium_bdx,
             BdxLinea.total_gwp_our_line, BdxLinea.total_taxes_levies,
             BdxLinea.commission_coverholder_amount, BdxLinea.brokerage_amount,
             BdxLinea.final_net_premium_uw, BdxLinea.prima_cobrada,
         ))
     ).all()
-    grupos: dict[tuple[str, str], dict] = {}
+    grupos: dict[tuple[str, int, str], dict] = {}
     for l in lineas:
         rc = (l.risk_code or "—").strip() or "—"
+        sec = int(l.section_no) if l.section_no is not None else 0
         per = l.premium_bdx.strftime("%Y-%m")
-        g = grupos.setdefault((rc, per), {"num": 0, "gross": D0, "brk": D0, "tax": D0, "net": D0, "cobr": 0})
+        g = grupos.setdefault((per, sec, rc), {"num": 0, "gross": D0, "brk": D0, "tax": D0, "net": D0, "cobr": 0})
         g["num"] += 1
         g["gross"] += _d(l.total_gwp_our_line)
         g["brk"] += _d(l.commission_coverholder_amount) + _d(l.brokerage_amount)
@@ -130,37 +159,44 @@ def _grupos_premium(db: Session, binder_id: int) -> dict[tuple[str, str], dict]:
 
 
 # ──────────────────────────── Endpoints ────────────────────────────
-@router.get("/binders/{binder_id}/lpan", response_model=list[RiskCodeLpan])
+@router.get("/binders/{binder_id}/lpan", response_model=VistaLpan)
 def vista(binder_id: int, db: Session = Depends(get_db)):
-    """Vista LPAN del binder: por risk code, su FDO y, por periodo de Premium, los importes
-    agregados, si está cobrado y el LPAN ya generado (si lo hay)."""
+    """Vista LPAN del binder, agrupada Periodo → Sección → Risk Code, con los importes agregados,
+    si está cobrado y el LPAN ya generado. Aparte, el FDO/signing por risk code (transversal)."""
     _binder_o_404(binder_id, db)
     grupos = _grupos_premium(db, binder_id)
     fdos = {f.risk_code: f for f in db.scalars(select(Fdo).where(Fdo.binder_id == binder_id)).all()}
     lpans = db.scalars(select(Lpan).where(Lpan.binder_id == binder_id)).all()
-    lpan_por = {(lp.risk_code, lp.periodo): lp for lp in lpans}
+    lpan_por = {(lp.periodo, lp.section, lp.risk_code): lp for lp in lpans}
 
-    risk_codes = sorted(set([rc for (rc, _) in grupos]) | set(fdos.keys()))
-    out: list[RiskCodeLpan] = []
-    for rc in risk_codes:
-        f = fdos.get(rc)
-        periodos = sorted([per for (r, per) in grupos if r == rc])
-        pls: list[PeriodoLpan] = []
-        for per in periodos:
-            g = grupos[(rc, per)]
-            lp = lpan_por.get((rc, per))
-            pls.append(PeriodoLpan(
-                periodo=per, num_lineas=g["num"],
-                gross_premium=g["gross"], brokerage=g["brk"], tax=g["tax"], net_premium=g["net"],
-                cobrado=(g["num"] > 0 and g["cobr"] == g["num"]),
-                lpan=LpanRead.model_validate(lp, from_attributes=True) if lp else None,
-            ))
-        out.append(RiskCodeLpan(
-            risk_code=rc,
-            fdo=FdoRead.model_validate(f, from_attributes=True) if f else None,
-            periodos=pls,
-        ))
-    return out
+    # FDO/signing por risk code (todos los risk codes que aparecen en premium o ya tienen FDO).
+    risk_codes = sorted({rc for (_, _, rc) in grupos} | set(fdos.keys()))
+    fdos_out = [RiskCodeFdo(
+        risk_code=rc,
+        fdo=FdoRead.model_validate(fdos[rc], from_attributes=True) if rc in fdos else None,
+    ) for rc in risk_codes]
+
+    periodos: list[PeriodoLpan] = []
+    for per in sorted({p for (p, _, _) in grupos}):
+        secciones: list[SeccionLpan] = []
+        for sec in sorted({s for (p, s, _) in grupos if p == per}):
+            rcs: list[RcEnSeccion] = []
+            for rc in sorted({r for (p, s, r) in grupos if p == per and s == sec}):
+                g = grupos[(per, sec, rc)]
+                lp = lpan_por.get((per, sec, rc))
+                f = fdos.get(rc)
+                rcs.append(RcEnSeccion(
+                    risk_code=rc,
+                    signing_number=f.signing_number if f else None,
+                    num_lineas=g["num"], gross_premium=g["gross"], brokerage=g["brk"],
+                    tax=g["tax"], net_premium=g["net"],
+                    cobrado=(g["num"] > 0 and g["cobr"] == g["num"]),
+                    lpan=LpanRead.model_validate(lp, from_attributes=True) if lp else None,
+                ))
+            secciones.append(SeccionLpan(section=sec, risk_codes=rcs))
+        periodos.append(PeriodoLpan(periodo=per, periodo_label=_periodo_label(per), secciones=secciones))
+
+    return VistaLpan(fdos=fdos_out, periodos=periodos)
 
 
 @router.post("/binders/{binder_id}/fdo", response_model=FdoRead)
@@ -211,21 +247,23 @@ def generar_lpan(binder_id: int, payload: LpanCreate, db: Session = Depends(get_
     """Genera el LPAN de (risk code, periodo): exige FDO con signing y todas las líneas cobradas."""
     _binder_o_404(binder_id, db)
     rc, per = (payload.risk_code or "").strip(), (payload.periodo or "").strip()
+    sec = int(payload.section or 0)
+    tipo = payload.tipo or "PM"
     f = db.scalar(select(Fdo).where(Fdo.binder_id == binder_id, Fdo.risk_code == rc))
     if f is None:
         raise HTTPException(status_code=409, detail=f"Genera antes el FDO del risk code {rc}.")
     if not f.signing_number:
         raise HTTPException(status_code=409, detail=f"El FDO del risk code {rc} aún no tiene signing number.")
     grupos = _grupos_premium(db, binder_id)
-    g = grupos.get((rc, per))
+    g = grupos.get((per, sec, rc))
     if not g or g["num"] == 0:
-        raise HTTPException(status_code=404, detail=f"No hay líneas de Premium para {rc} en {per}.")
+        raise HTTPException(status_code=404, detail=f"No hay líneas de Premium para {rc} (sección {sec}) en {per}.")
     if g["cobr"] != g["num"]:
         raise HTTPException(status_code=409, detail=f"Hay líneas sin cobrar en {rc} {per}: no se puede generar el LPAN.")
-    if db.scalar(select(Lpan).where(Lpan.fdo_id == f.id, Lpan.periodo == per, Lpan.tipo == (payload.tipo or "PM"))):
-        raise HTTPException(status_code=409, detail=f"Ya existe un LPAN {payload.tipo} para {rc} {per}.")
+    if db.scalar(select(Lpan).where(Lpan.fdo_id == f.id, Lpan.periodo == per, Lpan.section == sec, Lpan.tipo == tipo)):
+        raise HTTPException(status_code=409, detail=f"Ya existe un LPAN {tipo} para {rc} sección {sec} {per}.")
     lp = Lpan(
-        fdo_id=f.id, binder_id=binder_id, risk_code=rc, periodo=per, tipo=(payload.tipo or "PM"),
+        fdo_id=f.id, binder_id=binder_id, risk_code=rc, section=sec, periodo=per, tipo=tipo,
         num_lineas=g["num"], gross_premium=g["gross"], brokerage=g["brk"], tax=g["tax"], net_premium=g["net"],
         fecha=dt.date.today(), estado="Generado",
     )

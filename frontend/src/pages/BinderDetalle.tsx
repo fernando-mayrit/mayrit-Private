@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { bdxApi, recibosApi, siniestrosApi, claimsBdxApi, triangulacionApi, lpanApi, type BdxDetalle, type BdxPreview, type BdxImportResult, type ExcelDir, type PremiumGrupo, type ClaimsBdxVista, type Triangulacion, type MetricaTriangulo, type RiskCodeLpan } from "../api";
+import { bdxApi, recibosApi, siniestrosApi, claimsBdxApi, triangulacionApi, lpanApi, type BdxDetalle, type BdxPreview, type BdxImportResult, type ExcelDir, type PremiumGrupo, type ClaimsBdxVista, type Triangulacion, type MetricaTriangulo, type VistaLpan } from "../api";
 import type { Binder, Bdx, BdxLinea, Recibo, Siniestro } from "../types";
 import BdxLineaPanel from "../components/BdxLineaPanel";
 import BdxTabla from "../components/BdxTabla";
@@ -130,7 +130,7 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
   }, [tab]);
 
   // ── LPAN / FDO (notas de pago a Lloyd's por risk code) ──
-  const [lpanData, setLpanData] = useState<RiskCodeLpan[] | null>(null);
+  const [lpanData, setLpanData] = useState<VistaLpan | null>(null);
   const [lpanBusy, setLpanBusy] = useState(false);
   const [signingDraft, setSigningDraft] = useState<Record<number, string>>({});
   async function cargarLpan() {
@@ -1281,84 +1281,110 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
       {tab === "lpan" && (
         !lpanData ? (
           <div className="loading">Cargando…</div>
-        ) : lpanData.length === 0 ? (
+        ) : lpanData.periodos.length === 0 ? (
           <div className="empty">No hay líneas de Premium (incluidas en premium) para generar LPAN.</div>
         ) : (
           <div className="lpan-tab">
             <p className="hint" style={{ marginBottom: 10 }}>
-              Por cada risk code: genera el FDO, anota el signing number de Xchanging y, una vez cobrado
-              cada periodo del Premium, genera su LPAN (importes en € · GWP our line, comisiones, IPT y neto a UW).
+              FDO y signing number por risk code (transversal). Después, por periodo → sección → risk code,
+              genera el LPAN de cada bloque cobrado (importes en € · GWP our line, comisiones, IPT y neto a UW).
             </p>
-            {lpanData.map((rc) => (
-              <div key={rc.risk_code} className="lpan-rc recibo-box" style={{ marginBottom: 14 }}>
-                <div className="lpan-rc-head">
-                  <h4 style={{ margin: 0 }}>Risk Code {rc.risk_code}</h4>
-                  {/* FDO + signing number */}
-                  {!rc.fdo ? (
-                    <button className="btn-secondary btn-sm" disabled={lpanBusy}
-                      onClick={() => accionLpan(() => lpanApi.crearFdo(binder.id, rc.risk_code))}>
-                      Generar FDO
-                    </button>
-                  ) : rc.fdo.signing_number ? (
-                    <span className="pill pill-cobrado pill-estado-lg">Signing nº {rc.fdo.signing_number}</span>
-                  ) : (
-                    <span className="lpan-signing">
-                      <span className="hint">FDO generado — falta signing:</span>
-                      <input
-                        type="text" placeholder="Signing number" style={{ width: 150 }}
-                        value={signingDraft[rc.fdo.id] ?? ""}
-                        onChange={(e) => setSigningDraft((s) => ({ ...s, [rc.fdo!.id]: e.target.value }))}
-                      />
-                      <button className="btn-primary btn-sm" disabled={lpanBusy || !(signingDraft[rc.fdo.id] ?? "").trim()}
-                        onClick={() => accionLpan(() => lpanApi.actualizarFdo(rc.fdo!.id, { signing_number: (signingDraft[rc.fdo!.id] ?? "").trim() }))}>
-                        Guardar
-                      </button>
-                    </span>
-                  )}
-                </div>
 
-                <table className="compacto bdx-tabla" style={{ marginTop: 8 }}>
-                  <thead>
-                    <tr>
-                      <th>Periodo</th><th className="num">Nº líneas</th>
-                      <th className="num">GWP Our Line</th><th className="num">Brokerage</th>
-                      <th className="num">IPT</th><th className="num">Neto a UW</th>
-                      <th>Cobrado</th><th>LPAN</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rc.periodos.map((p) => (
-                      <tr key={p.periodo}>
-                        <th>{p.periodo}</th>
-                        <td className="num">{p.num_lineas}</td>
-                        <td className="num">{fmtMiles(p.gross_premium)}</td>
-                        <td className="num">{fmtMiles(p.brokerage)}</td>
-                        <td className="num">{fmtMiles(p.tax)}</td>
-                        <td className="num">{fmtMiles(p.net_premium)}</td>
-                        <td>{p.cobrado
-                          ? <span className="pill pill-cobrado">Cobrado</span>
-                          : <span className="pill pill-pendiente">Pendiente</span>}</td>
-                        <td>
-                          {p.lpan ? (
-                            <span className="lpan-generado">
-                              <span className="pill pill-cobrado">{p.lpan.tipo} · {p.lpan.fecha ?? ""}</span>
-                              <button className="btn-link" disabled={lpanBusy}
-                                onClick={() => accionLpan(() => lpanApi.borrarLpan(p.lpan!.id))}>Anular</button>
-                            </span>
-                          ) : (
-                            <button className="btn-secondary btn-sm"
-                              disabled={lpanBusy || !p.cobrado || !rc.fdo?.signing_number}
-                              title={!rc.fdo?.signing_number ? "Falta el signing number del FDO"
-                                : !p.cobrado ? "El periodo no está cobrado" : "Generar el LPAN de este periodo"}
-                              onClick={() => accionLpan(() => lpanApi.generarLpan(binder.id, { risk_code: rc.risk_code, periodo: p.periodo }))}>
-                              Generar LPAN
+            {/* ── Panel FDO / signing por risk code ── */}
+            <div className="recibo-box" style={{ marginBottom: 16 }}>
+              <h4>FDO / Signing por Risk Code</h4>
+              <table className="compacto bdx-tabla">
+                <thead>
+                  <tr><th>Risk Code</th><th>Estado</th><th>Signing number</th></tr>
+                </thead>
+                <tbody>
+                  {lpanData.fdos.map((rc) => (
+                    <tr key={rc.risk_code}>
+                      <th>{rc.risk_code}</th>
+                      <td>
+                        {!rc.fdo
+                          ? <span className="pill pill-pendiente">Sin FDO</span>
+                          : rc.fdo.signing_number
+                          ? <span className="pill pill-cobrado">FDO firmado</span>
+                          : <span className="pill pill-pendiente">FDO pdte. signing</span>}
+                      </td>
+                      <td>
+                        {!rc.fdo ? (
+                          <button className="btn-secondary btn-sm" disabled={lpanBusy}
+                            onClick={() => accionLpan(() => lpanApi.crearFdo(binder.id, rc.risk_code))}>
+                            Generar FDO
+                          </button>
+                        ) : rc.fdo.signing_number ? (
+                          <strong>{rc.fdo.signing_number}</strong>
+                        ) : (
+                          <span className="lpan-signing">
+                            <input type="text" placeholder="Signing number" style={{ width: 150 }}
+                              value={signingDraft[rc.fdo.id] ?? ""}
+                              onChange={(e) => setSigningDraft((s) => ({ ...s, [rc.fdo!.id]: e.target.value }))} />
+                            <button className="btn-primary btn-sm" disabled={lpanBusy || !(signingDraft[rc.fdo.id] ?? "").trim()}
+                              onClick={() => accionLpan(() => lpanApi.actualizarFdo(rc.fdo!.id, { signing_number: (signingDraft[rc.fdo!.id] ?? "").trim() }))}>
+                              Guardar
                             </button>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* ── Periodo → Sección → Risk Code ── */}
+            {lpanData.periodos.map((p) => (
+              <div key={p.periodo} className="recibo-box" style={{ marginBottom: 14 }}>
+                <h4>{p.periodo_label}</h4>
+                {p.secciones.map((s) => (
+                  <div key={s.section} style={{ marginBottom: 8 }}>
+                    <div className="lpan-seccion-tit">Sección {s.section}</div>
+                    <table className="compacto bdx-tabla">
+                      <thead>
+                        <tr>
+                          <th>Risk Code</th><th className="num">Nº líneas</th>
+                          <th className="num">GWP Our Line</th><th className="num">Brokerage</th>
+                          <th className="num">IPT</th><th className="num">Neto a UW</th>
+                          <th>Cobrado</th><th>LPAN</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {s.risk_codes.map((r) => (
+                          <tr key={r.risk_code}>
+                            <th>{r.risk_code}</th>
+                            <td className="num">{r.num_lineas}</td>
+                            <td className="num">{fmtMiles(r.gross_premium)}</td>
+                            <td className="num">{fmtMiles(r.brokerage)}</td>
+                            <td className="num">{fmtMiles(r.tax)}</td>
+                            <td className="num">{fmtMiles(r.net_premium)}</td>
+                            <td>{r.cobrado
+                              ? <span className="pill pill-cobrado">Cobrado</span>
+                              : <span className="pill pill-pendiente">Pendiente</span>}</td>
+                            <td>
+                              {r.lpan ? (
+                                <span className="lpan-generado">
+                                  <span className="pill pill-cobrado">{r.lpan.tipo} · {r.lpan.fecha ?? ""}</span>
+                                  <button className="btn-link" disabled={lpanBusy}
+                                    onClick={() => accionLpan(() => lpanApi.borrarLpan(r.lpan!.id))}>Anular</button>
+                                </span>
+                              ) : (
+                                <button className="btn-secondary btn-sm"
+                                  disabled={lpanBusy || !r.cobrado || !r.signing_number}
+                                  title={!r.signing_number ? "Falta el signing number del FDO de este risk code"
+                                    : !r.cobrado ? "El bloque no está cobrado" : "Generar el LPAN de este bloque"}
+                                  onClick={() => accionLpan(() => lpanApi.generarLpan(binder.id, { risk_code: r.risk_code, section: s.section, periodo: p.periodo }))}>
+                                  Generar LPAN
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ))}
               </div>
             ))}
           </div>

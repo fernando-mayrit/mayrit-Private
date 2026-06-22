@@ -553,12 +553,13 @@ class Lpan(Base):
     BDX de un risk code en un periodo, bajo el signing number de su FDO."""
 
     __tablename__ = "lpans"
-    __table_args__ = (UniqueConstraint("fdo_id", "periodo", "tipo", name="uq_lpan_fdo_periodo_tipo"),)
+    __table_args__ = (UniqueConstraint("fdo_id", "periodo", "section", "tipo", name="uq_lpan_fdo_periodo_seccion_tipo"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     fdo_id: Mapped[int] = mapped_column(ForeignKey("fdos.id", ondelete="CASCADE"), index=True)
     binder_id: Mapped[int] = mapped_column(ForeignKey("binders.id", ondelete="CASCADE"), index=True)
     risk_code: Mapped[str] = mapped_column(String(20))
+    section: Mapped[int] = mapped_column(Integer, server_default="0", default=0)  # nº de sección del bordereau
     periodo: Mapped[str] = mapped_column(String(7))     # 'YYYY-MM' del Premium BDX
     tipo: Mapped[str] = mapped_column(String(10), server_default="PM", default="PM")  # FDO/PM/AP/RP
     num_lineas: Mapped[int] = mapped_column(Integer, server_default="0", default=0)
