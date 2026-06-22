@@ -134,7 +134,8 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
   const [lpanData, setLpanData] = useState<VistaLpan | null>(null);
   const [lpanBusy, setLpanBusy] = useState(false);
   const [fdoAbierto, setFdoAbierto] = useState<boolean | null>(null); // null = automático (según completos)
-  const [periodosCerrados, setPeriodosCerrados] = useState<Set<string>>(new Set());
+  const [periodosAbiertos, setPeriodosAbiertos] = useState<Set<string>>(new Set()); // por defecto replegados
+  const [lpanABorrar, setLpanABorrar] = useState<{ id: number; etiqueta: string } | null>(null);
   async function cargarLpan() {
     try {
       setLpanData(await lpanApi.vista(binder.id));
@@ -1328,30 +1329,37 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
 
             {/* ── Periodo → Sección → Risk Code ── */}
             {lpanData.periodos.length > 0 && (() => {
-              const todosCerrados = lpanData.periodos.every((p) => periodosCerrados.has(p.periodo));
+              const todosAbiertos = lpanData.periodos.every((p) => periodosAbiertos.has(p.periodo));
               return (
                 <div className="toolbar" style={{ marginBottom: 8 }}>
-                  <button className="btn-secondary btn-sm" onClick={() => setPeriodosCerrados(
-                    todosCerrados ? new Set() : new Set(lpanData.periodos.map((p) => p.periodo)))}>
-                    {todosCerrados ? "▾ Desplegar todos" : "▸ Replegar todos"}
+                  <button className="btn-secondary btn-sm" onClick={() => setPeriodosAbiertos(
+                    todosAbiertos ? new Set() : new Set(lpanData.periodos.map((p) => p.periodo)))}>
+                    {todosAbiertos ? "▸ Replegar todos" : "▾ Desplegar todos"}
                   </button>
                 </div>
               );
             })()}
             {lpanData.periodos.map((p) => {
-              const abierto = !periodosCerrados.has(p.periodo);
+              const abierto = periodosAbiertos.has(p.periodo);
+              const completo = p.secciones.length > 0 && p.secciones.every((s) => s.risk_codes.every((r) => r.lpan));
               return (
               <div key={p.periodo} className="recibo-box" style={{ marginBottom: 14 }}>
-                <h4 className="lpan-colap" onClick={() => setPeriodosCerrados((s) => {
+                <h4 className="lpan-colap" onClick={() => setPeriodosAbiertos((s) => {
                   const nx = new Set(s); if (nx.has(p.periodo)) nx.delete(p.periodo); else nx.add(p.periodo); return nx;
                 })}>
                   <span className="nav-chevron">{abierto ? "▾" : "▸"}</span>
-                  {p.periodo_label}
+                  {p.periodo_label}{completo ? " ✓" : ""}
                 </h4>
                 {abierto && p.secciones.map((s) => (
                   <div key={s.section} style={{ marginBottom: 8 }}>
                     <div className="lpan-seccion-tit">Sección {s.section}</div>
-                    <table className="compacto bdx-tabla">
+                    <table className="compacto bdx-tabla lpan-periodo-tabla">
+                      <colgroup>
+                        <col style={{ width: 90 }} /><col style={{ width: 72 }} />
+                        <col style={{ width: 120 }} /><col style={{ width: 100 }} />
+                        <col style={{ width: 110 }} /><col style={{ width: 120 }} />
+                        <col style={{ width: 100 }} /><col style={{ width: 190 }} />
+                      </colgroup>
                       <thead>
                         <tr>
                           <th>Risk Code</th><th className="num">Nº líneas</th>
@@ -1377,7 +1385,7 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
                                 <span className="lpan-generado">
                                   <span className="pill pill-cobrado">{r.lpan.tipo} · {r.lpan.fecha ?? ""}</span>
                                   <button className="btn-link" disabled={lpanBusy}
-                                    onClick={() => accionLpan(() => lpanApi.borrarLpan(r.lpan!.id))}>Anular</button>
+                                    onClick={() => setLpanABorrar({ id: r.lpan!.id, etiqueta: `${r.lpan!.tipo} · Sección ${s.section} · ${r.risk_code} · ${p.periodo_label}` })}>Borrar</button>
                                 </span>
                               ) : (
                                 <button className="btn-secondary btn-sm"
@@ -1400,6 +1408,21 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
             })}
           </div>
         )
+      )}
+
+      {lpanABorrar && (
+        <ConfirmDialog
+          titulo="Borrar LPAN"
+          mensaje={<>Vas a borrar el LPAN <strong>{lpanABorrar.etiqueta}</strong>.</>}
+          detalle="Se borrará solo este LPAN. Esta acción no se puede deshacer."
+          confirmLabel="Borrar LPAN"
+          onConfirm={() => {
+            const id = lpanABorrar.id;
+            setLpanABorrar(null);
+            accionLpan(() => lpanApi.borrarLpan(id));
+          }}
+          onClose={() => setLpanABorrar(null)}
+        />
       )}
 
       {tab === "triangulacion" && (

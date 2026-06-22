@@ -173,6 +173,8 @@ tr.estado-cerrado .btn-link { color: #ffd9cc; }          /* enlaces legibles sob
 .lpan-signing { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .lpan-generado { display: flex; align-items: center; gap: 8px; }
 .lpan-seccion-tit { font-size: 12px; font-weight: 700; color: var(--naranja-osc); margin: 6px 0 3px; }
+/* Tabla de periodo del LPAN: anchos fijos para que todas las secciones alineen igual */
+.lpan-periodo-tabla { table-layout: fixed; width: 100%; }
 /* Cabecera de caja plegable (FDO / periodos de LPAN) */
 .lpan-colap { cursor: pointer; user-select: none; display: flex; align-items: center; gap: 6px; }
 .lpan-colap:hover { color: var(--naranja-osc); }
