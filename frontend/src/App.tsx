@@ -31,6 +31,7 @@ const EMOJI: Record<string, string> = {
   programas: "🔗",
   siniestros: "🚨",
   triangulacion: "🔺",
+  ucr: "🔖",
   recibos: "🧾",
   polizas: "📄",
   consultoria: "💼",
@@ -53,6 +54,7 @@ type Page =
   | "programas"
   | "siniestros"
   | "triangulacion"
+  | "ucr"
   | "recibos"
   | "polizas"
   | "consultoria"
@@ -91,6 +93,11 @@ const TRIANGULACION: { id: Page; label: string }[] = [
   { id: "triangulacion", label: "Triangulaciones" },
 ];
 
+// Menú lateral: UCR (Unique Claim Reference).
+const UCR: { id: Page; label: string }[] = [
+  { id: "ucr", label: "UCR" },
+];
+
 // Menú lateral: Facturación / Contabilidad (módulo propio, diferenciado del Negocio).
 const FACTURACION: { id: Page; label: string }[] = [
   { id: "recibos", label: "Recibos" },
@@ -119,7 +126,7 @@ const CONFIG: { id: Page; label: string }[] = [
 type Grupo = { titulo: string; items: { id: Page; label: string }[]; sm?: boolean };
 const GRUPOS: Grupo[] = [
   { titulo: "Negocio", items: NEGOCIO },
-  { titulo: "Siniestros", items: [...SINIESTROS, ...TRIANGULACION] },
+  { titulo: "Siniestros", items: [...SINIESTROS, ...TRIANGULACION, ...UCR] },
   { titulo: "Facturación", items: FACTURACION },
   { titulo: "Financiero", items: FINANCIERO },
   { titulo: "Contabilidad", items: CONTABILIDAD },
@@ -314,6 +321,7 @@ export default function App() {
           {page === "recibos" && <RecibosPage />}
           {page === "siniestros" && <SiniestrosPage />}
           {page === "triangulacion" && <TriangulacionPage />}
+          {page === "ucr" && <EnConstruccion titulo="UCR" />}
           {page === "cierre" && <CierreContablePage />}
           {page === "financiero" && <FinancieroPage />}
           {page === "transferencias" && <EnConstruccion titulo="Transferencias" />}
