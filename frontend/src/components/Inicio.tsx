@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import type { Aviso } from "../api";
 
 // Accesos rápidos de la portada (id de página + etiqueta + emoji).
 const ACCESOS: { id: string; label: string; emoji: string }[] = [
@@ -36,9 +37,11 @@ function saludoDelDia(): { saludo: string; emoji: string } {
 export default function Inicio({
   usuario,
   onIr,
+  avisos = [],
 }: {
   usuario: string | null;
   onIr: (page: string) => void;
+  avisos?: Aviso[];
 }) {
   const { saludo, emoji } = useMemo(saludoDelDia, []);
   const frase = useMemo(() => FRASES[Math.floor(Math.random() * FRASES.length)], []);
@@ -77,6 +80,22 @@ export default function Inicio({
             <span className="inicio-card-label">{a.label}</span>
           </button>
         ))}
+      </div>
+
+      <div className="inicio-tareas">
+        <h3>🔔 Tareas pendientes {avisos.length > 0 && <span className="campana-badge">{avisos.length}</span>}</h3>
+        {avisos.length === 0 ? (
+          <p className="hint">No hay tareas pendientes. 🎉</p>
+        ) : (
+          <div className="avisos-lista">
+            {avisos.map((a, i) => (
+              <button key={i} className="aviso-item" onClick={() => a.pagina && onIr(a.pagina)}>
+                <span className="aviso-titulo">⚠️ {a.titulo}</span>
+                <span className="aviso-detalle">{a.detalle}</span>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

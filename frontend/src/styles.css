@@ -38,7 +38,22 @@ h1, h2, h3 { font-family: var(--fuente-titulo); font-weight: 600; color: var(--g
 .app-header img.logo { height: 46px; display: block; }
 .app-header .sep { width: 1px; height: 34px; background: var(--borde); }
 /* Usuario activo (a la derecha de la cabecera) */
-.header-user { margin-left: auto; display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--gris); }
+.header-avisos { margin-left: auto; position: relative; }
+.campana { position: relative; background: none; border: none; cursor: pointer; font-size: 20px; line-height: 1; padding: 4px 6px; }
+.campana-badge { background: var(--rojo); color: #fff; border-radius: 10px; font-size: 11px; font-weight: 700; padding: 1px 6px; margin-left: 3px; vertical-align: top; }
+.avisos-pop { position: absolute; right: 0; top: 36px; width: 360px; max-height: 60vh; overflow-y: auto; background: #fff; border: 1px solid var(--borde); border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,.15); z-index: 50; }
+.avisos-pop-head { padding: 10px 14px; font-weight: 700; border-bottom: 1px solid var(--borde); color: var(--gris); }
+.avisos-vacio { padding: 16px; color: var(--gris-medio); }
+.avisos-lista { display: flex; flex-direction: column; }
+.aviso-item { display: flex; flex-direction: column; gap: 2px; text-align: left; background: none; border: none; border-bottom: 1px solid var(--gris-claro); padding: 9px 14px; cursor: pointer; }
+.aviso-item:hover { background: #fff7f3; }
+.aviso-titulo { font-weight: 600; color: var(--naranja-osc); font-size: 13px; }
+.aviso-detalle { font-size: 12.5px; color: var(--gris); }
+/* Panel de tareas pendientes en Inicio */
+.inicio-tareas { max-width: 760px; margin: 18px auto 0; width: 100%; }
+.inicio-tareas h3 { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; color: var(--gris); }
+.inicio-tareas .avisos-lista { border: 1px solid var(--borde); border-radius: 10px; overflow: hidden; }
+.header-user { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--gris); margin-left: 14px; }
 .header-user span { font-weight: 600; }
 
 /* Pestañas superiores (Maestras) */

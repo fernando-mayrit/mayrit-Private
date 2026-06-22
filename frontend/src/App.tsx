@@ -18,7 +18,7 @@ import UsuariosPage from "./pages/UsuariosPage";
 import EnConstruccion from "./components/EnConstruccion";
 import Inicio from "./components/Inicio";
 import LoginUsuario from "./components/LoginUsuario";
-import { usuariosApi, usuarioEquipo } from "./api";
+import { usuariosApi, usuarioEquipo, avisosApi, type Aviso } from "./api";
 import type { Usuario } from "./types";
 
 const USUARIO_KEY = "mayrit.usuario";
@@ -263,6 +263,16 @@ export default function App() {
     setEligiendo(false);
   }
 
+  // Avisos / tareas pendientes (campana + panel de Inicio). Se recargan al navegar.
+  const [avisos, setAvisos] = useState<Aviso[]>([]);
+  const [verAvisos, setVerAvisos] = useState(false);
+  function cargarAvisos() {
+    avisosApi.listar().then(setAvisos).catch(() => { /* sin backend: sin avisos */ });
+  }
+  useEffect(() => {
+    cargarAvisos();
+  }, [page]);
+
   return (
     <div className="app">
       <header className="app-header">
@@ -287,6 +297,32 @@ export default function App() {
             </button>
           ))}
         </nav>
+        <div className="header-avisos">
+          <button className="campana" title="Avisos / tareas pendientes" onClick={() => setVerAvisos((v) => !v)}>
+            🔔{avisos.length > 0 && <span className="campana-badge">{avisos.length}</span>}
+          </button>
+          {verAvisos && (
+            <div className="avisos-pop">
+              <div className="avisos-pop-head">Tareas pendientes ({avisos.length})</div>
+              {avisos.length === 0 ? (
+                <div className="avisos-vacio">Sin avisos 🎉</div>
+              ) : (
+                <div className="avisos-lista">
+                  {avisos.map((a, i) => (
+                    <button
+                      key={i}
+                      className="aviso-item"
+                      onClick={() => { if (a.pagina) ir(a.pagina as Page); setVerAvisos(false); }}
+                    >
+                      <span className="aviso-titulo">⚠️ {a.titulo}</span>
+                      <span className="aviso-detalle">{a.detalle}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
         <div className="header-user">
           <span>👤 {usuario ?? "—"}</span>
           <button className="btn-link" onClick={() => setEligiendo(true)}>
@@ -316,7 +352,7 @@ export default function App() {
         </aside>
 
         <main className="content">
-          {page === "inicio" && <Inicio usuario={usuario} onIr={(p) => ir(p as Page)} />}
+          {page === "inicio" && <Inicio usuario={usuario} onIr={(p) => ir(p as Page)} avisos={avisos} />}
           {page === "productores" && <ProductoresPage />}
           {page === "mercados" && <MercadosPage />}
           {page === "tomadores" && <TomadoresPage />}

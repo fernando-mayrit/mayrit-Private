@@ -523,3 +523,18 @@ export function crud<TRead, TWrite>(collection: string) {
     remove: (id: number) => request<void>(`${collection}/${id}`, { method: "DELETE" }),
   };
 }
+
+// ── Avisos / tareas pendientes (calculados al vuelo en el backend) ──
+export interface Aviso {
+  tipo: string;
+  severidad: string;
+  titulo: string;
+  detalle: string;
+  binder_id: number | null;
+  umr: string | null;
+  periodos: string[];
+  pagina: string | null;
+}
+export const avisosApi = {
+  listar: () => request<Aviso[]>(`/avisos`),
+};
