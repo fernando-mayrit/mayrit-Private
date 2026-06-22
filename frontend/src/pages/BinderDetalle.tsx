@@ -6,6 +6,7 @@ import BdxTabla from "../components/BdxTabla";
 import TablaDatos, { type Col } from "../components/TablaDatos";
 import NumberInput from "../components/NumberInput";
 import ReciboModal from "../components/ReciboModal";
+import SiniestroModal from "../components/SiniestroModal";
 import PremiumMatch from "../components/PremiumMatch";
 import ConfirmDialog from "../components/ConfirmDialog";
 import FormPanel from "../components/FormPanel";
@@ -110,6 +111,7 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
   // ── Siniestros (Claims BDX del binder) ──
   const [siniestros, setSiniestros] = useState<Siniestro[]>([]);
   const [sinCargado, setSinCargado] = useState(false);
+  const [editSin, setEditSin] = useState<Siniestro | null>(null);
 
   async function cargarSiniestros() {
     try {
@@ -1177,10 +1179,23 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
                     columnas={SIN_COLS}
                     defaultKeys={SIN_DEFAULT}
                     storageKey="mayrit.siniestros.tabla.v2"
+                    rowAction={(s) => (
+                      <button className="btn-link" onClick={() => setEditSin(s)}>Editar</button>
+                    )}
                   />
                 </>
               );
             })()
+          )}
+          {editSin && (
+            <SiniestroModal
+              siniestro={editSin}
+              onClose={() => setEditSin(null)}
+              onSaved={(s) => {
+                setSiniestros((arr) => arr.map((x) => (x.id === s.id ? { ...x, ...s } : x)));
+                setEditSin(null);
+              }}
+            />
           )}
         </>
       )}
