@@ -39,6 +39,18 @@ def _d(v) -> Decimal:
     return v if isinstance(v, Decimal) else Decimal(str(v or 0))
 
 
+def _umr_part(agreement: str | None) -> str:
+    """Parte del UMR para el Broker Reference: el agreement sin el código de 3 letras del
+    coverholder (p.ej. 'CY0926ALE' -> 'CY0926', 'PI2926CRO' -> 'PI2926')."""
+    a = (agreement or "").strip()
+    return a[:-3] if len(a) > 3 and a[-3:].isalpha() else a
+
+
+def _broker_ref(agreement: str | None, section: int, risk_code: str) -> str:
+    """Nombre del FDO: '<parte del UMR> FDO-S<sección>-<risk code>' (p.ej. 'CY0926 FDO-S1-PC')."""
+    return f"{_umr_part(agreement)} FDO-S{section}-{risk_code}"
+
+
 def _periodo_label(per: str) -> str:
     """'2025-01' -> 'Enero-2025'."""
     try:
@@ -54,6 +66,9 @@ class FdoRead(BaseModel):
     section: int
     risk_code: str
     signing_number: str | None = None
+    work_package: str | None = None
+    fecha_proceso: dt.date | None = None
+    work_package_status: str | None = None
     fecha_generado: dt.date | None = None
     fecha_signing: dt.date | None = None
     notas: str | None = None
@@ -76,6 +91,7 @@ class RiskCodeFdo(BaseModel):
     section: int
     ramo: str | None = None
     risk_code: str
+    broker_reference: str       # nombre del FDO: '<parte del UMR> FDO-S<sección>-<risk code>'
     fdo: FdoRead | None = None
 
 
@@ -114,6 +130,9 @@ class FdoCreate(BaseModel):
 
 class FdoUpdate(BaseModel):
     signing_number: str | None = None
+    work_package: str | None = None
+    fecha_proceso: dt.date | None = None
+    work_package_status: str | None = None
     fecha_signing: dt.date | None = None
     notas: str | None = None
 
@@ -187,7 +206,7 @@ def _grupos_premium(db: Session, binder_id: int) -> dict[tuple[str, int, str], d
 def vista(binder_id: int, db: Session = Depends(get_db)):
     """Vista LPAN del binder, agrupada Periodo → Sección → Risk Code, con los importes agregados,
     si está cobrado y el LPAN ya generado. Aparte, el FDO/signing por risk code (transversal)."""
-    _binder_o_404(binder_id, db)
+    b = _binder_o_404(binder_id, db)
     grupos = _grupos_premium(db, binder_id)
     fdos = {(f.section, f.risk_code): f for f in db.scalars(select(Fdo).where(Fdo.binder_id == binder_id)).all()}
     lpans = db.scalars(select(Lpan).where(Lpan.binder_id == binder_id)).all()
@@ -200,6 +219,7 @@ def vista(binder_id: int, db: Session = Depends(get_db)):
     claves = list(dict.fromkeys([(sec, rc) for (sec, _, rc) in declaradas] + sorted(fdos.keys())))
     fdos_out = [RiskCodeFdo(
         section=sec, ramo=ramo_de.get((sec, rc)), risk_code=rc,
+        broker_reference=_broker_ref(b.agreement_number, sec, rc),
         fdo=FdoRead.model_validate(fdos[(sec, rc)], from_attributes=True) if (sec, rc) in fdos else None,
     ) for (sec, rc) in claves]
 

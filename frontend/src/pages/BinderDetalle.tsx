@@ -7,6 +7,7 @@ import TablaDatos, { type Col } from "../components/TablaDatos";
 import NumberInput from "../components/NumberInput";
 import ReciboModal from "../components/ReciboModal";
 import SiniestroModal from "../components/SiniestroModal";
+import LpanFdoRow from "../components/LpanFdoRow";
 import PremiumMatch from "../components/PremiumMatch";
 import ConfirmDialog from "../components/ConfirmDialog";
 import FormPanel from "../components/FormPanel";
@@ -132,7 +133,6 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
   // ── LPAN / FDO (notas de pago a Lloyd's por risk code) ──
   const [lpanData, setLpanData] = useState<VistaLpan | null>(null);
   const [lpanBusy, setLpanBusy] = useState(false);
-  const [signingDraft, setSigningDraft] = useState<Record<number, string>>({});
   async function cargarLpan() {
     try {
       setLpanData(await lpanApi.vista(binder.id));
@@ -1290,51 +1290,26 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
               genera el LPAN de cada bloque cobrado (importes en € · GWP our line, comisiones, IPT y neto a UW).
             </p>
 
-            {/* ── Panel FDO / signing por sección y risk code ── */}
+            {/* ── Panel FDO por sección y risk code (según lo declarado en el binder) ── */}
             <div className="recibo-box" style={{ marginBottom: 16 }}>
-              <h4>FDO / Signing por Sección y Risk Code</h4>
+              <h4>FDO por Sección y Risk Code</h4>
               <p className="hint" style={{ marginTop: 0 }}>Según lo declarado en el binder (secciones y risk codes).</p>
-              <table className="compacto bdx-tabla">
-                <thead>
-                  <tr><th>Sección</th><th>Ramo</th><th>Risk Code</th><th>Estado</th><th>Signing number</th></tr>
-                </thead>
-                <tbody>
-                  {lpanData.fdos.map((rc) => (
-                    <tr key={`${rc.section}-${rc.risk_code}`}>
-                      <th>{rc.section}</th>
-                      <td>{rc.ramo ?? "—"}</td>
-                      <th>{rc.risk_code}</th>
-                      <td>
-                        {!rc.fdo
-                          ? <span className="pill pill-pendiente">Sin FDO</span>
-                          : rc.fdo.signing_number
-                          ? <span className="pill pill-cobrado">FDO firmado</span>
-                          : <span className="pill pill-pendiente">FDO pdte. signing</span>}
-                      </td>
-                      <td>
-                        {!rc.fdo ? (
-                          <button className="btn-secondary btn-sm" disabled={lpanBusy}
-                            onClick={() => accionLpan(() => lpanApi.crearFdo(binder.id, rc.section, rc.risk_code))}>
-                            Generar FDO
-                          </button>
-                        ) : rc.fdo.signing_number ? (
-                          <strong>{rc.fdo.signing_number}</strong>
-                        ) : (
-                          <span className="lpan-signing">
-                            <input type="text" placeholder="Signing number" style={{ width: 150 }}
-                              value={signingDraft[rc.fdo.id] ?? ""}
-                              onChange={(e) => setSigningDraft((s) => ({ ...s, [rc.fdo!.id]: e.target.value }))} />
-                            <button className="btn-primary btn-sm" disabled={lpanBusy || !(signingDraft[rc.fdo.id] ?? "").trim()}
-                              onClick={() => accionLpan(() => lpanApi.actualizarFdo(rc.fdo!.id, { signing_number: (signingDraft[rc.fdo!.id] ?? "").trim() }))}>
-                              Guardar
-                            </button>
-                          </span>
-                        )}
-                      </td>
+              <div className="tabla-scroll">
+                <table className="compacto bdx-tabla">
+                  <thead>
+                    <tr>
+                      <th>Secc.</th><th>Ramo</th><th>Risk Code</th><th>Broker Reference</th>
+                      <th>Signing number</th><th>Work Package</th><th>Fecha proceso</th><th>WP Status</th><th></th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {lpanData.fdos.map((rc) => (
+                      <LpanFdoRow key={`${rc.section}-${rc.risk_code}-${rc.fdo?.id ?? "no"}`}
+                        rc={rc} binderId={binder.id} onChanged={cargarLpan} />
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
 
             {/* ── Periodo → Sección → Risk Code ── */}

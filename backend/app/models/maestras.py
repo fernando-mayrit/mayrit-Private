@@ -537,7 +537,10 @@ class Fdo(Base):
     binder_id: Mapped[int] = mapped_column(ForeignKey("binders.id", ondelete="CASCADE"), index=True)
     section: Mapped[int] = mapped_column(Integer, server_default="0", default=0)  # nº de sección del bordereau
     risk_code: Mapped[str] = mapped_column(String(20))
-    signing_number: Mapped[str | None] = mapped_column(String(60))   # lo asigna Xchanging
+    signing_number: Mapped[str | None] = mapped_column(String(60))   # caja (8) del LPAN, p.ej. 21285*18/06/2026
+    work_package: Mapped[str | None] = mapped_column(String(40))     # paquete de trabajo de Xchanging (p.ej. BNIXQUR)
+    fecha_proceso: Mapped[dt.date | None] = mapped_column(Date)      # fecha en la que se procesa
+    work_package_status: Mapped[str | None] = mapped_column(String(60))
     fecha_generado: Mapped[dt.date | None] = mapped_column(Date)
     fecha_signing: Mapped[dt.date | None] = mapped_column(Date)
     moneda: Mapped[str] = mapped_column(String(10), server_default="EUR", default="EUR")
