@@ -156,7 +156,6 @@ export default function TriangulacionPage() {
           <h3 style={{ margin: "4px 0 6px" }}>
             Comparación de siniestralidad {riskCode ? `· Risk code ${riskCode}` : "· TOTAL"}
           </h3>
-          <div className="bdx-scroll tri-comp-scroll">
             <table className="compacto bdx-tabla tri-comp">
               <thead>
                 <tr>
@@ -207,7 +206,6 @@ export default function TriangulacionPage() {
                 })}
               </tbody>
             </table>
-          </div>
           </>}
         </div>
       )}
