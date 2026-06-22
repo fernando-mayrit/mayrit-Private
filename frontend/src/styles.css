@@ -94,7 +94,7 @@ h1, h2, h3 { font-family: var(--fuente-titulo); font-weight: 600; color: var(--g
 .nav-item-sm { font-size: 12px; padding: 6px 12px; }
 .nav-item-sm .nav-emoji { font-size: 13px; }
 .nav-item:hover { background: var(--gris-claro); }
-.nav-item.active { background: #f8e2d8; color: var(--naranja-osc); font-weight: 600; }
+.nav-item.active { background: var(--naranja); color: #fff; font-weight: 600; }
 .content { flex: 1; min-width: 0; min-height: 0; overflow-y: auto; }
 
 .container { max-width: 1600px; margin: 0 auto; padding: 24px 32px; }
