@@ -79,7 +79,7 @@ def _periodo_carpeta(nombre: str, anio_defecto: int | None):
     """Saca (año, mes) del nombre de una carpeta de mes, p. ej. '42. Agosto 2025 NO HAY' ->
     (2025, 8) o '1. Enero' -> (anio_defecto, 1). Reconoce meses en inglés y español y busca el
     año en cualquier posición. Devuelve None si no reconoce el mes."""
-    s = re.sub(r"^\s*\d+\.\s*", "", str(nombre)).strip()
+    s = re.sub(r"^\s*\d+[.\s]\s*", "", str(nombre)).strip()
     toks = s.split()
     mes = _MES.get(toks[0].lower()) if toks else None
     if mes is None:
@@ -248,15 +248,22 @@ def _es_seccion(fn):
     return re.search(r"(^|[ _])E\d", fn) is not None
 
 
+def _es_riskcode(fn):
+    """Fichero por risk code de AULES (E7/E9/D3/CY… o similar): un código corto (letra+dígito o
+    dos letras) al principio del nombre, seguido de separador, y que NO sea el común 'YOA*'."""
+    return re.match(r"\s*(?!YOA)([A-Za-z]{1,2}\d|[A-Za-z]{2})[ _]", fn, re.I) is not None
+
+
 def _ficheros_mes(carpeta, fuente="ges40"):
     """Ficheros Excel a leer de una carpeta de mes, según la fuente:
       - 'ges40' (formato Heca/AXIS): el combinado del mes + las secciones E3/E5/E7/E9 (se unen).
-      - 'aules': se IGNORA el común 'YOA*' (resumen) y se usan los ficheros por risk code
-        (E7/E9/D3/CY…), que se agrupan en el snapshot del mes."""
+      - 'aules': se IGNORA el común 'YOA*' (resumen) y se usan SOLO los ficheros por risk code
+        (E7/E9/D3/CY…), que se agrupan en el snapshot del mes. Si un mes no tiene ningún fichero
+        por risk code, no hay snapshot de AULES para ese mes (lista vacía)."""
     xs = [f for f in os.listdir(carpeta) if f.lower().endswith((".xlsx", ".xls"))
           and not re.search(r"timesheet|invoice|triangul|template|^~\$", f, re.I)]
     if fuente == "aules":
-        return sorted([f for f in xs if not re.match(r"\s*YOA", f, re.I)]), 0
+        return sorted([f for f in xs if _es_riskcode(f)]), 0
     combinados = [f for f in xs if not _es_seccion(f)]
     secciones = [f for f in xs if _es_seccion(f)]
     # Se leen el combinado Y las secciones (la lectura une y deduplica por referencia). El combinado
@@ -271,19 +278,26 @@ def _ficheros_mes(carpeta, fuente="ges40"):
     return elegidos, len(combinados)
 
 
-def leer_carpeta(carpeta, agr_tok, anio_defecto=None, overrides=None, fuente="ges40"):
+def leer_carpeta(carpeta, agr_tok, anio_defecto=None, overrides=None, fuente="ges40",
+                 periodo_de_carpeta=False):
     """Lee las subcarpetas-mes de `carpeta` y devuelve [{per, po, claims:{ref:getter}, carpeta}]
-    (una entrada por carpeta; la fusión por periodo se hace aparte con fusionar())."""
+    (una entrada por carpeta; la fusión por periodo se hace aparte con fusionar()).
+
+    periodo_de_carpeta=True fuerza el periodo desde el NOMBRE de la carpeta e ignora la celda
+    'Reporting Period (End Date)' (útil cuando esa celda viene mal rellenada en origen, como en los
+    BDX antiguos de Crouco/Beazley). Las subcarpetas se reconocen como '<N>.<Mes>' o '<N> <Mes>'."""
     overrides = overrides or {}
     subs = sorted(
         [d for d in os.listdir(carpeta) if os.path.isdir(os.path.join(carpeta, d))
-         and re.match(r"\s*\d+\.", d)],
-        key=lambda d: int(d.split(".")[0]),
+         and re.match(r"\s*\d+[.\s]", d)],
+        key=lambda d: int(re.match(r"\s*(\d+)", d).group(1)),
     )
     meses = []
     for d in subs:
         cp = os.path.join(carpeta, d)
         ficheros, _ = _ficheros_mes(cp, fuente)
+        if fuente == "aules" and not ficheros:
+            continue  # AULES sin fichero de risk code -> ese mes no aporta snapshot (ni NIL)
         claims = {}
         per_celda = None
         for f in ficheros:
@@ -300,15 +314,16 @@ def leer_carpeta(carpeta, agr_tok, anio_defecto=None, overrides=None, fuente="ge
                         if rp:
                             per_celda = rp
             wb.close()
-        ov = overrides.get(d) or overrides.get(d.split(".")[0].strip())
+        ov = overrides.get(d) or overrides.get(re.match(r"\s*(\d+)", d).group(1))
         if ov:
             anio, mes = int(ov[:4]), int(ov[5:7])
-        elif per_celda:
+        elif per_celda and not periodo_de_carpeta:
             anio, mes = per_celda.year, per_celda.month
         else:
             ay = _periodo_carpeta(d, anio_defecto)
             if ay is None:
-                print(f"  [!] {d}: sin filas y no se reconoce el mes en el nombre, omitida")
+                print(f"  [!] {d}: no se reconoce el mes en el nombre"
+                      + (" (celda RepPeriod ignorada)" if periodo_de_carpeta else " y sin filas") + ", omitida")
                 continue
             anio, mes = ay
         meses.append({"per": f"{anio:04d}-{mes:02d}", "po": anio * 100 + mes, "claims": claims, "carpeta": d})

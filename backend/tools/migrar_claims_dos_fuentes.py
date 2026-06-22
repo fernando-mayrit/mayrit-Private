@@ -38,6 +38,9 @@ def main():
     ap.add_argument("--alias-ref", default="", help="Mapea referencias renumeradas: 'refOrigen=refSiniestro,...'.")
     ap.add_argument("--periodo-override", default="",
                     help="Corrige el periodo de una carpeta: 'NombreCarpeta=AAAA-MM' (se aplica a ambas fuentes).")
+    ap.add_argument("--periodo-de-carpeta", action="store_true",
+                    help="Toma el periodo del NOMBRE de la carpeta e ignora la celda 'Reporting Period' "
+                         "(úsalo cuando esa celda viene mal en origen, como en los BDX antiguos de Crouco).")
     ap.add_argument("--apply", action="store_true")
     args = ap.parse_args()
 
@@ -62,10 +65,10 @@ def main():
     todo = []
     if args.ges40:
         print("Leyendo GES40…")
-        todo += leer_carpeta(args.ges40, agr_tok, args.anio_defecto, overrides, "ges40")
+        todo += leer_carpeta(args.ges40, agr_tok, args.anio_defecto, overrides, "ges40", args.periodo_de_carpeta)
     if args.aules:
         print("Leyendo AULES…")
-        todo += leer_carpeta(args.aules, agr_tok, args.anio_defecto, overrides, "aules")
+        todo += leer_carpeta(args.aules, agr_tok, args.anio_defecto, overrides, "aules", args.periodo_de_carpeta)
 
     meses = fusionar(todo)   # une GES40 + AULES por periodo (claims por referencia)
     volcar(db, b, meses, args.alias_ref, args.crear_siniestros, args.apply,
