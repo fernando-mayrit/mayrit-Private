@@ -7,6 +7,7 @@ ese mes) cuyo Recibo aún no se ha generado. Si un mes no tiene Risk BDX, no se 
 """
 from __future__ import annotations
 
+import datetime as dt
 from collections import defaultdict
 
 from fastapi import APIRouter, Depends
@@ -15,7 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..db import get_db
-from ..models.maestras import Bdx, BdxLinea, Binder, Productor, Recibo
+from ..models.maestras import Bdx, BdxLinea, Binder, Poliza, Productor, Recibo
 
 router = APIRouter(tags=["Avisos"])
 
@@ -73,9 +74,76 @@ def _risk_sin_recibo(db: Session) -> list[Aviso]:
     return avisos
 
 
+def _mas_un_mes(d: dt.date) -> dt.date:
+    """d + 1 mes (ajustando fin de mes)."""
+    m = d.month % 12 + 1
+    y = d.year + (1 if d.month == 12 else 0)
+    import calendar
+    return d.replace(year=y, month=m, day=min(d.day, calendar.monthrange(y, m)[1]))
+
+
+def _es_anual(efecto: dt.date | None, venc: dt.date | None) -> bool:
+    """Duración exactamente anual: efecto +1 año = día siguiente al vencimiento."""
+    if not efecto or not venc:
+        return False
+    try:
+        mas = efecto.replace(year=efecto.year + 1)
+    except ValueError:       # 29-feb
+        mas = efecto.replace(year=efecto.year + 1, day=28)
+    return mas == venc + dt.timedelta(days=1)
+
+
+def _vencimientos_sin_renovar(db: Session) -> list[Aviso]:
+    """Binders y pólizas que vencen en ≤1 mes (o ya vencidos) en vigor y sin renovación generada."""
+    hoy = dt.date.today()
+    limite = _mas_un_mes(hoy)
+    avisos: list[Aviso] = []
+
+    # ── Binders: el último de cada programa (sin otro posterior) que venza pronto ──
+    binders = list(db.scalars(select(Binder)).all())
+    for b in binders:
+        if (b.estado or "") != "En Vigor" or not b.fecha_vencimiento or b.fecha_vencimiento > limite:
+            continue
+        renovado = b.programa_id is not None and any(
+            x.id != b.id and x.programa_id == b.programa_id and x.fecha_efecto and b.fecha_efecto
+            and x.fecha_efecto > b.fecha_efecto for x in binders)
+        if renovado:
+            continue
+        avisos.append(Aviso(
+            tipo="binder_sin_renovar", severidad="warning",
+            titulo="Binder por vencer sin renovar",
+            detalle=f"{b.umr or b.agreement_number}: vence el {b.fecha_vencimiento.strftime('%d/%m/%Y')} y no tiene renovación.",
+            binder_id=b.id, umr=b.umr, pagina="binders",
+        ))
+
+    # ── Pólizas anuales en vigor que vencen pronto y no tienen renovación (mismo asegurado+ramo) ──
+    polizas = list(db.scalars(select(Poliza)).all())
+    def _k(s):
+        return (str(s).strip().lower() if s else "")
+    for p in polizas:
+        if (p.estado or "") != "En Vigor" or not p.fecha_vencimiento or p.fecha_vencimiento > limite:
+            continue
+        if not _es_anual(p.fecha_efecto, p.fecha_vencimiento):
+            continue
+        objetivo = p.fecha_vencimiento + dt.timedelta(days=1)
+        renovada = any(
+            x.id != p.id and _k(x.asegurado) == _k(p.asegurado) and _k(x.ramo) == _k(p.ramo)
+            and x.fecha_efecto == objetivo for x in polizas)
+        if renovada:
+            continue
+        avisos.append(Aviso(
+            tipo="poliza_sin_renovar", severidad="warning",
+            titulo="Póliza por vencer sin renovar",
+            detalle=f"{p.numero_poliza or p.asegurado}: vence el {p.fecha_vencimiento.strftime('%d/%m/%Y')} y no tiene renovación.",
+            umr=p.numero_poliza, pagina="polizas",
+        ))
+    return avisos
+
+
 @router.get("/avisos", response_model=list[Aviso])
 def listar_avisos(db: Session = Depends(get_db)):
     """Lista de avisos/tareas pendientes (calculados al vuelo)."""
     avisos: list[Aviso] = []
     avisos += _risk_sin_recibo(db)
+    avisos += _vencimientos_sin_renovar(db)
     return avisos

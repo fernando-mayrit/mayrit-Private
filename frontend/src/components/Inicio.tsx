@@ -36,9 +36,13 @@ function saludoDelDia(): { saludo: string; emoji: string } {
 export default function Inicio({
   usuario,
   onIr,
+  nAvisos = 0,
+  onVerAvisos,
 }: {
   usuario: string | null;
   onIr: (page: string) => void;
+  nAvisos?: number;
+  onVerAvisos?: () => void;
 }) {
   const { saludo, emoji } = useMemo(saludoDelDia, []);
   const frase = useMemo(() => FRASES[Math.floor(Math.random() * FRASES.length)], []);
@@ -68,6 +72,11 @@ export default function Inicio({
         <p className="inicio-bienvenida">
           Bienvenid@ a <b>Mayrit</b>. Que tengas un gran día. 🍀
         </p>
+        {nAvisos > 0 && (
+          <button className="inicio-avisos-chip" onClick={onVerAvisos}>
+            🔔 Tienes {nAvisos} {nAvisos === 1 ? "tarea pendiente" : "tareas pendientes"}
+          </button>
+        )}
       </div>
 
       <div className="inicio-accesos">
