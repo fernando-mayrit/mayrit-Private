@@ -52,7 +52,7 @@ export default function LpanFdoRow({
       <td>{rc.broker_reference}</td>
       {!f ? (
         <td colSpan={5}>
-          <button className="btn-secondary btn-sm" disabled={saving}
+          <button className="btn-gris btn-sm" disabled={saving}
             onClick={() => accion(() => lpanApi.crearFdo(binderId, rc.section, rc.risk_code))}>
             Generar FDO
           </button>
@@ -65,8 +65,15 @@ export default function LpanFdoRow({
             onChange={(e) => setWp(e.target.value)} /></td>
           <td><input type="date" className="inp-fecha" value={fproc}
             onChange={(e) => setFproc(e.target.value)} /></td>
-          <td><input type="text" value={wpStatus} style={{ width: 130 }}
-            onChange={(e) => setWpStatus(e.target.value)} /></td>
+          <td>
+            <select value={wpStatus} onChange={(e) => setWpStatus(e.target.value)}>
+              <option value="">—</option>
+              <option value="Work in Progress">Work in Progress</option>
+              <option value="Queried">Queried</option>
+              <option value="Completed">Completed</option>
+              <option value="Rejected">Rejected</option>
+            </select>
+          </td>
           <td>
             <button className="btn-primary btn-sm" disabled={saving || !dirty}
               onClick={() => accion(() => lpanApi.actualizarFdo(f.id, {
