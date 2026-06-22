@@ -162,18 +162,24 @@ export default function TriangulacionPage() {
                 <tr>
                   <th rowSpan={2} style={{ position: "sticky", left: 0 }}>Año</th>
                   <th rowSpan={2}>Mes</th>
-                  {data.binders.map((b) => (
-                    <th key={b.id} colSpan={3} className="num tri-comp-bloque" style={{ textAlign: "center" }}>
-                      {b.yoa ?? ""} · {b.umr}
-                    </th>
-                  ))}
+                  {[...data.binders.keys()].reverse().map((i) => {
+                    const b = data.binders[i];
+                    return (
+                      <th key={b.id} colSpan={3} className="num tri-comp-bloque" style={{ textAlign: "center" }}>
+                        {b.yoa ?? ""} · {b.umr}
+                      </th>
+                    );
+                  })}
                 </tr>
                 <tr>
-                  {data.binders.map((b) => [
-                    <th key={`${b.id}-n`} className="num tri-comp-bloque">Nº</th>,
-                    <th key={`${b.id}-s`} className="num">Siniestralidad</th>,
-                    <th key={`${b.id}-r`} className="num">Ratio</th>,
-                  ])}
+                  {[...data.binders.keys()].reverse().map((i) => {
+                    const b = data.binders[i];
+                    return [
+                      <th key={`${b.id}-n`} className="num tri-comp-bloque">Nº</th>,
+                      <th key={`${b.id}-s`} className="num">Siniestralidad</th>,
+                      <th key={`${b.id}-r`} className="num">Ratio</th>,
+                    ];
+                  })}
                 </tr>
               </thead>
               <tbody>
@@ -183,7 +189,8 @@ export default function TriangulacionPage() {
                     <tr key={d}>
                       <th style={{ position: "sticky", left: 0 }}>{e.inicioAnio ? `Año ${e.anio}` : ""}</th>
                       <td>{e.mes}</td>
-                      {data.binders.map((b, i) => {
+                      {[...data.binders.keys()].reverse().map((i) => {
+                        const b = data.binders[i];
                         const num = data.triangulos.num[i][d];
                         const inc = data.triangulos.incurrido[i][d];
                         const pa = data.prima_acum_binder[i][d];
