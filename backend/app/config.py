@@ -49,6 +49,12 @@ class Settings(BaseSettings):
         r"\Agencias de Suscripcion\Alea\Binders\Dale (CY)"
     )
 
+    # Plantilla Word (tokens) para generar los FDO/LPAN (formulario London Premium Advice Note).
+    lpan_plantilla: str = (
+        r"C:\Users\ferna\Mayrit Insurance Broker\Mayrit - Negocio - Documentos"
+        r"\Documentacion\Plantillas\Plantilla LPAN.dotx"
+    )
+
     @property
     def database_url(self) -> str:
         return (

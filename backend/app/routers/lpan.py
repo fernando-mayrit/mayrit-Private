@@ -18,6 +18,9 @@ Solo se genera un LPAN si todas las líneas del grupo están cobradas.
 from __future__ import annotations
 
 import datetime as dt
+import os
+import tempfile
+import zipfile
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -25,6 +28,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session, load_only
 
+from ..config import settings
 from ..db import get_db
 from ..models.maestras import Bdx, BdxLinea, Binder, BinderSeccion, Fdo, Lpan, SeccionRiskCode
 
@@ -49,6 +53,66 @@ def _umr_part(agreement: str | None) -> str:
 def _broker_ref(agreement: str | None, section: int, risk_code: str) -> str:
     """Nombre del FDO: '<parte del UMR> FDO-S<sección>-<risk code>' (p.ej. 'CY0926 FDO-S1-PC')."""
     return f"{_umr_part(agreement)} FDO-S{section}-{risk_code}"
+
+
+def _set_celda(cell, valor: str) -> None:
+    """Pone `valor` en una celda conservando el formato del primer run."""
+    p = cell.paragraphs[0]
+    if p.runs:
+        p.runs[0].text = valor
+        for r in p.runs[1:]:
+            r.text = ""
+    else:
+        p.add_run(valor)
+
+
+def _generar_fdo_docx(carpeta: str, broker_ref: str, umr: str | None, signing: str | None) -> str:
+    """Copia la plantilla LPAN (formulario de tokens) y la rellena para un FDO, guardándola como
+    '<broker_ref>.docx' en `carpeta`. Devuelve la ruta del documento."""
+    import docx  # carga perezosa: solo al generar
+
+    plantilla = settings.lpan_plantilla
+    if not os.path.isfile(plantilla):
+        raise HTTPException(status_code=502, detail=f"No se encuentra la plantilla LPAN: {plantilla}")
+    if not carpeta or not os.path.isdir(carpeta):
+        raise HTTPException(status_code=400, detail=f"La carpeta indicada no existe: {carpeta!r}")
+
+    # La plantilla es .dotx; se convierte a .docx (cambiando el content-type) en un temporal.
+    tmp = os.path.join(tempfile.gettempdir(), "_fdo_plantilla.docx")
+    with zipfile.ZipFile(plantilla) as zin, zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as zo:
+        for it in zin.infolist():
+            data = zin.read(it.filename)
+            if it.filename == "[Content_Types].xml":
+                data = data.replace(b"wordprocessingml.template.main+xml", b"wordprocessingml.document.main+xml")
+            zo.writestr(it, data)
+
+    d = docx.Document(tmp)
+    # Tokens que se rellenan SIEMPRE (mismo valor en todas sus apariciones).
+    todos = {"Premium": "FDO", "Yes/No": "No"}
+    # Tokens de "línea" (la plantilla tiene 3 filas): solo la 1ª lleva valor, las demás se vacían.
+    una_vez = {
+        "Bureau": signing or "", "BrokerRef1": broker_ref, "BrokerRef2": "",
+        "Line": "", "Taxes": "", "GrossPremium": "", "Brokerage": "",
+        "OCurrency": "EUR", "SCurrency": "EUR", "BureauPremium": "", "UMR": umr or "",
+    }
+    vistos_tok: set[str] = set()
+    vistos_tc: set = set()
+    for t in d.tables:
+        for row in t.rows:
+            for cell in row.cells:
+                if cell._tc in vistos_tc:
+                    continue
+                vistos_tc.add(cell._tc)
+                k = cell.text.strip()
+                if k in todos:
+                    _set_celda(cell, todos[k])
+                elif k in una_vez:
+                    _set_celda(cell, una_vez[k] if k not in vistos_tok else "")
+                    vistos_tok.add(k)
+
+    destino = os.path.join(carpeta, f"{broker_ref}.docx")
+    d.save(destino)
+    return destino
 
 
 def _periodo_label(per: str) -> str:
@@ -126,6 +190,7 @@ class VistaLpan(BaseModel):
 class FdoCreate(BaseModel):
     section: int = 0
     risk_code: str
+    carpeta: str | None = None   # si se indica, genera el documento físico del FDO en esa carpeta
 
 
 class FdoUpdate(BaseModel):
@@ -249,13 +314,16 @@ def vista(binder_id: int, db: Session = Depends(get_db)):
 @router.post("/binders/{binder_id}/fdo", response_model=FdoRead)
 def crear_fdo(binder_id: int, payload: FdoCreate, db: Session = Depends(get_db)):
     """Genera el FDO de un risk code (a la espera del signing number de Xchanging)."""
-    _binder_o_404(binder_id, db)
+    b = _binder_o_404(binder_id, db)
     rc = (payload.risk_code or "").strip()
     sec = int(payload.section or 0)
     if not rc:
         raise HTTPException(status_code=400, detail="Falta el risk code.")
     if db.scalar(select(Fdo).where(Fdo.binder_id == binder_id, Fdo.section == sec, Fdo.risk_code == rc)):
         raise HTTPException(status_code=409, detail=f"Ya existe un FDO para el risk code {rc} (sección {sec}).")
+    # Genera el documento físico ANTES de crear el registro (si la carpeta falla, no deja huérfano).
+    if payload.carpeta:
+        _generar_fdo_docx(payload.carpeta, _broker_ref(b.agreement_number, sec, rc), b.umr, None)
     f = Fdo(binder_id=binder_id, section=sec, risk_code=rc, fecha_generado=dt.date.today())
     db.add(f)
     db.commit()
