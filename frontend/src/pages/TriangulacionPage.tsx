@@ -54,6 +54,7 @@ export default function TriangulacionPage() {
 
   const ratioIbnr = data && data.premium_total ? (data.ibnr_total / data.premium_total) * 100 : null;
   const ratioSin = data && data.net_uw_total ? (data.incurrido_total / data.net_uw_total) * 100 : null;
+  const ratioUlt = data && data.net_uw_total ? (data.ultimate_total / data.net_uw_total) * 100 : null;
 
   // Etiqueta Año/Mes de una antigüedad d (meses desde el inicio del programa).
   const etiqueta = (mesInicio: number, d: number) => {
@@ -105,15 +106,19 @@ export default function TriangulacionPage() {
               <tr>
                 <th>YOA</th><th>Binder</th>
                 <th className="num">GWP Our Line</th><th className="num">Net to UWs</th>
-                <th className="num">Incurrido</th><th className="num">Ultimate</th>
-                <th className="num">IBNR</th><th className="num">IBNR % s/GWP</th>
+                <th className="num">Incurrido</th>
                 <th className="num">Siniestralidad %</th>
+                <th className="num">IBNR</th>
+                <th className="num tri-amarillo">IBNR % s/GWP</th>
+                <th className="num">Ultimate</th>
+                <th className="num">Siniestralidad % Ult.</th>
               </tr>
             </thead>
             <tbody>
               {data.binders.map((b, i) => {
                 const ibnrPct = data.premium_binder[i] ? (data.ibnr_binder[i] / data.premium_binder[i]) * 100 : null;
                 const sinPct = data.net_uw_binder[i] ? (data.incurrido_binder[i] / data.net_uw_binder[i]) * 100 : null;
+                const ultPct = data.net_uw_binder[i] ? (data.ultimate_binder[i] / data.net_uw_binder[i]) * 100 : null;
                 return (
                   <tr key={b.id}>
                     <th>{b.yoa ?? "—"}</th>
@@ -121,10 +126,11 @@ export default function TriangulacionPage() {
                     <td className="num">{imp(data.premium_binder[i])}</td>
                     <td className="num">{imp(data.net_uw_binder[i])}</td>
                     <td className="num">{imp(data.incurrido_binder[i])}</td>
-                    <td className="num">{imp(data.ultimate_binder[i])}</td>
-                    <td className="num tri-actual">{imp(data.ibnr_binder[i])}</td>
-                    <td className="num">{ibnrPct == null ? "—" : `${fmtMiles(ibnrPct)} %`}</td>
                     <td className="num">{sinPct == null ? "—" : `${fmtMiles(sinPct)} %`}</td>
+                    <td className="num">{imp(data.ibnr_binder[i])}</td>
+                    <td className="num tri-amarillo">{ibnrPct == null ? "—" : `${fmtMiles(ibnrPct)} %`}</td>
+                    <td className="num">{imp(data.ultimate_binder[i])}</td>
+                    <td className="num">{ultPct == null ? "—" : `${fmtMiles(ultPct)} %`}</td>
                   </tr>
                 );
               })}
@@ -135,10 +141,11 @@ export default function TriangulacionPage() {
                 <td className="num">{imp(data.premium_total)}</td>
                 <td className="num">{imp(data.net_uw_total)}</td>
                 <td className="num">{imp(data.incurrido_total)}</td>
-                <td className="num">{imp(data.ultimate_total)}</td>
-                <td className="num tri-actual">{imp(data.ibnr_total)}</td>
-                <td className="num">{ratioIbnr == null ? "—" : `${fmtMiles(ratioIbnr)} %`}</td>
                 <td className="num">{ratioSin == null ? "—" : `${fmtMiles(ratioSin)} %`}</td>
+                <td className="num">{imp(data.ibnr_total)}</td>
+                <td className="num tri-amarillo">{ratioIbnr == null ? "—" : `${fmtMiles(ratioIbnr)} %`}</td>
+                <td className="num">{imp(data.ultimate_total)}</td>
+                <td className="num">{ratioUlt == null ? "—" : `${fmtMiles(ratioUlt)} %`}</td>
               </tr>
             </tfoot>
           </table>
