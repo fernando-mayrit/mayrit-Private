@@ -526,6 +526,55 @@ class BdxBloqueo(Base):
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class Fdo(Base):
+    """FDO (Declaración) que se envía a Xchanging por cada (binder, risk code). Xchanging devuelve un
+    `signing_number`; a partir de ahí los LPAN de ese risk code cuelgan de ese signing."""
+
+    __tablename__ = "fdos"
+    __table_args__ = (UniqueConstraint("binder_id", "risk_code", name="uq_fdo_binder_riskcode"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    binder_id: Mapped[int] = mapped_column(ForeignKey("binders.id", ondelete="CASCADE"), index=True)
+    risk_code: Mapped[str] = mapped_column(String(20))
+    signing_number: Mapped[str | None] = mapped_column(String(60))   # lo asigna Xchanging
+    fecha_generado: Mapped[dt.date | None] = mapped_column(Date)
+    fecha_signing: Mapped[dt.date | None] = mapped_column(Date)
+    moneda: Mapped[str] = mapped_column(String(10), server_default="EUR", default="EUR")
+    notas: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    lpans: Mapped[list["Lpan"]] = relationship(back_populates="fdo", cascade="all, delete-orphan")
+
+
+class Lpan(Base):
+    """LPAN (London Premium Advice Note): nota de pago a Lloyd's que agrupa las líneas del Premium
+    BDX de un risk code en un periodo, bajo el signing number de su FDO."""
+
+    __tablename__ = "lpans"
+    __table_args__ = (UniqueConstraint("fdo_id", "periodo", "tipo", name="uq_lpan_fdo_periodo_tipo"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    fdo_id: Mapped[int] = mapped_column(ForeignKey("fdos.id", ondelete="CASCADE"), index=True)
+    binder_id: Mapped[int] = mapped_column(ForeignKey("binders.id", ondelete="CASCADE"), index=True)
+    risk_code: Mapped[str] = mapped_column(String(20))
+    periodo: Mapped[str] = mapped_column(String(7))     # 'YYYY-MM' del Premium BDX
+    tipo: Mapped[str] = mapped_column(String(10), server_default="PM", default="PM")  # FDO/PM/AP/RP
+    num_lineas: Mapped[int] = mapped_column(Integer, server_default="0", default=0)
+    # Importes (campos del LPAN): 18 gross our line, 19 brokerage+coverholder, 17 tax, 25 net a UW
+    gross_premium: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    brokerage: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    tax: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    net_premium: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    moneda: Mapped[str] = mapped_column(String(10), server_default="EUR", default="EUR")
+    fecha: Mapped[dt.date | None] = mapped_column(Date)
+    estado: Mapped[str] = mapped_column(String(20), server_default="Generado", default="Generado")
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    fdo: Mapped["Fdo"] = relationship(back_populates="lpans")
+
+
 class Poliza(Base):
     """Póliza de Open Market (OM): negocio directo de Mayrit (no de binder). Modelada sobre la
     lista de SharePoint `Mayrit - TPolizas`. De ella cuelgan recibos (1..N por fraccionamiento)."""

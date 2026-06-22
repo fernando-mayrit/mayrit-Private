@@ -63,6 +63,54 @@ export const siniestrosApi = {
     }),
 };
 
+// ── LPAN / FDO (notas de pago a Lloyd's por risk code) ──
+export interface FdoRegistro {
+  id: number;
+  risk_code: string;
+  signing_number: string | null;
+  fecha_generado: string | null;
+  fecha_signing: string | null;
+  notas: string | null;
+}
+export interface LpanRegistro {
+  id: number;
+  tipo: string;
+  periodo: string;
+  num_lineas: number;
+  gross_premium: number | string | null;
+  brokerage: number | string | null;
+  tax: number | string | null;
+  net_premium: number | string | null;
+  fecha: string | null;
+  estado: string;
+}
+export interface PeriodoLpan {
+  periodo: string;
+  num_lineas: number;
+  gross_premium: number | string;
+  brokerage: number | string;
+  tax: number | string;
+  net_premium: number | string;
+  cobrado: boolean;
+  lpan: LpanRegistro | null;
+}
+export interface RiskCodeLpan {
+  risk_code: string;
+  fdo: FdoRegistro | null;
+  periodos: PeriodoLpan[];
+}
+export const lpanApi = {
+  vista: (binderId: number) => request<RiskCodeLpan[]>(`/binders/${binderId}/lpan`),
+  crearFdo: (binderId: number, risk_code: string) =>
+    request<FdoRegistro>(`/binders/${binderId}/fdo`, { method: "POST", body: JSON.stringify({ risk_code }) }),
+  actualizarFdo: (fdoId: number, datos: { signing_number?: string | null; fecha_signing?: string | null; notas?: string | null }) =>
+    request<FdoRegistro>(`/fdo/${fdoId}`, { method: "PUT", body: JSON.stringify(datos) }),
+  borrarFdo: (fdoId: number) => request(`/fdo/${fdoId}`, { method: "DELETE" }),
+  generarLpan: (binderId: number, data: { risk_code: string; periodo: string; tipo?: string }) =>
+    request<LpanRegistro>(`/binders/${binderId}/lpan`, { method: "POST", body: JSON.stringify(data) }),
+  borrarLpan: (lpanId: number) => request(`/lpan/${lpanId}`, { method: "DELETE" }),
+};
+
 // ── Claims BDX (bordereau de siniestros por binder) ──
 export interface ClaimsBdxVista {
   periodo: string;
