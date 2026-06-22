@@ -134,7 +134,8 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
   const [lpanData, setLpanData] = useState<VistaLpan | null>(null);
   const [lpanBusy, setLpanBusy] = useState(false);
   const [fdoAbierto, setFdoAbierto] = useState<boolean | null>(null); // null = automático (según completos)
-  const [periodosAbiertos, setPeriodosAbiertos] = useState<Set<string>>(new Set()); // por defecto replegados
+  // Override manual de despliegue por periodo; por defecto: pendientes abiertos, completos plegados.
+  const [periodoOverride, setPeriodoOverride] = useState<Record<string, boolean>>({});
   const [lpanABorrar, setLpanABorrar] = useState<{ id: number; etiqueta: string } | null>(null);
   async function cargarLpan() {
     try {
@@ -1329,24 +1330,25 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
 
             {/* ── Periodo → Sección → Risk Code ── */}
             {lpanData.periodos.length > 0 && (() => {
-              const todosAbiertos = lpanData.periodos.every((p) => periodosAbiertos.has(p.periodo));
+              const esCompleto = (p: typeof lpanData.periodos[number]) =>
+                p.secciones.length > 0 && p.secciones.every((s) => s.risk_codes.every((r) => r.lpan));
+              const abiertoDe = (p: typeof lpanData.periodos[number]) => periodoOverride[p.periodo] ?? !esCompleto(p);
+              const todosAbiertos = lpanData.periodos.every(abiertoDe);
               return (
                 <div className="toolbar" style={{ marginBottom: 8 }}>
-                  <button className="btn-secondary btn-sm" onClick={() => setPeriodosAbiertos(
-                    todosAbiertos ? new Set() : new Set(lpanData.periodos.map((p) => p.periodo)))}>
+                  <button className="btn-secondary btn-sm" onClick={() => setPeriodoOverride(
+                    Object.fromEntries(lpanData.periodos.map((p) => [p.periodo, !todosAbiertos])))}>
                     {todosAbiertos ? "▸ Replegar todos" : "▾ Desplegar todos"}
                   </button>
                 </div>
               );
             })()}
             {lpanData.periodos.map((p) => {
-              const abierto = periodosAbiertos.has(p.periodo);
               const completo = p.secciones.length > 0 && p.secciones.every((s) => s.risk_codes.every((r) => r.lpan));
+              const abierto = periodoOverride[p.periodo] ?? !completo; // pendiente -> abierto por defecto
               return (
               <div key={p.periodo} className="recibo-box" style={{ marginBottom: 14 }}>
-                <h4 className="lpan-colap" onClick={() => setPeriodosAbiertos((s) => {
-                  const nx = new Set(s); if (nx.has(p.periodo)) nx.delete(p.periodo); else nx.add(p.periodo); return nx;
-                })}>
+                <h4 className="lpan-colap" onClick={() => setPeriodoOverride((o) => ({ ...o, [p.periodo]: !abierto }))}>
                   <span className="nav-chevron">{abierto ? "▾" : "▸"}</span>
                   {p.periodo_label}{completo ? " ✓" : ""}
                 </h4>
@@ -1355,10 +1357,14 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
                     <div className="lpan-seccion-tit">Sección {s.section}</div>
                     <table className="compacto bdx-tabla lpan-periodo-tabla">
                       <colgroup>
-                        <col style={{ width: 90 }} /><col style={{ width: 72 }} />
-                        <col style={{ width: 120 }} /><col style={{ width: 100 }} />
-                        <col style={{ width: 110 }} /><col style={{ width: 120 }} />
-                        <col style={{ width: 100 }} /><col style={{ width: 190 }} />
+                        <col style={{ width: 80 }} /><col style={{ width: 60 }} />
+                        <col style={{ width: 110 }} /><col style={{ width: 85 }} />
+                        <col style={{ width: 95 }} /><col style={{ width: 110 }} />
+                        <col style={{ width: 90 }} /><col style={{ width: 150 }} />
+                        <col style={{ width: 90 }} /><col style={{ width: 95 }} />
+                        <col style={{ width: 95 }} /><col style={{ width: 100 }} />
+                        <col style={{ width: 95 }} /><col style={{ width: 95 }} />
+                        <col style={{ width: 80 }} />
                       </colgroup>
                       <thead>
                         <tr>
@@ -1366,6 +1372,8 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
                           <th className="num">GWP Our Line</th><th className="num">Brokerage %</th>
                           <th className="num">IPT</th><th className="num">Net to UW</th>
                           <th>Cobrado</th><th>LPAN</th>
+                          <th>WP</th><th>Procesado</th><th>SDD</th><th>WP Status</th>
+                          <th>Liberado</th><th>Pagado</th><th></th>
                         </tr>
                       </thead>
                       <tbody>
@@ -1382,11 +1390,7 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
                               : <span className="pill pill-pendiente">Pendiente</span>}</td>
                             <td>
                               {r.lpan ? (
-                                <span className="lpan-generado">
-                                  <span className="pill pill-cobrado">{r.lpan.tipo} · {r.lpan.fecha ?? ""}</span>
-                                  <button className="btn-link" disabled={lpanBusy}
-                                    onClick={() => setLpanABorrar({ id: r.lpan!.id, etiqueta: `${r.lpan!.tipo} · Sección ${s.section} · ${r.risk_code} · ${p.periodo_label}` })}>Borrar</button>
-                                </span>
+                                <span className="pill pill-cobrado" title={r.lpan.tipo}>{r.lpan.broker_ref2 || r.lpan.tipo}</span>
                               ) : (
                                 <button className="btn-secondary btn-sm"
                                   disabled={lpanBusy || !r.cobrado || !r.signing_number}
@@ -1395,6 +1399,18 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
                                   onClick={() => accionLpan(() => lpanApi.generarLpan(binder.id, { risk_code: r.risk_code, section: s.section, periodo: p.periodo }))}>
                                   Generar LPAN
                                 </button>
+                              )}
+                            </td>
+                            <td>{r.lpan?.work_package ?? "—"}</td>
+                            <td>{r.lpan?.fecha ? fmtFechaES(r.lpan.fecha) : "—"}</td>
+                            <td>{r.lpan?.sdd ? fmtFechaES(r.lpan.sdd) : "—"}</td>
+                            <td>{r.lpan?.estado ?? "—"}</td>
+                            <td>{r.lpan?.liberado ? fmtFechaES(r.lpan.liberado) : "—"}</td>
+                            <td>{r.lpan?.pagado ? fmtFechaES(r.lpan.pagado) : "—"}</td>
+                            <td>
+                              {r.lpan && (
+                                <button className="btn-link" disabled={lpanBusy}
+                                  onClick={() => setLpanABorrar({ id: r.lpan!.id, etiqueta: `${r.lpan!.broker_ref2 || r.lpan!.tipo} · Sección ${s.section} · ${r.risk_code} · ${p.periodo_label}` })}>Borrar</button>
                               )}
                             </td>
                           </tr>

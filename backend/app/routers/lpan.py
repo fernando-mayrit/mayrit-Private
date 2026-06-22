@@ -148,8 +148,14 @@ class LpanRead(BaseModel):
     brokerage: Decimal | None = None
     tax: Decimal | None = None
     net_premium: Decimal | None = None
-    fecha: dt.date | None = None
-    estado: str
+    broker_ref2: str | None = None          # nombre del LPAN
+    work_package: str | None = None
+    signing_number: str | None = None
+    fecha: dt.date | None = None            # Procesado
+    sdd: dt.date | None = None
+    liberado: dt.date | None = None
+    pagado: dt.date | None = None
+    estado: str                              # WP Status
 
 
 class RiskCodeFdo(BaseModel):
