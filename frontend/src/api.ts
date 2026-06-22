@@ -87,6 +87,7 @@ export interface LpanRegistro {
 }
 export interface RiskCodeFdo {
   section: number;
+  ramo: string | null;
   risk_code: string;
   fdo: FdoRegistro | null;
 }

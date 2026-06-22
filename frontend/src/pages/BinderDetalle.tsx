@@ -1293,14 +1293,16 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
             {/* ── Panel FDO / signing por sección y risk code ── */}
             <div className="recibo-box" style={{ marginBottom: 16 }}>
               <h4>FDO / Signing por Sección y Risk Code</h4>
+              <p className="hint" style={{ marginTop: 0 }}>Según lo declarado en el binder (secciones y risk codes).</p>
               <table className="compacto bdx-tabla">
                 <thead>
-                  <tr><th>Sección</th><th>Risk Code</th><th>Estado</th><th>Signing number</th></tr>
+                  <tr><th>Sección</th><th>Ramo</th><th>Risk Code</th><th>Estado</th><th>Signing number</th></tr>
                 </thead>
                 <tbody>
                   {lpanData.fdos.map((rc) => (
                     <tr key={`${rc.section}-${rc.risk_code}`}>
                       <th>{rc.section}</th>
+                      <td>{rc.ramo ?? "—"}</td>
                       <th>{rc.risk_code}</th>
                       <td>
                         {!rc.fdo

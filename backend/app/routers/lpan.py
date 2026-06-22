@@ -26,7 +26,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, load_only
 
 from ..db import get_db
-from ..models.maestras import Bdx, BdxLinea, Binder, Fdo, Lpan
+from ..models.maestras import Bdx, BdxLinea, Binder, BinderSeccion, Fdo, Lpan, SeccionRiskCode
 
 router = APIRouter(tags=["LPAN"])
 
@@ -74,6 +74,7 @@ class LpanRead(BaseModel):
 
 class RiskCodeFdo(BaseModel):
     section: int
+    ramo: str | None = None
     risk_code: str
     fdo: FdoRead | None = None
 
@@ -132,6 +133,26 @@ def _binder_o_404(binder_id: int, db: Session) -> Binder:
     return b
 
 
+def _secciones_declaradas(db: Session, binder_id: int) -> list[tuple[int, str | None, str]]:
+    """(nº de sección, ramo, risk_code) declarados en el binder. El nº de sección es el orden
+    (1-based) de las secciones, que casa con el `section_no` de los bordereaux."""
+    secs = db.scalars(
+        select(BinderSeccion).where(BinderSeccion.binder_id == binder_id).order_by(BinderSeccion.id)
+    ).all()
+    out: list[tuple[int, str | None, str]] = []
+    for i, s in enumerate(secs, start=1):
+        rcs = db.scalars(
+            select(SeccionRiskCode).where(SeccionRiskCode.seccion_id == s.id).order_by(SeccionRiskCode.id)
+        ).all()
+        vistos: set[str] = set()
+        for rc in rcs:
+            cod = (rc.codigo or "").strip()
+            if cod and cod not in vistos:
+                vistos.add(cod)
+                out.append((i, s.ramo, cod))
+    return out
+
+
 def _grupos_premium(db: Session, binder_id: int) -> dict[tuple[str, int, str], dict]:
     """Líneas del Premium (incluidas en premium) agrupadas por (periodo 'YYYY-MM', sección, risk_code)."""
     lineas = db.scalars(
@@ -172,10 +193,13 @@ def vista(binder_id: int, db: Session = Depends(get_db)):
     lpans = db.scalars(select(Lpan).where(Lpan.binder_id == binder_id)).all()
     lpan_por = {(lp.periodo, lp.section, lp.risk_code): lp for lp in lpans}
 
-    # FDO/signing por (sección, risk code): los que aparecen en premium o ya tienen FDO.
-    claves = sorted({(s, rc) for (_, s, rc) in grupos} | set(fdos.keys()))
+    # FDO/signing por (sección, risk code) DECLARADOS en el binder (no derivados del Premium).
+    # Se añaden, por si acaso, combinaciones con FDO ya creado que no estén declaradas.
+    declaradas = _secciones_declaradas(db, binder_id)
+    ramo_de = {(sec, rc): ramo for (sec, ramo, rc) in declaradas}
+    claves = list(dict.fromkeys([(sec, rc) for (sec, _, rc) in declaradas] + sorted(fdos.keys())))
     fdos_out = [RiskCodeFdo(
-        section=sec, risk_code=rc,
+        section=sec, ramo=ramo_de.get((sec, rc)), risk_code=rc,
         fdo=FdoRead.model_validate(fdos[(sec, rc)], from_attributes=True) if (sec, rc) in fdos else None,
     ) for (sec, rc) in claves]
 
