@@ -68,11 +68,13 @@ h1, h2, h3 { font-family: var(--fuente-titulo); font-weight: 600; color: var(--g
 .nav-group { margin-bottom: 10px; }
 .nav-group:last-child { margin-bottom: 0; }
 .nav-group-cerrado { margin-bottom: 0; }
-/* Separador visible entre bloques del mismo panel (p. ej. Negocio / Facturación) */
-.nav-group + .nav-group { border-top: 1px solid var(--borde); padding-top: 8px; }
+/* Separación entre bloques del mismo panel (la caja del título ya los delimita) */
+.nav-group + .nav-group { padding-top: 4px; }
+/* Encabezado de cada sección: caja coloreada para que destaque */
 .nav-group-title {
   font-size: 11px; letter-spacing: .06em; text-transform: uppercase;
-  color: var(--gris-medio); padding: 3px 12px; font-weight: 600;
+  color: var(--naranja-osc); padding: 4px 10px; font-weight: 700;
+  background: #f8e2d8; border-radius: 6px; margin-bottom: 5px;
 }
 /* Variante desplegable (sólo Configuración): el título es un botón que pliega/despliega. */
 .nav-group-title-btn {
@@ -80,7 +82,7 @@ h1, h2, h3 { font-family: var(--fuente-titulo); font-weight: 600; color: var(--g
   background: none; border: none; cursor: pointer; font-family: var(--fuente-titulo);
   border-radius: 8px;
 }
-.nav-group-title-btn:hover { background: var(--gris-claro); color: var(--gris); }
+.nav-group-title-btn:hover { background: #f3d4c6; color: var(--naranja-osc); }
 .nav-chevron { font-size: 10px; width: 10px; flex-shrink: 0; line-height: 1; }
 .nav-item {
   display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
