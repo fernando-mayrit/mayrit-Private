@@ -82,6 +82,8 @@ export default function SiniestroModal({
   const [form, setForm] = useState<Form>(inicial);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Abre bloqueado (solo consulta) para evitar cambios accidentales; el botón "Editar" desbloquea.
+  const [bloqueado, setBloqueado] = useState(true);
 
   const dirty = useMemo(() => TODOS.some((c) => form[c.key as string] !== inicial[c.key as string]), [form, inicial]);
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
@@ -116,13 +118,14 @@ export default function SiniestroModal({
     <div className="field" key={c.key as string}>
       <label>{c.label}</label>
       {c.tipo === "textarea" ? (
-        <textarea rows={2} value={form[c.key as string]} onChange={(e) => set(c.key as string, e.target.value)} />
+        <textarea rows={2} value={form[c.key as string]} disabled={bloqueado} onChange={(e) => set(c.key as string, e.target.value)} />
       ) : (
         <input
           type={c.tipo === "date" ? "date" : c.tipo === "num" ? "number" : c.tipo === "int" ? "number" : "text"}
           step={c.tipo === "num" ? "0.01" : undefined}
           className={c.tipo === "date" ? "inp-fecha" : undefined}
           value={form[c.key as string]}
+          disabled={bloqueado}
           onChange={(e) => set(c.key as string, e.target.value)}
         />
       )}
@@ -131,20 +134,26 @@ export default function SiniestroModal({
 
   return (
     <FormPanel
-      title={`Editar siniestro · ${siniestro.reference || siniestro.certificate || siniestro.id}`}
+      title={`Siniestro · ${siniestro.reference || siniestro.certificate || siniestro.id}`}
       dirty={dirty}
       saving={saving}
       error={error}
       onSave={guardar}
       onClose={onClose}
+      readOnly={bloqueado}
       wide
     >
-      {siniestro.binder_umr && (
-        <p className="hint" style={{ marginTop: 0 }}>
-          Binder {siniestro.binder_umr}
-          {siniestro.binder_programa ? ` · ${siniestro.binder_programa}` : ""}
-        </p>
-      )}
+      <div className="sin-modal-barra">
+        <span className="hint" style={{ margin: 0 }}>
+          {siniestro.binder_umr ? `Binder ${siniestro.binder_umr}${siniestro.binder_programa ? ` · ${siniestro.binder_programa}` : ""} · ` : ""}
+          {bloqueado ? "🔒 Solo consulta" : "✏️ Edición habilitada"}
+        </span>
+        {bloqueado && (
+          <button className="btn-secondary btn-sm" onClick={() => setBloqueado(false)}>
+            ✏️ Editar
+          </button>
+        )}
+      </div>
       {SECCIONES.map((sec) => (
         <div key={sec.titulo} style={{ marginBottom: 14 }}>
           <h3 style={{ margin: "4px 0 8px" }}>{sec.titulo}</h3>
