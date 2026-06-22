@@ -66,9 +66,10 @@ def _set_celda(cell, valor: str) -> None:
         p.add_run(valor)
 
 
-def _generar_fdo_docx(carpeta: str, broker_ref: str, umr: str | None, signing: str | None) -> str:
+def _generar_fdo_docx(carpeta: str, broker_ref: str, ref1: str, umr: str | None, signing: str | None) -> str:
     """Copia la plantilla LPAN (formulario de tokens) y la rellena para un FDO, guardándola como
-    '<broker_ref>.docx' en `carpeta`. Devuelve la ruta del documento."""
+    '<broker_ref>.docx' en `carpeta`. `ref1` = Broker Reference 1 (parte del UMR, campo 10);
+    `broker_ref` va en Broker Reference 2 (campo 11). Devuelve la ruta del documento."""
     import docx  # carga perezosa: solo al generar
 
     plantilla = settings.lpan_plantilla
@@ -91,9 +92,9 @@ def _generar_fdo_docx(carpeta: str, broker_ref: str, umr: str | None, signing: s
     todos = {"Premium": "FDO", "Yes/No": "No"}
     # Tokens de "línea" (la plantilla tiene 3 filas): solo la 1ª lleva valor, las demás se vacían.
     una_vez = {
-        "Bureau": signing or "", "BrokerRef1": broker_ref, "BrokerRef2": "",
+        "Bureau": signing or "", "BrokerRef1": ref1, "BrokerRef2": broker_ref,
         "Line": "", "Taxes": "", "GrossPremium": "", "Brokerage": "",
-        "OCurrency": "EUR", "SCurrency": "EUR", "BureauPremium": "", "UMR": umr or "",
+        "OCurrency": "FDO", "SCurrency": "FDO", "BureauPremium": "", "UMR": umr or "",
     }
     vistos_tok: set[str] = set()
     vistos_tc: set = set()
@@ -356,7 +357,8 @@ def crear_fdo(binder_id: int, payload: FdoCreate, db: Session = Depends(get_db))
         raise HTTPException(status_code=409, detail=f"Ya existe un FDO para el risk code {rc} (sección {sec}).")
     # Genera el documento físico ANTES de crear el registro (si la carpeta falla, no deja huérfano).
     if payload.carpeta:
-        _generar_fdo_docx(payload.carpeta, _broker_ref(b.agreement_number, sec, rc), b.umr, None)
+        _generar_fdo_docx(payload.carpeta, _broker_ref(b.agreement_number, sec, rc),
+                          _umr_part(b.agreement_number), b.umr, None)
     f = Fdo(binder_id=binder_id, section=sec, risk_code=rc, fecha_generado=dt.date.today())
     db.add(f)
     db.commit()
