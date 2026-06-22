@@ -1317,9 +1317,9 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
                     </div>
                   </div>
                 </div>
-                <div className="hint" style={{ marginTop: 4 }}>
-                  Filas = mes de apertura · columnas = {triVista === "cal" ? "mes de valuación (reciente → antiguo)" : "meses desde la apertura"}.
-                  {" · "}IBNR calculado usando el Método Bornhuetter-Ferguson.
+                <div className="hint" style={{ marginTop: 4, display: "flex", justifyContent: "space-between", gap: 12 }}>
+                  <span>Filas = mes de apertura · columnas = {triVista === "cal" ? "mes de valuación (reciente → antiguo)" : "meses desde la apertura"}.</span>
+                  <span>IBNR calculado usando el Método Bornhuetter-Ferguson.</span>
                 </div>
               </div>
               {meses.length === 0 ? (
