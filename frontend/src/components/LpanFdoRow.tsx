@@ -27,7 +27,9 @@ export default function LpanFdoRow({
     setWpStatus(f?.work_package_status ?? "");
   }, [f?.signing_number, f?.work_package, f?.fecha_proceso, f?.work_package_status]);
 
-  const dirty = !!f && (
+  // Un FDO en estado "Completed" queda bloqueado: no se puede modificar.
+  const completado = !!f && (f.work_package_status ?? "") === "Completed";
+  const dirty = !!f && !completado && (
     signing !== (f.signing_number ?? "") ||
     wp !== (f.work_package ?? "") ||
     fproc !== (f.fecha_proceso ?? "").slice(0, 10) ||
@@ -72,6 +74,15 @@ export default function LpanFdoRow({
             Generar FDO
           </button>
         </td>
+      ) : completado ? (
+        // FDO Completed: bloqueado (solo lectura).
+        <>
+          <td>{signing || "—"}</td>
+          <td>{wp || "—"}</td>
+          <td>{fproc || "—"}</td>
+          <td><span className="pill pill-cobrado">Completed 🔒</span></td>
+          <td></td>
+        </>
       ) : (
         <>
           <td><input type="text" value={signing} placeholder="21285*18/06/2026" style={{ width: 150 }}

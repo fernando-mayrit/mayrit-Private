@@ -420,6 +420,8 @@ def actualizar_fdo(fdo_id: int, payload: FdoUpdate, db: Session = Depends(get_db
     f = db.get(Fdo, fdo_id)
     if f is None:
         raise HTTPException(status_code=404, detail=f"FDO {fdo_id} no encontrado")
+    if (f.work_package_status or "") == "Completed":
+        raise HTTPException(status_code=409, detail="El FDO está en estado «Completed»: no se puede modificar.")
     datos = payload.model_dump(exclude_unset=True)
     for k, v in datos.items():
         setattr(f, k, v)

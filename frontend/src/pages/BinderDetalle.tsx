@@ -1355,8 +1355,8 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
                       <thead>
                         <tr>
                           <th>Risk Code</th><th className="num">Nº líneas</th>
-                          <th className="num">GWP Our Line</th><th className="num">Brokerage</th>
-                          <th className="num">IPT</th><th className="num">Neto a UW</th>
+                          <th className="num">GWP Our Line</th><th className="num">Brokerage %</th>
+                          <th className="num">IPT</th><th className="num">Net to UW</th>
                           <th>Cobrado</th><th>LPAN</th>
                         </tr>
                       </thead>
@@ -1366,7 +1366,7 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
                             <th>{r.risk_code}</th>
                             <td className="num">{r.num_lineas}</td>
                             <td className="num">{fmtMiles(r.gross_premium)}</td>
-                            <td className="num">{fmtMiles(r.brokerage)}</td>
+                            <td className="num">{Number(r.gross_premium) ? `${fmtMiles((Number(r.brokerage) / Number(r.gross_premium)) * 100)} %` : "—"}</td>
                             <td className="num">{fmtMiles(r.tax)}</td>
                             <td className="num">{fmtMiles(r.net_premium)}</td>
                             <td>{r.cobrado
