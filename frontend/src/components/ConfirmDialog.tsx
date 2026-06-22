@@ -44,11 +44,11 @@ export default function ConfirmDialog({
             Cancelar
           </button>
           {enUltimoPaso ? (
-            <button className="btn-danger" onClick={onConfirm}>
+            <button className="btn-danger btn-danger-solid" onClick={onConfirm}>
               {doble ? "Sí, hacerlo definitivamente" : confirmLabel}
             </button>
           ) : (
-            <button className="btn-danger" onClick={() => setPaso(2)}>
+            <button className="btn-danger btn-danger-solid" onClick={() => setPaso(2)}>
               {confirmLabel}
             </button>
           )}

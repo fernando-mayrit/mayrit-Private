@@ -145,6 +145,9 @@ button {
 .btn-secondary:disabled:hover { background: #fff; }
 .btn-danger { background: #fff; color: var(--rojo); border-color: #f1c6c1; }
 .btn-danger:hover { background: #fdecea; }
+/* Variante destacada (fondo rojo sólido) para la acción de confirmar en los avisos */
+.btn-danger-solid { background: var(--rojo); color: #fff; border-color: var(--rojo); font-weight: 700; }
+.btn-danger-solid:hover { background: #c0392b; border-color: #c0392b; }
 .btn-link { background: none; border: none; color: var(--naranja); padding: 4px 8px; }
 .btn-link:hover { text-decoration: underline; }
 
