@@ -116,6 +116,12 @@ def _dec(v) -> Decimal:
     return Decimal(str(_num(v))).quantize(Decimal("0.01"), ROUND_HALF_UP)
 
 
+def _inc_total(g) -> float:
+    """Incurrido total (indemnity + fees, pagado acumulado + reservas) de una fila de snapshot."""
+    return (_num(g("Previously Paid - Indemnity")) + _num(g("Paid this month - Indemnity")) + _num(g("Reserve - Indemnity"))
+            + _num(g("Previously Paid - Fees")) + _num(g("Paid this month - Fees")) + _num(g("Reserve - Fees")))
+
+
 def _fecha(v) -> dt.date | None:
     if isinstance(v, dt.datetime):
         return v.date()
@@ -416,6 +422,10 @@ def volcar(db, b, meses, alias_ref="", crear_siniestros=False, apply=False, etiq
         for s in db.scalars(select(Siniestro).where(Siniestro.binder_id == b.id)).all():
             por_par[((s.certificate or "").strip(), _tok(s.reference))] = s.id
 
+    # Ref canónica (_tok) de cada siniestro, para resolver colisiones cuando dos refs casan con el
+    # mismo siniestro en un mismo mes (claim renumerado en la transición): gana la ref canónica.
+    ref_de_sid = {s.id: _tok(s.reference) for s in db.scalars(select(Siniestro).where(Siniestro.binder_id == b.id)).all()}
+
     total = 0
     for m in meses:
         p, po = m["per"], m["po"]
@@ -430,11 +440,27 @@ def volcar(db, b, meses, alias_ref="", crear_siniestros=False, apply=False, etiq
                 fecha_presentacion=None, usuario="histórico-nil"))
             total += 1
         else:
+            # Una presentación por siniestro y mes: si dos refs del snapshot casan con el mismo
+            # siniestro (renumeración en transición), gana la ref canónica y, en su defecto, el
+            # mayor incurrido.
+            elegidas: dict[int, tuple[str, object]] = {}
             for ref, g in m["claims"].items():
                 cert = str(g("Certificate Reference") or "").strip()
                 sid = casar(cert, ref)
                 if sid is None:
                     continue
+                prev = elegidas.get(sid)
+                if prev is None:
+                    elegidas[sid] = (ref, g)
+                    continue
+                canon = ref_de_sid.get(sid)
+                if _tok(ref) == canon and _tok(prev[0]) != canon:
+                    elegidas[sid] = (ref, g)
+                elif _tok(prev[0]) == canon:
+                    pass
+                elif _inc_total(g) > _inc_total(prev[1]):
+                    elegidas[sid] = (ref, g)
+            for sid, (ref, g) in elegidas.items():
                 fila = {h: _safe(h, g(h)) for h in HEADERS}
                 db.add(ClaimsPresentacion(
                     binder_id=b.id, periodo=p, periodo_ord=po, siniestro_id=sid,
