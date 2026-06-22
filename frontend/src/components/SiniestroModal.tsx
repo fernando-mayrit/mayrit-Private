@@ -15,14 +15,12 @@ type Campo = { key: keyof Siniestro; label: string; tipo: Tipo; full?: boolean }
 
 const IDENT: Campo[] = [
   { key: "certificate", label: "Certificate", tipo: "text", full: true },
-  { key: "reference", label: "Reference", tipo: "text" },
   { key: "ucr", label: "UCR", tipo: "text" },
   { key: "insured", label: "Asegurado", tipo: "text", full: true },
   { key: "section", label: "Sección", tipo: "int" },
   { key: "yoa", label: "YOA", tipo: "int" },
   { key: "risk_code", label: "Risk Code", tipo: "text" },
-  { key: "currency", label: "Moneda", tipo: "text" },
-  { key: "reporting_period", label: "Periodo", tipo: "text" },
+  { key: "reporting_period", label: "Periodo", tipo: "date" },
   { key: "risk_inception", label: "Inicio riesgo", tipo: "date" },
   { key: "risk_expiry", label: "Fin riesgo", tipo: "date" },
 ];
