@@ -585,6 +585,8 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
       );
     }
     if (bloq) return <span className="hint">🔒</span>;
+    // No se puede cobrar/traspasar/liquidar una prima sin Recibo generado.
+    if (!p.tiene_recibo) return <span className="hint" title="Genera primero el Recibo de este periodo">Falta recibo</span>;
     const cfg =
       etapa === "cobro"
         ? { emoji: "💰", label: "Cobrar", pedir: pedirCobrarPremium }

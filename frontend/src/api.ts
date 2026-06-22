@@ -448,6 +448,7 @@ export interface PremiumGrupo {
   cobrado: boolean;
   traspasado: boolean;
   liquidado: boolean;
+  tiene_recibo: boolean;
   fecha_pago: string | null;
   fecha_traspaso: string | null;
   fecha_liquidacion: string | null;

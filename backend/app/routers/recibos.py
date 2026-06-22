@@ -895,6 +895,7 @@ class PremiumGrupo(BaseModel):
     cobrado: bool           # todas sus líneas cobradas
     traspasado: bool        # todas sus líneas traspasadas
     liquidado: bool         # todas sus líneas liquidadas
+    tiene_recibo: bool = True  # todas sus líneas tienen recibo generado (si no, no se puede cobrar/etc.)
     fecha_pago: dt.date | None = None
     fecha_traspaso: dt.date | None = None
     fecha_liquidacion: dt.date | None = None
@@ -923,6 +924,12 @@ def listar_premium(binder_id: int, db: Session = Depends(get_db)):
             BdxLinea.liquidado, BdxLinea.fecha_liquidacion,
         ))
     ).all()
+    # Periodos que ya tienen Recibo generado (señal fiable de "recibo emitido" para ese mes).
+    recibo_periodos = {
+        p for (p,) in db.execute(
+            select(Recibo.periodo).where(Recibo.binder_id == binder_id, Recibo.periodo.is_not(None))
+        ).all()
+    }
     grupos: dict[str, dict] = {}
     for l in lineas:
         per = l.premium_bdx.strftime("%Y-%m")
@@ -954,6 +961,7 @@ def listar_premium(binder_id: int, db: Session = Depends(get_db)):
             cobrado=g["num"] > 0 and g["cob"] == g["num"],
             traspasado=g["num"] > 0 and g["tra"] == g["num"],
             liquidado=g["num"] > 0 and g["liqd"] == g["num"],
+            tiene_recibo=per in recibo_periodos,
             fecha_pago=max(g["fc"]) if g["fc"] else None,
             fecha_traspaso=max(g["ft"]) if g["ft"] else None,
             fecha_liquidacion=max(g["fl"]) if g["fl"] else None,
@@ -962,12 +970,21 @@ def listar_premium(binder_id: int, db: Session = Depends(get_db)):
     ]
 
 
-def _accion_premium(db: Session, binder_id: int, periodo: str, setter) -> dict:
-    """Aplica una acción (setter) a todas las líneas del Premium y recalcula los recibos."""
+def _accion_premium(db: Session, binder_id: int, periodo: str, setter, exigir_recibo: bool = False) -> dict:
+    """Aplica una acción (setter) a todas las líneas del Premium y recalcula los recibos.
+    Si `exigir_recibo`, exige que el periodo tenga su Recibo generado (líneas con recibo_id):
+    no se puede cobrar/liquidar/traspasar una prima sin recibo emitido."""
     _exigir_premium_no_bloqueado(db, binder_id, periodo)
     lineas = _lineas_premium(db, binder_id, periodo)
     if not lineas:
         raise HTTPException(status_code=400, detail=f"No hay líneas en el Premium {periodo}.")
+    if exigir_recibo and not db.scalar(
+        select(Recibo.id).where(Recibo.binder_id == binder_id, Recibo.periodo == periodo).limit(1)
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail=f"Genera primero el Recibo del periodo {periodo}: no se puede cobrar/liquidar/traspasar una prima sin recibo emitido.",
+        )
     for l in lineas:
         setter(l)
     db.flush()
@@ -985,7 +1002,7 @@ def cobrar_premium(binder_id: int, payload: AccionPremium, db: Session = Depends
     def setter(l):
         l.prima_cobrada = True
         l.premium_payment_date = payload.fecha
-    return _accion_premium(db, binder_id, payload.periodo, setter)
+    return _accion_premium(db, binder_id, payload.periodo, setter, exigir_recibo=True)
 
 
 @router.post("/binders/{binder_id}/premium/descobrar")
@@ -1004,7 +1021,7 @@ def traspasar_premium(binder_id: int, payload: AccionPremium, db: Session = Depe
         l.traspaso = True
         l.fecha_traspaso = payload.fecha
         l.traspasado = l.brokerage_amount
-    return _accion_premium(db, binder_id, payload.periodo, setter)
+    return _accion_premium(db, binder_id, payload.periodo, setter, exigir_recibo=True)
 
 
 @router.post("/binders/{binder_id}/premium/liquidar")
@@ -1015,7 +1032,7 @@ def liquidar_premium(binder_id: int, payload: AccionPremium, db: Session = Depen
         l.liquidado = True
         l.fecha_liquidacion = payload.fecha
         l.liquidado_uw = _q2(q)
-    return _accion_premium(db, binder_id, payload.periodo, setter)
+    return _accion_premium(db, binder_id, payload.periodo, setter, exigir_recibo=True)
 
 
 # ─────────────── Macheo automático desde Excel (cualquier formato) ───────────────
