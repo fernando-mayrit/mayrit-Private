@@ -109,7 +109,11 @@ export interface TriangulacionPrograma {
   programa: string;
   binders: { id: number; umr: string; agreement: string; yoa: string | null }[];
   max_edad: number;
+  mes_inicio: number;                 // mes (1-12) de inicio del programa, para etiquetar Año/Mes
+  risk_codes: string[];               // risk codes disponibles (para el selector de categoría)
+  risk_code: string | null;           // risk code aplicado (null = TOTAL)
   triangulos: Record<MetricaTriangulo, (number | null)[][]>; // filas = binders, cols = antigüedad
+  prima_acum_binder: (number | null)[][]; // prima Net to UWs acumulada por antigüedad (para el ratio)
   premium_binder: number[];
   net_uw_binder: number[];
   incurrido_binder: number[];
@@ -124,7 +128,10 @@ export interface TriangulacionPrograma {
 export const triangulacionApi = {
   deBinder: (binderId: number, ambito?: TriAmbito) =>
     request<Triangulacion>(`/binders/${binderId}/triangulacion${_ambitoQS(ambito)}`),
-  dePrograma: (programaId: number) => request<TriangulacionPrograma>(`/programas/${programaId}/triangulacion`),
+  dePrograma: (programaId: number, riskCode?: string | null) =>
+    request<TriangulacionPrograma>(
+      `/programas/${programaId}/triangulacion${riskCode ? `?risk_code=${encodeURIComponent(riskCode)}` : ""}`
+    ),
   excelBinder: async (binderId: number, metrica: MetricaTriangulo, ambito?: TriAmbito): Promise<Blob> => {
     const p = new URLSearchParams({ metrica });
     if (ambito?.seccion != null) p.set("seccion", String(ambito.seccion));

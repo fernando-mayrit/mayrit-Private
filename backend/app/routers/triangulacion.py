@@ -326,35 +326,45 @@ def _chain_ladder_desde_meses(meses, cohortes, val_at) -> tuple[float, float]:
     return round(ultimate - actual, 2), round(ultimate, 2)
 
 
-def _curva_binder(db: Session, binder: Binder) -> dict | None:
+def _curva_binder(db: Session, binder: Binder, risk_code: str | None = None) -> dict | None:
     """Desarrollo POR ANTIGÜEDAD de un binder: para cada edad d (meses desde el inicio del binder),
-    el incurrido/pagado/nº de TODOS sus siniestros valuados a ese mes. Devuelve None si no hay
-    snapshots. Incluye GWP our line, net to UWs e incurrido actual."""
-    gwp, net = _bases(db, binder.id)
-    pres = db.execute(
+    el incurrido/pagado/nº de sus siniestros valuados a ese mes, y la PRIMA ACUMULADA (Net to UWs
+    devengada hasta ese mes) para el ratio de siniestralidad. Filtrable por risk code.
+    Incluye GWP our line, net to UWs total e incurrido actual. `start_mi` = mes de inicio."""
+    gwp, net = _bases(db, binder.id, risk_code=risk_code)
+    net_mes = _net_por_mes(db, binder.id, risk_code=risk_code)  # {mes_index: net del mes}
+    q = (
         select(
             ClaimsPresentacion.siniestro_id, ClaimsPresentacion.periodo_ord,
             ClaimsPresentacion.paid_indemnity_acum, ClaimsPresentacion.paid_fees_acum,
             ClaimsPresentacion.reserves_indemnity, ClaimsPresentacion.reserves_fees,
         )
+        .join(Siniestro, Siniestro.id == ClaimsPresentacion.siniestro_id)
         .where(ClaimsPresentacion.binder_id == binder.id, ClaimsPresentacion.siniestro_id.is_not(None))
-        .order_by(ClaimsPresentacion.siniestro_id, ClaimsPresentacion.periodo_ord)
-    ).all()
+    )
+    if risk_code:
+        q = q.where(Siniestro.risk_code == risk_code)
+    pres = db.execute(q.order_by(ClaimsPresentacion.siniestro_id, ClaimsPresentacion.periodo_ord)).all()
     snaps: dict[int, list[tuple[int, float, float]]] = {}
     for sid, ord_, pi, pf, ri, rf in pres:
         mi = _mi_de_ord(ord_)
         snaps.setdefault(sid, []).append(
             (mi, float(pi or 0) + float(pf or 0) + float(ri or 0) + float(rf or 0), float(pi or 0) + float(pf or 0))
         )
-    if not snaps:
-        return {"gwp": gwp, "net": net, "inc": [], "paid": [], "num": [],
-                "incurrido_actual": 0.0, "start": None}
 
-    latest = max(mi for lista in snaps.values() for (mi, _, _) in lista)
-    start = _mi(binder.fecha_efecto.year, binder.fecha_efecto.month) if binder.fecha_efecto \
-        else min(lista[0][0] for lista in snaps.values())
-    if start > latest:
-        start = min(lista[0][0] for lista in snaps.values())
+    start = _mi(binder.fecha_efecto.year, binder.fecha_efecto.month) if binder.fecha_efecto else None
+    if snaps:
+        latest = max(mi for lista in snaps.values() for (mi, _, _) in lista)
+        if start is None or start > latest:
+            start = min(lista[0][0] for lista in snaps.values())
+    elif net_mes:
+        # Sin siniestros pero con prima: la curva va del inicio al último mes con prima.
+        latest = max(net_mes)
+        if start is None or start > latest:
+            start = min(net_mes)
+    else:
+        return {"gwp": gwp, "net": net, "inc": [], "paid": [], "num": [], "prima_acum": [],
+                "incurrido_actual": 0.0, "start_mi": start}
 
     def val_at(sid: int, C: int):
         v = None
@@ -365,9 +375,11 @@ def _curva_binder(db: Session, binder: Binder) -> dict | None:
                 break
         return v
 
-    inc, paid, num = [], [], []
+    inc, paid, num, prima_acum = [], [], [], []
+    acum = 0.0
     for d in range(latest - start + 1):
         C = start + d
+        acum += net_mes.get(C, 0.0)
         si = sp = 0.0
         cnt = 0
         for sid in snaps:
@@ -375,15 +387,21 @@ def _curva_binder(db: Session, binder: Binder) -> dict | None:
             if v is not None:
                 si += v[0]; sp += v[1]; cnt += 1
         inc.append(round(si, 2)); paid.append(round(sp, 2)); num.append(cnt)
-    return {"gwp": gwp, "net": net, "inc": inc, "paid": paid, "num": num,
-            "incurrido_actual": inc[-1] if inc else 0.0, "start": start}
+        prima_acum.append(round(acum, 2))
+    return {"gwp": gwp, "net": net, "inc": inc, "paid": paid, "num": num, "prima_acum": prima_acum,
+            "incurrido_actual": inc[-1] if inc else 0.0, "start_mi": start}
 
 
 @router.get("/programas/{programa_id}/triangulacion")
-def triangulacion_programa(programa_id: int, db: Session = Depends(get_db)):
+def triangulacion_programa(
+    programa_id: int,
+    risk_code: str | None = Query(None),
+    db: Session = Depends(get_db),
+):
     """Triángulo del PROGRAMA: una fila por binder/YOA, columnas = antigüedad (meses desde el
     inicio de cada binder). Los factores de desarrollo se calculan con TODO el programa (los años
-    maduros guían la proyección de los jóvenes) y de ahí sale el IBNR de cada año y el total."""
+    maduros guían la proyección de los jóvenes) y de ahí sale el IBNR de cada año y el total.
+    Filtrable por `risk_code` (None = TOTAL)."""
     prog = db.get(Programa, programa_id)
     if prog is None:
         raise HTTPException(status_code=404, detail=f"Programa {programa_id} no encontrado")
@@ -391,9 +409,24 @@ def triangulacion_programa(programa_id: int, db: Session = Depends(get_db)):
         select(Binder).where(Binder.programa_id == programa_id).order_by(Binder.yoa, Binder.id)
     ).all()
 
+    # Risk codes disponibles en el programa (para el selector de categoría de la comparación).
+    risk_codes: list[str] = []
+    if binders:
+        rcs = db.execute(
+            select(BdxLinea.risk_code).distinct()
+            .join(Bdx, Bdx.id == BdxLinea.bdx_id)
+            .where(Bdx.binder_id.in_([b.id for b in binders]), Bdx.tipo == "Risk",
+                   BdxLinea.risk_code.is_not(None))
+        ).all()
+        risk_codes = sorted({r[0] for r in rcs if r[0]})
+
+    # Mes de inicio del programa (para etiquetar las filas como Año/Mes): el del binder más antiguo.
+    efectos = [b.fecha_efecto for b in binders if b.fecha_efecto]
+    mes_inicio = min(efectos).month if efectos else 1
+
     filas = []  # por binder: meta + curvas
     for b in binders:
-        c = _curva_binder(db, b)
+        c = _curva_binder(db, b, risk_code=risk_code)
         filas.append({"binder": b, "curva": c})
 
     # Factores de desarrollo (volumen-ponderado) con el incurrido de TODOS los binders del programa.
@@ -416,7 +449,7 @@ def triangulacion_programa(programa_id: int, db: Session = Depends(get_db)):
         return round(v, 2), round(v - inc[last], 2)
 
     edades = maxlen  # nº de columnas de antigüedad (0..maxlen-1)
-    out_binders, m_inc, m_paid, m_num = [], [], [], []
+    out_binders, m_inc, m_paid, m_num, m_prima = [], [], [], [], []
     premium_b, netuw_b, inc_act_b, ult_b, ibnr_b = [], [], [], [], []
     for f in filas:
         b, c = f["binder"], f["curva"]
@@ -431,6 +464,7 @@ def triangulacion_programa(programa_id: int, db: Session = Depends(get_db)):
         m_inc.append(c["inc"] + [None] * (edades - len(c["inc"])))
         m_paid.append(c["paid"] + [None] * (edades - len(c["paid"])))
         m_num.append(c["num"] + [None] * (edades - len(c["num"])))
+        m_prima.append(c["prima_acum"] + [None] * (edades - len(c["prima_acum"])))
         premium_b.append(c["gwp"]); netuw_b.append(c["net"])
         inc_act_b.append(c["incurrido_actual"]); ult_b.append(ult); ibnr_b.append(ibnr)
 
@@ -438,7 +472,11 @@ def triangulacion_programa(programa_id: int, db: Session = Depends(get_db)):
         "programa": prog.nombre,
         "binders": out_binders,
         "max_edad": max(edades - 1, 0),
+        "mes_inicio": mes_inicio,
+        "risk_codes": risk_codes,
+        "risk_code": risk_code,
         "triangulos": {"incurrido": m_inc, "pagado": m_paid, "num": m_num},
+        "prima_acum_binder": m_prima,
         "premium_binder": premium_b,
         "net_uw_binder": netuw_b,
         "incurrido_binder": inc_act_b,

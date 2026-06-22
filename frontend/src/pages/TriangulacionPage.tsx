@@ -1,19 +1,25 @@
-import { useEffect, useMemo, useState } from "react";
-import { crud, triangulacionApi, type TriangulacionPrograma, type MetricaTriangulo } from "../api";
+import { useEffect, useState } from "react";
+import { crud, triangulacionApi, type TriangulacionPrograma } from "../api";
 import { fmtMiles } from "../format";
 import PageHeader from "../components/PageHeader";
 
 const apiProgramas = crud<{ id: number; nombre: string }, unknown>("/programas");
 const imp = (v: number | null | undefined) => fmtMiles(v) || "—";
+const MESES_ES = [
+  "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+  "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
+];
 
-// Triángulo por PROGRAMA: compara todos los binders/YOA de la cadena. Las columnas son la
-// ANTIGÜEDAD (meses desde el inicio de cada binder), así los años maduros y los jóvenes se ven
-// a la misma edad y los factores de desarrollo (que proyectan el IBNR) salen de todo el programa.
+// Triángulo por PROGRAMA: compara todos los binders/YOA de la cadena.
+//  · Resumen por año (GWP, incurrido, ultimate, IBNR).
+//  · Comparación: filas = antigüedad (Año/Mes desde el inicio del programa), columnas = cada
+//    binder con Nº siniestros · Siniestralidad (incurrido) · Ratio (siniestralidad / prima acum.).
+//    Selector de Risk Code (TOTAL o una categoría).
 export default function TriangulacionPage() {
   const [programas, setProgramas] = useState<{ id: number; nombre: string }[]>([]);
   const [progId, setProgId] = useState<number | null>(null);
+  const [riskCode, setRiskCode] = useState<string>(""); // "" = TOTAL
   const [data, setData] = useState<TriangulacionPrograma | null>(null);
-  const [metrica, setMetrica] = useState<MetricaTriangulo>("incurrido");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -34,23 +40,25 @@ export default function TriangulacionPage() {
     if (progId == null) return;
     setLoading(true);
     triangulacionApi
-      .dePrograma(progId)
+      .dePrograma(progId, riskCode || undefined)
       .then(setData)
       .catch((e) => setError((e as Error).message))
       .finally(() => setLoading(false));
-  }, [progId]);
+  }, [progId, riskCode]);
 
-  const esNum = metrica === "num";
+  // Al cambiar de programa, si el risk code elegido ya no existe, vuelve a TOTAL.
+  useEffect(() => {
+    if (data && riskCode && !data.risk_codes.includes(riskCode)) setRiskCode("");
+  }, [data, riskCode]);
+
   const ratioIbnr = data && data.premium_total ? (data.ibnr_total / data.premium_total) * 100 : null;
   const ratioSin = data && data.net_uw_total ? (data.incurrido_total / data.net_uw_total) * 100 : null;
-  // Total por columna de antigüedad (suma de los binders con dato a esa edad).
-  const totalCol = useMemo(() => {
-    if (!data) return [];
-    const m = data.triangulos[metrica];
-    return Array.from({ length: data.max_edad + 1 }, (_, d) =>
-      m.reduce((a, fila) => a + (fila[d] ?? 0), 0)
-    );
-  }, [data, metrica]);
+
+  // Etiqueta Año/Mes de una antigüedad d (meses desde el inicio del programa).
+  const etiqueta = (mesInicio: number, d: number) => {
+    const off = mesInicio - 1 + d;
+    return { anio: 1 + Math.floor(off / 12), mes: MESES_ES[off % 12], inicioAnio: off % 12 === 0 || d === 0 };
+  };
 
   return (
     <div className="container lista-page">
@@ -59,10 +67,9 @@ export default function TriangulacionPage() {
         <select className="filtro" value={progId ?? ""} onChange={(e) => setProgId(Number(e.target.value))}>
           {programas.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
         </select>
-        <select className="filtro" value={metrica} onChange={(e) => setMetrica(e.target.value as MetricaTriangulo)}>
-          <option value="incurrido">Incurrido (pagado + reservas)</option>
-          <option value="pagado">Pagado</option>
-          <option value="num">Nº de siniestros</option>
+        <select className="filtro" value={riskCode} onChange={(e) => setRiskCode(e.target.value)}>
+          <option value="">TOTAL (todos los risk codes)</option>
+          {(data?.risk_codes ?? []).map((rc) => <option key={rc} value={rc}>{rc}</option>)}
         </select>
       </div>
 
@@ -118,33 +125,53 @@ export default function TriangulacionPage() {
             </tfoot>
           </table>
 
-          {/* Triángulo de desarrollo: filas = YOA, columnas = antigüedad (meses desde el inicio). */}
-          <h3 style={{ margin: "4px 0 6px" }}>Desarrollo por antigüedad ({metrica === "num" ? "nº" : metrica})</h3>
+          {/* Comparación: filas = antigüedad (Año/Mes), columnas = cada binder × {Nº · Siniestralidad · Ratio}. */}
+          <h3 style={{ margin: "4px 0 6px" }}>
+            Comparación de siniestralidad {riskCode ? `· Risk code ${riskCode}` : "· TOTAL"}
+          </h3>
           <div className="bdx-scroll">
-            <table className="compacto bdx-tabla tri-tabla">
+            <table className="compacto bdx-tabla tri-comp">
               <thead>
                 <tr>
-                  <th style={{ position: "sticky", left: 0 }}>YOA</th>
-                  {Array.from({ length: data.max_edad + 1 }, (_, d) => <th key={d} className="num">{d}</th>)}
+                  <th rowSpan={2} style={{ position: "sticky", left: 0 }}>Año</th>
+                  <th rowSpan={2}>Mes</th>
+                  {data.binders.map((b) => (
+                    <th key={b.id} colSpan={3} className="num tri-comp-bloque" style={{ textAlign: "center" }}>
+                      {b.yoa ?? ""} · {b.umr}
+                    </th>
+                  ))}
+                </tr>
+                <tr>
+                  {data.binders.map((b) => [
+                    <th key={`${b.id}-n`} className="num tri-comp-bloque">Nº</th>,
+                    <th key={`${b.id}-s`} className="num">Siniestralidad</th>,
+                    <th key={`${b.id}-r`} className="num">Ratio</th>,
+                  ])}
                 </tr>
               </thead>
               <tbody>
-                {data.binders.map((b, i) => (
-                  <tr key={b.id}>
-                    <th style={{ position: "sticky", left: 0 }}>{b.yoa ?? b.umr}</th>
-                    {Array.from({ length: data.max_edad + 1 }, (_, d) => {
-                      const v = data.triangulos[metrica][i][d];
-                      return <td key={d} className="num">{v == null ? "" : esNum ? v : fmtMiles(v)}</td>;
-                    })}
-                  </tr>
-                ))}
+                {Array.from({ length: data.max_edad + 1 }, (_, d) => {
+                  const e = etiqueta(data.mes_inicio, d);
+                  return (
+                    <tr key={d}>
+                      <th style={{ position: "sticky", left: 0 }}>{e.inicioAnio ? `Año ${e.anio}` : ""}</th>
+                      <td>{e.mes}</td>
+                      {data.binders.map((b, i) => {
+                        const num = data.triangulos.num[i][d];
+                        const inc = data.triangulos.incurrido[i][d];
+                        const pa = data.prima_acum_binder[i][d];
+                        const ratio = inc != null && pa ? (inc / pa) * 100 : null;
+                        const vacio = num == null;
+                        return [
+                          <td key={`${b.id}-n`} className="num tri-comp-bloque">{vacio ? "" : num}</td>,
+                          <td key={`${b.id}-s`} className="num">{vacio ? "" : fmtMiles(inc)}</td>,
+                          <td key={`${b.id}-r`} className="num">{ratio == null ? "" : `${fmtMiles(ratio)} %`}</td>,
+                        ];
+                      })}
+                    </tr>
+                  );
+                })}
               </tbody>
-              <tfoot>
-                <tr className="tri-total">
-                  <th style={{ position: "sticky", left: 0 }}>Total</th>
-                  {totalCol.map((t, d) => <td key={d} className="num">{esNum ? t : fmtMiles(t)}</td>)}
-                </tr>
-              </tfoot>
             </table>
           </div>
         </div>
