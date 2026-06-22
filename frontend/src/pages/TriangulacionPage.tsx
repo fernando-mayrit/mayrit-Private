@@ -52,7 +52,7 @@ export default function TriangulacionPage() {
     if (data && riskCode && !data.risk_codes.includes(riskCode)) setRiskCode("");
   }, [data, riskCode]);
 
-  const ratioIbnr = data && data.premium_total ? (data.ibnr_total / data.premium_total) * 100 : null;
+  const ratioIbnr = data && data.net_uw_total ? (data.ibnr_total / data.net_uw_total) * 100 : null;
   const ratioSin = data && data.net_uw_total ? (data.incurrido_total / data.net_uw_total) * 100 : null;
   const ratioUlt = data && data.net_uw_total ? (data.ultimate_total / data.net_uw_total) * 100 : null;
 
@@ -90,7 +90,7 @@ export default function TriangulacionPage() {
           </span>
         </button>
       </div>
-      <div className="hint" style={{ margin: "0 0 8px" }}>
+      <div className="hint" style={{ margin: "0 0 8px", textAlign: "right" }}>
         IBNR calculado usando el Método Bornhuetter-Ferguson.
       </div>
 
@@ -112,14 +112,14 @@ export default function TriangulacionPage() {
                 <th className="num">Incurrido</th>
                 <th className="num">Siniestralidad %</th>
                 <th className="num tri-amarillo tri-amarillo-ini">IBNR</th>
-                <th className="num tri-amarillo">IBNR % s/GWP</th>
+                <th className="num tri-amarillo">IBNR % s/Net</th>
                 <th className="num tri-amarillo">Ultimate</th>
                 <th className="num tri-amarillo">Siniestralidad % Ult.</th>
               </tr>
             </thead>
             <tbody>
               {data.binders.map((b, i) => {
-                const ibnrPct = data.premium_binder[i] ? (data.ibnr_binder[i] / data.premium_binder[i]) * 100 : null;
+                const ibnrPct = data.net_uw_binder[i] ? (data.ibnr_binder[i] / data.net_uw_binder[i]) * 100 : null;
                 const sinPct = data.net_uw_binder[i] ? (data.incurrido_binder[i] / data.net_uw_binder[i]) * 100 : null;
                 const ultPct = data.net_uw_binder[i] ? (data.ultimate_binder[i] / data.net_uw_binder[i]) * 100 : null;
                 return (

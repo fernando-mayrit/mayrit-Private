@@ -1258,7 +1258,7 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
           const meses = tri.meses;
           const n = meses.length;
           const ratio = tri.net_uw ? (tri.incurrido_actual / tri.net_uw) * 100 : null;
-          const ibnrPct = tri.gwp_our_line ? (tri.ibnr_sugerido / tri.gwp_our_line) * 100 : null;
+          const ibnrPct = tri.net_uw ? (tri.ibnr_sugerido / tri.net_uw) * 100 : null;
           const ultPct = tri.net_uw ? (tri.ultimate_sugerido / tri.net_uw) * 100 : null;
           // En "%", cada celda = incurrido valuado / Net to UWs (siniestralidad hasta ese mes).
           const celda = (v: number | null) =>
@@ -1311,7 +1311,7 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
                       {" · "}Incurrido actual: <b>{imp(tri.incurrido_actual)}</b>
                       {" · "}Siniestralidad: <b>{ratio == null ? "—" : `${fmtMiles(ratio)} %`}</b>
                     </div>
-                    <div className="hint" title="El % del IBNR es sobre GWP Our Line; el del Ultimate, sobre Net to UWs.">
+                    <div className="hint" title="El % del IBNR y el del Ultimate son sobre Net to UWs.">
                       IBNR sugerido: <b>{imp(tri.ibnr_sugerido)}{ibnrPct == null ? "" : ` (${fmtMiles(ibnrPct)} %)`}</b>
                       {" · "}Ultimate: <b>{imp(tri.ultimate_sugerido)}{ultPct == null ? "" : ` (${fmtMiles(ultPct)} %)`}</b>
                     </div>
