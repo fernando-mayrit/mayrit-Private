@@ -1290,16 +1290,17 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
               genera el LPAN de cada bloque cobrado (importes en € · GWP our line, comisiones, IPT y neto a UW).
             </p>
 
-            {/* ── Panel FDO / signing por risk code ── */}
+            {/* ── Panel FDO / signing por sección y risk code ── */}
             <div className="recibo-box" style={{ marginBottom: 16 }}>
-              <h4>FDO / Signing por Risk Code</h4>
+              <h4>FDO / Signing por Sección y Risk Code</h4>
               <table className="compacto bdx-tabla">
                 <thead>
-                  <tr><th>Risk Code</th><th>Estado</th><th>Signing number</th></tr>
+                  <tr><th>Sección</th><th>Risk Code</th><th>Estado</th><th>Signing number</th></tr>
                 </thead>
                 <tbody>
                   {lpanData.fdos.map((rc) => (
-                    <tr key={rc.risk_code}>
+                    <tr key={`${rc.section}-${rc.risk_code}`}>
+                      <th>{rc.section}</th>
                       <th>{rc.risk_code}</th>
                       <td>
                         {!rc.fdo
@@ -1311,7 +1312,7 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
                       <td>
                         {!rc.fdo ? (
                           <button className="btn-secondary btn-sm" disabled={lpanBusy}
-                            onClick={() => accionLpan(() => lpanApi.crearFdo(binder.id, rc.risk_code))}>
+                            onClick={() => accionLpan(() => lpanApi.crearFdo(binder.id, rc.section, rc.risk_code))}>
                             Generar FDO
                           </button>
                         ) : rc.fdo.signing_number ? (

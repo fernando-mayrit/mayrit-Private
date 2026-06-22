@@ -51,6 +51,7 @@ def _periodo_label(per: str) -> str:
 # ──────────────────────────── Schemas ────────────────────────────
 class FdoRead(BaseModel):
     id: int
+    section: int
     risk_code: str
     signing_number: str | None = None
     fecha_generado: dt.date | None = None
@@ -72,6 +73,7 @@ class LpanRead(BaseModel):
 
 
 class RiskCodeFdo(BaseModel):
+    section: int
     risk_code: str
     fdo: FdoRead | None = None
 
@@ -105,6 +107,7 @@ class VistaLpan(BaseModel):
 
 
 class FdoCreate(BaseModel):
+    section: int = 0
     risk_code: str
 
 
@@ -165,16 +168,16 @@ def vista(binder_id: int, db: Session = Depends(get_db)):
     si está cobrado y el LPAN ya generado. Aparte, el FDO/signing por risk code (transversal)."""
     _binder_o_404(binder_id, db)
     grupos = _grupos_premium(db, binder_id)
-    fdos = {f.risk_code: f for f in db.scalars(select(Fdo).where(Fdo.binder_id == binder_id)).all()}
+    fdos = {(f.section, f.risk_code): f for f in db.scalars(select(Fdo).where(Fdo.binder_id == binder_id)).all()}
     lpans = db.scalars(select(Lpan).where(Lpan.binder_id == binder_id)).all()
     lpan_por = {(lp.periodo, lp.section, lp.risk_code): lp for lp in lpans}
 
-    # FDO/signing por risk code (todos los risk codes que aparecen en premium o ya tienen FDO).
-    risk_codes = sorted({rc for (_, _, rc) in grupos} | set(fdos.keys()))
+    # FDO/signing por (sección, risk code): los que aparecen en premium o ya tienen FDO.
+    claves = sorted({(s, rc) for (_, s, rc) in grupos} | set(fdos.keys()))
     fdos_out = [RiskCodeFdo(
-        risk_code=rc,
-        fdo=FdoRead.model_validate(fdos[rc], from_attributes=True) if rc in fdos else None,
-    ) for rc in risk_codes]
+        section=sec, risk_code=rc,
+        fdo=FdoRead.model_validate(fdos[(sec, rc)], from_attributes=True) if (sec, rc) in fdos else None,
+    ) for (sec, rc) in claves]
 
     periodos: list[PeriodoLpan] = []
     for per in sorted({p for (p, _, _) in grupos}):
@@ -184,7 +187,7 @@ def vista(binder_id: int, db: Session = Depends(get_db)):
             for rc in sorted({r for (p, s, r) in grupos if p == per and s == sec}):
                 g = grupos[(per, sec, rc)]
                 lp = lpan_por.get((per, sec, rc))
-                f = fdos.get(rc)
+                f = fdos.get((sec, rc))
                 rcs.append(RcEnSeccion(
                     risk_code=rc,
                     signing_number=f.signing_number if f else None,
@@ -204,11 +207,12 @@ def crear_fdo(binder_id: int, payload: FdoCreate, db: Session = Depends(get_db))
     """Genera el FDO de un risk code (a la espera del signing number de Xchanging)."""
     _binder_o_404(binder_id, db)
     rc = (payload.risk_code or "").strip()
+    sec = int(payload.section or 0)
     if not rc:
         raise HTTPException(status_code=400, detail="Falta el risk code.")
-    if db.scalar(select(Fdo).where(Fdo.binder_id == binder_id, Fdo.risk_code == rc)):
-        raise HTTPException(status_code=409, detail=f"Ya existe un FDO para el risk code {rc}.")
-    f = Fdo(binder_id=binder_id, risk_code=rc, fecha_generado=dt.date.today())
+    if db.scalar(select(Fdo).where(Fdo.binder_id == binder_id, Fdo.section == sec, Fdo.risk_code == rc)):
+        raise HTTPException(status_code=409, detail=f"Ya existe un FDO para el risk code {rc} (sección {sec}).")
+    f = Fdo(binder_id=binder_id, section=sec, risk_code=rc, fecha_generado=dt.date.today())
     db.add(f)
     db.commit()
     db.refresh(f)
@@ -249,11 +253,11 @@ def generar_lpan(binder_id: int, payload: LpanCreate, db: Session = Depends(get_
     rc, per = (payload.risk_code or "").strip(), (payload.periodo or "").strip()
     sec = int(payload.section or 0)
     tipo = payload.tipo or "PM"
-    f = db.scalar(select(Fdo).where(Fdo.binder_id == binder_id, Fdo.risk_code == rc))
+    f = db.scalar(select(Fdo).where(Fdo.binder_id == binder_id, Fdo.section == sec, Fdo.risk_code == rc))
     if f is None:
-        raise HTTPException(status_code=409, detail=f"Genera antes el FDO del risk code {rc}.")
+        raise HTTPException(status_code=409, detail=f"Genera antes el FDO del risk code {rc} (sección {sec}).")
     if not f.signing_number:
-        raise HTTPException(status_code=409, detail=f"El FDO del risk code {rc} aún no tiene signing number.")
+        raise HTTPException(status_code=409, detail=f"El FDO del risk code {rc} (sección {sec}) aún no tiene signing number.")
     grupos = _grupos_premium(db, binder_id)
     g = grupos.get((per, sec, rc))
     if not g or g["num"] == 0:

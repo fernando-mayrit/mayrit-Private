@@ -531,10 +531,11 @@ class Fdo(Base):
     `signing_number`; a partir de ahí los LPAN de ese risk code cuelgan de ese signing."""
 
     __tablename__ = "fdos"
-    __table_args__ = (UniqueConstraint("binder_id", "risk_code", name="uq_fdo_binder_riskcode"),)
+    __table_args__ = (UniqueConstraint("binder_id", "section", "risk_code", name="uq_fdo_binder_seccion_riskcode"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     binder_id: Mapped[int] = mapped_column(ForeignKey("binders.id", ondelete="CASCADE"), index=True)
+    section: Mapped[int] = mapped_column(Integer, server_default="0", default=0)  # nº de sección del bordereau
     risk_code: Mapped[str] = mapped_column(String(20))
     signing_number: Mapped[str | None] = mapped_column(String(60))   # lo asigna Xchanging
     fecha_generado: Mapped[dt.date | None] = mapped_column(Date)
