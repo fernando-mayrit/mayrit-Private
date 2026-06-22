@@ -11,6 +11,9 @@ from __future__ import annotations
 
 import calendar
 import datetime as dt
+import os
+import tempfile
+import zipfile
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -18,6 +21,7 @@ from pydantic import BaseModel, ConfigDict
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from ..config import settings
 from ..db import get_db
 from ..models.maestras import ConsultoriaContrato, CuentaBancaria, Productor, Recibo
 from .recibos import _exigir_mes_abierto, _recompute, _siguiente_numero
@@ -25,6 +29,8 @@ from .recibos import _exigir_mes_abierto, _recompute, _siguiente_numero
 router = APIRouter(tags=["Consultoría"])
 
 PASO_MESES = {"Mensual": 1, "Trimestral": 3, "Semestral": 6, "Anual": 12}
+MESES_ES = ["", "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+            "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
 
 
 def _add_months(d: dt.date, n: int) -> dt.date:
@@ -71,6 +77,8 @@ class ContratoIn(BaseModel):
     impuestos_porc: Decimal = Decimal("21")
     moneda: str = "EUR"
     cuenta_bancaria_id: int | None = None
+    dia_facturacion: int | None = None     # día del mes en que se factura (None = día de fecha_inicio)
+    aviso_dias_antes: int = 5
     estado: str = "Activo"
     notas: str | None = None
 
@@ -86,6 +94,8 @@ class ContratoUpdate(BaseModel):
     impuestos_porc: Decimal | None = None
     moneda: str | None = None
     cuenta_bancaria_id: int | None = None
+    dia_facturacion: int | None = None
+    aviso_dias_antes: int | None = None
     estado: str | None = None
     notas: str | None = None
 
@@ -105,6 +115,8 @@ class ContratoRead(BaseModel):
     moneda: str
     cuenta_bancaria_id: int | None = None
     cuenta_bancaria_nombre: str | None = None
+    dia_facturacion: int | None = None
+    aviso_dias_antes: int = 5
     estado: str
     notas: str | None = None
     n_cobros: int = 0          # cobros previstos
@@ -195,24 +207,18 @@ class GenerarCobro(BaseModel):
     periodo: str   # 'YYYY-MM' del cobro a generar
 
 
-@router.post("/consultoria/{contrato_id}/cobros/generar", status_code=201)
-def generar_cobro(contrato_id: int, payload: GenerarCobro, db: Session = Depends(get_db)):
-    c = db.get(ConsultoriaContrato, contrato_id)
-    if c is None:
-        raise HTTPException(status_code=404, detail=f"Contrato {contrato_id} no encontrado")
-    fecha = next((f for f in _fechas_cobro(c) if f.strftime("%Y-%m") == payload.periodo), None)
-    if fecha is None:
-        raise HTTPException(status_code=422, detail=f"El periodo {payload.periodo} no es un cobro de este contrato.")
-    ya = db.scalar(select(Recibo).where(Recibo.consultoria_id == c.id, Recibo.periodo == payload.periodo))
+def _crear_recibo_cobro(db: Session, c: ConsultoriaContrato, fecha: dt.date, periodo: str) -> Recibo:
+    """Crea el Recibo tipo 'Consultoría' del cobro (no comitea). Falla si ya existe o el mes está
+    cerrado."""
+    ya = db.scalar(select(Recibo).where(Recibo.consultoria_id == c.id, Recibo.periodo == periodo))
     if ya is not None:
-        raise HTTPException(status_code=409, detail=f"El cobro {payload.periodo} ya tiene recibo ({ya.numero}).")
+        raise HTTPException(status_code=409, detail=f"El cobro {periodo} ya tiene recibo ({ya.numero}).")
     _exigir_mes_abierto(db, fecha)
-
     base = Decimal(c.importe or 0)
     iva = _iva(c, base)
     cuenta = c.cuenta_bancaria.nombre if c.cuenta_bancaria else None
     r = Recibo(
-        consultoria_id=c.id, periodo=payload.periodo, anio=fecha.year, estado="Emitido",
+        consultoria_id=c.id, periodo=periodo, anio=fecha.year, estado="Emitido",
         numero=_siguiente_numero(db, fecha.year),
         tipo_poliza="Consultoría", asegurado=(c.concepto or (c.productor.nombre if c.productor else None)),
         corredor=(c.productor.nombre if c.productor else None), pagador=(c.productor.nombre if c.productor else None),
@@ -223,6 +229,155 @@ def generar_cobro(contrato_id: int, payload: GenerarCobro, db: Session = Depends
     )
     _recompute(r)
     db.add(r)
+    return r
+
+
+@router.post("/consultoria/{contrato_id}/cobros/generar", status_code=201)
+def generar_cobro(contrato_id: int, payload: GenerarCobro, db: Session = Depends(get_db)):
+    c = db.get(ConsultoriaContrato, contrato_id)
+    if c is None:
+        raise HTTPException(status_code=404, detail=f"Contrato {contrato_id} no encontrado")
+    fecha = next((f for f in _fechas_cobro(c) if f.strftime("%Y-%m") == payload.periodo), None)
+    if fecha is None:
+        raise HTTPException(status_code=422, detail=f"El periodo {payload.periodo} no es un cobro de este contrato.")
+    r = _crear_recibo_cobro(db, c, fecha, payload.periodo)
     db.commit()
     db.refresh(r)
-    return {"recibo_id": r.id, "numero": r.numero, "periodo": r.periodo, "total": float(base + iva)}
+    base = Decimal(c.importe or 0)
+    return {"recibo_id": r.id, "numero": r.numero, "periodo": r.periodo, "total": float(base + _iva(c, base))}
+
+
+# ──────────────────────────── Factura Word ────────────────────────────
+def _num_es(x: Decimal) -> str:
+    """123456.7 -> '123.456,70' (formato es-ES)."""
+    s = f"{Decimal(x):,.2f}"                    # '123,456.70'
+    return s.replace(",", "·").replace(".", ",").replace("·", ".")
+
+
+def _fecha_facturacion(c: ConsultoriaContrato, f: dt.date) -> dt.date:
+    dia = c.dia_facturacion or c.fecha_inicio.day
+    return dt.date(f.year, f.month, min(dia, calendar.monthrange(f.year, f.month)[1]))
+
+
+def _nombre_corto(nombre: str | None) -> str:
+    """'Insurart, S.L.' -> 'Insurart' (para nombre de archivo/carpeta)."""
+    n = (nombre or "Cliente").split(",")[0].strip()
+    return "".join(ch for ch in n if ch not in '\\/:*?"<>|').strip() or "Cliente"
+
+
+def _set_token(p, token: str, valor: str, ultimo: bool = False) -> bool:
+    """Sustituye en el párrafo el run cuyo texto (sin espacios) sea exactamente `token` por `valor`,
+    preservando el formato. `ultimo`=True usa la última coincidencia (cuando etiqueta y valor
+    comparten texto, p. ej. 'Cliente')."""
+    idxs = [i for i, r in enumerate(p.runs) if r.text.strip() == token]
+    if not idxs:
+        return False
+    p.runs[idxs[-1] if ultimo else idxs[0]].text = valor
+    return True
+
+
+def _generar_factura_docx(c: ConsultoriaContrato, r: Recibo, fecha_fact: dt.date,
+                          pago_n: int, pago_t: int, cta: CuentaBancaria | None) -> str:
+    """Rellena la plantilla de factura para el recibo `r` y la guarda en
+    <facturas_dir>\\<año>\\Facturas Emitidas\\<Cliente>\\<numero> <Cliente> <Mes>.docx."""
+    import docx  # carga perezosa
+
+    plantilla = settings.factura_plantilla
+    if not os.path.isfile(plantilla):
+        raise HTTPException(status_code=502, detail=f"No se encuentra la plantilla de factura: {plantilla}")
+
+    # La plantilla es .dotx → se convierte a .docx (cambiando el content-type) en un temporal.
+    tmp = os.path.join(tempfile.gettempdir(), "_factura_plantilla.docx")
+    with zipfile.ZipFile(plantilla) as zin, zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as zo:
+        for it in zin.infolist():
+            data = zin.read(it.filename)
+            if it.filename == "[Content_Types].xml":
+                data = data.replace(b"wordprocessingml.template.main+xml", b"wordprocessingml.document.main+xml")
+            zo.writestr(it, data)
+
+    prod = c.productor
+    base = Decimal(c.importe or 0)
+    iva = _iva(c, base)
+    moneda = c.moneda or "EUR"
+    concepto = f"Servicios Profesionales de seguros {MESES_ES[fecha_fact.month].lower()} {fecha_fact.year}"
+
+    d = docx.Document(tmp)
+    for p in d.paragraphs:
+        t = p.text.strip()
+        if "NumeroRecibo" in t:
+            _set_token(p, "NumeroRecibo", r.numero or "")
+        elif t.startswith("Cliente"):
+            _set_token(p, "Cliente", prod.nombre if prod else "", ultimo=True)
+        elif t.startswith("CIFCliente"):
+            _set_token(p, "CIFCliente", (prod.cif if prod else "") or "")
+        elif t.startswith("Fecha"):
+            _set_token(p, "FechaFactura", fecha_fact.strftime("%d.%m.%Y"))
+        elif "Pagos" in t:                              # 'Número de Pagos: <frecuencia>'
+            _set_token(p, "Pago", c.frecuencia or "")
+        elif t.startswith("Pago"):                      # 'Pago: <n> de <total>'
+            _set_token(p, "Recibo", str(pago_n))
+            _set_token(p, "RecibosTotales", str(pago_t))
+        elif t.startswith("Moneda"):
+            _set_token(p, "Moneda", moneda)
+        elif t.startswith("Concepto"):
+            _set_token(p, "Concepto", concepto)
+
+    # Tabla de importes.
+    ti = d.tables[0]
+    _set_token(ti.rows[0].cells[2].paragraphs[0], "Importe", _num_es(base))
+    _set_token(ti.rows[1].cells[1].paragraphs[0], "ImpuestosPorc", f"{_num_es(c.impuestos_porc or 0)}%")
+    _set_token(ti.rows[1].cells[2].paragraphs[0], "ImpuestosRecibo", _num_es(iva))
+    _set_token(ti.rows[2].cells[2].paragraphs[0], "ImporteTotal", _num_es(base + iva))
+
+    # Tabla de banco (si hay cuenta). IBAN agrupado en bloques de 4; oficina = posiciones 9-12.
+    if cta is not None and len(d.tables) > 1:
+        iban = (cta.iban or "").replace(" ", "")
+        iban_fmt = " ".join(iban[i:i + 4] for i in range(0, len(iban), 4))
+        oficina = iban[8:12] if len(iban) >= 12 else ""
+        for row in d.tables[1].rows:
+            cell = row.cells[0]
+            for p in cell.paragraphs:
+                _set_token(p, "Banco", cta.banco or "")
+                _set_token(p, "Oficina", oficina, ultimo=True)
+                _set_token(p, "BIC", (cta.swift_bic or ""))
+                _set_token(p, "Cuenta", iban_fmt)
+
+    corto = _nombre_corto(prod.nombre if prod else None)
+    carpeta = os.path.join(settings.facturas_dir, str(fecha_fact.year), "Facturas Emitidas", corto)
+    os.makedirs(carpeta, exist_ok=True)
+    destino = os.path.join(carpeta, f"{r.numero} {corto} {MESES_ES[fecha_fact.month]}.docx")
+    d.save(destino)
+    return destino
+
+
+@router.post("/consultoria/{contrato_id}/cobros/generar-factura", status_code=201)
+def generar_factura(contrato_id: int, payload: GenerarCobro, db: Session = Depends(get_db)):
+    """Genera (si falta) el recibo del cobro y produce el Word de la factura, listo para enviar.
+    Devuelve la ruta del documento."""
+    c = db.get(ConsultoriaContrato, contrato_id)
+    if c is None:
+        raise HTTPException(status_code=404, detail=f"Contrato {contrato_id} no encontrado")
+    fechas = _fechas_cobro(c)
+    fecha = next((f for f in fechas if f.strftime("%Y-%m") == payload.periodo), None)
+    if fecha is None:
+        raise HTTPException(status_code=422, detail=f"El periodo {payload.periodo} no es un cobro de este contrato.")
+
+    r = db.scalar(select(Recibo).where(Recibo.consultoria_id == c.id, Recibo.periodo == payload.periodo))
+    if r is None:
+        r = _crear_recibo_cobro(db, c, fecha, payload.periodo)
+        db.commit()
+        db.refresh(r)
+
+    # Cuenta para el bloque bancario: la del contrato; si no, una de Gastos (honorarios) activa.
+    cta = c.cuenta_bancaria
+    if cta is None:
+        cta = db.scalar(
+            select(CuentaBancaria).where(CuentaBancaria.activa.is_(True), CuentaBancaria.categoria == "Gastos")
+            .order_by(CuentaBancaria.id)
+        )
+
+    fecha_fact = _fecha_facturacion(c, fecha)
+    pago_n = next((i + 1 for i, f in enumerate(fechas) if f.strftime("%Y-%m") == payload.periodo), 1)
+    pago_t = len(fechas)
+    ruta = _generar_factura_docx(c, r, fecha_fact, pago_n, pago_t, cta)
+    return {"recibo_id": r.id, "numero": r.numero, "periodo": r.periodo, "archivo": ruta}

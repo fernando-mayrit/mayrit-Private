@@ -661,6 +661,10 @@ class ConsultoriaContrato(Base):
     impuestos_porc: Mapped[Decimal] = mapped_column(Numeric(7, 4), server_default=text("21"), default=Decimal("21"))
     moneda: Mapped[str] = mapped_column(String(10), server_default="EUR", default="EUR")
     cuenta_bancaria_id: Mapped[int | None] = mapped_column(ForeignKey("cuentas_bancarias.id"))
+    # Día del mes en que se factura (1–31). El aviso "enviar factura" salta `aviso_dias_antes`
+    # días antes de esa fecha. None = se factura el día del fecha_inicio.
+    dia_facturacion: Mapped[int | None] = mapped_column(Integer)
+    aviso_dias_antes: Mapped[int] = mapped_column(Integer, server_default=text("5"), default=5)
     estado: Mapped[str] = mapped_column(String(20), server_default="Activo", default="Activo")  # Activo | Finalizado
     notas: Mapped[str | None] = mapped_column(Text)
 
@@ -671,6 +675,17 @@ class ConsultoriaContrato(Base):
     updated_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+
+class AvisoNivel(Base):
+    """Override de importancia (semáforo) por TIPO de aviso. Los avisos se calculan al vuelo;
+    aquí solo se guarda, por tipo, el nivel elegido por el usuario (alto/medio/bajo). Si un tipo
+    no tiene fila, se usa su nivel por defecto definido en el router de avisos."""
+
+    __tablename__ = "aviso_niveles"
+
+    tipo: Mapped[str] = mapped_column(String(60), primary_key=True)
+    nivel: Mapped[str] = mapped_column(String(10))   # alto | medio | bajo
 
 
 class Recibo(Base):

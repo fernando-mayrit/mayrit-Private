@@ -19,7 +19,7 @@ import UsuariosPage from "./pages/UsuariosPage";
 import EnConstruccion from "./components/EnConstruccion";
 import Inicio from "./components/Inicio";
 import LoginUsuario from "./components/LoginUsuario";
-import { usuariosApi, usuarioEquipo, avisosApi, type Aviso } from "./api";
+import { usuariosApi, usuarioEquipo, avisosApi, type Aviso, type AvisoNivel } from "./api";
 import type { Usuario } from "./types";
 
 const USUARIO_KEY = "mayrit.usuario";
@@ -267,8 +267,18 @@ export default function App() {
   // Avisos / tareas pendientes (campana + panel de Inicio). Se recargan al navegar.
   const [avisos, setAvisos] = useState<Aviso[]>([]);
   const [verAvisos, setVerAvisos] = useState(false);
+  const [configNiveles, setConfigNiveles] = useState(false);
+  const [niveles, setNiveles] = useState<AvisoNivel[]>([]);
   function cargarAvisos() {
     avisosApi.listar().then(setAvisos).catch(() => { /* sin backend: sin avisos */ });
+  }
+  function abrirConfigNiveles() {
+    setConfigNiveles(true);
+    avisosApi.niveles().then(setNiveles).catch(() => setNiveles([]));
+  }
+  async function cambiarNivel(tipo: string, nivel: string) {
+    setNiveles((ns) => ns.map((n) => (n.tipo === tipo ? { ...n, nivel } : n)));
+    try { await avisosApi.fijarNivel(tipo, nivel); cargarAvisos(); } catch { /* noop */ }
   }
   useEffect(() => {
     cargarAvisos();
@@ -304,8 +314,32 @@ export default function App() {
           </button>
           {verAvisos && (
             <div className="avisos-pop">
-              <div className="avisos-pop-head">Tareas pendientes ({avisos.length})</div>
-              {avisos.length === 0 ? (
+              <div className="avisos-pop-head">
+                Tareas pendientes ({avisos.length})
+                <button className="btn-link aviso-config-btn" onClick={() => (configNiveles ? setConfigNiveles(false) : abrirConfigNiveles())}>
+                  ⚙️ Importancia
+                </button>
+              </div>
+              {configNiveles ? (
+                <div className="aviso-niveles">
+                  <p className="hint" style={{ padding: "8px 14px 4px" }}>Nivel (semáforo) por tipo de aviso:</p>
+                  {niveles.map((n) => (
+                    <div key={n.tipo} className="aviso-nivel-fila">
+                      <span className="aviso-nivel-et">{n.etiqueta}</span>
+                      <span className="aviso-nivel-sel">
+                        {(["alto", "medio", "bajo"] as const).map((lv) => (
+                          <button
+                            key={lv}
+                            className={`nivel-dot nivel-${lv} ${n.nivel === lv ? "nivel-on" : ""}`}
+                            title={lv}
+                            onClick={() => cambiarNivel(n.tipo, lv)}
+                          />
+                        ))}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : avisos.length === 0 ? (
                 <div className="avisos-vacio">Sin avisos 🎉</div>
               ) : (
                 <div className="avisos-lista">
@@ -315,7 +349,9 @@ export default function App() {
                       className="aviso-item"
                       onClick={() => { if (a.pagina) ir(a.pagina as Page); setVerAvisos(false); }}
                     >
-                      <span className="aviso-titulo">⚠️ {a.titulo}</span>
+                      <span className="aviso-titulo">
+                        <span className={`nivel-dot nivel-${a.nivel}`} /> {a.titulo}
+                      </span>
                       <span className="aviso-detalle">{a.detalle}</span>
                     </button>
                   ))}

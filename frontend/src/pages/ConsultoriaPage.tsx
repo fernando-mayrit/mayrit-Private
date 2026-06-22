@@ -22,13 +22,16 @@ type FormState = {
   sujeto_impuestos: boolean;
   impuestos_porc: string;
   cuenta_bancaria_id: string;
+  dia_facturacion: string;
+  aviso_dias_antes: string;
   estado: string;
   notas: string;
 };
 const VACIO: FormState = {
   productor_id: "", concepto: "", fecha_inicio: new Date().toISOString().slice(0, 10),
   indefinido: false, duracion_meses: "12", frecuencia: "Mensual", importe: "",
-  sujeto_impuestos: true, impuestos_porc: "21", cuenta_bancaria_id: "", estado: "Activo", notas: "",
+  sujeto_impuestos: true, impuestos_porc: "21", cuenta_bancaria_id: "",
+  dia_facturacion: "", aviso_dias_antes: "5", estado: "Activo", notas: "",
 };
 
 export default function ConsultoriaPage() {
@@ -75,6 +78,8 @@ export default function ConsultoriaPage() {
       frecuencia: c.frecuencia, importe: String(c.importe),
       sujeto_impuestos: c.sujeto_impuestos, impuestos_porc: String(c.impuestos_porc),
       cuenta_bancaria_id: c.cuenta_bancaria_id ? String(c.cuenta_bancaria_id) : "",
+      dia_facturacion: c.dia_facturacion == null ? "" : String(c.dia_facturacion),
+      aviso_dias_antes: String(c.aviso_dias_antes ?? 5),
       estado: c.estado, notas: c.notas ?? "",
     };
     setForm(f); setFormIni(f); setEditId(c.id);
@@ -97,6 +102,8 @@ export default function ConsultoriaPage() {
       sujeto_impuestos: form.sujeto_impuestos,
       impuestos_porc: form.sujeto_impuestos ? num(form.impuestos_porc) : 0,
       cuenta_bancaria_id: form.cuenta_bancaria_id ? Number(form.cuenta_bancaria_id) : null,
+      dia_facturacion: form.dia_facturacion ? Number(form.dia_facturacion) : null,
+      aviso_dias_antes: Number(form.aviso_dias_antes) || 5,
       estado: form.estado,
       notas: form.notas.trim() || null,
     };
@@ -132,6 +139,17 @@ export default function ConsultoriaPage() {
     setBusyCobro(periodo);
     try {
       await consultoriaApi.generarCobro(cobrosDe.id, periodo);
+      setCobros((await consultoriaApi.cobros(cobrosDe.id)).cobros);
+      await cargar();
+    } catch (e) { setError((e as Error).message); } finally { setBusyCobro(null); }
+  }
+  const [facturaMsg, setFacturaMsg] = useState<string | null>(null);
+  async function generarFactura(periodo: string) {
+    if (!cobrosDe) return;
+    setBusyCobro(periodo); setFacturaMsg(null);
+    try {
+      const res = await consultoriaApi.generarFactura(cobrosDe.id, periodo);
+      setFacturaMsg(`Factura ${res.numero} generada: ${res.archivo}`);
       setCobros((await consultoriaApi.cobros(cobrosDe.id)).cobros);
       await cargar();
     } catch (e) { setError((e as Error).message); } finally { setBusyCobro(null); }
@@ -235,6 +253,17 @@ export default function ConsultoriaPage() {
               {cuentas.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
             </select>
           </div>
+          <div className="field">
+            <label>Día de facturación (del mes)</label>
+            <input type="number" min={1} max={31} value={form.dia_facturacion}
+                   onChange={(e) => set("dia_facturacion", e.target.value)}
+                   placeholder="vacío = día del inicio" />
+          </div>
+          <div className="field">
+            <label>Avisar (días antes de facturar)</label>
+            <input type="number" min={0} max={60} value={form.aviso_dias_antes}
+                   onChange={(e) => set("aviso_dias_antes", e.target.value)} />
+          </div>
           {typeof editId === "number" && (
             <div className="field">
               <label>Estado</label>
@@ -261,8 +290,10 @@ export default function ConsultoriaPage() {
           onClose={() => setCobrosDe(null)}
         >
           <p className="hint" style={{ marginBottom: 10 }}>
-            Genera el recibo de cada cobro cuando toque. Cada recibo es de tipo «Consultoría» (Base + IVA).
+            Genera el recibo de cada cobro cuando toque (tipo «Consultoría», Base + IVA). «Factura»
+            crea el recibo si falta y deja el Word listo para enviar en la carpeta de Facturas Emitidas.
           </p>
+          {facturaMsg && <div className="ok" style={{ marginBottom: 8, wordBreak: "break-all" }}>📄 {facturaMsg}</div>}
           <table className="compacto">
             <thead>
               <tr><th>Periodo</th><th>Fecha</th><th className="num">Base</th><th className="num">IVA</th><th className="num">Total</th><th>Recibo</th><th></th></tr>
@@ -276,12 +307,16 @@ export default function ConsultoriaPage() {
                   <td className="num">{eur(co.iva)}</td>
                   <td className="num">{eur(co.total)}</td>
                   <td>{co.recibo_numero ?? "—"}</td>
-                  <td className="num">
+                  <td className="num" style={{ whiteSpace: "nowrap" }}>
                     {co.recibo_id
                       ? <span className="pill pill-cobrado">Generado</span>
                       : <button className="btn-primary btn-sm" disabled={busyCobro === co.periodo} onClick={() => generar(co.periodo)}>
                           {busyCobro === co.periodo ? "…" : "Generar"}
                         </button>}
+                    {" "}
+                    <button className="btn-link btn-sm" disabled={busyCobro === co.periodo} onClick={() => generarFactura(co.periodo)}>
+                      📄 Factura
+                    </button>
                   </td>
                 </tr>
               ))}

@@ -10,13 +10,13 @@ from __future__ import annotations
 import datetime as dt
 from collections import defaultdict
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..db import get_db
-from ..models.maestras import Bdx, BdxLinea, Binder, Poliza, Productor, Recibo
+from ..models.maestras import AvisoNivel, Bdx, BdxLinea, Binder, ConsultoriaContrato, Poliza, Productor, Recibo
 
 router = APIRouter(tags=["Avisos"])
 
@@ -24,13 +24,27 @@ router = APIRouter(tags=["Avisos"])
 # no por comisión. Sus binders no deben avisar de "recibo pendiente".
 PRODUCTORES_SIN_RECIBO = {"insurart"}
 
+# Catálogo de tipos de aviso: etiqueta + nivel (semáforo) por defecto. El usuario puede cambiar
+# el nivel por tipo (tabla aviso_niveles). Orden del semáforo: alto > medio > bajo.
+NIVELES = ("alto", "medio", "bajo")
+_ORDEN_NIVEL = {"alto": 0, "medio": 1, "bajo": 2}
+TIPOS_AVISO: dict[str, dict] = {
+    "factura_consultoria": {"etiqueta": "Factura de consultoría por emitir", "defecto": "alto"},
+    "binder_sin_renovar":  {"etiqueta": "Binder por vencer sin renovar", "defecto": "alto"},
+    "risk_sin_recibo":     {"etiqueta": "Recibo pendiente de generar", "defecto": "medio"},
+    "poliza_sin_renovar":  {"etiqueta": "Póliza por vencer sin renovar", "defecto": "medio"},
+}
+
 
 class Aviso(BaseModel):
     tipo: str                       # 'premium_sin_recibo', …
     severidad: str = "warning"      # info | warning | danger
+    nivel: str = "medio"            # alto | medio | bajo (semáforo). Se rellena al listar.
     titulo: str
     detalle: str
     binder_id: int | None = None
+    contrato_id: int | None = None  # para avisos de consultoría
+    periodo: str | None = None      # 'YYYY-MM' del cobro/factura (consultoría)
     umr: str | None = None
     periodos: list[str] = []
     pagina: str | None = None       # a dónde ir para resolverlo (p. ej. 'binders')
@@ -140,10 +154,96 @@ def _vencimientos_sin_renovar(db: Session) -> list[Aviso]:
     return avisos
 
 
+MESES_ES = ["", "enero", "febrero", "marzo", "abril", "mayo", "junio",
+            "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"]
+
+
+def _fecha_facturacion(c: ConsultoriaContrato, f: dt.date) -> dt.date:
+    """Fecha real de facturación de un cobro: el mes del cobro `f` con el día `dia_facturacion`
+    del contrato (o el día de fecha_inicio si no se indicó), ajustando fin de mes."""
+    import calendar
+    dia = c.dia_facturacion or c.fecha_inicio.day
+    return dt.date(f.year, f.month, min(dia, calendar.monthrange(f.year, f.month)[1]))
+
+
+def _facturas_consultoria(db: Session) -> list[Aviso]:
+    """Contratos de consultoría activos cuyo próximo cobro toca facturar pronto (≤ aviso_dias_antes
+    días antes de la fecha de facturación) y aún no tiene recibo."""
+    from .consultoria import _fechas_cobro      # lazy: evita import circular
+    hoy = dt.date.today()
+    avisos: list[Aviso] = []
+    contratos = db.scalars(select(ConsultoriaContrato).where(ConsultoriaContrato.estado == "Activo")).all()
+    for c in contratos:
+        generados = {r.periodo for r in db.scalars(
+            select(Recibo).where(Recibo.consultoria_id == c.id, Recibo.periodo.is_not(None))
+        ).all()}
+        prox = next((f for f in _fechas_cobro(c) if f.strftime("%Y-%m") not in generados), None)
+        if prox is None:
+            continue
+        fact = _fecha_facturacion(c, prox)
+        if hoy < fact - dt.timedelta(days=c.aviso_dias_antes or 5):
+            continue   # aún no toca avisar
+        cliente = c.productor.nombre if c.productor else f"contrato {c.id}"
+        per = prox.strftime("%Y-%m")
+        avisos.append(Aviso(
+            tipo="factura_consultoria",
+            titulo="Factura de consultoría por emitir",
+            detalle=f"{cliente}: factura de {MESES_ES[prox.month]} {prox.year} (a emitir el {fact.strftime('%d/%m/%Y')}).",
+            contrato_id=c.id, periodo=per, pagina="consultoria",
+        ))
+    return avisos
+
+
+def _aplicar_niveles(db: Session, avisos: list[Aviso]) -> list[Aviso]:
+    """Rellena el nivel (semáforo) de cada aviso: override del usuario por tipo, o el de defecto."""
+    overrides = {a.tipo: a.nivel for a in db.scalars(select(AvisoNivel)).all()}
+    for a in avisos:
+        a.nivel = overrides.get(a.tipo) or TIPOS_AVISO.get(a.tipo, {}).get("defecto", "medio")
+    avisos.sort(key=lambda a: (_ORDEN_NIVEL.get(a.nivel, 1), a.tipo, a.umr or ""))
+    return avisos
+
+
 @router.get("/avisos", response_model=list[Aviso])
 def listar_avisos(db: Session = Depends(get_db)):
-    """Lista de avisos/tareas pendientes (calculados al vuelo)."""
+    """Lista de avisos/tareas pendientes (calculados al vuelo), ordenados por importancia."""
     avisos: list[Aviso] = []
+    avisos += _facturas_consultoria(db)
     avisos += _risk_sin_recibo(db)
     avisos += _vencimientos_sin_renovar(db)
-    return avisos
+    return _aplicar_niveles(db, avisos)
+
+
+class NivelTipo(BaseModel):
+    tipo: str
+    etiqueta: str
+    nivel: str
+
+
+class NivelUpdate(BaseModel):
+    nivel: str   # alto | medio | bajo
+
+
+@router.get("/avisos/niveles", response_model=list[NivelTipo])
+def listar_niveles(db: Session = Depends(get_db)):
+    """Catálogo de tipos de aviso con su nivel actual (override del usuario o el de defecto)."""
+    overrides = {a.tipo: a.nivel for a in db.scalars(select(AvisoNivel)).all()}
+    return [
+        NivelTipo(tipo=t, etiqueta=info["etiqueta"], nivel=overrides.get(t) or info["defecto"])
+        for t, info in TIPOS_AVISO.items()
+    ]
+
+
+@router.put("/avisos/niveles/{tipo}", response_model=NivelTipo)
+def fijar_nivel(tipo: str, payload: NivelUpdate, db: Session = Depends(get_db)):
+    if tipo not in TIPOS_AVISO:
+        raise HTTPException(status_code=404, detail=f"Tipo de aviso desconocido: {tipo}")
+    if payload.nivel not in NIVELES:
+        raise HTTPException(status_code=422, detail=f"Nivel inválido: {payload.nivel}")
+    fila = db.get(AvisoNivel, tipo)
+    if fila is None:
+        fila = AvisoNivel(tipo=tipo, nivel=payload.nivel)
+        db.add(fila)
+    else:
+        fila.nivel = payload.nivel
+    db.commit()
+    return NivelTipo(tipo=tipo, etiqueta=TIPOS_AVISO[tipo]["etiqueta"], nivel=payload.nivel)

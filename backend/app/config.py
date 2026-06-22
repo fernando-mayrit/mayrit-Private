@@ -55,6 +55,18 @@ class Settings(BaseSettings):
         r"\Documentacion\Plantillas\Plantilla LPAN.dotx"
     )
 
+    # Plantilla Word (tokens) para las facturas de Consultoría (honorarios).
+    factura_plantilla: str = (
+        r"C:\Users\ferna\Mayrit Insurance Broker\Mayrit - Negocio - Documentos"
+        r"\Documentacion\Plantillas\Plantilla Factura.dotx"
+    )
+    # Carpeta base de facturas emitidas. La factura se guarda en
+    # <facturas_dir>\<año>\Facturas Emitidas\<Cliente>\<numero> <Cliente> <Mes>.docx
+    facturas_dir: str = (
+        r"C:\Users\ferna\Mayrit Insurance Broker\Mayrit - Sociedad - Documentos"
+        r"\Societario\Cuentas"
+    )
+
     @property
     def database_url(self) -> str:
         return (

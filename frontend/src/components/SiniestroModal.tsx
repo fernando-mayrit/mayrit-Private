@@ -3,15 +3,15 @@ import { siniestrosApi } from "../api";
 import type { Siniestro } from "../types";
 import FormPanel from "./FormPanel";
 import NumberInput from "./NumberInput";
-import { estadoSiniestroClase } from "../format";
+import { estadoSiniestroClase, fmtMiles } from "../format";
 
 // Modal de edición de un siniestro, con el mismo formato que el de Recibos:
 //  · pastilla de estado + botón "Editar" (en color) bajo el título
 //  · abre BLOQUEADO (solo consulta); "Editar" desbloquea los campos
 //  · maqueta: izquierda Identificación · derecha Siniestro + Importes · abajo Textos
 
-type Tipo = "text" | "date" | "num" | "int";
-type Campo = { key: keyof Siniestro; label: string; tipo: Tipo; full?: boolean };
+type Tipo = "text" | "date" | "num" | "int" | "yesno" | "estado";
+type Campo = { key: keyof Siniestro; label: string; tipo: Tipo; full?: boolean; center?: boolean };
 
 const IDENT: Campo[] = [
   { key: "certificate", label: "Certificate", tipo: "text", full: true },
@@ -25,7 +25,7 @@ const IDENT: Campo[] = [
   { key: "risk_expiry", label: "Fin riesgo", tipo: "date" },
 ];
 const DETALLE: Campo[] = [
-  { key: "status", label: "Estado", tipo: "text" },
+  { key: "status", label: "Estado", tipo: "estado" },
   { key: "claimant", label: "Reclamante", tipo: "text", full: true },
   { key: "abogado", label: "Abogado", tipo: "text", full: true },
   { key: "claim_first_advised", label: "1er aviso", tipo: "date" },
@@ -33,16 +33,16 @@ const DETALLE: Campo[] = [
   { key: "date_closed", label: "Cerrado", tipo: "date" },
   { key: "last_bdx_change", label: "Últ. cambio BDX", tipo: "date" },
   { key: "ultima_revision", label: "Últ. revisión", tipo: "date" },
-  { key: "refer", label: "Refer", tipo: "text" },
-  { key: "denial", label: "Denial", tipo: "text" },
+  { key: "refer", label: "Refer", tipo: "yesno" },
+  { key: "denial", label: "Denial", tipo: "yesno" },
 ];
 const IMPORTES: Campo[] = [
   { key: "amount_claimed", label: "Reclamado", tipo: "num", full: true },
-  { key: "to_pay_indemnity", label: "A pagar ind.", tipo: "num" },
+  { key: "to_pay_indemnity", label: "A pagar indemnización", tipo: "num" },
   { key: "to_pay_fees", label: "A pagar fees", tipo: "num" },
-  { key: "paid_indemnity", label: "Pagado ind.", tipo: "num" },
+  { key: "paid_indemnity", label: "Pagado indemnización", tipo: "num" },
   { key: "paid_fees", label: "Pagado fees", tipo: "num" },
-  { key: "reserves_indemnity", label: "Reservas ind.", tipo: "num" },
+  { key: "reserves_indemnity", label: "Reservas indemnización", tipo: "num" },
   { key: "reserves_fees", label: "Reservas fees", tipo: "num" },
 ];
 const TEXTOS: Campo[] = [
@@ -50,13 +50,35 @@ const TEXTOS: Campo[] = [
   { key: "informacion", label: "Información", tipo: "text", full: true },
 ];
 const TODOS = [...IDENT, ...DETALLE, ...IMPORTES, ...TEXTOS];
+const identCampo = (k: keyof Siniestro) => IDENT.find((c) => c.key === k)!;
+const detCampo = (k: keyof Siniestro) => DETALLE.find((c) => c.key === k)!;
+// Detalle sin los 4 campos que se colocan a mano arriba (Estado/Cerrado y debajo 1er aviso/Abierto).
+const DETALLE_COLOCADOS = ["status", "date_closed", "claim_first_advised", "date_opened"];
+const DETALLE_RESTO = DETALLE.filter((c) => !DETALLE_COLOCADOS.includes(c.key as string));
 
 type Form = Record<string, string>;
+// Normaliza los valores heredados (1/2/YES/N…) a "Sí"/"No"/"" para los campos Sí/No.
+function siNo(v: unknown): string {
+  const s = String(v ?? "").trim().toLowerCase();
+  if (!s) return "";
+  if (["1", "sí", "si", "s", "yes", "y", "true"].includes(s)) return "Sí";
+  if (["2", "no", "n", "false"].includes(s)) return "No";
+  return "";
+}
 function aForm(s: Siniestro): Form {
   const f: Form = {};
   for (const c of TODOS) {
     const v = s[c.key];
-    f[c.key as string] = v == null ? "" : c.tipo === "date" ? String(v).slice(0, 10) : String(v);
+    f[c.key as string] =
+      c.tipo === "yesno"
+        ? siNo(v)
+        : c.tipo === "estado"
+          ? (estadoSiniestroClase(v as string) === "cerrado" ? "Closed" : estadoSiniestroClase(v as string) === "abierto" ? "Open" : "")
+          : v == null
+            ? ""
+            : c.tipo === "date"
+              ? String(v).slice(0, 10)
+              : String(v);
   }
   return f;
 }
@@ -80,6 +102,12 @@ export default function SiniestroModal({
   const dirty = useMemo(() => TODOS.some((c) => form[c.key as string] !== inicial[c.key as string]), [form, inicial]);
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
+  // Totales = incurrido (pagado + reservas), mismo criterio que el resto de la app (sin "a pagar").
+  const n = (k: string) => Number(form[k]) || 0;
+  const totIndem = n("paid_indemnity") + n("reserves_indemnity");
+  const totFees = n("paid_fees") + n("reserves_fees");
+  const totGlobal = totIndem + totFees;
+
   async function guardar() {
     setSaving(true);
     setError(null);
@@ -101,27 +129,59 @@ export default function SiniestroModal({
     }
   }
 
-  // Campo según su tipo (deshabilitado mientras está bloqueado).
-  const Campo = (c: Campo) => (
-    <div className={"field" + (c.full ? " full-w" : "")} key={c.key as string} style={c.full ? { gridColumn: "1 / -1" } : undefined}>
-      <label>{c.label}</label>
-      {c.tipo === "num" ? (
-        <NumberInput value={form[c.key as string] ?? ""} onChange={(v) => set(c.key as string, v)} suffix="€" disabled={bloqueado} />
-      ) : c.tipo === "date" ? (
-        <input type="date" className="inp-fecha" value={form[c.key as string]} disabled={bloqueado} onChange={(e) => set(c.key as string, e.target.value)} />
-      ) : c.tipo === "int" ? (
-        <NumberInput value={form[c.key as string] ?? ""} onChange={(v) => set(c.key as string, v)} decimals={0} thousands={false} disabled={bloqueado} />
-      ) : (
-        <input type="text" value={form[c.key as string]} disabled={bloqueado} onChange={(e) => set(c.key as string, e.target.value)} />
-      )}
-    </div>
-  );
+  // Campo según su tipo. El bloque Información (campos de IDENT) NO es editable nunca: solo se
+  // habilita el resto al pulsar "Editar".
+  const Campo = (c: Campo) => {
+    const dis = bloqueado || IDENT.some((x) => x.key === c.key);
+    return (
+      <div className={"field" + (c.full ? " full-w" : "")} key={c.key as string} style={c.full ? { gridColumn: "1 / -1" } : undefined}>
+        <label>{c.label}</label>
+        {c.tipo === "num" ? (
+          <NumberInput value={form[c.key as string] ?? ""} onChange={(v) => set(c.key as string, v)} suffix="€" disabled={dis} />
+        ) : c.tipo === "date" ? (
+          <input type="date" className="inp-fecha" value={form[c.key as string]} disabled={dis} style={c.center ? { textAlign: "center" } : undefined} onChange={(e) => set(c.key as string, e.target.value)} />
+        ) : c.tipo === "int" ? (
+          <NumberInput value={form[c.key as string] ?? ""} onChange={(v) => set(c.key as string, v)} decimals={0} thousands={false} disabled={dis} className={c.center ? "center" : undefined} />
+        ) : c.tipo === "estado" ? (
+          <select value={form[c.key as string]} disabled={dis} onChange={(e) => set(c.key as string, e.target.value)}>
+            <option value="">—</option>
+            <option value="Open">Open</option>
+            <option value="Closed">Closed</option>
+          </select>
+        ) : c.tipo === "yesno" ? (
+          <div className="radio-sino">
+            {["Sí", "No"].map((opt) => (
+              <label key={opt}>
+                <input
+                  type="radio"
+                  name={`yn-${c.key as string}`}
+                  checked={form[c.key as string] === opt}
+                  disabled={dis}
+                  onChange={() => set(c.key as string, opt)}
+                />
+                {opt}
+              </label>
+            ))}
+          </div>
+        ) : (
+          <input type="text" value={form[c.key as string]} disabled={dis} style={c.center ? { textAlign: "center" } : undefined} onChange={(e) => set(c.key as string, e.target.value)} />
+        )}
+      </div>
+    );
+  };
 
   const claseEstado = siniestro.status ? estadoSiniestroClase(siniestro.status) : null;
 
   return (
     <FormPanel
-      title={`Siniestro · ${siniestro.reference || siniestro.certificate || siniestro.id}`}
+      title={
+        <>
+          Siniestro ·{" "}
+          <span style={{ color: "var(--naranja-osc)" }}>
+            {siniestro.reference || siniestro.certificate || siniestro.id}
+          </span>
+        </>
+      }
       dirty={dirty}
       saving={saving}
       error={error}
@@ -152,24 +212,43 @@ export default function SiniestroModal({
       {/* ── Bloque Información: ancho completo ── */}
       <div className="recibo-box">
         <h4>Información</h4>
-        <div className="campos-grid" style={{ gridTemplateColumns: "1fr 1fr 1fr" }}>
-          {IDENT.map(Campo)}
+        {/* Asegurado arriba del todo */}
+        {Campo(identCampo("insured"))}
+        {/* Certificate (estrecho) + Sección + Risk Code (centrados) + Inicio/Fin riesgo,
+            cada caja ajustada a su contenido y empujadas a la izquierda */}
+        <div className="campos-grid campos-fill" style={{ gridTemplateColumns: "1fr 52px 60px max-content max-content" }}>
+          {Campo({ ...identCampo("certificate"), full: false })}
+          {Campo({ ...identCampo("section"), center: true })}
+          {Campo({ ...identCampo("risk_code"), center: true })}
+          {Campo(identCampo("risk_inception"))}
+          {Campo(identCampo("risk_expiry"))}
         </div>
-        {TEXTOS.map((c) => (
-          <div className="field" key={c.key as string}>
-            <label>{c.label}</label>
-            <textarea rows={2} value={form[c.key as string]} disabled={bloqueado} onChange={(e) => set(c.key as string, e.target.value)} />
-          </div>
-        ))}
+        {/* Resto de identificación (YOA oculto) */}
+        <div className="campos-grid" style={{ gridTemplateColumns: "1fr 1fr 1fr" }}>
+          {[identCampo("ucr"), identCampo("reporting_period")].map(Campo)}
+        </div>
       </div>
 
-      {/* ── Debajo, dos columnas: Siniestro · Importes ── */}
-      <div className="recibo-modal" style={{ marginTop: 12 }}>
+      {/* ── Debajo, dos columnas: Siniestro · (Importes + Notas) ── */}
+      <div className="recibo-modal sin-cols" style={{ marginTop: 12 }}>
         <div className="recibo-col">
           <div className="recibo-box">
             <h4>Siniestro</h4>
-            <div className="campos-grid" style={{ gridTemplateColumns: "1fr 1fr" }}>
-              {DETALLE.map(Campo)}
+            <div className="campos-grid campos-fill" style={{ gridTemplateColumns: "1fr 1fr" }}>
+              {/* Fila 1: Estado | Cerrado (solo si el estado es cerrado; si no, hueco) */}
+              {Campo(detCampo("status"))}
+              {estadoSiniestroClase(form.status) === "cerrado"
+                ? Campo({ ...detCampo("date_closed"), center: true })
+                : <div key="sp-cerrado" />}
+              {/* Fila 2: 1er aviso (bajo Estado) | Abierto (bajo Cerrado) */}
+              {Campo({ ...detCampo("claim_first_advised"), center: true })}
+              {Campo({ ...detCampo("date_opened"), center: true })}
+              {/* Descripción: ancho completo y más alta, debajo del 1er aviso */}
+              <div className="field" key="description" style={{ gridColumn: "1 / -1" }}>
+                <label>Descripción</label>
+                <textarea rows={5} value={form.description} disabled={bloqueado} onChange={(e) => set("description", e.target.value)} />
+              </div>
+              {DETALLE_RESTO.map(Campo)}
             </div>
           </div>
         </div>
@@ -178,6 +257,23 @@ export default function SiniestroModal({
             <h4>Importes</h4>
             <div className="campos-grid" style={{ gridTemplateColumns: "1fr 1fr" }}>
               {IMPORTES.map(Campo)}
+            </div>
+            {/* Totales (incurrido = pagado + reservas) */}
+            <div className="sin-totales">
+              <div className="sin-total-fila">
+                <div><span>Total indemnización</span><b>{fmtMiles(totIndem)} €</b></div>
+                <div><span>Total fees</span><b>{fmtMiles(totFees)} €</b></div>
+              </div>
+              <div className="sin-total-fila sin-total-grande">
+                <div><span>TOTAL</span><b>{fmtMiles(totGlobal)} €</b></div>
+              </div>
+            </div>
+          </div>
+          {/* Notas: bajo Importes, se estira hasta igualar el borde inferior del bloque Siniestro */}
+          <div className="recibo-box sin-notas">
+            <h4>Notas</h4>
+            <div className="field">
+              <textarea value={form.informacion} disabled={bloqueado} onChange={(e) => set("informacion", e.target.value)} />
             </div>
           </div>
         </div>

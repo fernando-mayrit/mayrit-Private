@@ -8,6 +8,7 @@ import NumberInput from "../components/NumberInput";
 import ReciboModal from "../components/ReciboModal";
 import SiniestroModal from "../components/SiniestroModal";
 import LpanFdoRow from "../components/LpanFdoRow";
+import LpanRow from "../components/LpanRow";
 import PremiumMatch from "../components/PremiumMatch";
 import ConfirmDialog from "../components/ConfirmDialog";
 import FormPanel from "../components/FormPanel";
@@ -1353,10 +1354,16 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
               const abierto = periodoOverride[p.periodo] ?? !completo; // pendiente -> abierto por defecto
               return (
               <div key={p.periodo} className="recibo-box" style={{ marginBottom: 14 }}>
-                <h4 className="lpan-colap" onClick={() => setPeriodoOverride((o) => ({ ...o, [p.periodo]: !abierto }))}>
-                  <span className="nav-chevron">{abierto ? "▾" : "▸"}</span>
-                  {p.periodo_label}{completo ? " ✓" : ""}
-                </h4>
+                <div className="lpan-periodo-cab">
+                  <h4 className="lpan-colap" onClick={() => setPeriodoOverride((o) => ({ ...o, [p.periodo]: !abierto }))}>
+                    <span className="nav-chevron">{abierto ? "▾" : "▸"}</span>
+                    {p.periodo_label}{completo ? " ✓" : ""}
+                  </h4>
+                  <a className="btn-secondary btn-sm" href={lpanApi.bdxExcelUrl(binder.id, p.periodo)}
+                     title="Descargar el BDX a procesar de este mes" download>
+                    ⬇️ Excel BDX
+                  </a>
+                </div>
                 {abierto && p.secciones.map((s) => (
                   <div key={s.section} style={{ marginBottom: 8 }}>
                     <div className="lpan-seccion-tit">Sección {s.section}</div>
@@ -1383,44 +1390,16 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
                       </thead>
                       <tbody>
                         {s.risk_codes.map((r) => (
-                          <tr key={r.risk_code}>
-                            <th>{r.risk_code}</th>
-                            <td className="num">{r.num_lineas}</td>
-                            <td className="num">{fmtMiles(r.gross_premium)}</td>
-                            <td className="num">{Number(r.gross_premium) ? `${fmtMiles((Number(r.brokerage) / Number(r.gross_premium)) * 100)} %` : "—"}</td>
-                            <td className="num">{fmtMiles(r.tax)}</td>
-                            <td className="num">{fmtMiles(r.net_premium)}</td>
-                            <td>{r.cobrado
-                              ? <span className="pill pill-cobrado">Cobrado</span>
-                              : <span className="pill pill-pendiente">Pendiente</span>}</td>
-                            <td>
-                              {r.lpan ? (
-                                <span className="pill pill-cobrado" title={r.lpan.tipo}>{r.lpan.broker_ref2 || r.lpan.tipo}</span>
-                              ) : Number(r.gross_premium) === 0 ? (
-                                <span className="pill pill-pendiente" title="Prima neta 0 € (alta y devolución se netean): no requiere LPAN">Sin prima</span>
-                              ) : (
-                                <button className="btn-secondary btn-sm"
-                                  disabled={lpanBusy || !r.cobrado || !r.signing_number}
-                                  title={!r.signing_number ? "Falta el signing number del FDO de este risk code"
-                                    : !r.cobrado ? "El bloque no está cobrado" : "Generar el LPAN de este bloque"}
-                                  onClick={() => accionLpan(() => lpanApi.generarLpan(binder.id, { risk_code: r.risk_code, section: s.section, periodo: p.periodo }))}>
-                                  Generar LPAN
-                                </button>
-                              )}
-                            </td>
-                            <td>{r.lpan?.work_package ?? "—"}</td>
-                            <td>{r.lpan?.fecha ? fmtFechaES(r.lpan.fecha) : "—"}</td>
-                            <td>{r.lpan?.sdd ? fmtFechaES(r.lpan.sdd) : "—"}</td>
-                            <td>{r.lpan?.estado ?? "—"}</td>
-                            <td>{r.lpan?.liberado ? fmtFechaES(r.lpan.liberado) : "—"}</td>
-                            <td>{r.lpan?.pagado ? fmtFechaES(r.lpan.pagado) : "—"}</td>
-                            <td>
-                              {r.lpan && (
-                                <button className="btn-link" disabled={lpanBusy}
-                                  onClick={() => setLpanABorrar({ id: r.lpan!.id, etiqueta: `${r.lpan!.broker_ref2 || r.lpan!.tipo} · Sección ${s.section} · ${r.risk_code} · ${p.periodo_label}` })}>Borrar</button>
-                              )}
-                            </td>
-                          </tr>
+                          <LpanRow
+                            key={r.risk_code}
+                            r={r}
+                            section={s.section}
+                            periodo={p.periodo}
+                            binderId={binder.id}
+                            busy={lpanBusy}
+                            onChanged={cargarLpan}
+                            onBorrar={setLpanABorrar}
+                          />
                         ))}
                       </tbody>
                     </table>

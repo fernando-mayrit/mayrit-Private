@@ -158,9 +158,13 @@ export const lpanApi = {
   actualizarFdo: (fdoId: number, datos: { signing_number?: string | null; work_package?: string | null; fecha_proceso?: string | null; work_package_status?: string | null; fecha_signing?: string | null; notas?: string | null }) =>
     request<FdoRegistro>(`/fdo/${fdoId}`, { method: "PUT", body: JSON.stringify(datos) }),
   borrarFdo: (fdoId: number) => request(`/fdo/${fdoId}`, { method: "DELETE" }),
-  generarLpan: (binderId: number, data: { risk_code: string; section: number; periodo: string; tipo?: string }) =>
+  generarLpan: (binderId: number, data: { risk_code: string; section: number; periodo: string; tipo?: string; carpeta?: string | null }) =>
     request<LpanRegistro>(`/binders/${binderId}/lpan`, { method: "POST", body: JSON.stringify(data) }),
+  actualizarLpan: (lpanId: number, datos: { work_package?: string | null; fecha?: string | null; sdd?: string | null; estado?: string | null; liberado?: string | null; pagado?: string | null }) =>
+    request<LpanRegistro>(`/lpan/${lpanId}`, { method: "PUT", body: JSON.stringify(datos) }),
   borrarLpan: (lpanId: number) => request(`/lpan/${lpanId}`, { method: "DELETE" }),
+  bdxExcelUrl: (binderId: number, periodo: string) =>
+    `${BASE}/binders/${binderId}/lpan/bdx-excel?periodo=${encodeURIComponent(periodo)}`,
 };
 
 // ── Claims BDX (bordereau de siniestros por binder) ──
@@ -262,6 +266,8 @@ export interface ConsultoriaContrato {
   moneda: string;
   cuenta_bancaria_id?: number | null;
   cuenta_bancaria_nombre?: string | null;
+  dia_facturacion?: number | null;
+  aviso_dias_antes: number;
   estado: string;
   notas?: string | null;
   n_cobros: number;
@@ -285,6 +291,9 @@ export const consultoriaApi = {
   cobros: (id: number) => request<{ contrato_id: number; moneda: string; cobros: ConsultoriaCobro[] }>(`/consultoria/${id}/cobros`),
   generarCobro: (id: number, periodo: string) =>
     request(`/consultoria/${id}/cobros/generar`, { method: "POST", body: JSON.stringify({ periodo }) }),
+  generarFactura: (id: number, periodo: string) =>
+    request<{ recibo_id: number; numero: string; periodo: string; archivo: string }>(
+      `/consultoria/${id}/cobros/generar-factura`, { method: "POST", body: JSON.stringify({ periodo }) }),
 };
 
 // ── Cierre contable mensual ──
@@ -568,13 +577,24 @@ export function crud<TRead, TWrite>(collection: string) {
 export interface Aviso {
   tipo: string;
   severidad: string;
+  nivel: string;            // alto | medio | bajo (semáforo)
   titulo: string;
   detalle: string;
   binder_id: number | null;
+  contrato_id?: number | null;
+  periodo?: string | null;
   umr: string | null;
   periodos: string[];
   pagina: string | null;
 }
+export interface AvisoNivel {
+  tipo: string;
+  etiqueta: string;
+  nivel: string;
+}
 export const avisosApi = {
   listar: () => request<Aviso[]>(`/avisos`),
+  niveles: () => request<AvisoNivel[]>(`/avisos/niveles`),
+  fijarNivel: (tipo: string, nivel: string) =>
+    request<AvisoNivel>(`/avisos/niveles/${tipo}`, { method: "PUT", body: JSON.stringify({ nivel }) }),
 };

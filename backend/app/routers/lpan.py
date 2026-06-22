@@ -24,6 +24,7 @@ import zipfile
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session, load_only, selectinload
@@ -112,6 +113,67 @@ def _generar_fdo_docx(carpeta: str, broker_ref: str, ref1: str, umr: str | None,
                     vistos_tok.add(k)
 
     destino = os.path.join(carpeta, f"{broker_ref}.docx")
+    d.save(destino)
+    return destino
+
+
+def _nombre_lpan(agreement: str | None, periodo: str, section: int, risk_code: str) -> str:
+    """Nombre/Broker Ref 2 del LPAN (patrón histórico): '<UMR> <MM> BDX-S<sec>-<rc>-<MMAA>'
+    (p.ej. periodo 2019-07, PI0219CRO, S1, E7 -> 'PI0219 07 BDX-S1-E7-0719')."""
+    yyyy, mm = (periodo.split("-") + ["", ""])[:2]
+    return f"{_umr_part(agreement)} {mm} BDX-S{section}-{risk_code}-{mm}{yyyy[2:]}"
+
+
+def _num_lpan(v) -> str:
+    """Importe para el documento (formato inglés del LPAN: 1.234,56 -> '1,234.56')."""
+    return f"{_d(v):,.2f}"
+
+
+def _generar_lpan_docx(carpeta: str, nombre: str, signing: str | None, umr_part: str,
+                       umr: str | None, tipo: str, gross, brokerage, tax, net, moneda: str) -> str:
+    """Rellena la plantilla LPAN con las cifras reales del bloque y la guarda como '<nombre>.docx'
+    en `carpeta`. Devuelve la ruta del documento."""
+    import docx  # carga perezosa
+
+    plantilla = settings.lpan_plantilla
+    if not os.path.isfile(plantilla):
+        raise HTTPException(status_code=502, detail=f"No se encuentra la plantilla LPAN: {plantilla}")
+    if not carpeta or not os.path.isdir(carpeta):
+        raise HTTPException(status_code=400, detail=f"La carpeta indicada no existe: {carpeta!r}")
+
+    # La plantilla es .dotx; se convierte a .docx (cambiando el content-type) en un temporal.
+    tmp = os.path.join(tempfile.gettempdir(), "_lpan_plantilla.docx")
+    with zipfile.ZipFile(plantilla) as zin, zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as zo:
+        for it in zin.infolist():
+            data = zin.read(it.filename)
+            if it.filename == "[Content_Types].xml":
+                data = data.replace(b"wordprocessingml.template.main+xml", b"wordprocessingml.document.main+xml")
+            zo.writestr(it, data)
+
+    d = docx.Document(tmp)
+    todos = {"Premium": tipo, "Yes/No": "No"}
+    una_vez = {
+        "Bureau": signing or "", "BrokerRef1": umr_part, "BrokerRef2": nombre,
+        "Line": "", "Taxes": _num_lpan(tax), "GrossPremium": _num_lpan(gross),
+        "Brokerage": _num_lpan(brokerage), "OCurrency": moneda, "SCurrency": moneda,
+        "BureauPremium": _num_lpan(net), "UMR": umr or "",
+    }
+    vistos_tok: set[str] = set()
+    vistos_tc: set = set()
+    for t in d.tables:
+        for row in t.rows:
+            for cell in row.cells:
+                if cell._tc in vistos_tc:
+                    continue
+                vistos_tc.add(cell._tc)
+                k = cell.text.strip()
+                if k in todos:
+                    _set_celda(cell, todos[k])
+                elif k in una_vez:
+                    _set_celda(cell, una_vez[k] if k not in vistos_tok else "")
+                    vistos_tok.add(k)
+
+    destino = os.path.join(carpeta, f"{nombre}.docx")
     d.save(destino)
     return destino
 
@@ -239,6 +301,16 @@ class LpanCreate(BaseModel):
     section: int = 0
     periodo: str
     tipo: str = "PM"
+    carpeta: str | None = None   # si se indica, genera el documento Word del LPAN en esa carpeta
+
+
+class LpanUpdate(BaseModel):
+    work_package: str | None = None
+    fecha: dt.date | None = None       # Procesado
+    sdd: dt.date | None = None
+    estado: str | None = None
+    liberado: dt.date | None = None
+    pagado: dt.date | None = None
 
 
 # ──────────────────────────── Helpers ────────────────────────────
@@ -451,8 +523,10 @@ def borrar_fdo(fdo_id: int, db: Session = Depends(get_db)):
 
 @router.post("/binders/{binder_id}/lpan", response_model=LpanRead)
 def generar_lpan(binder_id: int, payload: LpanCreate, db: Session = Depends(get_db)):
-    """Genera el LPAN de (risk code, periodo): exige FDO con signing y todas las líneas cobradas."""
-    _binder_o_404(binder_id, db)
+    """Genera el LPAN de (risk code, periodo): exige FDO con signing y todas las líneas cobradas.
+    Nombra el LPAN (Broker Ref 2), genera su documento Word (si se da carpeta) y lo deja en estado
+    «Work in Progress» con WP/Procesado/SDD por rellenar."""
+    b = _binder_o_404(binder_id, db)
     rc, per = (payload.risk_code or "").strip(), (payload.periodo or "").strip()
     sec = int(payload.section or 0)
     tipo = payload.tipo or "PM"
@@ -469,15 +543,78 @@ def generar_lpan(binder_id: int, payload: LpanCreate, db: Session = Depends(get_
         raise HTTPException(status_code=409, detail=f"Hay líneas sin cobrar en {rc} {per}: no se puede generar el LPAN.")
     if db.scalar(select(Lpan).where(Lpan.fdo_id == f.id, Lpan.periodo == per, Lpan.section == sec, Lpan.tipo == tipo)):
         raise HTTPException(status_code=409, detail=f"Ya existe un LPAN {tipo} para {rc} sección {sec} {per}.")
+
+    nombre = _nombre_lpan(b.agreement_number, per, sec, rc)
+    moneda = b.moneda or "EUR"
+    # Documento Word ANTES de crear el registro (si la carpeta falla, no deja huérfano).
+    if payload.carpeta:
+        _generar_lpan_docx(payload.carpeta, nombre, f.signing_number, _umr_part(b.agreement_number),
+                           b.umr, tipo, g["gross"], g["brk"], g["tax"], g["net"], moneda)
     lp = Lpan(
         fdo_id=f.id, binder_id=binder_id, risk_code=rc, section=sec, periodo=per, tipo=tipo,
         num_lineas=g["num"], gross_premium=g["gross"], brokerage=g["brk"], tax=g["tax"], net_premium=g["net"],
-        fecha=dt.date.today(), estado="Generado",
+        broker_ref1=b.agreement_number, broker_ref2=nombre, moneda=moneda,
+        work_package=None, fecha=None, sdd=None, estado="Work in Progress",
     )
     db.add(lp)
     db.commit()
     db.refresh(lp)
     return LpanRead.model_validate(lp, from_attributes=True)
+
+
+@router.put("/lpan/{lpan_id}", response_model=LpanRead)
+def actualizar_lpan(lpan_id: int, payload: LpanUpdate, db: Session = Depends(get_db)):
+    """Edita los campos de seguimiento del LPAN: Work Package, Procesado, SDD, estado (WP Status),
+    Liberado y Pagado."""
+    lp = db.get(Lpan, lpan_id)
+    if lp is None:
+        raise HTTPException(status_code=404, detail=f"LPAN {lpan_id} no encontrado")
+    for k, v in payload.model_dump(exclude_unset=True).items():
+        setattr(lp, k, v)
+    db.commit()
+    db.refresh(lp)
+    return LpanRead.model_validate(lp, from_attributes=True)
+
+
+@router.get("/binders/{binder_id}/lpan/bdx-excel")
+def bdx_excel(binder_id: int, periodo: str, db: Session = Depends(get_db)):
+    """Descarga el «BDX a procesar» del periodo (base provisional: las líneas de Premium del binder
+    en ese periodo). El formato final se ajustará según especificación."""
+    import io
+
+    import openpyxl
+
+    b = _binder_o_404(binder_id, db)
+    lineas = db.scalars(
+        select(BdxLinea)
+        .join(Bdx, BdxLinea.bdx_id == Bdx.id)
+        .where(Bdx.binder_id == binder_id, BdxLinea.incluido_en_premium.is_(True),
+               BdxLinea.premium_bdx.is_not(None))
+        .order_by(BdxLinea.section_no, BdxLinea.risk_code)
+    ).all()
+    lineas = [l for l in lineas if l.premium_bdx and l.premium_bdx.strftime("%Y-%m") == periodo]
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "BDX"
+    headers = ["Sección", "Risk Code", "Certificate", "Asegurado", "GWP Our Line",
+               "IPT", "Coverholder Comm.", "Brokerage", "Net a UW"]
+    ws.append(headers)
+    for l in lineas:
+        ws.append([
+            l.section_no, l.risk_code, l.certificate_ref, l.insured_name,
+            float(_d(l.total_gwp_our_line)), float(_d(l.total_taxes_levies)),
+            float(_d(l.commission_coverholder_amount)), float(_d(l.brokerage_amount)),
+            float(_d(l.final_net_premium_uw)),
+        ])
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    fname = f"BDX {b.umr or b.agreement_number or binder_id} {periodo}.xlsx"
+    return StreamingResponse(
+        buf, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+    )
 
 
 @router.delete("/lpan/{lpan_id}")

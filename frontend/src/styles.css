@@ -42,7 +42,19 @@ h1, h2, h3 { font-family: var(--fuente-titulo); font-weight: 600; color: var(--g
 .campana { position: relative; background: none; border: none; cursor: pointer; font-size: 20px; line-height: 1; padding: 4px 6px; }
 .campana-badge { background: var(--rojo); color: #fff; border-radius: 10px; font-size: 11px; font-weight: 700; padding: 1px 6px; margin-left: 3px; vertical-align: top; }
 .avisos-pop { position: absolute; right: 0; top: 36px; width: 360px; max-height: 60vh; overflow-y: auto; background: #fff; border: 1px solid var(--borde); border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,.15); z-index: 50; }
-.avisos-pop-head { padding: 10px 14px; font-weight: 700; border-bottom: 1px solid var(--borde); color: var(--gris); }
+.avisos-pop-head { padding: 10px 14px; font-weight: 700; border-bottom: 1px solid var(--borde); color: var(--gris); display: flex; align-items: center; justify-content: space-between; }
+.aviso-config-btn { font-size: 12px; font-weight: 600; }
+/* Semáforo de importancia */
+.nivel-dot { display: inline-block; width: 11px; height: 11px; border-radius: 50%; vertical-align: middle; border: none; padding: 0; }
+.nivel-alto { background: #e23b3b; }
+.nivel-medio { background: #e9a23b; }
+.nivel-bajo { background: #3bab57; }
+.aviso-niveles { display: flex; flex-direction: column; padding-bottom: 8px; }
+.aviso-nivel-fila { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 7px 14px; border-bottom: 1px solid var(--gris-claro); }
+.aviso-nivel-et { font-size: 12.5px; color: var(--gris); }
+.aviso-nivel-sel { display: flex; gap: 7px; }
+.aviso-nivel-sel .nivel-dot { width: 16px; height: 16px; cursor: pointer; opacity: .35; outline: 2px solid transparent; }
+.aviso-nivel-sel .nivel-dot.nivel-on { opacity: 1; outline-color: rgba(0,0,0,.25); outline-offset: 1px; }
 .avisos-vacio { padding: 16px; color: var(--gris-medio); }
 .avisos-lista { display: flex; flex-direction: column; }
 .aviso-item { display: flex; flex-direction: column; gap: 2px; text-align: left; background: none; border: none; border-bottom: 1px solid var(--gris-claro); padding: 9px 14px; cursor: pointer; }
@@ -309,6 +321,30 @@ tr.fila-vence td { background: #f1a0a0; }
   text-align: right;
 }
 .num-input .inp-num:focus { outline: none; border-color: var(--naranja); box-shadow: 0 0 0 3px rgba(224, 122, 90, 0.25); }
+.num-input.center .inp-num { text-align: center; }
+/* Botones radio Sí/No (campos refer/denial del siniestro) */
+.radio-sino { display: flex; gap: 18px; align-items: center; padding: 8px 0 4px; }
+.radio-sino label { display: inline-flex; align-items: center; gap: 5px; font-size: 14px; color: var(--gris); cursor: pointer; }
+.radio-sino input[type="radio"] { width: auto; margin: 0; cursor: pointer; accent-color: var(--naranja); }
+/* Totales del bloque Importes del siniestro */
+.sin-totales { margin-top: 8px; border-top: 1px solid var(--borde); padding-top: 8px; }
+.sin-total-fila { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }
+.sin-total-fila > div { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding: 4px 0; }
+.sin-total-fila span { font-size: 13px; color: var(--gris); }
+.sin-total-fila b { font-size: 14px; color: var(--gris-osc, #333); }
+.sin-total-grande { grid-template-columns: 1fr; border-top: 1px solid var(--gris-claro); margin-top: 4px; }
+.sin-total-grande span { font-weight: 700; color: var(--naranja-osc); letter-spacing: .04em; }
+.sin-total-grande b { font-size: 16px; color: var(--naranja-osc); }
+/* Columna derecha (Importes + Notas) estirada para igualar el borde inferior del bloque Siniestro */
+.sin-cols { align-items: stretch; }
+.sin-cols > .recibo-col { display: flex; flex-direction: column; }
+.sin-notas { flex: 1 1 auto; display: flex; flex-direction: column; }
+.sin-notas .field { flex: 1; display: flex; flex-direction: column; margin-bottom: 0; }
+.sin-notas textarea { flex: 1; min-height: 90px; resize: vertical; max-width: 100%; }
+/* Cabecera de cada mes en el cuadro LPAN: título colapsable + botón Excel del BDX */
+.lpan-periodo-cab { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.lpan-periodo-cab h4 { margin: 0; }
+.lpan-periodo-cab a { text-decoration: none; }
 .num-suffix { color: var(--gris-medio); font-size: 14px; flex-shrink: 0; }
 /* En tablas, las celdas numéricas también van a la derecha */
 td.num, th.num { text-align: right; }
@@ -730,6 +766,14 @@ tr.fila-inactiva td { opacity: 0.55; }
 .diseno-barra { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; }
 .diseno-barra .sel { background: #f8e2d8; color: var(--naranja-osc); border-color: var(--naranja); font-weight: 600; }
 .campos-grid { display: grid; gap: 0 16px; }
+/* Filas cuyos campos rellenan su celda y pueden encogerse (sin scroll horizontal, anchos iguales). */
+.campos-fill { min-width: 0; }
+.campos-fill > .field { min-width: 0; }
+.campos-fill > .field input, .campos-fill > .field .num-input { width: 100%; min-width: 0; max-width: none; box-sizing: border-box; }
+/* Override de mayor especificidad: vence los topes max-width de .recibo-modal (200/150px). */
+.recibo-modal .campos-fill > .field input,
+.recibo-modal .campos-fill > .field input[type="date"],
+.recibo-modal .campos-fill > .field .num-input { width: 100%; min-width: 0; max-width: none; box-sizing: border-box; }
 .campo-full { grid-column: 1 / -1; }
 .grupo-cab { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .grupo-tools { display: flex; align-items: center; gap: 4px; }

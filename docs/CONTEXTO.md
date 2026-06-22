@@ -672,3 +672,53 @@ binder NO casa con el nombre de la lista; -25 vacío/no existe). Mejoras al impo
 - **Paginación** de GET /recibos y /siniestros (no urgente, cuando crezcan).
 - **Limpieza de código muerto** (CRUD BDX sin uso, `BdxTabla` duplica `TablaDatos`, helpers/CSS) — no
   hecha (lo de más riesgo).
+
+---
+
+## Sesión 22-23/06/2026 (equipo "ferna") — Avisos, Consultoría/Facturas, Siniestros, LPAN
+
+### Avisos: semáforo de importancia (3 niveles)
+- `Aviso` lleva `nivel` (alto/medio/bajo). Tabla nueva `aviso_niveles` (override por TIPO; si no hay
+  fila, nivel por defecto del catálogo `TIPOS_AVISO` en `avisos.py`). Endpoints `GET /avisos/niveles`
+  y `PUT /avisos/niveles/{tipo}`. La campana pinta un punto de color y tiene "⚙️ Importancia" para
+  editar el nivel por tipo. La lista de avisos se ordena por importancia.
+- Nuevo generador `factura_consultoria`: contratos activos cuyo próximo cobro toca facturar pronto
+  (≤ `aviso_dias_antes`, def. 5) y aún sin recibo.
+
+### Consultoría: facturación + factura Word
+- `consultoria_contratos`: nuevas columnas `dia_facturacion` y `aviso_dias_antes`.
+- `POST /consultoria/{id}/cobros/generar-factura`: crea el recibo si falta y genera el **Word de la
+  factura** desde `Plantilla Factura.dotx` (tokens del usuario: NumeroRecibo, Cliente, CIFCliente,
+  Banco, Cuenta…), guardado en `<facturas_dir>\<año>\Facturas Emitidas\<Cliente>\<numero> <Cliente>
+  <Mes>.docx`. Config nueva en `config.py`: `factura_plantilla`, `facturas_dir`. Botón "📄 Factura"
+  en el panel de Cobros. Cuenta bancaria del contrato o, si no, primera de Gastos activa.
+- NOTA: `python-docx` no estaba instalado en el venv (la generación de LPAN también habría fallado);
+  instalado (1.2.0).
+
+### Siniestros: rediseño del modal (SiniestroModal.tsx)
+- Referencia del título en naranja. Bloque "Información" reorganizado (Asegurado arriba; Certificate
+  + Sección/Risk Code centrados + Inicio/Fin riesgo en una línea; YOA oculto). **El bloque Información
+  NO es editable** (los campos de IDENT quedan siempre de solo lectura aunque se pulse Editar).
+- Estado = desplegable **Open/Closed**; "Cerrado" sólo visible si Closed. Bajo Estado: 1er aviso;
+  bajo Cerrado: Abierto. Descripción a ancho completo dentro de Siniestro. Refer/Denial = radio Sí/No
+  (normaliza 1/2/YES/N heredados → Sí/No). Importes "ind."→"indemnización"; totales (incurrido =
+  pagado+reservas) Total indemnización/Total fees y TOTAL. Bloque "Información" inferior renombrado a
+  **Notas**, bajo Importes, estirado hasta igualar el borde del bloque Siniestro.
+
+### LPAN: Generar LPAN ahora produce documento + seguimiento (lpan.py, LpanRow.tsx)
+- `generar_lpan`: nombra el LPAN (Broker Ref 2, patrón histórico
+  `<UMR> <MM> BDX-S<sec>-<rc>-<MMAA>`, el MM medio = mes del periodo), abre selector de carpeta y
+  **genera el Word** desde `Plantilla LPAN.dotx` **con cifras reales** (`_generar_lpan_docx`), y deja
+  el LPAN en estado **"Work in Progress"** con WP/Procesado/SDD por rellenar.
+- `PUT /lpan/{id}`: edita work_package, fecha (Procesado), sdd, estado, liberado, pagado.
+- `GET /binders/{id}/lpan/bdx-excel?periodo=`: descarga el "BDX a procesar" del mes (botón "⬇️ Excel
+  BDX" junto a cada mes). **PROVISIONAL**: hoy descarga las líneas de Premium del periodo; el formato
+  final está PENDIENTE de especificación del usuario.
+
+### Insurart consultoría (datos)
+- 2 contratos: id=3 (1.500, feb–may 2024, Finalizado, 3 recibos) e id=4 (2.000, jun 2024 indefinido,
+  Activo, 24 recibos). Borrado el contrato redundante id=2 vacío. 4 recibos anómalos sin enlazar.
+
+### PENDIENTES nuevos
+- **Excel "BDX a procesar"**: definir cómo se construye (ahora es placeholder con líneas de Premium).
+- Migración Alembic de esta sesión: `a7c9e1f3b5d2_facturas_avisos`.
