@@ -1344,7 +1344,9 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
               );
             })()}
             {lpanData.periodos.map((p) => {
-              const completo = p.secciones.length > 0 && p.secciones.every((s) => s.risk_codes.every((r) => r.lpan));
+              // Un bloque con prima 0 € (cobrado pero sin importe) no necesita LPAN.
+              const completo = p.secciones.length > 0 && p.secciones.every((s) =>
+                s.risk_codes.every((r) => r.lpan || Number(r.gross_premium) === 0));
               const abierto = periodoOverride[p.periodo] ?? !completo; // pendiente -> abierto por defecto
               return (
               <div key={p.periodo} className="recibo-box" style={{ marginBottom: 14 }}>
@@ -1391,6 +1393,8 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
                             <td>
                               {r.lpan ? (
                                 <span className="pill pill-cobrado" title={r.lpan.tipo}>{r.lpan.broker_ref2 || r.lpan.tipo}</span>
+                              ) : Number(r.gross_premium) === 0 ? (
+                                <span className="pill pill-pendiente" title="Prima neta 0 € (alta y devolución se netean): no requiere LPAN">Sin prima</span>
                               ) : (
                                 <button className="btn-secondary btn-sm"
                                   disabled={lpanBusy || !r.cobrado || !r.signing_number}
