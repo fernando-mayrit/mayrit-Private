@@ -149,18 +149,22 @@ export default function SiniestroModal({
         )}
       </div>
 
-      <div className="recibo-modal">
-        {/* ── Columna izquierda: Identificación ── */}
-        <div className="recibo-col">
-          <div className="recibo-box">
-            <h4>Identificación</h4>
-            <div className="campos-grid" style={{ gridTemplateColumns: "1fr 1fr" }}>
-              {IDENT.map(Campo)}
-            </div>
-          </div>
+      {/* ── Bloque Información: ancho completo ── */}
+      <div className="recibo-box">
+        <h4>Información</h4>
+        <div className="campos-grid" style={{ gridTemplateColumns: "1fr 1fr 1fr" }}>
+          {IDENT.map(Campo)}
         </div>
+        {TEXTOS.map((c) => (
+          <div className="field" key={c.key as string}>
+            <label>{c.label}</label>
+            <textarea rows={2} value={form[c.key as string]} disabled={bloqueado} onChange={(e) => set(c.key as string, e.target.value)} />
+          </div>
+        ))}
+      </div>
 
-        {/* ── Columna derecha: Siniestro + Importes ── */}
+      {/* ── Debajo, dos columnas: Siniestro · Importes ── */}
+      <div className="recibo-modal" style={{ marginTop: 12 }}>
         <div className="recibo-col">
           <div className="recibo-box">
             <h4>Siniestro</h4>
@@ -168,6 +172,8 @@ export default function SiniestroModal({
               {DETALLE.map(Campo)}
             </div>
           </div>
+        </div>
+        <div className="recibo-col">
           <div className="recibo-box">
             <h4>Importes</h4>
             <div className="campos-grid" style={{ gridTemplateColumns: "1fr 1fr" }}>
@@ -175,16 +181,6 @@ export default function SiniestroModal({
             </div>
           </div>
         </div>
-      </div>
-
-      <div className="recibo-box" style={{ marginTop: 12 }}>
-        <h4>Textos</h4>
-        {TEXTOS.map((c) => (
-          <div className="field" key={c.key as string}>
-            <label>{c.label}</label>
-            <textarea rows={2} value={form[c.key as string]} disabled={bloqueado} onChange={(e) => set(c.key as string, e.target.value)} />
-          </div>
-        ))}
       </div>
     </FormPanel>
   );
