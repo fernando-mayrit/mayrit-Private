@@ -40,6 +40,7 @@ const EMOJI: Record<string, string> = {
   cuentas: "🏧",
   usuarios: "👤",
   cierre: "🔒",
+  lpan: "📐",
   financiero: "💰",
   transferencias: "🔁",
   contabilidad: "📒",
@@ -56,6 +57,7 @@ type Page =
   | "triangulacion"
   | "ucr"
   | "recibos"
+  | "lpan"
   | "polizas"
   | "consultoria"
   | "comisiones"
@@ -101,6 +103,7 @@ const UCR: { id: Page; label: string }[] = [
 // Menú lateral: Facturación / Contabilidad (módulo propio, diferenciado del Negocio).
 const FACTURACION: { id: Page; label: string }[] = [
   { id: "recibos", label: "Recibos" },
+  { id: "lpan", label: "LPAN" },
   { id: "cierre", label: "Cierre Contable" },
 ];
 
@@ -319,6 +322,7 @@ export default function App() {
           {page === "binders" && <BindersPage />}
           {page === "programas" && <ProgramasPage />}
           {page === "recibos" && <RecibosPage />}
+          {page === "lpan" && <EnConstruccion titulo="LPAN" />}
           {page === "siniestros" && <SiniestrosPage />}
           {page === "triangulacion" && <TriangulacionPage />}
           {page === "ucr" && <EnConstruccion titulo="UCR" />}
