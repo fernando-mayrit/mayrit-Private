@@ -327,6 +327,8 @@ td.num, th.num { text-align: right; }
 .tri-comp tbody th { text-align: left; white-space: nowrap; font-weight: 600; }
 .tri-comp .tri-comp-bloque { border-left: 2px solid var(--borde); }
 .tri-comp thead th { background: var(--gris-claro); }
+/* Cuadro de la comparativa: altura acotada → barra horizontal SIEMPRE visible (no solo al bajar). */
+.tri-comp-scroll { max-height: calc(100vh - 220px); }
 
 /* Sub-cuadro amarillo con los dos ratios (Frecuencia + Siniestralidad), dentro de la columna. */
 .tot-ratios { margin-top: 6px; padding: 4px 8px; background: #fff6cc; border: 1px solid #e6cf6a; border-radius: 8px; }
