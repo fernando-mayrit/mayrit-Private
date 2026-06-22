@@ -15,9 +15,13 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..db import get_db
-from ..models.maestras import Bdx, BdxLinea, Binder, Recibo
+from ..models.maestras import Bdx, BdxLinea, Binder, Productor, Recibo
 
 router = APIRouter(tags=["Avisos"])
+
+# Productores que NO generan Recibo del Risk porque facturan por honorarios (módulo Consultoría),
+# no por comisión. Sus binders no deben avisar de "recibo pendiente".
+PRODUCTORES_SIN_RECIBO = {"insurart"}
 
 
 class Aviso(BaseModel):
@@ -48,12 +52,17 @@ def _risk_sin_recibo(db: Session) -> list[Aviso]:
         rec[bid].add(per)
 
     binders = {b.id: b for b in db.scalars(select(Binder)).all()}
+    prods = {p.id: (p.nombre or "").lower() for p in db.scalars(select(Productor)).all()}
     avisos: list[Aviso] = []
     for bid, periodos in risk.items():
+        b = binders.get(bid)
+        # Saltar productores de honorarios (no generan recibo del Risk).
+        nombre_prod = prods.get(b.productor_id, "") if b else ""
+        if any(x in nombre_prod for x in PRODUCTORES_SIN_RECIBO):
+            continue
         pendientes = sorted(periodos - rec.get(bid, set()))
         if not pendientes:
             continue
-        b = binders.get(bid)
         avisos.append(Aviso(
             tipo="risk_sin_recibo", severidad="warning",
             titulo="Recibo pendiente de generar",
