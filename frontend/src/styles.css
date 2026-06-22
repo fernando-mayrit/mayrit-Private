@@ -63,16 +63,16 @@ h1, h2, h3 { font-family: var(--fuente-titulo); font-weight: 600; color: var(--g
   border-right: 1px solid var(--borde);
   display: flex; flex-direction: column; overflow-y: auto;
 }
-.sidebar-nav { padding: 16px 10px; }
+.sidebar-nav { padding: 8px 10px; }
 .sidebar-bottom { margin-top: auto; border-top: 1px solid var(--borde); }  /* Configuración abajo del todo, separada */
-.nav-group { margin-bottom: 22px; }
+.nav-group { margin-bottom: 10px; }
 .nav-group:last-child { margin-bottom: 0; }
 .nav-group-cerrado { margin-bottom: 0; }
 /* Separador visible entre bloques del mismo panel (p. ej. Negocio / Facturación) */
-.nav-group + .nav-group { border-top: 1px solid var(--borde); padding-top: 16px; }
+.nav-group + .nav-group { border-top: 1px solid var(--borde); padding-top: 8px; }
 .nav-group-title {
-  font-size: 12px; letter-spacing: .06em; text-transform: uppercase;
-  color: var(--gris-medio); padding: 6px 12px; font-weight: 600;
+  font-size: 11px; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--gris-medio); padding: 3px 12px; font-weight: 600;
 }
 /* Variante desplegable (sólo Configuración): el título es un botón que pliega/despliega. */
 .nav-group-title-btn {
@@ -83,11 +83,11 @@ h1, h2, h3 { font-family: var(--fuente-titulo); font-weight: 600; color: var(--g
 .nav-group-title-btn:hover { background: var(--gris-claro); color: var(--gris); }
 .nav-chevron { font-size: 10px; width: 10px; flex-shrink: 0; line-height: 1; }
 .nav-item {
-  display: flex; align-items: center; gap: 9px; width: 100%; text-align: left;
-  background: none; border: none; cursor: pointer; padding: 9px 12px; border-radius: 8px;
-  font-size: 16px; color: var(--gris); font-family: var(--fuente-titulo);
+  display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
+  background: none; border: none; cursor: pointer; padding: 5px 12px; border-radius: 8px;
+  font-size: 13.5px; color: var(--gris); font-family: var(--fuente-titulo);
 }
-.nav-emoji { width: 20px; text-align: center; font-size: 16px; line-height: 1; flex-shrink: 0; }
+.nav-emoji { width: 18px; text-align: center; font-size: 14px; line-height: 1; flex-shrink: 0; }
 /* Ítems de Configuración (Ramos, Cuentas Bancarias): letra bastante más pequeña */
 .nav-item-sm { font-size: 12px; padding: 6px 12px; }
 .nav-item-sm .nav-emoji { font-size: 13px; }
