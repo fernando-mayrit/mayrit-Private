@@ -145,11 +145,15 @@ def _payload_binder(db: Session, b: Binder, seccion: int | None, risk_code: str 
                 "incurrido_actual": 0.0, "ibnr_sugerido": 0.0, "ultimate_sugerido": 0.0}
 
     sins = {s.id: s for s in db.scalars(select(Siniestro).where(Siniestro.binder_id == binder_id)).all()}
+    # Origen = mes de apertura del siniestro, pero NUNCA antes del inicio del binder (algunos
+    # bordereaux traen fechas de apertura erróneas anteriores a la vigencia, que ensuciarían el eje).
+    ef_mi = _mi(b.fecha_efecto.year, b.fecha_efecto.month) if b.fecha_efecto else None
     origen: dict[int, int] = {}
     for sid, lista in snaps.items():
         s = sins.get(sid)
         f = (s.date_opened if s else None) or (s.claim_first_advised if s else None)
-        origen[sid] = _mi(f.year, f.month) if f else lista[0][0]
+        o = _mi(f.year, f.month) if f else lista[0][0]
+        origen[sid] = max(o, ef_mi) if ef_mi is not None else o
 
     latest = max(mi for lista in snaps.values() for (mi, _, _) in lista)
     inicio_cand = list(origen.values()) + list(net_mi) + [latest]

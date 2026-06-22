@@ -88,7 +88,7 @@ const SINIESTROS: { id: Page; label: string }[] = [
 
 // Menú lateral: Triangulación (pendiente de configurar).
 const TRIANGULACION: { id: Page; label: string }[] = [
-  { id: "triangulacion", label: "Triangulación" },
+  { id: "triangulacion", label: "Triangulaciones" },
 ];
 
 // Menú lateral: Facturación / Contabilidad (módulo propio, diferenciado del Negocio).
