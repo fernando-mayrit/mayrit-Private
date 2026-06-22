@@ -2,8 +2,8 @@
 Avisos / tareas pendientes de la app. Se calculan AL VUELO desde los datos (no hay estado que
 mantener), así nunca se desincronizan. Cada generador añade avisos a la lista.
 
-Primer aviso: 'premium_sin_recibo' — periodos con Premium (incluido) cuyo Recibo aún no se ha
-generado (no se puede cobrar/liquidar/traspasar sin recibo).
+Primer aviso: 'risk_sin_recibo' — periodos con Risk BDX (líneas cuyo reporting_period_start cae en
+ese mes) cuyo Recibo aún no se ha generado. Si un mes no tiene Risk BDX, no se espera recibo.
 """
 from __future__ import annotations
 
@@ -31,16 +31,16 @@ class Aviso(BaseModel):
     pagina: str | None = None       # a dónde ir para resolverlo (p. ej. 'binders')
 
 
-def _premium_sin_recibo(db: Session) -> list[Aviso]:
-    # Periodos de Premium (incluido) por binder.
-    prem: dict[int, set[str]] = defaultdict(set)
-    for bid, pb in db.execute(
-        select(Bdx.binder_id, BdxLinea.premium_bdx)
+def _risk_sin_recibo(db: Session) -> list[Aviso]:
+    # Periodos de Risk BDX por binder (mes del reporting_period_start de las líneas Risk).
+    risk: dict[int, set[str]] = defaultdict(set)
+    for bid, rp in db.execute(
+        select(Bdx.binder_id, BdxLinea.reporting_period_start)
         .join(BdxLinea, BdxLinea.bdx_id == Bdx.id)
-        .where(BdxLinea.incluido_en_premium.is_(True), BdxLinea.premium_bdx.is_not(None))
+        .where(Bdx.tipo == "Risk", BdxLinea.reporting_period_start.is_not(None))
     ).all():
-        prem[bid].add(pb.strftime("%Y-%m"))
-    # Periodos con Recibo generado por binder.
+        risk[bid].add(rp.strftime("%Y-%m"))
+    # Periodos con Recibo generado por binder (el recibo se indexa por reporting period).
     rec: dict[int, set[str]] = defaultdict(set)
     for bid, per in db.execute(
         select(Recibo.binder_id, Recibo.periodo).where(Recibo.binder_id.is_not(None), Recibo.periodo.is_not(None))
@@ -49,15 +49,15 @@ def _premium_sin_recibo(db: Session) -> list[Aviso]:
 
     binders = {b.id: b for b in db.scalars(select(Binder)).all()}
     avisos: list[Aviso] = []
-    for bid, periodos in prem.items():
+    for bid, periodos in risk.items():
         pendientes = sorted(periodos - rec.get(bid, set()))
         if not pendientes:
             continue
         b = binders.get(bid)
         avisos.append(Aviso(
-            tipo="premium_sin_recibo", severidad="warning",
+            tipo="risk_sin_recibo", severidad="warning",
             titulo="Recibo pendiente de generar",
-            detalle=f"{b.umr if b else ''}: faltan recibos de {', '.join(pendientes)}",
+            detalle=f"{b.umr if b else ''}: hay Risk BDX sin recibo en {', '.join(pendientes)}",
             binder_id=bid, umr=b.umr if b else None, periodos=pendientes, pagina="binders",
         ))
     avisos.sort(key=lambda a: a.umr or "")
@@ -68,5 +68,5 @@ def _premium_sin_recibo(db: Session) -> list[Aviso]:
 def listar_avisos(db: Session = Depends(get_db)):
     """Lista de avisos/tareas pendientes (calculados al vuelo)."""
     avisos: list[Aviso] = []
-    avisos += _premium_sin_recibo(db)
+    avisos += _risk_sin_recibo(db)
     return avisos
