@@ -56,6 +56,11 @@ export const siniestrosApi = {
       `/binders/${binderId}/siniestros/import`,
       { method: "POST" }
     ),
+  actualizar: (id: number, datos: Partial<import("./types").Siniestro>) =>
+    request<import("./types").Siniestro>(`/siniestros/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(datos),
+    }),
 };
 
 // ── Claims BDX (bordereau de siniestros por binder) ──

@@ -3,6 +3,7 @@ import { siniestrosApi, exportarXlsx, type RatiosBase } from "../api";
 import type { Siniestro } from "../types";
 import PageHeader from "../components/PageHeader";
 import FormPanel from "../components/FormPanel";
+import SiniestroModal from "../components/SiniestroModal";
 import TablaDatos, { type Col } from "../components/TablaDatos";
 import { fmtMiles, fmtFechaES, estadoSiniestroClase } from "../format";
 
@@ -65,6 +66,7 @@ export default function SiniestrosPage() {
   const [exportando, setExportando] = useState(false);
   const [expCols, setExpCols] = useState<Set<string>>(new Set());
   const [expSaving, setExpSaving] = useState(false);
+  const [editando, setEditando] = useState<Siniestro | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -226,8 +228,22 @@ export default function SiniestrosPage() {
             columnas={COLS}
             defaultKeys={DEFAULT_KEYS}
             storageKey={STORAGE_KEY}
+            rowAction={(s) => (
+              <button className="btn-link" onClick={() => setEditando(s)}>Editar</button>
+            )}
           />
         </>
+      )}
+
+      {editando && (
+        <SiniestroModal
+          siniestro={editando}
+          onClose={() => setEditando(null)}
+          onSaved={(s) => {
+            setItems((arr) => arr.map((x) => (x.id === s.id ? { ...x, ...s } : x)));
+            setEditando(null);
+          }}
+        />
       )}
 
       {exportando && (

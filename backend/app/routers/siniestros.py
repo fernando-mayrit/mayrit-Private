@@ -173,6 +173,23 @@ def ratios(db: Session = Depends(get_db)):
     return {"total": total, "por_programa": por_programa}
 
 
+@router.put("/siniestros/{siniestro_id}", response_model=sch.SiniestroReadGlobal)
+def actualizar(siniestro_id: int, datos: sch.SiniestroUpdate, db: Session = Depends(get_db)):
+    """Edición manual de un siniestro. Solo aplica los campos enviados."""
+    s = db.get(Siniestro, siniestro_id)
+    if s is None:
+        raise HTTPException(status_code=404, detail=f"Siniestro {siniestro_id} no encontrado")
+    for k, v in datos.model_dump(exclude_unset=True).items():
+        setattr(s, k, v)
+    db.commit()
+    db.refresh(s)
+    out = sch.SiniestroReadGlobal.model_validate(s)
+    out.binder_umr = s.binder.umr if s.binder else None
+    out.binder_agreement = s.binder.agreement_number if s.binder else None
+    out.binder_programa = s.binder.programa.nombre if (s.binder and s.binder.programa) else None
+    return out
+
+
 @router.get("/binders/{binder_id}/siniestros", response_model=list[sch.SiniestroRead])
 def listar(binder_id: int, db: Session = Depends(get_db)):
     return db.scalars(
