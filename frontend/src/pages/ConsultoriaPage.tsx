@@ -167,7 +167,7 @@ export default function ConsultoriaPage() {
   return (
     <div className="container lista-page">
       <PageHeader emoji="💼" title="Consultoría" />
-      <div className="toolbar" style={{ marginBottom: 8 }}>
+      <div className="toolbar" style={{ marginBottom: 8, justifyContent: "flex-end" }}>
         <button className="btn-primary" onClick={abrirNuevo}>＋ Nuevo contrato</button>
       </div>
       {error && <div className="error">{error}</div>}
