@@ -903,3 +903,48 @@ class ClaimsPresentacion(Base):
     fecha_presentacion: Mapped[dt.date | None] = mapped_column(Date)
     usuario: Mapped[str | None] = mapped_column(String(120))
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class Tarea(Base):
+    """Tarea recurrente manual enganchada a un binder. La recurrencia se ajusta a la VIGENCIA del
+    binder: arranca en `fecha_inicio` (o la fecha de efecto del binder) y se repite con su frecuencia
+    hasta el vencimiento del binder. Cada ocurrencia se marca 'Hecha' (registro en TareaHecha)."""
+
+    __tablename__ = "tareas"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    binder_id: Mapped[int] = mapped_column(ForeignKey("binders.id", ondelete="CASCADE"), index=True)
+    titulo: Mapped[str] = mapped_column(String(200))
+    descripcion: Mapped[str | None] = mapped_column(Text)
+    # Única / Mensual / Trimestral / Semestral / Anual / Personalizada (cada N meses → intervalo_meses)
+    frecuencia: Mapped[str] = mapped_column(String(20))
+    intervalo_meses: Mapped[int | None] = mapped_column(Integer)
+    fecha_inicio: Mapped[dt.date | None] = mapped_column(Date)   # ancla (None = fecha de efecto del binder)
+    aviso_dias_antes: Mapped[int] = mapped_column(Integer, server_default=text("5"), default=5)
+    estado: Mapped[str] = mapped_column(String(20), server_default="Activa", default="Activa")  # Activa | Pausada | Finalizada
+
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    binder: Mapped["Binder"] = relationship()
+    hechas: Mapped[list["TareaHecha"]] = relationship(
+        back_populates="tarea", cascade="all, delete-orphan", order_by="TareaHecha.fecha_ocurrencia"
+    )
+
+
+class TareaHecha(Base):
+    """Una ocurrencia concreta de una tarea, marcada como hecha (fecha de la ocurrencia + cuándo se hizo)."""
+
+    __tablename__ = "tareas_hechas"
+    __table_args__ = (UniqueConstraint("tarea_id", "fecha_ocurrencia", name="uq_tarea_ocurrencia"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    tarea_id: Mapped[int] = mapped_column(ForeignKey("tareas.id", ondelete="CASCADE"), index=True)
+    fecha_ocurrencia: Mapped[dt.date] = mapped_column(Date)   # fecha (calendario) de la ocurrencia
+    fecha_hecha: Mapped[dt.date] = mapped_column(Date)        # cuándo se marcó hecha
+    notas: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    tarea: Mapped["Tarea"] = relationship(back_populates="hechas")

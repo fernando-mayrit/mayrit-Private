@@ -297,6 +297,38 @@ export const consultoriaApi = {
       `/consultoria/${id}/cobros/generar-factura`, { method: "POST", body: JSON.stringify({ periodo }) }),
 };
 
+// ── Tareas recurrentes manuales por binder ──
+export interface Tarea {
+  id: number;
+  binder_id: number;
+  titulo: string;
+  descripcion?: string | null;
+  frecuencia: string;
+  intervalo_meses?: number | null;
+  fecha_inicio?: string | null;
+  aviso_dias_antes: number;
+  estado: string;
+  n_ocurrencias: number;
+  n_hechas: number;
+  proxima?: string | null;
+}
+export interface TareaOcurrencia {
+  fecha: string;
+  hecha: boolean;
+  fecha_hecha?: string | null;
+  notas?: string | null;
+  estado: string;   // hecha | vencida | pendiente | futura
+}
+export const tareasApi = {
+  list: (binderId: number) => request<Tarea[]>(`/binders/${binderId}/tareas`),
+  crear: (binderId: number, d: unknown) => request<Tarea>(`/binders/${binderId}/tareas`, { method: "POST", body: JSON.stringify(d) }),
+  editar: (id: number, d: unknown) => request<Tarea>(`/tareas/${id}`, { method: "PUT", body: JSON.stringify(d) }),
+  borrar: (id: number) => request(`/tareas/${id}`, { method: "DELETE" }),
+  ocurrencias: (id: number) => request<{ tarea_id: number; titulo: string; ocurrencias: TareaOcurrencia[] }>(`/tareas/${id}/ocurrencias`),
+  marcarHecha: (id: number, body: { fecha_ocurrencia: string; fecha_hecha?: string | null; notas?: string | null; deshacer?: boolean }) =>
+    request(`/tareas/${id}/hecha`, { method: "POST", body: JSON.stringify(body) }),
+};
+
 // ── Cierre contable mensual ──
 export interface CierreMes {
   mes: number;

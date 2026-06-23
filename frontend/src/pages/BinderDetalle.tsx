@@ -10,6 +10,7 @@ import SiniestroModal from "../components/SiniestroModal";
 import LpanFdoRow from "../components/LpanFdoRow";
 import LpanRow from "../components/LpanRow";
 import PremiumMatch from "../components/PremiumMatch";
+import TareasBinder from "../components/TareasBinder";
 import ConfirmDialog from "../components/ConfirmDialog";
 import FormPanel from "../components/FormPanel";
 import type { ReactNode } from "react";
@@ -101,7 +102,7 @@ const SIN_DEFAULT = [
 ];
 
 export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBack: () => void }) {
-  const [tab, setTab] = useState<"datos" | "bloqueo" | "bdx" | "lpan" | "premium" | "calculos" | "recibos" | "siniestros" | "claimsbdx" | "triangulacion">("bdx");
+  const [tab, setTab] = useState<"datos" | "bloqueo" | "bdx" | "lpan" | "premium" | "calculos" | "recibos" | "siniestros" | "claimsbdx" | "triangulacion" | "tareas">("bdx");
 
   // ── BDX (uno por binder) ──
   const [bdxs, setBdxs] = useState<Bdx[]>([]);
@@ -709,6 +710,9 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
         <button className={"tab" + (tab === "triangulacion" ? " active" : "")} onClick={() => setTab("triangulacion")}>
           Triangulación
         </button>
+        <button className={"tab" + (tab === "tareas" ? " active" : "")} onClick={() => setTab("tareas")}>
+          Tareas
+        </button>
       </div>
 
       {error && <div className="error">⚠ {error}</div>}
@@ -1096,6 +1100,8 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
           );
         })()
       )}
+
+      {tab === "tareas" && <TareasBinder binderId={binder.id} />}
 
       {tab === "recibos" && (
         <>

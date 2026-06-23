@@ -16,7 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..db import get_db
-from ..models.maestras import AvisoNivel, Bdx, BdxLinea, Binder, ConsultoriaContrato, Poliza, Productor, Recibo
+from ..models.maestras import AvisoNivel, Bdx, BdxLinea, Binder, ConsultoriaContrato, Poliza, Productor, Recibo, Tarea
 
 router = APIRouter(tags=["Avisos"])
 
@@ -33,6 +33,7 @@ TIPOS_AVISO: dict[str, dict] = {
     "binder_sin_renovar":  {"etiqueta": "Binder por vencer sin renovar", "defecto": "alto"},
     "risk_sin_recibo":     {"etiqueta": "Recibo pendiente de generar", "defecto": "medio"},
     "poliza_sin_renovar":  {"etiqueta": "Póliza por vencer sin renovar", "defecto": "medio"},
+    "tarea_pendiente":     {"etiqueta": "Tarea de binder pendiente", "defecto": "medio"},
 }
 
 
@@ -205,6 +206,32 @@ def _aplicar_niveles(db: Session, avisos: list[Aviso]) -> list[Aviso]:
     return avisos
 
 
+def _tareas_pendientes(db: Session) -> list[Aviso]:
+    """Tareas (recurrentes manuales) activas con alguna ocurrencia pendiente cuyo aviso ya saltó."""
+    from .tareas import _ocurrencias, _debida   # lazy: evita import circular
+
+    hoy = dt.date.today()
+    binders = {b.id: b for b in db.scalars(select(Binder)).all()}
+    avisos: list[Aviso] = []
+    for t in db.scalars(select(Tarea).where(Tarea.estado == "Activa")).all():
+        b = binders.get(t.binder_id)
+        if not b:
+            continue
+        hechas = {h.fecha_ocurrencia for h in t.hechas}
+        pend = [f for f in _ocurrencias(t, b) if f not in hechas and _debida(t, f, hoy, False)]
+        if not pend:
+            continue
+        f0 = min(pend)
+        avisos.append(Aviso(
+            tipo="tarea_pendiente", severidad="warning",
+            titulo="Tarea de binder pendiente",
+            detalle=f"{b.umr or b.agreement_number} · {t.titulo}: pendiente desde {f0.strftime('%d/%m/%Y')}"
+                    + (f" (+{len(pend) - 1})" if len(pend) > 1 else ""),
+            binder_id=b.id, umr=b.umr, periodos=[f.strftime('%Y-%m') for f in pend], pagina="binders",
+        ))
+    return avisos
+
+
 @router.get("/avisos", response_model=list[Aviso])
 def listar_avisos(db: Session = Depends(get_db)):
     """Lista de avisos/tareas pendientes (calculados al vuelo), ordenados por importancia."""
@@ -212,6 +239,7 @@ def listar_avisos(db: Session = Depends(get_db)):
     avisos += _facturas_consultoria(db)
     avisos += _risk_sin_recibo(db)
     avisos += _vencimientos_sin_renovar(db)
+    avisos += _tareas_pendientes(db)
     return _aplicar_niveles(db, avisos)
 
 
