@@ -44,7 +44,7 @@ def _ocurrencias(t: Tarea, binder: Binder) -> list[dt.date]:
     paso = _paso(t)
     if paso <= 0:
         return [inicio]
-    fin = binder.fecha_vencimiento or _add_months(inicio, 120)
+    fin = t.fecha_fin or binder.fecha_vencimiento or _add_months(inicio, 120)
     out, k = [], 0
     while k < 1200:
         f = _add_months(inicio, k * paso)
@@ -60,10 +60,59 @@ def _debida(t: Tarea, f: dt.date, hoy: dt.date, hecha: bool) -> bool:
     return hecha or (f - dt.timedelta(days=int(t.aviso_dias_antes or 0)) <= hoy)
 
 
+# ── Auto-creación por plazos: tareas Risk/Premium/Claims derivadas del intervalo+plazo de BDX ──
+# (categoría, campo intervalo del binder, campo plazo del binder, título)
+_BDX_AUTO = [
+    ("Risk", "risk_bdx_intervalo", "risk_bdx_plazo", "Presentar Risk BDX"),
+    ("Premium", "premium_bdx_intervalo", "premium_bdx_plazo", "Presentar Premium BDX"),
+    ("Claims", "claims_bdx_intervalo", "claims_bdx_plazo", "Presentar Claims BDX"),
+]
+
+
+def _sincronizar_binder(db: Session, binder: Binder) -> dict:
+    """Crea/actualiza las tareas AUTO (Risk/Premium/Claims) de un binder a partir de su intervalo+plazo
+    de BDX. Idempotente: una tarea auto por (binder, categoría). Las fechas de cada ocurrencia son las
+    FECHAS LÍMITE (fin del periodo + plazo). No pisa el aviso ni el estado que el usuario haya ajustado."""
+    if not binder.fecha_efecto:
+        return {"creadas": 0, "actualizadas": 0}
+    creadas = actualizadas = 0
+    for categoria, c_int, c_plazo, titulo in _BDX_AUTO:
+        frecuencia = getattr(binder, c_int, None)
+        if frecuencia not in PASO_MESES:        # sin intervalo válido -> no se genera esa categoría
+            continue
+        plazo = int(getattr(binder, c_plazo, None) or 0)
+        paso = PASO_MESES[frecuencia]
+        inicio = _add_months(binder.fecha_efecto, paso) + dt.timedelta(days=plazo)   # 1ª fecha límite
+        # Nº de periodos = cuántos arrancan dentro de la vigencia. El fin se fija en la enésima
+        # ocurrencia (mismo paso que _ocurrencias) para que entren TODOS los periodos sin sobrar.
+        if binder.fecha_vencimiento:
+            n = 0
+            while _add_months(binder.fecha_efecto, n * paso) <= binder.fecha_vencimiento:
+                n += 1
+            fin = _add_months(inicio, max(n - 1, 0) * paso)
+        else:
+            fin = None
+        t = db.scalar(select(Tarea).where(
+            Tarea.binder_id == binder.id, Tarea.origen == "auto", Tarea.categoria == categoria))
+        if t:
+            t.titulo, t.frecuencia, t.fecha_inicio, t.fecha_fin = titulo, frecuencia, inicio, fin
+            actualizadas += 1
+        else:
+            db.add(Tarea(
+                binder_id=binder.id, titulo=titulo, categoria=categoria, origen="auto",
+                descripcion=f"Generada del BDX del binder. Fecha límite = fin de periodo + {plazo} días.",
+                frecuencia=frecuencia, fecha_inicio=inicio, fecha_fin=fin,
+                aviso_dias_antes=7, estado="Activa"))
+            creadas += 1
+    db.commit()
+    return {"creadas": creadas, "actualizadas": actualizadas}
+
+
 # ── Schemas ──
 class TareaIn(BaseModel):
     titulo: str
     descripcion: str | None = None
+    categoria: str = "General"             # Risk / Premium / Claims / General
     frecuencia: str = "Mensual"
     intervalo_meses: int | None = None     # para frecuencia 'Personalizada'
     fecha_inicio: dt.date | None = None    # None = fecha de efecto del binder
@@ -74,6 +123,7 @@ class TareaIn(BaseModel):
 class TareaUpdate(BaseModel):
     titulo: str | None = None
     descripcion: str | None = None
+    categoria: str | None = None
     frecuencia: str | None = None
     intervalo_meses: int | None = None
     fecha_inicio: dt.date | None = None
@@ -87,9 +137,12 @@ class TareaRead(BaseModel):
     binder_id: int
     titulo: str
     descripcion: str | None = None
+    categoria: str = "General"
+    origen: str = "manual"
     frecuencia: str
     intervalo_meses: int | None = None
     fecha_inicio: dt.date | None = None
+    fecha_fin: dt.date | None = None
     aviso_dias_antes: int
     estado: str
     binder_umr: str | None = None
@@ -138,6 +191,26 @@ def crear(binder_id: int, payload: TareaIn, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(t)
     return _serializar(db, t)
+
+
+@router.post("/tareas/sincronizar-auto")
+def sincronizar_todas(db: Session = Depends(get_db)):
+    """Genera/actualiza las tareas automáticas (Risk/Premium/Claims) de TODOS los binders desde su BDX."""
+    binders = db.scalars(select(Binder)).all()
+    creadas = actualizadas = 0
+    for b in binders:
+        r = _sincronizar_binder(db, b)
+        creadas += r["creadas"]; actualizadas += r["actualizadas"]
+    return {"binders": len(binders), "creadas": creadas, "actualizadas": actualizadas}
+
+
+@router.post("/binders/{binder_id}/tareas/sincronizar-auto")
+def sincronizar_binder(binder_id: int, db: Session = Depends(get_db)):
+    """Genera/actualiza las tareas automáticas (Risk/Premium/Claims) de un binder desde su BDX."""
+    b = db.get(Binder, binder_id)
+    if b is None:
+        raise HTTPException(status_code=404, detail=f"Binder {binder_id} no encontrado")
+    return _sincronizar_binder(db, b)
 
 
 @router.put("/tareas/{tarea_id}", response_model=TareaRead)

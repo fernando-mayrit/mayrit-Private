@@ -303,9 +303,12 @@ export interface Tarea {
   binder_id: number;
   titulo: string;
   descripcion?: string | null;
+  categoria: string;
+  origen: string;
   frecuencia: string;
   intervalo_meses?: number | null;
   fecha_inicio?: string | null;
+  fecha_fin?: string | null;
   aviso_dias_antes: number;
   estado: string;
   binder_umr?: string | null;
@@ -331,6 +334,8 @@ export const tareasApi = {
   ocurrencias: (id: number) => request<{ tarea_id: number; titulo: string; ocurrencias: TareaOcurrencia[] }>(`/tareas/${id}/ocurrencias`),
   marcarHecha: (id: number, body: { fecha_ocurrencia: string; fecha_hecha?: string | null; notas?: string | null; deshacer?: boolean }) =>
     request(`/tareas/${id}/hecha`, { method: "POST", body: JSON.stringify(body) }),
+  sincronizarTodas: () => request<{ binders: number; creadas: number; actualizadas: number }>("/tareas/sincronizar-auto", { method: "POST" }),
+  sincronizarBinder: (binderId: number) => request<{ creadas: number; actualizadas: number }>(`/binders/${binderId}/tareas/sincronizar-auto`, { method: "POST" }),
 };
 
 // ── Cierre contable mensual ──

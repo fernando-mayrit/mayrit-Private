@@ -916,10 +916,15 @@ class Tarea(Base):
     binder_id: Mapped[int] = mapped_column(ForeignKey("binders.id", ondelete="CASCADE"), index=True)
     titulo: Mapped[str] = mapped_column(String(200))
     descripcion: Mapped[str | None] = mapped_column(Text)
+    # Categoría: Risk / Premium / Claims / General. Las tres primeras pueden auto-generarse del binder.
+    categoria: Mapped[str] = mapped_column(String(20), server_default="General", default="General")
+    # Origen: 'manual' (creada a mano) o 'auto' (generada del intervalo+plazo de BDX del binder).
+    origen: Mapped[str] = mapped_column(String(10), server_default="manual", default="manual")
     # Única / Mensual / Trimestral / Semestral / Anual / Personalizada (cada N meses → intervalo_meses)
     frecuencia: Mapped[str] = mapped_column(String(20))
     intervalo_meses: Mapped[int | None] = mapped_column(Integer)
     fecha_inicio: Mapped[dt.date | None] = mapped_column(Date)   # ancla (None = fecha de efecto del binder)
+    fecha_fin: Mapped[dt.date | None] = mapped_column(Date)      # fin (None = vencimiento del binder)
     aviso_dias_antes: Mapped[int] = mapped_column(Integer, server_default=text("5"), default=5)
     estado: Mapped[str] = mapped_column(String(20), server_default="Activa", default="Activa")  # Activa | Pausada | Finalizada
 

@@ -12,6 +12,7 @@ import FormPanel from "./FormPanel";
 
 const bindersApi = crud<Binder, unknown>("/binders");
 const FRECUENCIAS = ["Única", "Mensual", "Trimestral", "Semestral", "Anual", "Personalizada"];
+const CATEGORIAS = ["Risk", "Premium", "Claims", "General"];
 
 type Form = {
   agencia_id: string;     // solo para la cascada al crear (global)
@@ -19,6 +20,7 @@ type Form = {
   binder_id: string;
   titulo: string;
   descripcion: string;
+  categoria: string;
   frecuencia: string;
   intervalo_meses: string;
   fecha_inicio: string;
@@ -26,8 +28,8 @@ type Form = {
   estado: string;
 };
 const VACIO: Form = {
-  agencia_id: "", programa_id: "", binder_id: "", titulo: "", descripcion: "", frecuencia: "Mensual",
-  intervalo_meses: "1", fecha_inicio: "", aviso_dias_antes: "5", estado: "Activa",
+  agencia_id: "", programa_id: "", binder_id: "", titulo: "", descripcion: "", categoria: "General",
+  frecuencia: "Mensual", intervalo_meses: "1", fecha_inicio: "", aviso_dias_antes: "5", estado: "Activa",
 };
 
 const PILL: Record<string, [string, string]> = {
@@ -36,6 +38,11 @@ const PILL: Record<string, [string, string]> = {
   pendiente: ["pill-parcial", "Pendiente"],
   futura: ["pill-anulado", "Futura"],
 };
+// Pill y orden por categoría (Risk → Premium → Claims → General).
+const CAT_PILL: Record<string, string> = {
+  Risk: "pill-parcial", Premium: "pill-cobrado", Claims: "pill-pendiente", General: "pill-anulado",
+};
+const CAT_ORDEN: Record<string, number> = { Risk: 0, Premium: 1, Claims: 2, General: 3 };
 
 const colACMP = (a: string, b: string) => a.localeCompare(b, "es");
 
@@ -47,6 +54,8 @@ export default function TareasBinder({ binderId }: { binderId?: number }) {
   const [saving, setSaving] = useState(false);
 
   const [editId, setEditId] = useState<number | "nuevo" | null>(null);
+  const [autoEdit, setAutoEdit] = useState(false);   // se está editando una tarea automática
+  const [sincronizando, setSincronizando] = useState(false);
   const [form, setForm] = useState<Form>(VACIO);
   const [formIni, setFormIni] = useState<Form>(VACIO);
 
@@ -96,16 +105,26 @@ export default function TareasBinder({ binderId }: { binderId?: number }) {
 
   function abrirNuevo() {
     const f = { ...VACIO, binder_id: esGlobal ? "" : String(binderId) };
-    setForm(f); setFormIni(f); setEditId("nuevo");
+    setForm(f); setFormIni(f); setEditId("nuevo"); setAutoEdit(false);
+  }
+  async function sincronizar() {
+    if (!confirm("Generar/actualizar las tareas automáticas (Risk/Premium/Claims) desde el BDX de cada binder?")) return;
+    setSincronizando(true); setError(null);
+    try {
+      const r = esGlobal ? await tareasApi.sincronizarTodas() : await tareasApi.sincronizarBinder(binderId!);
+      await cargar();
+      alert(`Tareas automáticas — creadas: ${r.creadas}, actualizadas: ${r.actualizadas}.`);
+    } catch (e) { setError((e as Error).message); } finally { setSincronizando(false); }
   }
   function abrirEdicion(t: Tarea) {
     const f: Form = {
       agencia_id: "", programa_id: "", binder_id: String(t.binder_id), titulo: t.titulo,
-      descripcion: t.descripcion ?? "", frecuencia: t.frecuencia,
+      descripcion: t.descripcion ?? "", categoria: t.categoria || "General", frecuencia: t.frecuencia,
       intervalo_meses: t.intervalo_meses == null ? "1" : String(t.intervalo_meses),
       fecha_inicio: t.fecha_inicio ?? "", aviso_dias_antes: String(t.aviso_dias_antes ?? 5), estado: t.estado,
     };
     setForm(f); setFormIni(f); setEditId(t.id);
+    setAutoEdit(t.origen === "auto");
   }
 
   async function guardar() {
@@ -116,6 +135,7 @@ export default function TareasBinder({ binderId }: { binderId?: number }) {
     const payload = {
       titulo: form.titulo.trim(),
       descripcion: form.descripcion.trim() || null,
+      categoria: form.categoria,
       frecuencia: form.frecuencia,
       intervalo_meses: form.frecuencia === "Personalizada" ? (Number(form.intervalo_meses) || 1) : null,
       fecha_inicio: form.fecha_inicio || null,
@@ -152,8 +172,11 @@ export default function TareasBinder({ binderId }: { binderId?: number }) {
     } catch (e) { setError((e as Error).message); } finally { setBusyOc(null); }
   }
 
-  // Ordena por próxima pendiente (más urgente primero; las sin próxima al final).
-  const porProxima = (a: Tarea, b: Tarea) => (a.proxima ?? "9999").localeCompare(b.proxima ?? "9999");
+  // Ordena por categoría (Risk → Premium → Claims → General) y, dentro, por próxima pendiente.
+  const porProxima = (a: Tarea, b: Tarea) => {
+    const c = (CAT_ORDEN[a.categoria] ?? 9) - (CAT_ORDEN[b.categoria] ?? 9);
+    return c !== 0 ? c : (a.proxima ?? "9999").localeCompare(b.proxima ?? "9999");
+  };
 
   // Vista global agrupada en bloques: Agencia → Programa → Binder → tareas.
   const bloques = useMemo(() => {
@@ -184,12 +207,13 @@ export default function TareasBinder({ binderId }: { binderId?: number }) {
   const tablaDe = (ts: Tarea[]) => (
     <table className="compacto" style={{ width: "100%" }}>
       <thead>
-        <tr><th>Tarea</th><th>Frecuencia</th><th>Estado</th><th>Próxima pendiente</th><th className="num">Hechas</th><th></th></tr>
+        <tr><th>Cat.</th><th>Tarea</th><th>Frecuencia</th><th>Estado</th><th>Próxima pendiente</th><th className="num">Hechas</th><th></th></tr>
       </thead>
       <tbody>
         {ts.map((t) => (
           <tr key={t.id}>
-            <td>{t.titulo}</td>
+            <td><span className={`pill ${CAT_PILL[t.categoria] ?? "pill-anulado"}`}>{t.categoria}</span></td>
+            <td>{t.titulo}{t.origen === "auto" && <span className="hint" style={{ marginLeft: 6 }}>· auto</span>}</td>
             <td>{t.frecuencia === "Personalizada" ? `Cada ${t.intervalo_meses} meses` : t.frecuencia}</td>
             <td>{t.estado}</td>
             <td>{t.proxima ? fmtFechaES(t.proxima) : "—"}</td>
@@ -207,7 +231,11 @@ export default function TareasBinder({ binderId }: { binderId?: number }) {
 
   return (
     <>
-      <div className="toolbar" style={{ marginBottom: 8, justifyContent: "flex-end" }}>
+      <div className="toolbar" style={{ marginBottom: 8, justifyContent: "flex-end", gap: 8 }}>
+        <button className="btn-secondary" onClick={sincronizar} disabled={sincronizando}
+          title="Crea/actualiza las tareas Risk/Premium/Claims desde el intervalo y plazo de BDX del binder">
+          {sincronizando ? "Generando…" : "🔄 Generar automáticas"}
+        </button>
         <button className="btn-primary" onClick={abrirNuevo}>＋ Nueva tarea</button>
       </div>
       {error && <div className="error">{error}</div>}
@@ -288,6 +316,18 @@ export default function TareasBinder({ binderId }: { binderId?: number }) {
             <label>Descripción</label>
             <textarea rows={2} value={form.descripcion} onChange={(e) => set("descripcion", e.target.value)} />
           </div>
+          <div className="field">
+            <label>Categoría *</label>
+            <select value={form.categoria} onChange={(e) => set("categoria", e.target.value)}>
+              {CATEGORIAS.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+          {autoEdit && (
+            <div className="hint" style={{ marginBottom: 8 }}>
+              Tarea <b>automática</b>: la recurrencia y las fechas se recalculan desde el BDX del binder al
+              sincronizar. Puedes ajustar el aviso o pausarla; los demás cambios se sobrescribirán.
+            </div>
+          )}
           <div className="field">
             <label>Frecuencia *</label>
             <select value={form.frecuencia} onChange={(e) => set("frecuencia", e.target.value)}>
