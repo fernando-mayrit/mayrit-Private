@@ -298,10 +298,11 @@ def _campos_emision(db: Session, binder: Binder, periodo: str, lineas, fecha: dt
     honorarios = _q2(S("fees"))
     deduccion = _q2(cedida + retenida + honorarios)
     gwp100 = _q2(S("gross_written_premium"))         # GWP al 100% (para la participación)
-    adeudada = _q2(prima_bruta - cedida)             # pagador = Agencia
-    # Impuestos liquidados localmente (p. ej. agencias italianas): se excluyen de 'A Liquidar'.
+    # Impuestos liquidados localmente (p. ej. agencias italianas): se excluyen del cobro y de
+    # 'A Liquidar' (no se liquidan a través nuestro); prima_bruta/impuestos sí se reflejan.
     excl_imp = _impuestos_locales(db, binder.id)
-    liquidar = _q2(adeudada - retenida - (impuestos if excl_imp else D0))
+    adeudada = _q2(prima_bruta - cedida - (impuestos if excl_imp else D0))   # pagador = Agencia
+    liquidar = _q2(adeudada - retenida)
 
     def pct(x):
         return _q4(x / prima_neta * 100) if prima_neta else None
@@ -821,15 +822,14 @@ def _comp_linea(l: BdxLinea, excluir_impuestos: bool = False):
     """(adeudada, retenida, a_liquidar) de una línea, sobre our line (igual que en la emisión).
 
     Si `excluir_impuestos` (binders con impuestos liquidados localmente por la agencia, p. ej.
-    agencias italianas), el importe 'A Liquidar' NO incluye los impuestos: esos impuestos no se
-    liquidan a través de Mayrit. El cobro (adeudada) y el traspaso (retenida) no cambian."""
+    agencias italianas), los impuestos NO se cobran ni se liquidan a través de Mayrit: se excluyen
+    TANTO del cobro (adeudada) como de 'A Liquidar'. El traspaso (retenida) no cambia."""
     neta = l.total_gwp_our_line or D0
     imp = l.total_taxes_levies or D0
     cedida = l.commission_coverholder_amount or D0
     retenida = l.brokerage_amount or D0
-    adeudada = (neta + imp) - cedida
-    base_liquidar = adeudada - (imp if excluir_impuestos else D0)
-    return adeudada, retenida, base_liquidar - retenida
+    adeudada = (neta - cedida) if excluir_impuestos else (neta + imp - cedida)
+    return adeudada, retenida, adeudada - retenida
 
 
 def _impuestos_locales(db: Session, binder_id: int | None) -> bool:
