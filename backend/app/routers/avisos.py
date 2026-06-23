@@ -97,14 +97,15 @@ def _mas_un_mes(d: dt.date) -> dt.date:
 
 
 def _es_anual(efecto: dt.date | None, venc: dt.date | None) -> bool:
-    """Duración exactamente anual: efecto +1 año = día siguiente al vencimiento."""
+    """Duración ~anual. Acepta las dos convenciones de fin de término que conviven en los datos:
+    venc = efecto+1año-1día (efecto+1año == venc+1día) o venc = efecto+1año (mismo día)."""
     if not efecto or not venc:
         return False
     try:
         mas = efecto.replace(year=efecto.year + 1)
     except ValueError:       # 29-feb
         mas = efecto.replace(year=efecto.year + 1, day=28)
-    return mas == venc + dt.timedelta(days=1)
+    return mas == venc + dt.timedelta(days=1) or mas == venc
 
 
 def _vencimientos_sin_renovar(db: Session) -> list[Aviso]:
@@ -139,10 +140,11 @@ def _vencimientos_sin_renovar(db: Session) -> list[Aviso]:
             continue
         if not _es_anual(p.fecha_efecto, p.fecha_vencimiento):
             continue
+        # La renovación empieza el día siguiente al vencimiento o el mismo día (según convención).
         objetivo = p.fecha_vencimiento + dt.timedelta(days=1)
         renovada = any(
             x.id != p.id and _k(x.asegurado) == _k(p.asegurado) and _k(x.ramo) == _k(p.ramo)
-            and x.fecha_efecto == objetivo for x in polizas)
+            and x.fecha_efecto in (p.fecha_vencimiento, objetivo) for x in polizas)
         if renovada:
             continue
         avisos.append(Aviso(
