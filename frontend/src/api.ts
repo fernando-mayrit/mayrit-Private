@@ -316,7 +316,25 @@ export interface Tarea {
   programa?: string | null;
   n_ocurrencias: number;
   n_hechas: number;
+  n_pasos: number;
   proxima?: string | null;
+}
+export interface TareaPaso {
+  id: number;
+  tarea_id: number;
+  orden: number;
+  titulo: string;
+  regla_auto?: string | null;   // risk | premium | lpan | claims | null (manual)
+}
+export interface TareaPasoEstado {
+  paso_id: number;
+  titulo: string;
+  orden: number;
+  regla_auto?: string | null;
+  auto: boolean;                // marcado por la regla (dato presente), no a mano
+  periodo?: string | null;      // periodo YYYY-MM que comprueba la regla en esta entrega
+  hecho: boolean;
+  fecha_hecha?: string | null;
 }
 export interface TareaOcurrencia {
   fecha: string;
@@ -324,6 +342,7 @@ export interface TareaOcurrencia {
   fecha_hecha?: string | null;
   notas?: string | null;
   estado: string;   // hecha | vencida | pendiente | futura
+  pasos: TareaPasoEstado[];   // checklist de esta ocurrencia (vacío si la tarea no tiene pasos)
 }
 export const tareasApi = {
   listAll: () => request<Tarea[]>("/tareas"),
@@ -331,9 +350,20 @@ export const tareasApi = {
   crear: (binderId: number, d: unknown) => request<Tarea>(`/binders/${binderId}/tareas`, { method: "POST", body: JSON.stringify(d) }),
   editar: (id: number, d: unknown) => request<Tarea>(`/tareas/${id}`, { method: "PUT", body: JSON.stringify(d) }),
   borrar: (id: number) => request(`/tareas/${id}`, { method: "DELETE" }),
-  ocurrencias: (id: number) => request<{ tarea_id: number; titulo: string; ocurrencias: TareaOcurrencia[] }>(`/tareas/${id}/ocurrencias`),
+  ocurrencias: (id: number, incluirFuturas = false) =>
+    request<{ tarea_id: number; titulo: string; ocurrencias: TareaOcurrencia[] }>(
+      `/tareas/${id}/ocurrencias${incluirFuturas ? "?incluir_futuras=true" : ""}`),
   marcarHecha: (id: number, body: { fecha_ocurrencia: string; fecha_hecha?: string | null; notas?: string | null; deshacer?: boolean }) =>
     request(`/tareas/${id}/hecha`, { method: "POST", body: JSON.stringify(body) }),
+  // ── Pasos (checklist) ──
+  pasos: (id: number) => request<TareaPaso[]>(`/tareas/${id}/pasos`),
+  crearPaso: (id: number, body: { titulo: string; orden?: number; regla_auto?: string | null }) =>
+    request<TareaPaso>(`/tareas/${id}/pasos`, { method: "POST", body: JSON.stringify(body) }),
+  editarPaso: (pasoId: number, body: { titulo?: string; orden?: number; regla_auto?: string | null }) =>
+    request<TareaPaso>(`/pasos/${pasoId}`, { method: "PUT", body: JSON.stringify(body) }),
+  borrarPaso: (pasoId: number) => request(`/pasos/${pasoId}`, { method: "DELETE" }),
+  marcarPaso: (pasoId: number, body: { fecha_ocurrencia: string; deshacer?: boolean }) =>
+    request(`/pasos/${pasoId}/hecho`, { method: "POST", body: JSON.stringify(body) }),
   sincronizarTodas: () => request<{ binders: number; creadas: number; actualizadas: number }>("/tareas/sincronizar-auto", { method: "POST" }),
   sincronizarBinder: (binderId: number) => request<{ creadas: number; actualizadas: number }>(`/binders/${binderId}/tareas/sincronizar-auto`, { method: "POST" }),
   agenda: (p?: { binderId?: number; soloPendientes?: boolean }) => {
@@ -356,6 +386,9 @@ export interface TareaAgendaItem {
   fecha: string;
   estado: string;
   fecha_hecha?: string | null;
+  pasos: TareaPasoEstado[];
+  n_pasos: number;
+  n_pasos_hechos: number;
 }
 
 // ── Cierre contable mensual ──
@@ -644,6 +677,7 @@ export interface Aviso {
   titulo: string;
   detalle: string;
   binder_id: number | null;
+  limite_id?: number | null;
   contrato_id?: number | null;
   periodo?: string | null;
   umr: string | null;

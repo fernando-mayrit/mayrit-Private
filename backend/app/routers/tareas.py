@@ -8,14 +8,17 @@ from __future__ import annotations
 
 import calendar
 import datetime as dt
+from collections import defaultdict
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..db import get_db
-from ..models.maestras import Binder, Tarea, TareaHecha
+from ..models.maestras import (
+    Bdx, BdxLinea, Binder, ClaimsPresentacion, Lpan, Tarea, TareaHecha, TareaPaso, TareaPasoHecho,
+)
 
 router = APIRouter(tags=["Tareas"])
 
@@ -58,6 +61,102 @@ def _ocurrencias(t: Tarea, binder: Binder) -> list[dt.date]:
 def _debida(t: Tarea, f: dt.date, hoy: dt.date, hecha: bool) -> bool:
     """Una ocurrencia 'cuenta' si ya está hecha o su aviso ya ha saltado (aviso_dias_antes antes)."""
     return hecha or (f - dt.timedelta(days=int(t.aviso_dias_antes or 0)) <= hoy)
+
+
+# ── Auto-marcado de pasos: reglas y detección por dato ─────────────────────────────────────────
+# Cada regla mira si el DATO de un periodo (YYYY-MM) ya existe en la app, por binder.
+REGLAS_AUTO = {"risk", "premium", "lpan", "claims"}   # 'claims' = Claims procesado / Snapshot
+
+
+def _periodos_datos(db: Session, binder_ids: set[int]) -> dict[str, dict[int, set[str]]]:
+    """Por binder, los periodos (YYYY-MM) en los que CADA dato ya está cargado:
+    risk (Risk BDX), premium (líneas incluidas en Premium), lpan (LPAN generado), claims (presentado)."""
+    out: dict[str, dict[int, set[str]]] = {r: defaultdict(set) for r in REGLAS_AUTO}
+    if not binder_ids:
+        return out
+    # Risk: meses del reporting_period_start de las líneas de Risk BDX.
+    for bid, rp in db.execute(
+        select(Bdx.binder_id, BdxLinea.reporting_period_start)
+        .join(BdxLinea, BdxLinea.bdx_id == Bdx.id)
+        .where(Bdx.tipo == "Risk", Bdx.binder_id.in_(binder_ids), BdxLinea.reporting_period_start.is_not(None))
+    ).all():
+        out["risk"][bid].add(rp.strftime("%Y-%m"))
+    # Premium: meses de premium_bdx de las líneas incluidas en Premium.
+    for bid, pb in db.execute(
+        select(Bdx.binder_id, BdxLinea.premium_bdx)
+        .join(BdxLinea, BdxLinea.bdx_id == Bdx.id)
+        .where(Bdx.binder_id.in_(binder_ids), BdxLinea.incluido_en_premium.is_(True), BdxLinea.premium_bdx.is_not(None))
+    ).all():
+        out["premium"][bid].add(pb.strftime("%Y-%m"))
+    # LPAN: periodos con algún LPAN generado.
+    for bid, per in db.execute(
+        select(Lpan.binder_id, Lpan.periodo).where(Lpan.binder_id.in_(binder_ids), Lpan.periodo.is_not(None))
+    ).all():
+        out["lpan"][bid].add(per)
+    # Claims/Snapshot: periodos con presentación de Claims.
+    for bid, per in db.execute(
+        select(ClaimsPresentacion.binder_id, ClaimsPresentacion.periodo)
+        .where(ClaimsPresentacion.binder_id.in_(binder_ids), ClaimsPresentacion.periodo.is_not(None))
+    ).all():
+        out["claims"][bid].add(per)
+    return out
+
+
+def _periodo_de(binder: Binder, k: int, paso_meses: int) -> str | None:
+    """Periodo (YYYY-MM) que corresponde a la k-ésima entrega: el k-ésimo mes de cobertura desde el
+    efecto del binder. Plazo-independiente: la entrega de febrero cierra el dato de enero, etc."""
+    if not binder or not binder.fecha_efecto or paso_meses <= 0:
+        return None
+    return _add_months(binder.fecha_efecto, k * paso_meses).strftime("%Y-%m")
+
+
+def _auto_ok(paso: TareaPaso, periodo: str | None, datos: dict, binder_id: int) -> bool:
+    """¿El paso (con regla auto) está satisfecho por los datos del periodo?"""
+    if not paso.regla_auto or periodo is None:
+        return False
+    return periodo in datos.get(paso.regla_auto, {}).get(binder_id, set())
+
+
+def _fechas_hechas(t: Tarea, binder: Binder | None, datos: dict) -> set[dt.date]:
+    """Conjunto de fechas de ocurrencia que cuentan como HECHAS (en vivo):
+    - Sin pasos: las que tengan TareaHecha (marcado manual).
+    - Con pasos: las entregas en las que TODOS los pasos están hechos (manual o por regla auto)."""
+    if not binder:
+        return set()
+    ocs = _ocurrencias(t, binder)
+    if not t.pasos:
+        manual = {h.fecha_ocurrencia for h in t.hechas}
+        return {f for f in ocs if f in manual}
+    manual_pp: dict[dt.date, set[int]] = defaultdict(set)
+    for p in t.pasos:
+        for ph in p.hechos:
+            manual_pp[ph.fecha_ocurrencia].add(p.id)
+    paso = _paso(t)
+    done: set[dt.date] = set()
+    for k, f in enumerate(ocs):
+        periodo = _periodo_de(binder, k, paso)
+        if all(p.id in manual_pp[f] or _auto_ok(p, periodo, datos, binder.id) for p in t.pasos):
+            done.add(f)
+    return done
+
+
+def pendientes_para_cierre(db: Session, binder: Binder, categorias: set[str], reglas: set[str]) -> list[str]:
+    """Títulos de tareas ACTIVAS del binder 'relevantes' (por categoría de la tarea o por la regla auto
+    de alguno de sus pasos) que tengan ALGUNA ocurrencia pendiente (debida y no hecha). Se usa para
+    bloquear el cierre del binder. Lista vacía = no hay nada pendiente que impida cerrar."""
+    hoy = dt.date.today()
+    datos = _periodos_datos(db, {binder.id})
+    out: list[str] = []
+    ts = db.scalars(select(Tarea).where(
+        Tarea.binder_id == binder.id, Tarea.estado == "Activa")).all()
+    for t in ts:
+        relevante = (t.categoria in categorias) or any(p.regla_auto in reglas for p in t.pasos)
+        if not relevante:
+            continue
+        done = _fechas_hechas(t, binder, datos)
+        if any(f not in done and _debida(t, f, hoy, False) for f in _ocurrencias(t, binder)):
+            out.append(t.titulo)
+    return out
 
 
 # ── Auto-creación por plazos: tareas Risk/Premium/Claims derivadas del intervalo+plazo de BDX ──
@@ -150,21 +249,25 @@ class TareaRead(BaseModel):
     programa: str | None = None
     n_ocurrencias: int = 0      # ocurrencias debidas (hasta hoy/aviso)
     n_hechas: int = 0
+    n_pasos: int = 0            # nº de pasos del checklist (0 = sin checklist)
     proxima: dt.date | None = None   # próxima ocurrencia pendiente y debida
 
 
-def _serializar(db: Session, t: Tarea) -> TareaRead:
+def _serializar(db: Session, t: Tarea, datos: dict | None = None) -> TareaRead:
     binder = db.get(Binder, t.binder_id)
+    if datos is None:
+        datos = _periodos_datos(db, {t.binder_id})
     d = TareaRead.model_validate(t)
     d.binder_umr = (binder.umr or binder.agreement_number) if binder else None
     d.agencia = (binder.productor.nombre if binder and binder.productor else None)
     d.programa = (binder.programa.nombre if binder and binder.programa else None)
     ocs = _ocurrencias(t, binder) if binder else []
-    hechas = {h.fecha_ocurrencia for h in t.hechas}
+    hechas = _fechas_hechas(t, binder, datos)
     hoy = dt.date.today()
     debidas = [f for f in ocs if _debida(t, f, hoy, f in hechas)]
     d.n_ocurrencias = len(debidas)
     d.n_hechas = len([f for f in ocs if f in hechas])
+    d.n_pasos = len(t.pasos)
     d.proxima = next((f for f in ocs if f not in hechas and _debida(t, f, hoy, False)), None)
     return d
 
@@ -173,7 +276,42 @@ def _serializar(db: Session, t: Tarea) -> TareaRead:
 def listar_todas(db: Session = Depends(get_db)):
     """Todas las tareas de todos los binders (página global). Mismos datos que la pestaña del binder."""
     ts = db.scalars(select(Tarea).order_by(Tarea.id)).all()
-    return [_serializar(db, t) for t in ts]
+    datos = _periodos_datos(db, {t.binder_id for t in ts})
+    return [_serializar(db, t, datos) for t in ts]
+
+
+class PasoEstado(BaseModel):
+    paso_id: int
+    titulo: str
+    orden: int
+    regla_auto: str | None = None    # risk | premium | lpan | claims | None
+    auto: bool = False               # el paso se marcó por la regla (dato presente), no a mano
+    periodo: str | None = None       # periodo (YYYY-MM) que comprueba la regla en esta entrega
+    hecho: bool
+    fecha_hecha: dt.date | None = None
+
+
+def _pasos_de_ocurrencia(t: Tarea, binder: Binder | None, f: dt.date, k: int,
+                         datos: dict, manual: dict) -> tuple[list[PasoEstado], bool]:
+    """Estado de los pasos de UNA ocurrencia (fecha f, índice k) + si la entrega está completa.
+    `manual` = {(paso_id, fecha): TareaPasoHecho}. Un paso está hecho si está marcado a mano o si su
+    regla auto se cumple para el periodo de esa entrega."""
+    periodo = _periodo_de(binder, k, _paso(t)) if binder else None
+    pasos: list[PasoEstado] = []
+    completa = True
+    for p in t.pasos:
+        ph = manual.get((p.id, f))
+        auto_done = _auto_ok(p, periodo, datos, binder.id) if binder else False
+        hecho = ph is not None or auto_done
+        if not hecho:
+            completa = False
+        pasos.append(PasoEstado(
+            paso_id=p.id, titulo=p.titulo, orden=p.orden,
+            regla_auto=p.regla_auto, auto=(auto_done and ph is None),
+            periodo=periodo if p.regla_auto else None,
+            hecho=hecho, fecha_hecha=(ph.fecha_hecha if ph else None),
+        ))
+    return pasos, completa
 
 
 class AgendaItem(BaseModel):
@@ -188,6 +326,9 @@ class AgendaItem(BaseModel):
     fecha: dt.date            # fecha (límite) de la ocurrencia
     estado: str               # hecha | vencida | pendiente | futura
     fecha_hecha: dt.date | None = None
+    pasos: list[PasoEstado] = []   # checklist de esta entrega (vacío si la tarea no tiene pasos)
+    n_pasos: int = 0
+    n_pasos_hechos: int = 0
 
 
 @router.get("/tareas/agenda", response_model=list[AgendaItem])
@@ -198,15 +339,19 @@ def agenda(binder_id: int | None = None, solo_pendientes: bool = False, db: Sess
     q = select(Tarea).where(Tarea.estado != "Pausada")
     if binder_id is not None:
         q = q.where(Tarea.binder_id == binder_id)
+    tareas = db.scalars(q.order_by(Tarea.id)).all()
+    datos = _periodos_datos(db, {t.binder_id for t in tareas})
     out: list[AgendaItem] = []
-    for t in db.scalars(q.order_by(Tarea.id)).all():
+    for t in tareas:
         binder = db.get(Binder, t.binder_id)
         if not binder:
             continue
         hechas = {h.fecha_ocurrencia: h for h in t.hechas}
-        for f in _ocurrencias(t, binder):
+        manual = {(ph.paso_id, ph.fecha_ocurrencia): ph for p in t.pasos for ph in p.hechos}
+        done = _fechas_hechas(t, binder, datos)
+        for k, f in enumerate(_ocurrencias(t, binder)):
             h = hechas.get(f)
-            if h:
+            if f in done:
                 estado = "hecha"
             elif f < hoy:
                 estado = "vencida"
@@ -216,12 +361,14 @@ def agenda(binder_id: int | None = None, solo_pendientes: bool = False, db: Sess
                 estado = "futura"
             if solo_pendientes and estado not in ("vencida", "pendiente"):
                 continue
+            pasos, _ = _pasos_de_ocurrencia(t, binder, f, k, datos, manual)
             out.append(AgendaItem(
                 tarea_id=t.id, titulo=t.titulo, categoria=t.categoria, origen=t.origen,
                 binder_id=t.binder_id, binder_umr=(binder.umr or binder.agreement_number),
                 agencia=(binder.productor.nombre if binder.productor else None),
                 programa=(binder.programa.nombre if binder.programa else None),
                 fecha=f, estado=estado, fecha_hecha=(h.fecha_hecha if h else None),
+                pasos=pasos, n_pasos=len(pasos), n_pasos_hechos=sum(1 for p in pasos if p.hecho),
             ))
     out.sort(key=lambda x: (x.fecha, x.binder_umr or "", x.categoria))
     return out
@@ -230,7 +377,8 @@ def agenda(binder_id: int | None = None, solo_pendientes: bool = False, db: Sess
 @router.get("/binders/{binder_id}/tareas", response_model=list[TareaRead])
 def listar(binder_id: int, db: Session = Depends(get_db)):
     ts = db.scalars(select(Tarea).where(Tarea.binder_id == binder_id).order_by(Tarea.id)).all()
-    return [_serializar(db, t) for t in ts]
+    datos = _periodos_datos(db, {binder_id})
+    return [_serializar(db, t, datos) for t in ts]
 
 
 @router.post("/binders/{binder_id}/tareas", response_model=TareaRead, status_code=201)
@@ -292,20 +440,27 @@ class OcurrenciaOut(BaseModel):
     fecha_hecha: dt.date | None = None
     notas: str | None = None
     estado: str   # 'hecha' | 'vencida' | 'pendiente' | 'futura'
+    pasos: list[PasoEstado] = []   # checklist de esta ocurrencia (vacío si la tarea no tiene pasos)
 
 
 @router.get("/tareas/{tarea_id}/ocurrencias")
-def ocurrencias(tarea_id: int, db: Session = Depends(get_db)):
+def ocurrencias(tarea_id: int, incluir_futuras: bool = False, db: Session = Depends(get_db)):
+    """Por defecto solo las ocurrencias ya 'generadas' (hechas, vencidas o pendientes según su aviso);
+    las futuras se ocultan hasta que toquen. `incluir_futuras=true` las muestra todas."""
     t = db.get(Tarea, tarea_id)
     if t is None:
         raise HTTPException(status_code=404, detail=f"Tarea {tarea_id} no encontrada")
     binder = db.get(Binder, t.binder_id)
-    hechas = {h.fecha_ocurrencia: h for h in t.hechas}
+    datos = _periodos_datos(db, {t.binder_id})
+    hechas = {h.fecha_ocurrencia: h for h in t.hechas}    # TareaHecha (tareas sin pasos / notas)
+    manual = {(ph.paso_id, ph.fecha_ocurrencia): ph for p in t.pasos for ph in p.hechos}
     hoy = dt.date.today()
     out: list[OcurrenciaOut] = []
-    for f in _ocurrencias(t, binder):
+    for k, f in enumerate(_ocurrencias(t, binder) if binder else []):
+        pasos, completa = _pasos_de_ocurrencia(t, binder, f, k, datos, manual)
         h = hechas.get(f)
-        if h:
+        hecha = completa if t.pasos else (h is not None)
+        if hecha:
             estado = "hecha"
         elif f < hoy:
             estado = "vencida"
@@ -313,9 +468,12 @@ def ocurrencias(tarea_id: int, db: Session = Depends(get_db)):
             estado = "pendiente"
         else:
             estado = "futura"
+        if estado == "futura" and not incluir_futuras:
+            continue
         out.append(OcurrenciaOut(
-            fecha=f, hecha=h is not None,
-            fecha_hecha=h.fecha_hecha if h else None, notas=h.notas if h else None, estado=estado,
+            fecha=f, hecha=hecha,
+            fecha_hecha=(h.fecha_hecha if h else None), notas=(h.notas if h else None),
+            estado=estado, pasos=pasos,
         ))
     return {"tarea_id": t.id, "titulo": t.titulo, "ocurrencias": out}
 
@@ -327,11 +485,51 @@ class HechaIn(BaseModel):
     deshacer: bool = False
 
 
+def _recalcular_hecha(db: Session, t: Tarea, fecha: dt.date) -> bool:
+    """Para tareas CON pasos: el TareaHecha de una ocurrencia es DERIVADO → existe cuando todos los pasos
+    de esa fecha están hechos, y se borra en caso contrario. Devuelve si la ocurrencia queda hecha.
+    Para tareas sin pasos no hace nada (el marcado es manual)."""
+    n_pasos = db.scalar(select(func.count()).select_from(TareaPaso).where(TareaPaso.tarea_id == t.id))
+    if not n_pasos:
+        return False
+    n_hechos = db.scalar(
+        select(func.count()).select_from(TareaPasoHecho).join(TareaPaso)
+        .where(TareaPaso.tarea_id == t.id, TareaPasoHecho.fecha_ocurrencia == fecha))
+    h = db.scalar(select(TareaHecha).where(
+        TareaHecha.tarea_id == t.id, TareaHecha.fecha_ocurrencia == fecha))
+    completa = n_hechos >= n_pasos
+    if completa and h is None:
+        db.add(TareaHecha(tarea_id=t.id, fecha_ocurrencia=fecha, fecha_hecha=dt.date.today()))
+    elif not completa and h is not None:
+        db.delete(h)
+    return completa
+
+
 @router.post("/tareas/{tarea_id}/hecha", status_code=200)
 def marcar_hecha(tarea_id: int, payload: HechaIn, db: Session = Depends(get_db)):
     t = db.get(Tarea, tarea_id)
     if t is None:
         raise HTTPException(status_code=404, detail=f"Tarea {tarea_id} no encontrada")
+    # Con checklist: marcar/deshacer la ocurrencia = marcar/deshacer los pasos MANUALES (los pasos auto
+    # los gobierna el dato, no se tocan). La entrega 'hecha' se calcula en vivo (manual + auto).
+    if t.pasos:
+        for p in t.pasos:
+            if p.regla_auto:
+                continue
+            ph = db.scalar(select(TareaPasoHecho).where(
+                TareaPasoHecho.paso_id == p.id, TareaPasoHecho.fecha_ocurrencia == payload.fecha_ocurrencia))
+            if payload.deshacer:
+                if ph:
+                    db.delete(ph)
+            elif ph is None:
+                db.add(TareaPasoHecho(paso_id=p.id, fecha_ocurrencia=payload.fecha_ocurrencia,
+                                      fecha_hecha=payload.fecha_hecha or dt.date.today()))
+        db.flush()
+        binder = db.get(Binder, t.binder_id)
+        datos = _periodos_datos(db, {t.binder_id})
+        hecha = payload.fecha_ocurrencia in _fechas_hechas(t, binder, datos)
+        db.commit()
+        return {"ok": True, "hecha": hecha}
     h = db.scalar(select(TareaHecha).where(
         TareaHecha.tarea_id == tarea_id, TareaHecha.fecha_ocurrencia == payload.fecha_ocurrencia))
     if payload.deshacer:
@@ -348,3 +546,126 @@ def marcar_hecha(tarea_id: int, payload: HechaIn, db: Session = Depends(get_db))
         h.notas = payload.notas
     db.commit()
     return {"ok": True, "hecha": True}
+
+
+# ── Pasos (checklist) de una tarea ──────────────────────────────────────────────────────────────
+def _valida_regla(regla: str | None) -> str | None:
+    if regla in (None, ""):
+        return None
+    if regla not in REGLAS_AUTO:
+        raise HTTPException(status_code=422, detail=f"Regla auto inválida: {regla}")
+    return regla
+
+
+class PasoIn(BaseModel):
+    titulo: str
+    orden: int | None = None        # None = al final
+    regla_auto: str | None = None   # risk | premium | lpan | claims | None (manual)
+
+
+class PasoUpdate(BaseModel):
+    titulo: str | None = None
+    orden: int | None = None
+    regla_auto: str | None = None
+
+
+class PasoRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    tarea_id: int
+    orden: int
+    titulo: str
+    regla_auto: str | None = None
+
+
+@router.get("/tareas/{tarea_id}/pasos", response_model=list[PasoRead])
+def listar_pasos(tarea_id: int, db: Session = Depends(get_db)):
+    if db.get(Tarea, tarea_id) is None:
+        raise HTTPException(status_code=404, detail=f"Tarea {tarea_id} no encontrada")
+    return db.scalars(select(TareaPaso).where(TareaPaso.tarea_id == tarea_id)
+                      .order_by(TareaPaso.orden, TareaPaso.id)).all()
+
+
+@router.post("/tareas/{tarea_id}/pasos", response_model=PasoRead, status_code=201)
+def crear_paso(tarea_id: int, payload: PasoIn, db: Session = Depends(get_db)):
+    if db.get(Tarea, tarea_id) is None:
+        raise HTTPException(status_code=404, detail=f"Tarea {tarea_id} no encontrada")
+    if not payload.titulo.strip():
+        raise HTTPException(status_code=422, detail="El título del paso es obligatorio.")
+    orden = payload.orden
+    if orden is None:
+        ultimo = db.scalar(select(func.max(TareaPaso.orden)).where(TareaPaso.tarea_id == tarea_id))
+        orden = (ultimo or 0) + 1
+    p = TareaPaso(tarea_id=tarea_id, titulo=payload.titulo.strip(), orden=orden,
+                  regla_auto=_valida_regla(payload.regla_auto))
+    db.add(p)
+    db.commit()
+    db.refresh(p)
+    return p
+
+
+@router.put("/pasos/{paso_id}", response_model=PasoRead)
+def editar_paso(paso_id: int, payload: PasoUpdate, db: Session = Depends(get_db)):
+    p = db.get(TareaPaso, paso_id)
+    if p is None:
+        raise HTTPException(status_code=404, detail=f"Paso {paso_id} no encontrado")
+    for k, v in payload.model_dump(exclude_unset=True).items():
+        if k == "titulo" and v is not None:
+            v = v.strip() or p.titulo
+        if k == "regla_auto":
+            v = _valida_regla(v)
+        setattr(p, k, v)
+    db.commit()
+    db.refresh(p)
+    return p
+
+
+@router.delete("/pasos/{paso_id}", status_code=204)
+def borrar_paso(paso_id: int, db: Session = Depends(get_db)):
+    p = db.get(TareaPaso, paso_id)
+    if p is None:
+        raise HTTPException(status_code=404, detail=f"Paso {paso_id} no encontrado")
+    tarea_id = p.tarea_id
+    # Las fechas afectadas: si al quitar un paso una ocurrencia queda completa, recalculamos su 'hecha'.
+    fechas = {ph.fecha_ocurrencia for ph in p.hechos}
+    db.delete(p)
+    db.flush()
+    t = db.get(Tarea, tarea_id)
+    for f in fechas:
+        _recalcular_hecha(db, t, f)
+    db.commit()
+
+
+class PasoHechoIn(BaseModel):
+    fecha_ocurrencia: dt.date
+    fecha_hecha: dt.date | None = None
+    notas: str | None = None
+    deshacer: bool = False
+
+
+@router.post("/pasos/{paso_id}/hecho", status_code=200)
+def marcar_paso(paso_id: int, payload: PasoHechoIn, db: Session = Depends(get_db)):
+    """Marca/desmarca UN paso (manual) en UNA ocurrencia. Los pasos auto los gobierna el dato."""
+    p = db.get(TareaPaso, paso_id)
+    if p is None:
+        raise HTTPException(status_code=404, detail=f"Paso {paso_id} no encontrado")
+    if p.regla_auto:
+        raise HTTPException(status_code=409, detail="Paso automático: se marca solo cuando el dato existe.")
+    ph = db.scalar(select(TareaPasoHecho).where(
+        TareaPasoHecho.paso_id == paso_id, TareaPasoHecho.fecha_ocurrencia == payload.fecha_ocurrencia))
+    if payload.deshacer:
+        if ph:
+            db.delete(ph)
+    elif ph is None:
+        db.add(TareaPasoHecho(paso_id=paso_id, fecha_ocurrencia=payload.fecha_ocurrencia,
+                              fecha_hecha=payload.fecha_hecha or dt.date.today(), notas=payload.notas))
+    else:
+        ph.fecha_hecha = payload.fecha_hecha or dt.date.today()
+        ph.notas = payload.notas
+    db.flush()
+    t = db.get(Tarea, p.tarea_id)
+    binder = db.get(Binder, t.binder_id)
+    datos = _periodos_datos(db, {t.binder_id})
+    hecha = payload.fecha_ocurrencia in _fechas_hechas(t, binder, datos)
+    db.commit()
+    return {"ok": True, "paso_hecho": not payload.deshacer, "ocurrencia_hecha": hecha}

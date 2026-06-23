@@ -388,6 +388,15 @@ def editar(binder_id: int, payload: sch.BinderUpdate, db: Session = Depends(get_
                 detail=f"No se puede cerrar: quedan {sin_machear} línea(s) de Risk sin machear con "
                        "Premium. Inclúyelas en un Premium antes de cerrar.",
             )
+        # No se puede cerrar producción con tareas de Risk o Premium pendientes.
+        from .tareas import pendientes_para_cierre   # lazy: evita import circular
+        pend_rp = pendientes_para_cierre(db, b, {"Risk", "Premium"}, {"risk", "premium"})
+        if pend_rp:
+            raise HTTPException(
+                status_code=409,
+                detail="No se puede cerrar producción con tareas de Risk/Premium pendientes: "
+                       + ", ".join(pend_rp),
+            )
     # No se puede pasar a "Cerrado" (total) si quedan siniestros abiertos (sin fecha de cierre).
     # "Cerrado Producción" sí lo permite (los claims se siguen gestionando).
     if nuevo_estado == "Cerrado" and (b.estado or "") != "Cerrado":
@@ -400,6 +409,15 @@ def editar(binder_id: int, payload: sch.BinderUpdate, db: Session = Depends(get_
                 status_code=409,
                 detail=f"No se puede cerrar el binder: tiene {abiertos} siniestro(s) abierto(s) "
                        "(sin fecha de cierre). Ciérralos antes.",
+            )
+        # No se puede cerrar (total) con tareas de Claims pendientes.
+        from .tareas import pendientes_para_cierre   # lazy: evita import circular
+        pend_cl = pendientes_para_cierre(db, b, {"Claims"}, {"claims"})
+        if pend_cl:
+            raise HTTPException(
+                status_code=409,
+                detail="No se puede cerrar el binder con tareas de Claims pendientes: "
+                       + ", ".join(pend_cl),
             )
     for k, v in data.items():
         setattr(b, k, v)

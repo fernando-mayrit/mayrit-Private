@@ -33,6 +33,7 @@ _ORDEN_NIVEL = {"alto": 0, "medio": 1, "bajo": 2}
 TIPOS_AVISO: dict[str, dict] = {
     "factura_consultoria": {"etiqueta": "Factura de consultoría por emitir", "defecto": "alto"},
     "binder_sin_renovar":  {"etiqueta": "Binder por vencer sin renovar", "defecto": "alto"},
+    "limite_sin_notificar": {"etiqueta": "Límite de primas excedido sin notificar", "defecto": "alto"},
     "risk_sin_recibo":     {"etiqueta": "Recibo pendiente de generar", "defecto": "medio"},
     "poliza_sin_renovar":  {"etiqueta": "Póliza por vencer sin renovar", "defecto": "medio"},
     "tarea_pendiente":     {"etiqueta": "Tarea de binder pendiente", "defecto": "medio"},
@@ -48,6 +49,7 @@ class Aviso(BaseModel):
     titulo: str
     detalle: str
     binder_id: int | None = None
+    limite_id: int | None = None    # grupo de límite de primas (aviso 'limite_sin_notificar')
     contrato_id: int | None = None  # para avisos de consultoría
     periodo: str | None = None      # 'YYYY-MM' del cobro/factura (consultoría)
     umr: str | None = None
@@ -281,6 +283,46 @@ def _lpan_sin_procesar(db: Session) -> list[Aviso]:
     return avisos
 
 
+def _fmt_importe(v) -> str:
+    """Importe con separador de miles (es-ES), sin decimales si es entero."""
+    try:
+        n = float(v)
+    except (TypeError, ValueError):
+        return ""
+    return f"{n:,.0f}".replace(",", ".")
+
+
+def _limite_sin_notificar(db: Session) -> list[Aviso]:
+    """ROJO: grupos de Límite de Primas cuyo consumo ha alcanzado el umbral de notificación
+    (estado 'rojo' en la ficha del binder) y AÚN no se ha registrado la fecha de notificación
+    al mercado. Reutiliza el cálculo de consumo/estado de la ficha de binders (misma definición)."""
+    from .binders import _metricas_binders   # lazy: evita import circular
+
+    binders = list(db.scalars(select(Binder)).all())
+    met = _metricas_binders(db, binders)
+    avisos: list[Aviso] = []
+    for b in binders:
+        por_limite = met.get(b.id, {}).get("por_limite", {})
+        for lim in b.limites:
+            estado = por_limite.get(lim.id, {}).get("estado")
+            if estado != "rojo" or lim.fecha_notificacion is not None:
+                continue
+            pct = por_limite.get(lim.id, {}).get("consumo_pct")
+            tope = _fmt_importe(lim.limite_primas)
+            detalle = f"{b.umr or b.agreement_number}: producción al {pct}% del límite"
+            if tope:
+                detalle += f" ({tope})"
+            detalle += " — pendiente de notificar al mercado."
+            avisos.append(Aviso(
+                tipo="limite_sin_notificar", severidad="danger",
+                titulo="Límite de primas excedido sin notificar",
+                detalle=detalle,
+                binder_id=b.id, limite_id=lim.id, umr=b.umr, pagina="binders",
+            ))
+    avisos.sort(key=lambda a: a.umr or "")
+    return avisos
+
+
 def _aplicar_niveles(db: Session, avisos: list[Aviso]) -> list[Aviso]:
     """Rellena el nivel (semáforo) de cada aviso: override del usuario por tipo, o el de defecto."""
     overrides = {a.tipo: a.nivel for a in db.scalars(select(AvisoNivel)).all()}
@@ -292,16 +334,18 @@ def _aplicar_niveles(db: Session, avisos: list[Aviso]) -> list[Aviso]:
 
 def _tareas_pendientes(db: Session) -> list[Aviso]:
     """Tareas (recurrentes manuales) activas con alguna ocurrencia pendiente cuyo aviso ya saltó."""
-    from .tareas import _ocurrencias, _debida   # lazy: evita import circular
+    from .tareas import _ocurrencias, _debida, _fechas_hechas, _periodos_datos   # lazy: evita import circular
 
     hoy = dt.date.today()
     binders = {b.id: b for b in db.scalars(select(Binder)).all()}
+    tareas = db.scalars(select(Tarea).where(Tarea.estado == "Activa")).all()
+    datos = _periodos_datos(db, {t.binder_id for t in tareas})
     avisos: list[Aviso] = []
-    for t in db.scalars(select(Tarea).where(Tarea.estado == "Activa")).all():
+    for t in tareas:
         b = binders.get(t.binder_id)
         if not b:
             continue
-        hechas = {h.fecha_ocurrencia for h in t.hechas}
+        hechas = _fechas_hechas(t, b, datos)
         pend = [f for f in _ocurrencias(t, b) if f not in hechas and _debida(t, f, hoy, False)]
         if not pend:
             continue
@@ -321,6 +365,7 @@ def listar_avisos(db: Session = Depends(get_db)):
     """Lista de avisos/tareas pendientes (calculados al vuelo), ordenados por importancia."""
     avisos: list[Aviso] = []
     avisos += _facturas_consultoria(db)
+    avisos += _limite_sin_notificar(db)
     avisos += _risk_sin_recibo(db)
     avisos += _vencimientos_sin_renovar(db)
     avisos += _tareas_pendientes(db)

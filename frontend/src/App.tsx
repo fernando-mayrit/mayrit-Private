@@ -332,8 +332,16 @@ export default function App() {
           ))}
         </nav>
         <div className="header-avisos">
-          <button className="campana" title="Avisos / tareas pendientes" onClick={() => { if (!verAvisos) cargarAvisos(); setVerAvisos((v) => !v); }}>
-            🔔{avisos.length > 0 && <span className="campana-badge">{avisos.length}</span>}
+          <button
+            className={`campana${avisos.some((a) => a.nivel === "alto") ? " campana-alerta" : ""}`}
+            title="Avisos / tareas pendientes"
+            onClick={() => { if (!verAvisos) cargarAvisos(); setVerAvisos((v) => !v); }}
+          >
+            🔔{avisos.length > 0 && (
+              <span className={`campana-badge${avisos.some((a) => a.nivel === "alto") ? " campana-badge-alto" : ""}`}>
+                {avisos.length}
+              </span>
+            )}
           </button>
           {verAvisos && (
             <div className="avisos-pop">
@@ -369,7 +377,7 @@ export default function App() {
                   {avisos.map((a, i) => (
                     <button
                       key={i}
-                      className="aviso-item"
+                      className={`aviso-item nivel-borde-${a.nivel}`}
                       onClick={() => { if (a.pagina) ir(a.pagina as Page); setVerAvisos(false); }}
                     >
                       <span className="aviso-titulo">

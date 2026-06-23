@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { tareasApi, crud, type Tarea, type TareaOcurrencia, type TareaAgendaItem } from "../api";
+import { Fragment, useEffect, useMemo, useState } from "react";
+import { tareasApi, crud, type Tarea, type TareaOcurrencia, type TareaPasoEstado, type TareaAgendaItem } from "../api";
 import type { Binder } from "../types";
 import { fmtFechaES } from "../format";
 import FormPanel from "./FormPanel";
@@ -13,6 +13,15 @@ import FormPanel from "./FormPanel";
 const bindersApi = crud<Binder, unknown>("/binders");
 const FRECUENCIAS = ["Única", "Mensual", "Trimestral", "Semestral", "Anual", "Personalizada"];
 const CATEGORIAS = ["Risk", "Premium", "Claims", "General"];
+// Reglas de auto-marcado de un paso (se tacha solo cuando el dato del periodo existe en la app).
+const REGLAS_AUTO: { v: string; label: string }[] = [
+  { v: "", label: "Manual" },
+  { v: "risk", label: "Risk cargado" },
+  { v: "premium", label: "Premium cargado" },
+  { v: "lpan", label: "LPAN preparado" },
+  { v: "claims", label: "Claims/Snapshot" },
+];
+const reglaLabel = (r?: string | null) => REGLAS_AUTO.find((x) => x.v === (r || ""))?.label ?? "Manual";
 
 type Form = {
   agencia_id: string;     // solo para la cascada al crear (global)
@@ -62,6 +71,14 @@ export default function TareasBinder({ binderId }: { binderId?: number }) {
   const [ocDe, setOcDe] = useState<Tarea | null>(null);
   const [ocs, setOcs] = useState<TareaOcurrencia[]>([]);
   const [busyOc, setBusyOc] = useState<string | null>(null);
+  const [ocExpand, setOcExpand] = useState<string | null>(null);   // fecha de la ocurrencia con checklist abierto
+
+  // Pasos (checklist) editados DENTRO del formulario de la tarea. Se persisten al Guardar.
+  // Cada uno lleva su id si ya existe en el servidor; sin id = nuevo.
+  type PasoEdit = { id?: number; titulo: string; regla_auto?: string | null };
+  const [formPasos, setFormPasos] = useState<PasoEdit[]>([]);
+  const [pasosIni, setPasosIni] = useState<PasoEdit[]>([]);   // snapshot para detectar cambios / diff al guardar
+  const [nuevoPaso, setNuevoPaso] = useState("");
 
   const [vista, setVista] = useState<"bloques" | "mes">("bloques");
   const [soloPend, setSoloPend] = useState(true);
@@ -90,7 +107,10 @@ export default function TareasBinder({ binderId }: { binderId?: number }) {
   }, [vista, soloPend, binderId]);
 
   const set = (k: keyof Form, v: string) => setForm((s) => ({ ...s, [k]: v }));
-  const dirty = useMemo(() => JSON.stringify(form) !== JSON.stringify(formIni), [form, formIni]);
+  const dirty = useMemo(
+    () => JSON.stringify(form) !== JSON.stringify(formIni) || JSON.stringify(formPasos) !== JSON.stringify(pasosIni),
+    [form, formIni, formPasos, pasosIni]
+  );
 
   // ── Cascada Agencia → Programa → Binder (a partir de la lista de binders) ──
   const agencias = useMemo(() => {
@@ -118,6 +138,7 @@ export default function TareasBinder({ binderId }: { binderId?: number }) {
   function abrirNuevo() {
     const f = { ...VACIO, binder_id: esGlobal ? "" : String(binderId) };
     setForm(f); setFormIni(f); setEditId("nuevo"); setAutoEdit(false);
+    setFormPasos([]); setPasosIni([]); setNuevoPaso("");
   }
   async function sincronizar() {
     if (!confirm("Generar/actualizar las tareas automáticas (Risk/Premium/Claims) desde el BDX de cada binder?")) return;
@@ -128,7 +149,7 @@ export default function TareasBinder({ binderId }: { binderId?: number }) {
       alert(`Tareas automáticas — creadas: ${r.creadas}, actualizadas: ${r.actualizadas}.`);
     } catch (e) { setError((e as Error).message); } finally { setSincronizando(false); }
   }
-  function abrirEdicion(t: Tarea) {
+  async function abrirEdicion(t: Tarea) {
     const f: Form = {
       agencia_id: "", programa_id: "", binder_id: String(t.binder_id), titulo: t.titulo,
       descripcion: t.descripcion ?? "", categoria: t.categoria || "General", frecuencia: t.frecuencia,
@@ -137,12 +158,27 @@ export default function TareasBinder({ binderId }: { binderId?: number }) {
     };
     setForm(f); setFormIni(f); setEditId(t.id);
     setAutoEdit(t.origen === "auto");
+    setFormPasos([]); setPasosIni([]); setNuevoPaso("");
+    try {
+      const ps = (await tareasApi.pasos(t.id)).map((p) => ({ id: p.id, titulo: p.titulo, regla_auto: p.regla_auto ?? null }));
+      setFormPasos(ps); setPasosIni(ps);
+    } catch (e) { setError((e as Error).message); }
   }
 
   async function guardar() {
     if (!form.titulo.trim()) return setError("El título es obligatorio.");
     const bid = esGlobal ? Number(form.binder_id) : binderId!;
-    if (editId === "nuevo" && !bid) return setError("Elige Agencia, Programa y Binder.");
+    if (editId === "nuevo") {
+      // Al crear, todos los campos son obligatorios.
+      if (!bid) return setError("Elige Agencia, Programa y Binder.");
+      if (!form.categoria) return setError("La categoría es obligatoria.");
+      if (!form.frecuencia) return setError("La frecuencia es obligatoria.");
+      if (form.frecuencia === "Personalizada" && !(Number(form.intervalo_meses) >= 1))
+        return setError("Indica cada cuántos meses se repite.");
+      if (!form.fecha_inicio) return setError("La fecha de inicio es obligatoria.");
+      if (form.aviso_dias_antes.trim() === "" || Number.isNaN(Number(form.aviso_dias_antes)))
+        return setError("Indica los días de aviso.");
+    }
     setError(null); setSaving(true);
     const payload = {
       titulo: form.titulo.trim(),
@@ -155,11 +191,42 @@ export default function TareasBinder({ binderId }: { binderId?: number }) {
       estado: form.estado,
     };
     try {
-      if (editId === "nuevo") await tareasApi.crear(bid, payload);
-      else if (typeof editId === "number") await tareasApi.editar(editId, payload);
+      let tareaId: number;
+      if (editId === "nuevo") tareaId = (await tareasApi.crear(bid, payload)).id;
+      else if (typeof editId === "number") { await tareasApi.editar(editId, payload); tareaId = editId; }
+      else return;
+      await persistPasos(tareaId);
       setEditId(null);
       await cargar();
+      await recargarOcs();   // si el panel de ocurrencias de esta tarea está abierto, refrescarlo
+      if (vista === "mes") await cargarAgenda();
     } catch (e) { setError((e as Error).message); } finally { setSaving(false); }
+  }
+
+  // Sincroniza la lista de pasos del formulario contra el servidor: borra los quitados, crea los nuevos
+  // y actualiza título/orden de los cambiados. Conserva el id de los existentes (y con él su historial).
+  async function persistPasos(tareaId: number) {
+    const vivos = new Set(formPasos.filter((p) => p.id != null).map((p) => p.id));
+    for (const o of pasosIni) if (o.id != null && !vivos.has(o.id)) await tareasApi.borrarPaso(o.id);
+    for (let i = 0; i < formPasos.length; i++) {
+      const p = formPasos[i], orden = i + 1, titulo = p.titulo.trim();
+      if (!titulo) continue;
+      if (p.id == null) {
+        await tareasApi.crearPaso(tareaId, { titulo, orden, regla_auto: p.regla_auto || null });
+        continue;
+      }
+      const o = pasosIni.find((x) => x.id === p.id);
+      const movido = pasosIni.findIndex((x) => x.id === p.id) !== i;
+      const renombrado = !o || o.titulo !== titulo;
+      const reglaCambia = (o?.regla_auto ?? null) !== (p.regla_auto ?? null);
+      if (renombrado || movido || reglaCambia) {
+        await tareasApi.editarPaso(p.id, {
+          ...(renombrado ? { titulo } : {}),
+          ...(movido ? { orden } : {}),
+          ...(reglaCambia ? { regla_auto: p.regla_auto || null } : {}),
+        });
+      }
+    }
   }
   async function borrar() {
     if (typeof editId !== "number") return;
@@ -170,18 +237,62 @@ export default function TareasBinder({ binderId }: { binderId?: number }) {
   }
 
   async function abrirOc(t: Tarea) {
-    setOcDe(t);
+    setOcDe(t); setOcExpand(null); setOcs([]);
     try { setOcs((await tareasApi.ocurrencias(t.id)).ocurrencias); }
     catch (e) { setError((e as Error).message); }
+  }
+  // Despliegue inline: si la tarea ya está abierta, cierra; si no, la abre.
+  function toggleOc(t: Tarea) {
+    if (ocDe?.id === t.id) setOcDe(null);
+    else abrirOc(t);
+  }
+  async function recargarOcs() {
+    if (!ocDe) return;
+    setOcs((await tareasApi.ocurrencias(ocDe.id)).ocurrencias);
   }
   async function toggleHecha(o: TareaOcurrencia) {
     if (!ocDe) return;
     setBusyOc(o.fecha);
     try {
       await tareasApi.marcarHecha(ocDe.id, { fecha_ocurrencia: o.fecha, deshacer: o.hecha });
-      setOcs((await tareasApi.ocurrencias(ocDe.id)).ocurrencias);
+      await recargarOcs();
       await cargar();
     } catch (e) { setError((e as Error).message); } finally { setBusyOc(null); }
+  }
+  async function togglePaso(o: TareaOcurrencia, ps: TareaPasoEstado) {
+    if (!ocDe) return;
+    setBusyOc(o.fecha + ps.paso_id);
+    try {
+      await tareasApi.marcarPaso(ps.paso_id, { fecha_ocurrencia: o.fecha, deshacer: ps.hecho });
+      await recargarOcs();
+      await cargar();
+    } catch (e) { setError((e as Error).message); } finally { setBusyOc(null); }
+  }
+
+  // ── Editor de pasos (checklist) DENTRO del formulario (todo local; se guarda al pulsar Guardar) ──
+  function addPaso() {
+    const titulo = nuevoPaso.trim();
+    if (!titulo) return;
+    setFormPasos((s) => [...s, { titulo }]);
+    setNuevoPaso("");
+  }
+  function setPasoTitulo(i: number, titulo: string) {
+    setFormPasos((s) => s.map((p, k) => (k === i ? { ...p, titulo } : p)));
+  }
+  function setPasoRegla(i: number, regla: string) {
+    setFormPasos((s) => s.map((p, k) => (k === i ? { ...p, regla_auto: regla || null } : p)));
+  }
+  function delPaso(i: number) {
+    setFormPasos((s) => s.filter((_, k) => k !== i));
+  }
+  function moverPaso(i: number, dir: -1 | 1) {
+    const j = i + dir;
+    setFormPasos((s) => {
+      if (j < 0 || j >= s.length) return s;
+      const c = [...s];
+      [c[i], c[j]] = [c[j], c[i]];
+      return c;
+    });
   }
 
   // Ordena por categoría (Risk → Premium → Claims → General) y, dentro, por próxima pendiente.
@@ -216,18 +327,33 @@ export default function TareasBinder({ binderId }: { binderId?: number }) {
     }));
   }, [tareas, esGlobal]);
 
-  // Vista por mes: agrupa las ocurrencias (fechas límite) por mes natural.
+  // Vista por mes: agrupa las entregas por mes → categoría (Risk/Premium/Claims) → binder.
   const meses = useMemo(() => {
-    const m = new Map<string, TareaAgendaItem[]>();
+    const m = new Map<string, Map<string, Map<string, TareaAgendaItem[]>>>();
     for (const a of agenda) {
-      const k = a.fecha.slice(0, 7);   // YYYY-MM
-      if (!m.has(k)) m.set(k, []);
-      m.get(k)!.push(a);
+      const k = a.fecha.slice(0, 7);          // YYYY-MM
+      const cat = a.categoria || "General";
+      const bnd = a.binder_umr || "—";
+      if (!m.has(k)) m.set(k, new Map());
+      const cm = m.get(k)!;
+      if (!cm.has(cat)) cm.set(cat, new Map());
+      const bm = cm.get(cat)!;
+      if (!bm.has(bnd)) bm.set(bnd, []);
+      bm.get(bnd)!.push(a);
     }
-    return [...m.entries()].sort((x, y) => x[0].localeCompare(y[0])).map(([k, items]) => ({
-      mes: k,
-      items: items.sort((p, q) => p.fecha.localeCompare(q.fecha) || (CAT_ORDEN[p.categoria] ?? 9) - (CAT_ORDEN[q.categoria] ?? 9)),
-      pendientes: items.filter((i) => i.estado === "vencida" || i.estado === "pendiente").length,
+    const esPend = (i: TareaAgendaItem) => i.estado === "vencida" || i.estado === "pendiente";
+    return [...m.entries()].sort((x, y) => x[0].localeCompare(y[0])).map(([mes, cm]) => ({
+      mes,
+      pendientes: [...cm.values()].reduce((n, bm) => n + [...bm.values()].flat().filter(esPend).length, 0),
+      categorias: [...cm.entries()]
+        .sort((x, y) => (CAT_ORDEN[x[0]] ?? 9) - (CAT_ORDEN[y[0]] ?? 9))
+        .map(([cat, bm]) => ({
+          cat,
+          binders: [...bm.entries()].sort((x, y) => colACMP(x[0], y[0])).map(([binder, items]) => ({
+            binder,
+            items: items.sort((p, q) => p.fecha.localeCompare(q.fecha) || colACMP(p.titulo, q.titulo)),
+          })),
+        })),
     }));
   }, [agenda]);
   const mesLabel = (ym: string) => {
@@ -242,28 +368,131 @@ export default function TareasBinder({ binderId }: { binderId?: number }) {
       await Promise.all([cargar(), cargarAgenda()]);
     } catch (e) { setError((e as Error).message); } finally { setBusyOc(null); }
   }
+  async function togglePasoAgenda(a: TareaAgendaItem, ps: TareaPasoEstado) {
+    setBusyOc(a.tarea_id + a.fecha + ps.paso_id);
+    try {
+      await tareasApi.marcarPaso(ps.paso_id, { fecha_ocurrencia: a.fecha, deshacer: ps.hecho });
+      await Promise.all([cargar(), cargarAgenda()]);
+    } catch (e) { setError((e as Error).message); } finally { setBusyOc(null); }
+  }
+
+  // Lista de pasos (checklist) de una entrega. Los pasos auto salen bloqueados; los manuales se marcan.
+  const listaPasos = (
+    pasos: TareaPasoEstado[],
+    onToggle: (ps: TareaPasoEstado) => void,
+    busyKey: (ps: TareaPasoEstado) => string,
+  ) => (
+    <div style={{ display: "flex", flexDirection: "column", gap: 4, padding: "6px 0 6px 26px" }}>
+      {pasos.map((ps) => {
+        const esAuto = !!ps.regla_auto;
+        return (
+          <label key={ps.paso_id} style={{ display: "flex", alignItems: "center", gap: 6, cursor: esAuto ? "default" : "pointer" }}>
+            <input type="checkbox" checked={ps.hecho}
+              disabled={esAuto || busyOc === busyKey(ps)}
+              onChange={() => { if (!esAuto) onToggle(ps); }} />
+            <span style={{ textDecoration: ps.hecho ? "line-through" : "none", color: ps.hecho ? "var(--texto-suave, #888)" : undefined }}>
+              {ps.titulo}
+            </span>
+            {esAuto && (
+              <span className="hint" title={`Se marca solo: ${reglaLabel(ps.regla_auto)}${ps.periodo ? ` · periodo ${ps.periodo}` : ""}`}>
+                · 🔒 auto ({reglaLabel(ps.regla_auto)}{ps.periodo ? ` ${ps.periodo}` : ""}) {ps.hecho ? "✓" : "pendiente"}
+              </span>
+            )}
+            {!esAuto && ps.hecho && ps.fecha_hecha && <span className="hint">· {fmtFechaES(ps.fecha_hecha)}</span>}
+          </label>
+        );
+      })}
+    </div>
+  );
+
+  // Panel de ocurrencias (entregas) de la tarea abierta (ocDe). Se muestra inline, colgando de la fila.
+  const ocurrenciasPanel = () => (
+    <div className="tareas-oc-panel">
+      {ocs.length === 0 ? (
+        <div className="empty">No hay entregas pendientes ni pasadas.</div>
+      ) : (
+        <table className="compacto" style={{ width: "100%" }}>
+          <thead>
+            <tr><th>Fecha</th><th>Estado</th><th>Hecha el</th><th></th></tr>
+          </thead>
+          <tbody>
+            {[...ocs].reverse().map((o) => {
+              const [cls, txt] = PILL[o.estado] ?? ["pill-anulado", o.estado];
+              const pasos = o.pasos ?? [];
+              const tienePasos = pasos.length > 0;
+              const abierto = ocExpand === o.fecha;
+              const nHechos = pasos.filter((p) => p.hecho).length;
+              return (
+                <Fragment key={o.fecha}>
+                  <tr>
+                    <td style={{ whiteSpace: "nowrap" }}>
+                      {tienePasos && (
+                        <button className="btn-link btn-sm" style={{ marginRight: 4 }}
+                          onClick={() => setOcExpand(abierto ? null : o.fecha)} title="Ver pasos">
+                          {abierto ? "▾" : "▸"}
+                        </button>
+                      )}
+                      {fmtFechaES(o.fecha)}
+                    </td>
+                    <td>
+                      <span className={`pill ${cls}`}>{txt}</span>
+                      {tienePasos && <span className="hint" style={{ marginLeft: 6 }}>{nHechos}/{pasos.length}</span>}
+                    </td>
+                    <td>{o.fecha_hecha ? fmtFechaES(o.fecha_hecha) : "—"}</td>
+                    <td className="num" style={{ whiteSpace: "nowrap" }}>
+                      {o.hecha
+                        ? <button className="btn-link btn-sm" disabled={busyOc === o.fecha} onClick={() => toggleHecha(o)}>Deshacer</button>
+                        : <button className="btn-primary btn-sm" disabled={busyOc === o.fecha} onClick={() => toggleHecha(o)}>{busyOc === o.fecha ? "…" : tienePasos ? "Marcar todo" : "Marcar hecha"}</button>}
+                    </td>
+                  </tr>
+                  {tienePasos && abierto && (
+                    <tr>
+                      <td colSpan={4} style={{ background: "var(--fondo-suave, #f7f8fa)" }}>
+                        {listaPasos(pasos, (ps) => togglePaso(o, ps), (ps) => o.fecha + ps.paso_id)}
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              );
+            })}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
 
   const tablaDe = (ts: Tarea[]) => (
     <table className="compacto" style={{ width: "100%" }}>
       <thead>
-        <tr><th>Cat.</th><th>Tarea</th><th>Frecuencia</th><th>Estado</th><th>Próxima pendiente</th><th className="num">Hechas</th><th></th></tr>
+        <tr><th></th><th>Cat.</th><th>Tarea</th><th>Frecuencia</th><th>Estado</th><th>Próxima pendiente</th><th className="num">Hechas</th><th></th></tr>
       </thead>
       <tbody>
-        {ts.map((t) => (
-          <tr key={t.id}>
-            <td><span className={`pill ${CAT_PILL[t.categoria] ?? "pill-anulado"}`}>{t.categoria}</span></td>
-            <td>{t.titulo}{t.origen === "auto" && <span className="hint" style={{ marginLeft: 6 }}>· auto</span>}</td>
-            <td>{t.frecuencia === "Personalizada" ? `Cada ${t.intervalo_meses} meses` : t.frecuencia}</td>
-            <td>{t.estado}</td>
-            <td>{t.proxima ? fmtFechaES(t.proxima) : "—"}</td>
-            <td className="num">{t.n_hechas}/{t.n_ocurrencias}</td>
-            <td className="acciones" style={{ whiteSpace: "nowrap" }}>
-              <button className="btn-link" onClick={() => abrirEdicion(t)}>Editar</button>
-              {" · "}
-              <button className="btn-link" onClick={() => abrirOc(t)}>Ocurrencias</button>
-            </td>
-          </tr>
-        ))}
+        {ts.map((t) => {
+          const abierta = ocDe?.id === t.id;
+          return (
+            <Fragment key={t.id}>
+              <tr className={abierta ? "fila-abierta" : undefined}>
+                <td style={{ width: 22 }}>
+                  <button className="btn-link" title="Ver ocurrencias" onClick={() => toggleOc(t)}>{abierta ? "▾" : "▸"}</button>
+                </td>
+                <td><span className={`pill ${CAT_PILL[t.categoria] ?? "pill-anulado"}`}>{t.categoria}</span></td>
+                <td><button className="btn-link" style={{ fontWeight: 600 }} onClick={() => toggleOc(t)}>{t.titulo}</button>{t.origen === "auto" && <span className="hint" style={{ marginLeft: 6 }}>· auto</span>}</td>
+                <td>{t.frecuencia === "Personalizada" ? `Cada ${t.intervalo_meses} meses` : t.frecuencia}</td>
+                <td>{t.estado}</td>
+                <td>{t.proxima ? fmtFechaES(t.proxima) : "—"}</td>
+                <td className="num">{t.n_hechas}/{t.n_ocurrencias}</td>
+                <td className="acciones" style={{ whiteSpace: "nowrap" }}>
+                  <button className="btn-link" onClick={() => abrirEdicion(t)}>Editar{t.n_pasos ? ` · ${t.n_pasos} pasos` : ""}</button>
+                </td>
+              </tr>
+              {abierta && (
+                <tr className="fila-oc">
+                  <td colSpan={8}>{ocurrenciasPanel()}</td>
+                </tr>
+              )}
+            </Fragment>
+          );
+        })}
       </tbody>
     </table>
   );
@@ -272,11 +501,14 @@ export default function TareasBinder({ binderId }: { binderId?: number }) {
     <>
       <div className="toolbar" style={{ marginBottom: 8, justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <span style={{ display: "inline-flex", gap: 4 }}>
-            <button className={vista === "bloques" ? "btn-primary btn-sm" : "btn-secondary btn-sm"} onClick={() => setVista("bloques")}>Bloques</button>
-            <button className={vista === "mes" ? "btn-primary btn-sm" : "btn-secondary btn-sm"} onClick={() => setVista("mes")}>📅 Por mes</button>
-          </span>
-          {vista === "mes" && (
+          {/* La vista 'Por mes' solo tiene sentido en la página global (control del mes en conjunto). */}
+          {esGlobal && (
+            <span style={{ display: "inline-flex", gap: 4 }}>
+              <button className={vista === "bloques" ? "btn-primary btn-sm" : "btn-secondary btn-sm"} onClick={() => setVista("bloques")}>Bloques</button>
+              <button className={vista === "mes" ? "btn-primary btn-sm" : "btn-secondary btn-sm"} onClick={() => setVista("mes")}>📅 Por mes</button>
+            </span>
+          )}
+          {esGlobal && vista === "mes" && (
             <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 13 }}>
               <input type="checkbox" checked={soloPend} onChange={(e) => setSoloPend(e.target.checked)} /> Solo pendientes
             </label>
@@ -292,41 +524,54 @@ export default function TareasBinder({ binderId }: { binderId?: number }) {
       </div>
       {error && <div className="error">{error}</div>}
 
-      {vista === "mes" ? (
+      {esGlobal && vista === "mes" ? (
         meses.length === 0 ? (
           <div className="empty">{soloPend ? "No hay tareas pendientes." : "No hay ocurrencias (revisa la vigencia y la frecuencia)."}</div>
         ) : (
           <div className="tareas-meses">
             {meses.map((g) => (
-              <section key={g.mes} style={{ marginBottom: 18 }}>
-                <h3 style={{ margin: "0 0 6px", fontSize: 15, borderBottom: "2px solid var(--borde, #d0d4dc)", paddingBottom: 4 }}>
+              <section key={g.mes} style={{ marginBottom: 20 }}>
+                <h3 style={{ margin: "0 0 8px", fontSize: 16, borderBottom: "2px solid var(--borde, #d0d4dc)", paddingBottom: 4 }}>
                   📅 {mesLabel(g.mes)}{g.pendientes > 0 && <span className="hint" style={{ marginLeft: 8 }}>· {g.pendientes} pendiente{g.pendientes > 1 ? "s" : ""}</span>}
                 </h3>
-                <table className="compacto" style={{ width: "100%" }}>
-                  <thead>
-                    <tr><th>Fecha</th><th>Cat.</th>{esGlobal && <th>Binder</th>}<th>Tarea</th><th>Estado</th><th></th></tr>
-                  </thead>
-                  <tbody>
-                    {g.items.map((a) => {
-                      const [cls, txt] = PILL[a.estado] ?? ["pill-anulado", a.estado];
-                      const k = a.tarea_id + a.fecha;
-                      return (
-                        <tr key={k}>
-                          <td>{fmtFechaES(a.fecha)}</td>
-                          <td><span className={`pill ${CAT_PILL[a.categoria] ?? "pill-anulado"}`}>{a.categoria}</span></td>
-                          {esGlobal && <td>{a.binder_umr ?? "—"}</td>}
-                          <td>{a.titulo}{a.origen === "auto" && <span className="hint" style={{ marginLeft: 6 }}>· auto</span>}</td>
-                          <td><span className={`pill ${cls}`}>{txt}</span></td>
-                          <td className="num" style={{ whiteSpace: "nowrap" }}>
-                            {a.estado === "hecha"
-                              ? <button className="btn-link btn-sm" disabled={busyOc === k} onClick={() => toggleHechaAgenda(a)}>Deshacer</button>
-                              : <button className="btn-primary btn-sm" disabled={busyOc === k} onClick={() => toggleHechaAgenda(a)}>{busyOc === k ? "…" : "Marcar hecha"}</button>}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                {g.categorias.map((c) => (
+                  <div key={c.cat} style={{ margin: "0 0 12px 6px" }}>
+                    <div style={{ margin: "8px 0 4px" }}>
+                      <span className={`pill ${CAT_PILL[c.cat] ?? "pill-anulado"}`}>{c.cat}</span>
+                    </div>
+                    {c.binders.map((b) => (
+                      <div key={b.binder} style={{ margin: "0 0 8px 14px" }}>
+                        <div style={{ fontSize: 13, color: "var(--texto-suave, #666)", margin: "4px 0 2px" }}>📑 {b.binder}</div>
+                        {b.items.map((a) => {
+                          const [cls, txt] = PILL[a.estado] ?? ["pill-anulado", a.estado];
+                          const k = a.tarea_id + a.fecha;
+                          const tienePasos = a.n_pasos > 0;
+                          return (
+                            <div key={k} className="tareas-mes-item">
+                              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                                <span style={{ fontWeight: 600 }}>{a.titulo}</span>
+                                {a.origen === "auto" && <span className="hint">· auto</span>}
+                                <span className="hint">· {fmtFechaES(a.fecha)}</span>
+                                <span className={`pill ${cls}`}>{txt}</span>
+                                {tienePasos && <span className="hint">{a.n_pasos_hechos}/{a.n_pasos}</span>}
+                                <span style={{ marginLeft: "auto", whiteSpace: "nowrap" }}>
+                                  {a.estado === "hecha"
+                                    ? <button className="btn-link btn-sm" disabled={busyOc === k} onClick={() => toggleHechaAgenda(a)}>Deshacer</button>
+                                    : <button className="btn-primary btn-sm" disabled={busyOc === k} onClick={() => toggleHechaAgenda(a)}>{busyOc === k ? "…" : tienePasos ? "Marcar todo" : "Marcar hecha"}</button>}
+                                </span>
+                              </div>
+                              {tienePasos && listaPasos(
+                                soloPend ? a.pasos.filter((p) => !p.hecho) : a.pasos,
+                                (ps) => togglePasoAgenda(a, ps),
+                                (ps) => a.tarea_id + a.fecha + ps.paso_id,
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ))}
+                  </div>
+                ))}
               </section>
             ))}
           </div>
@@ -399,19 +644,21 @@ export default function TareasBinder({ binderId }: { binderId?: number }) {
               </div>
             )
           )}
-          <div className="field">
-            <label>Título *</label>
-            <input type="text" value={form.titulo} onChange={(e) => set("titulo", e.target.value)} placeholder="p. ej. Revisar bordereaux" />
+          <div className="campos-grid campos-fill" style={{ gridTemplateColumns: "1.3fr 0.9fr" }}>
+            <div className="field">
+              <label>Título *</label>
+              <input type="text" value={form.titulo} onChange={(e) => set("titulo", e.target.value)} placeholder="p. ej. Revisar bordereaux" />
+            </div>
+            <div className="field">
+              <label>Categoría *</label>
+              <select value={form.categoria} onChange={(e) => set("categoria", e.target.value)}>
+                {CATEGORIAS.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
           </div>
           <div className="field">
             <label>Descripción</label>
             <textarea rows={2} value={form.descripcion} onChange={(e) => set("descripcion", e.target.value)} />
-          </div>
-          <div className="field">
-            <label>Categoría *</label>
-            <select value={form.categoria} onChange={(e) => set("categoria", e.target.value)}>
-              {CATEGORIAS.map((c) => <option key={c} value={c}>{c}</option>)}
-            </select>
           </div>
           {autoEdit && (
             <div className="hint" style={{ marginBottom: 8 }}>
@@ -419,11 +666,21 @@ export default function TareasBinder({ binderId }: { binderId?: number }) {
               sincronizar. Puedes ajustar el aviso o pausarla; los demás cambios se sobrescribirán.
             </div>
           )}
-          <div className="field">
-            <label>Frecuencia *</label>
-            <select value={form.frecuencia} onChange={(e) => set("frecuencia", e.target.value)}>
-              {FRECUENCIAS.map((f) => <option key={f} value={f}>{f}</option>)}
-            </select>
+          <div className="campos-grid campos-fill" style={{ gridTemplateColumns: "1fr 1fr 0.8fr" }}>
+            <div className="field">
+              <label>Frecuencia *</label>
+              <select value={form.frecuencia} onChange={(e) => set("frecuencia", e.target.value)}>
+                {FRECUENCIAS.map((f) => <option key={f} value={f}>{f}</option>)}
+              </select>
+            </div>
+            <div className="field">
+              <label>Fecha de inicio{editId === "nuevo" ? " *" : ""}</label>
+              <input type="date" value={form.fecha_inicio} onChange={(e) => set("fecha_inicio", e.target.value)} />
+            </div>
+            <div className="field">
+              <label>Avisar (días) *</label>
+              <input type="number" min={0} max={90} value={form.aviso_dias_antes} onChange={(e) => set("aviso_dias_antes", e.target.value)} />
+            </div>
           </div>
           {form.frecuencia === "Personalizada" && (
             <div className="field">
@@ -431,15 +688,11 @@ export default function TareasBinder({ binderId }: { binderId?: number }) {
               <input type="number" min={1} value={form.intervalo_meses} onChange={(e) => set("intervalo_meses", e.target.value)} />
             </div>
           )}
-          <div className="field">
-            <label>Fecha de inicio</label>
-            <input type="date" value={form.fecha_inicio} onChange={(e) => set("fecha_inicio", e.target.value)} />
-            <span className="hint">Vacío = fecha de efecto del binder. Las ocurrencias van hasta el vencimiento.</span>
-          </div>
-          <div className="field">
-            <label>Avisar (días antes)</label>
-            <input type="number" min={0} max={90} value={form.aviso_dias_antes} onChange={(e) => set("aviso_dias_antes", e.target.value)} />
-          </div>
+          {editId !== "nuevo" && (
+            <span className="hint" style={{ marginTop: -6, marginBottom: 10, display: "block" }}>
+              Fecha de inicio vacía = fecha de efecto del binder. Las ocurrencias van hasta el vencimiento.
+            </span>
+          )}
           {typeof editId === "number" && (
             <div className="field">
               <label>Estado</label>
@@ -450,41 +703,45 @@ export default function TareasBinder({ binderId }: { binderId?: number }) {
               </select>
             </div>
           )}
-        </FormPanel>
-      )}
 
-      {ocDe && (
-        <FormPanel
-          title={`Ocurrencias — ${ocDe.titulo}`}
-          dirty={false} saving={false} saveLabel="Cerrar" wide
-          onSave={() => setOcDe(null)} onClose={() => setOcDe(null)}
-        >
-          {ocs.length === 0 ? (
-            <div className="empty">Sin ocurrencias (revisa la vigencia del binder y la frecuencia).</div>
-          ) : (
-            <table className="compacto" style={{ width: "100%" }}>
-              <thead>
-                <tr><th>Fecha</th><th>Estado</th><th>Hecha el</th><th></th></tr>
-              </thead>
-              <tbody>
-                {[...ocs].reverse().map((o) => {
-                  const [cls, txt] = PILL[o.estado] ?? ["pill-anulado", o.estado];
-                  return (
-                    <tr key={o.fecha}>
-                      <td>{fmtFechaES(o.fecha)}</td>
-                      <td><span className={`pill ${cls}`}>{txt}</span></td>
-                      <td>{o.fecha_hecha ? fmtFechaES(o.fecha_hecha) : "—"}</td>
-                      <td className="num" style={{ whiteSpace: "nowrap" }}>
-                        {o.hecha
-                          ? <button className="btn-link btn-sm" disabled={busyOc === o.fecha} onClick={() => toggleHecha(o)}>Deshacer</button>
-                          : <button className="btn-primary btn-sm" disabled={busyOc === o.fecha} onClick={() => toggleHecha(o)}>{busyOc === o.fecha ? "…" : "Marcar hecha"}</button>}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          )}
+          {/* Pasos (checklist): se repiten en cada entrega y se van marcando en «Ocurrencias». */}
+          <div className="field">
+            <label>Pasos (checklist)</label>
+            <span className="hint" style={{ marginBottom: 6 }}>
+              Lista de pasos que se repite en cada entrega. Se van marcando en «Ocurrencias». Un paso con
+              <b> marcado automático</b> se tacha solo cuando el dato del periodo ya está en la app (no hay que
+              tocarlo). Cuando se completan todos, la entrega cuenta como hecha.
+            </span>
+            {formPasos.length > 0 && (
+              <ol style={{ paddingLeft: 20, margin: "2px 0 8px" }}>
+                {formPasos.map((p, i) => (
+                  <li key={i} style={{ margin: "6px 0" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <input type="text" value={p.titulo} style={{ flex: 1 }}
+                        onChange={(e) => setPasoTitulo(i, e.target.value)} />
+                      <button type="button" className="btn-link btn-sm" disabled={i === 0} onClick={() => moverPaso(i, -1)} title="Subir">↑</button>
+                      <button type="button" className="btn-link btn-sm" disabled={i === formPasos.length - 1} onClick={() => moverPaso(i, 1)} title="Bajar">↓</button>
+                      <button type="button" className="btn-link btn-sm" onClick={() => delPaso(i)} title="Quitar">✕</button>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, marginLeft: 2, marginTop: 2 }}>
+                      <span className="hint">Marcado:</span>
+                      <select value={p.regla_auto ?? ""} onChange={(e) => setPasoRegla(i, e.target.value)}
+                        title="Cómo se marca este paso" style={{ fontSize: 12, padding: "2px 4px" }}>
+                        {REGLAS_AUTO.map((r) => <option key={r.v} value={r.v}>{r.v ? `Auto · ${r.label}` : "Manual"}</option>)}
+                      </select>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            )}
+            <div style={{ display: "flex", gap: 6 }}>
+              <input type="text" value={nuevoPaso} style={{ flex: 1 }}
+                placeholder="Añadir paso — p. ej. Recopilar datos del coverholder"
+                onChange={(e) => setNuevoPaso(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addPaso(); } }} />
+              <button type="button" className="btn-secondary btn-sm" disabled={!nuevoPaso.trim()} onClick={addPaso}>＋ Añadir</button>
+            </div>
+          </div>
         </FormPanel>
       )}
     </>

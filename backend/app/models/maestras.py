@@ -937,10 +937,16 @@ class Tarea(Base):
     hechas: Mapped[list["TareaHecha"]] = relationship(
         back_populates="tarea", cascade="all, delete-orphan", order_by="TareaHecha.fecha_ocurrencia"
     )
+    # Pasos (checklist): la MISMA lista para todas las ocurrencias. Cada paso se marca por ocurrencia.
+    pasos: Mapped[list["TareaPaso"]] = relationship(
+        back_populates="tarea", cascade="all, delete-orphan", order_by="TareaPaso.orden, TareaPaso.id"
+    )
 
 
 class TareaHecha(Base):
-    """Una ocurrencia concreta de una tarea, marcada como hecha (fecha de la ocurrencia + cuándo se hizo)."""
+    """Una ocurrencia concreta de una tarea, marcada como hecha (fecha de la ocurrencia + cuándo se hizo).
+    Si la tarea tiene pasos (checklist), este registro se crea/borra AUTOMÁTICAMENTE: existe cuando todos
+    los pasos de esa ocurrencia están hechos."""
 
     __tablename__ = "tareas_hechas"
     __table_args__ = (UniqueConstraint("tarea_id", "fecha_ocurrencia", name="uq_tarea_ocurrencia"),)
@@ -953,3 +959,40 @@ class TareaHecha(Base):
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     tarea: Mapped["Tarea"] = relationship(back_populates="hechas")
+
+
+class TareaPaso(Base):
+    """Un paso (checklist) de una tarea. La lista de pasos es la misma para todas las ocurrencias; lo que
+    cambia por ocurrencia es si ese paso está hecho o no (TareaPasoHecho)."""
+
+    __tablename__ = "tareas_pasos"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    tarea_id: Mapped[int] = mapped_column(ForeignKey("tareas.id", ondelete="CASCADE"), index=True)
+    orden: Mapped[int] = mapped_column(Integer, server_default=text("0"), default=0)
+    titulo: Mapped[str] = mapped_column(String(200))
+    # Regla de auto-marcado: el paso se da por hecho cuando el dato del periodo ya existe en la app.
+    # Valores: 'risk' | 'premium' | 'lpan' | 'claims' (claims = claims/snapshot). NULL = manual.
+    regla_auto: Mapped[str | None] = mapped_column(String(20))
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    tarea: Mapped["Tarea"] = relationship(back_populates="pasos")
+    hechos: Mapped[list["TareaPasoHecho"]] = relationship(
+        back_populates="paso", cascade="all, delete-orphan"
+    )
+
+
+class TareaPasoHecho(Base):
+    """Un paso concreto, marcado como hecho en UNA ocurrencia (fecha) de la tarea."""
+
+    __tablename__ = "tareas_pasos_hechos"
+    __table_args__ = (UniqueConstraint("paso_id", "fecha_ocurrencia", name="uq_paso_ocurrencia"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    paso_id: Mapped[int] = mapped_column(ForeignKey("tareas_pasos.id", ondelete="CASCADE"), index=True)
+    fecha_ocurrencia: Mapped[dt.date] = mapped_column(Date)   # a qué ocurrencia pertenece
+    fecha_hecha: Mapped[dt.date] = mapped_column(Date)        # cuándo se marcó hecho
+    notas: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    paso: Mapped["TareaPaso"] = relationship(back_populates="hechos")
