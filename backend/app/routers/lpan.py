@@ -576,41 +576,110 @@ def actualizar_lpan(lpan_id: int, payload: LpanUpdate, db: Session = Depends(get
     return LpanRead.model_validate(lp, from_attributes=True)
 
 
+# Cabecera del Premium Bordereau (Lloyd's Coverholder Reporting Standard), tal cual el modelo.
+_BDX_HEADERS = [
+    "Coverholder Name", "YOA", "Unique Market Reference (UMR)", "Reporting Period Start Date",
+    "Reporting Period (End Date)", "Section No", "Class of Business", "Risk Code (see list)",
+    "Type of Insurance (Direct or Type or Reinsurance)", "Certificate Ref",
+    "Insured Full Name, Last Name or Company Name", "ID Insured/Policyholder", "Insured Address",
+    "Insured Country Sub-division: State, Province, Territory, Canton etc",
+    "Insured Postcode, Zip Code or Similar", "Insured   Country (ISO code list)",
+    "Risk Inception Date", "Risk Expiry Date",
+    "Location of Risk - Country Sub-division: State, Province, Territory, Canton etc",
+    "Location of risk - Country (ISO code)",
+    "Risk, Transaction Type (New, Renewal, Endorsement, Cancellation.etc)",
+    "Transaction Type - (Original premium, additional premium, return premium.etc)",
+    "Cancellation Reason", "Turnover", "Effective Date of Transaction", "Expiry Date of Transaction",
+    "Original Currency Premium", "Gross Premium paid this time", "Total Gross Written  Premium",
+    "Fees", "Commission Coverholder %", "Commission coverholder Amount", "Total Taxes and Levies",
+    "Total GWP including tax", "Net Premium to Lloyd´s Broker in original currency",
+    "Sum Insured Currency (ISO code list)", "Sum Insured Amount", "Deductible Amount",
+    "Deductible Basis (eec)", "Tax 1 - Jurisdiction: Country, State, Province, Territory",
+    "Tax 1 - Tax Type", "Tax 1 - Amount of Taxable Premium", "Tax 1 - %", "Tax 1 - Amount",
+    "Tax 1 - Administered By", "Tax 1 - Payable By",
+    "Tax 2 - Jurisdiction: Country, State, Province, Territory", "Tax 2 - Tax Type",
+    "Tax 2 - Amount of Taxable Premium", "Tax 2 - %", "Tax 2 - Amount", "Tax 2 - Administered By",
+    "Tax 2 - Payable By", "Number of instalment", "Referred to London Yes/No", "% for Lloyd's",
+    "Policy issuance date", "Policy Number Reinsured", "Brokerage % of gross premium",
+    "Brokerage Amount (Original Currency)", "Final Net Premium to UW (Original Currency)",
+]
+# Columnas (0-based) que se subtotalizan por grupo: GWP this time, Total Taxes, Final Net to UW.
+_BDX_SUBTOT = (27, 32, 60)
+
+
+def _bdx_fila(l: "BdxLinea", b, coverholder: str) -> list:
+    """Fila del Premium Bordereau (61 columnas) para una línea. Los % se dan como fracción (28% -> 0,28),
+    igual que en el modelo. El 100% GWP y 'GWP incl. tax' no se importaron (solo our line) -> our line."""
+    def f(x):
+        return float(x) if x is not None else None
+
+    def pc(x):
+        return float(x) / 100 if x is not None else None    # % entero en BD -> fracción
+
+    ourline = f(l.total_gwp_our_line)
+    taxes = f(l.total_taxes_levies)
+    return [
+        coverholder, b.yoa, b.umr, l.reporting_period_start, l.reporting_period_end,
+        l.section_no, l.class_of_business, l.risk_code, l.type_of_insurance, l.certificate_ref,
+        l.insured_name, l.insured_id, l.insured_address, l.insured_province, l.insured_postcode,
+        l.insured_country, l.risk_inception_date, l.risk_expiry_date, l.location_risk_province,
+        l.location_risk_country, l.risk_transaction_type, l.transaction_type, None, None,
+        l.effective_date_transaction, l.expiry_date_transaction, l.original_currency,
+        f(l.gross_written_premium), ourline, f(l.fees), pc(l.commission_coverholder_pct),
+        f(l.commission_coverholder_amount), taxes,
+        (ourline or 0) + (taxes or 0), f(l.net_premium_to_broker), l.original_currency,
+        f(l.sum_insured_total), f(l.deductible_amount), l.deductible_basis,
+        l.tax1_jurisdiction, l.tax1_type, f(l.tax1_taxable_premium), pc(l.tax1_pct), f(l.tax1_amount),
+        l.tax1_administered_by, l.tax1_payable_by,
+        l.tax2_jurisdiction, l.tax2_type, f(l.tax2_taxable_premium), pc(l.tax2_pct), f(l.tax2_amount),
+        l.tax2_administered_by, l.tax2_payable_by, l.number_of_instalments, l.referred_to_london,
+        pc(l.pct_for_lloyds), l.policy_issuance_date, l.policy_number_reinsured, pc(l.brokerage_pct),
+        f(l.brokerage_amount), f(l.final_net_premium_uw),
+    ]
+
+
 @router.get("/binders/{binder_id}/lpan/bdx-excel")
 def bdx_excel(binder_id: int, periodo: str, db: Session = Depends(get_db)):
-    """Descarga el «BDX a procesar» del periodo (base provisional: las líneas de Premium del binder
-    en ese periodo). El formato final se ajustará según especificación."""
+    """Premium Bordereau del periodo en formato Llo'yds (61 columnas), con las líneas AGRUPADAS por
+    (Sección, Risk Code) como los bloques LPAN: cada grupo lleva sus filas + una fila de SUBTOTALES
+    (GWP, impuestos, neto a UW) + una fila en blanco de separación."""
     import io
 
     import openpyxl
 
     b = _binder_o_404(binder_id, db)
+    coverholder = b.productor.nombre if b.productor else (b.umr or "")
     lineas = db.scalars(
-        select(BdxLinea)
-        .join(Bdx, BdxLinea.bdx_id == Bdx.id)
+        select(BdxLinea).join(Bdx, BdxLinea.bdx_id == Bdx.id)
         .where(Bdx.binder_id == binder_id, BdxLinea.incluido_en_premium.is_(True),
                BdxLinea.premium_bdx.is_not(None))
-        .order_by(BdxLinea.section_no, BdxLinea.risk_code)
     ).all()
     lineas = [l for l in lineas if l.premium_bdx and l.premium_bdx.strftime("%Y-%m") == periodo]
 
+    # Agrupar por (sección, risk code), mismo orden que los bloques LPAN.
+    grupos: dict[tuple, list] = {}
+    for l in lineas:
+        grupos.setdefault((l.section_no if l.section_no is not None else 0, (l.risk_code or "").strip()), []).append(l)
+
     wb = openpyxl.Workbook()
     ws = wb.active
-    ws.title = "BDX"
-    headers = ["Sección", "Risk Code", "Certificate", "Asegurado", "GWP Our Line",
-               "IPT", "Coverholder Comm.", "Brokerage", "Net a UW"]
-    ws.append(headers)
-    for l in lineas:
-        ws.append([
-            l.section_no, l.risk_code, l.certificate_ref, l.insured_name,
-            float(_d(l.total_gwp_our_line)), float(_d(l.total_taxes_levies)),
-            float(_d(l.commission_coverholder_amount)), float(_d(l.brokerage_amount)),
-            float(_d(l.final_net_premium_uw)),
-        ])
+    ws.title = periodo
+    ws.append(_BDX_HEADERS)
+    for clave in sorted(grupos.keys()):
+        filas = grupos[clave]
+        for l in filas:
+            ws.append(_bdx_fila(l, b, coverholder))
+        # Subtotales del grupo (solo en las 3 columnas de importe).
+        sub = [None] * len(_BDX_HEADERS)
+        for idx, campo in zip(_BDX_SUBTOT, ("gross_written_premium", "total_taxes_levies", "final_net_premium_uw")):
+            sub[idx] = float(sum((getattr(l, campo) or 0) for l in filas))
+        ws.append(sub)
+        ws.append([])   # separación entre grupos
+
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
-    fname = f"BDX {b.umr or b.agreement_number or binder_id} {periodo}.xlsx"
+    fname = f"Premium Bordereaux {b.umr or b.agreement_number or binder_id} {periodo}.xlsx"
     return StreamingResponse(
         buf, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="{fname}"'},
