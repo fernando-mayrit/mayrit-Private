@@ -111,6 +111,11 @@ export default function ReciboModal({
   const comPdteTraspaso = n(f.comision_retenida_cobrada) - n(f.comision_retenida_traspasada);
   const cedidaPdtePago = n(f.comision_cedida_a_pagar) - n(f.comision_cedida_pagada);
 
+  // En un recibo de BINDER no hay figura de pagador (Tomador/Corredor) ni pago de comisión
+  // cedida al corredor: la cedida es la de la agencia (coverholder) y va descontada en la prima.
+  // Por eso se oculta la caja de "Comisión cedida (corredor)" en binders.
+  const esBinder = (recibo as Partial<Recibo>).binder_id != null;
+
   // Campos reutilizables (en emisión, soloLectura → todos deshabilitados)
   const Money = ({ k, label, full }: { k: string; label: string; full?: boolean }) => (
     <div className="field">
@@ -266,21 +271,23 @@ export default function ReciboModal({
             </div>
           </div>
 
-          <div className="recibo-box">
-            <h4>Comisión cedida (corredor)</h4>
-            {f.pagador && (
-              <div className="hint" style={{ marginBottom: 6 }}>
-                {f.pagador === "Corredor"
-                  ? "Paga el corredor: descuenta su comisión; se salda al cobrar la prima."
-                  : "Paga el tomador: la comisión cedida se paga al corredor."}
+          {!esBinder && (
+            <div className="recibo-box">
+              <h4>Comisión cedida (corredor)</h4>
+              {f.pagador && (
+                <div className="hint" style={{ marginBottom: 6 }}>
+                  {f.pagador === "Corredor"
+                    ? "Paga el corredor: descuenta su comisión; se salda al cobrar la prima."
+                    : "Paga el tomador: la comisión cedida se paga al corredor."}
+                </div>
+              )}
+              <RO label="Cedida" v={n(f.comision_cedida)} full />
+              <div className="campos-grid" style={{ gridTemplateColumns: "1fr 1fr" }}>
+                <Money k="comision_cedida_pagada" label="Pagada" />
+                <RO label="Pdte. Pago" v={cedidaPdtePago} />
               </div>
-            )}
-            <RO label="Cedida" v={n(f.comision_cedida)} full />
-            <div className="campos-grid" style={{ gridTemplateColumns: "1fr 1fr" }}>
-              <Money k="comision_cedida_pagada" label="Pagada" />
-              <RO label="Pdte. Pago" v={cedidaPdtePago} />
             </div>
-          </div>
+          )}
         </div>
       </div>
     </FormPanel>
