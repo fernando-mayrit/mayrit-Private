@@ -941,25 +941,21 @@ def listar_premium(binder_id: int, db: Session = Depends(get_db)):
             BdxLinea.premium_bdx,
             BdxLinea.total_gwp_our_line, BdxLinea.total_taxes_levies,
             BdxLinea.commission_coverholder_amount, BdxLinea.brokerage_amount,
-            BdxLinea.net_premium_to_broker,
+            BdxLinea.net_premium_to_broker, BdxLinea.recibo_id,
             BdxLinea.prima_cobrada, BdxLinea.premium_payment_date,
             BdxLinea.traspaso, BdxLinea.fecha_traspaso,
             BdxLinea.liquidado, BdxLinea.fecha_liquidacion,
         ))
     ).all()
-    # Periodos que ya tienen Recibo generado (señal fiable de "recibo emitido" para ese mes).
-    recibo_periodos = {
-        p for (p,) in db.execute(
-            select(Recibo.periodo).where(Recibo.binder_id == binder_id, Recibo.periodo.is_not(None))
-        ).all()
-    }
     excl = _impuestos_locales(db, binder_id)
     grupos: dict[str, dict] = {}
     for l in lineas:
         per = l.premium_bdx.strftime("%Y-%m")
-        g = grupos.setdefault(per, {"num": 0, "prima": D0, "com": D0, "liq": D0, "npb": D0, "cob": 0, "tra": 0, "liqd": 0, "fc": [], "ft": [], "fl": []})
+        g = grupos.setdefault(per, {"num": 0, "conrec": 0, "prima": D0, "com": D0, "liq": D0, "npb": D0, "cob": 0, "tra": 0, "liqd": 0, "fc": [], "ft": [], "fl": []})
         a, r, q = _comp_linea(l, excl)
         g["num"] += 1
+        if l.recibo_id:
+            g["conrec"] += 1
         g["prima"] += a
         g["com"] += r
         g["liq"] += q
@@ -987,7 +983,10 @@ def listar_premium(binder_id: int, db: Session = Depends(get_db)):
             cobrado=g["num"] > 0 and g["cob"] == g["num"],
             traspasado=g["num"] > 0 and g["tra"] == g["num"],
             liquidado=g["num"] > 0 and g["liqd"] == g["num"],
-            tiene_recibo=per in recibo_periodos,
+            # "Tiene recibo" = todas sus líneas están enlazadas a un recibo (el de su mes de RIESGO).
+            # No depende de que exista recibo del mes del Premium (los binders en run-off siguen
+            # recibiendo Premium de riesgos pasados, sin Risk nuevo ese mes).
+            tiene_recibo=g["num"] > 0 and g["conrec"] == g["num"],
             fecha_pago=max(g["fc"]) if g["fc"] else None,
             fecha_traspaso=max(g["ft"]) if g["ft"] else None,
             fecha_liquidacion=max(g["fl"]) if g["fl"] else None,
@@ -1004,12 +1003,12 @@ def _accion_premium(db: Session, binder_id: int, periodo: str, setter, exigir_re
     lineas = _lineas_premium(db, binder_id, periodo)
     if not lineas:
         raise HTTPException(status_code=400, detail=f"No hay líneas en el Premium {periodo}.")
-    if exigir_recibo and not db.scalar(
-        select(Recibo.id).where(Recibo.binder_id == binder_id, Recibo.periodo == periodo).limit(1)
-    ):
+    # Cada línea se cobra/liquida contra el recibo de su mes de RIESGO (recibo_id). No se exige
+    # un recibo del mes del Premium: un binder en run-off recibe Premium de riesgos pasados.
+    if exigir_recibo and any(l.recibo_id is None for l in lineas):
         raise HTTPException(
             status_code=409,
-            detail=f"Genera primero el Recibo del periodo {periodo}: no se puede cobrar/liquidar/traspasar una prima sin recibo emitido.",
+            detail="Hay líneas de este Premium sin recibo (su mes de riesgo no tiene recibo generado). Genera primero el recibo del mes de riesgo correspondiente.",
         )
     for l in lineas:
         setter(l)
