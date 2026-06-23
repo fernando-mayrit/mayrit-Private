@@ -139,11 +139,11 @@ const CONFIG: { id: Page; label: string }[] = [
 type Grupo = { titulo: string; items: { id: Page; label: string }[]; sm?: boolean };
 const GRUPOS: Grupo[] = [
   { titulo: "Negocio", items: NEGOCIO },
-  { titulo: "Tareas", items: TAREAS },
   { titulo: "Siniestros", items: [...SINIESTROS, ...TRIANGULACION, ...UCR] },
   { titulo: "Facturación", items: FACTURACION },
   { titulo: "Financiero", items: FINANCIERO },
   { titulo: "Contabilidad", items: CONTABILIDAD },
+  { titulo: "Tareas", items: TAREAS },
 ];
 const GRUPO_CONFIG: Grupo = { titulo: "Configuración", items: CONFIG, sm: true };
 const MENU_KEY = "mayrit.menu";
