@@ -67,6 +67,7 @@ type FormState = {
   estado: string;
   participacion: string;
   faltan_snapshots: boolean;
+  no_renovar: boolean;
   moneda: string;
   // Datos comunes del binder (debajo de las secciones)
   profit_commission: boolean;
@@ -116,6 +117,7 @@ const VACIO: FormState = {
   estado: "En Vigor",
   participacion: "100",
   faltan_snapshots: false,
+  no_renovar: false,
   moneda: "EUR",
   profit_commission: false,
   pc_porcentaje: "",
@@ -470,6 +472,7 @@ export default function BindersPage() {
       estado: b.estado ?? "",
       participacion: b.participacion != null ? String(b.participacion) : "100",
       faltan_snapshots: !!b.faltan_snapshots,
+      no_renovar: !!b.no_renovar,
       moneda: b.moneda ?? "",
       profit_commission: !!b.profit_commission,
       pc_porcentaje: b.pc_porcentaje != null ? String(b.pc_porcentaje) : "",
@@ -627,6 +630,7 @@ export default function BindersPage() {
         await api.update(form.id, {
           estado: form.estado || null,
           faltan_snapshots: form.faltan_snapshots,   // PROVISIONAL
+          no_renovar: form.no_renovar,
         } as unknown as BinderWrite);
         cerrar();
         await cargar();
@@ -735,6 +739,7 @@ export default function BindersPage() {
       estado: form.estado || null,
       participacion: form.participacion ? num(form.participacion) : 100,
       faltan_snapshots: form.faltan_snapshots,
+      no_renovar: form.no_renovar,
       moneda: form.moneda || null,
       profit_commission: form.profit_commission,
       pc_porcentaje: form.profit_commission ? num(form.pc_porcentaje) : null,
@@ -1098,6 +1103,14 @@ export default function BindersPage() {
               onChange={(e) => setForm({ ...form, faltan_snapshots: e.target.checked })}
             />
             Faltan Snapshots <span className="hint">· provisional</span>
+          </label>
+          <label className="field check" style={{ marginBottom: 10 }}>
+            <input
+              type="checkbox"
+              checked={form.no_renovar}
+              onChange={(e) => setForm({ ...form, no_renovar: e.target.checked })}
+            />
+            No renovar <span className="hint">· no saldrá en el aviso de renovación (run-off)</span>
           </label>
           {soloEstado && (
             <>

@@ -501,6 +501,7 @@ class BinderBase(BaseModel):
     estado: str | None = None
     participacion: Decimal | None = None   # % del contrato (reaseguro) que lleva Mayrit (def. 100)
     faltan_snapshots: bool = False         # PROVISIONAL: marca binders sin snapshots de Claims
+    no_renovar: bool = False               # no se va a renovar → fuera del aviso de renovación
     moneda: str | None = None
     yoa: str | None = None
     # Datos comunes del binder

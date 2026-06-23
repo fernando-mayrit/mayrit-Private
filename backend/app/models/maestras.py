@@ -189,6 +189,8 @@ class Binder(Base):
     participacion: Mapped[Decimal] = mapped_column(Numeric(7, 4), server_default=text("100"), default=Decimal("100"))
     # PROVISIONAL (se eliminará): marca binders a los que aún les faltan snapshots de Claims.
     faltan_snapshots: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False, nullable=False)
+    # El binder no se va a renovar (run-off): sigue 'En Vigor' pero no sale en el aviso de renovación.
+    no_renovar: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False, nullable=False)
     moneda: Mapped[str | None] = mapped_column(String(10))
     yoa: Mapped[str | None] = mapped_column(String(20))                  # Year of Account (año del efecto)
 

@@ -116,7 +116,7 @@ def _vencimientos_sin_renovar(db: Session) -> list[Aviso]:
     # ── Binders: el último de cada programa (sin otro posterior) que venza pronto ──
     binders = list(db.scalars(select(Binder)).all())
     for b in binders:
-        if (b.estado or "") != "En Vigor" or not b.fecha_vencimiento or b.fecha_vencimiento > limite:
+        if (b.estado or "") != "En Vigor" or b.no_renovar or not b.fecha_vencimiento or b.fecha_vencimiento > limite:
             continue
         renovado = b.programa_id is not None and any(
             x.id != b.id and x.programa_id == b.programa_id and x.fecha_efecto and b.fecha_efecto

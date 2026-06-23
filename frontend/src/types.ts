@@ -154,6 +154,7 @@ export interface Binder extends BinderComun {
   estado: string | null;
   participacion: number | null;   // % del contrato (reaseguro) que lleva Mayrit (def. 100)
   faltan_snapshots: boolean;      // PROVISIONAL: marca binders sin snapshots de Claims
+  no_renovar: boolean;            // no se va a renovar → fuera del aviso de renovación
   moneda: string | null;
   yoa: string | null;
   notas: string | null;
@@ -175,6 +176,7 @@ export interface BinderWrite extends BinderComun {
   estado?: string | null;
   participacion?: number | null;
   faltan_snapshots?: boolean;
+  no_renovar?: boolean;
   moneda?: string | null;
   yoa?: string | null;
   notas?: string | null;
