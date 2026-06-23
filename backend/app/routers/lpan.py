@@ -657,6 +657,8 @@ def bdx_excel(binder_id: int, periodo: str, db: Session = Depends(get_db)):
     import io
 
     import openpyxl
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    from openpyxl.utils import get_column_letter
 
     b = _binder_o_404(binder_id, db)
     coverholder = b.productor.nombre if b.productor else (b.umr or "")
@@ -672,20 +674,82 @@ def bdx_excel(binder_id: int, periodo: str, db: Session = Depends(get_db)):
     for l in lineas:
         grupos.setdefault((l.section_no if l.section_no is not None else 0, (l.risk_code or "").strip()), []).append(l)
 
+    # ── Estilo idéntico al modelo de muestra (Premium Bordereaux) ──
+    ncol = len(_BDX_HEADERS)
+    acc = '_-* #,##0.00_-;\\-* #,##0.00_-;_-* "-"??_-;_-@_-'    # formato contable
+    acc_cols = {24, 28, 29, 30, 32, 33, 34, 35, 37, 38, 42, 44, 49, 51, 60, 61}
+    pct_cols = {31, 43, 50, 56, 59}
+    date_cols = {4, 5, 17, 18, 25, 26, 57, 58}
+    ctr_cols = {2, 4, 5, 17, 18, 25, 26}
+    rgt_cols = {38, 57}
+    widths = {3: 18.7, 10: 20.9, 11: 20.7, 12: 12.0, 13: 19.6, 24: 12.0}   # resto: 13
+    sub_1b = {i + 1 for i in _BDX_SUBTOT}     # columnas (1-based) con subtotal: 28, 33, 61
+
+    def numfmt(col: int) -> str:
+        if col in acc_cols:
+            return acc
+        if col in pct_cols:
+            return "0.00%"
+        if col in date_cols:
+            return "mm-dd-yy"
+        if col == 15:
+            return "00000"
+        return "General"
+
+    thin = Side(style="thin")
+    hdr_font = Font(name="Calibri", size=9, bold=True)
+    hdr_fill = PatternFill("solid", fgColor="D9D9D9")
+    hdr_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    hdr_border = Border(left=thin, right=thin, top=thin, bottom=thin)
+    data_font = Font(name="Aptos Narrow", size=9)
+    sub_font = Font(name="Aptos Narrow", size=9, bold=True)
+    sub_border = Border(top=thin, bottom=thin)
+    ctr, rgt = Alignment(horizontal="center"), Alignment(horizontal="right")
+
+    def estilo_fila(row: int, subtotal: bool = False) -> None:
+        for col in range(1, ncol + 1):
+            c = ws.cell(row=row, column=col)
+            c.font = sub_font if subtotal else data_font
+            c.number_format = numfmt(col)
+            if subtotal:
+                if col in sub_1b:
+                    c.border = sub_border
+            elif col in ctr_cols:
+                c.alignment = ctr
+            elif col in rgt_cols:
+                c.alignment = rgt
+
+    meses_en = ["", "January", "February", "March", "April", "May", "June",
+                "July", "August", "September", "October", "November", "December"]
+    try:
+        titulo_hoja = meses_en[int(periodo.split("-")[1])]
+    except (ValueError, IndexError):
+        titulo_hoja = periodo
+
     wb = openpyxl.Workbook()
     ws = wb.active
-    ws.title = periodo
+    ws.title = titulo_hoja
     ws.append(_BDX_HEADERS)
+    for col in range(1, ncol + 1):
+        c = ws.cell(row=1, column=col)
+        c.font, c.fill, c.alignment, c.border = hdr_font, hdr_fill, hdr_align, hdr_border
+    ws.row_dimensions[1].height = 96
+
     for clave in sorted(grupos.keys()):
         filas = grupos[clave]
         for l in filas:
             ws.append(_bdx_fila(l, b, coverholder))
+            estilo_fila(ws.max_row)
         # Subtotales del grupo (solo en las 3 columnas de importe).
-        sub = [None] * len(_BDX_HEADERS)
+        sub = [None] * ncol
         for idx, campo in zip(_BDX_SUBTOT, ("gross_written_premium", "total_taxes_levies", "final_net_premium_uw")):
             sub[idx] = float(sum((getattr(l, campo) or 0) for l in filas))
         ws.append(sub)
+        estilo_fila(ws.max_row, subtotal=True)
         ws.append([])   # separación entre grupos
+
+    for col in range(1, ncol + 1):
+        ws.column_dimensions[get_column_letter(col)].width = widths.get(col, 13.0)
 
     buf = io.BytesIO()
     wb.save(buf)
