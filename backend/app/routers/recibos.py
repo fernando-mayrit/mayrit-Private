@@ -1028,6 +1028,7 @@ def cobrar_premium(binder_id: int, payload: AccionPremium, db: Session = Depends
     def setter(l):
         l.prima_cobrada = True
         l.premium_payment_date = payload.fecha
+        l.ingresado = l.net_premium_to_broker   # importe cobrado de la línea (para la columna 'Cobrado' del BDX)
     return _accion_premium(db, binder_id, payload.periodo, setter, exigir_recibo=True)
 
 
@@ -1037,6 +1038,7 @@ def descobrar_premium(binder_id: int, payload: AccionPremium, db: Session = Depe
     def setter(l):
         l.prima_cobrada = False
         l.premium_payment_date = None
+        l.ingresado = None                       # revierte el importe cobrado de la línea
     return _accion_premium(db, binder_id, payload.periodo, setter)
 
 
