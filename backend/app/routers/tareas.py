@@ -92,6 +92,7 @@ class TareaRead(BaseModel):
     fecha_inicio: dt.date | None = None
     aviso_dias_antes: int
     estado: str
+    binder_umr: str | None = None
     n_ocurrencias: int = 0      # ocurrencias debidas (hasta hoy/aviso)
     n_hechas: int = 0
     proxima: dt.date | None = None   # próxima ocurrencia pendiente y debida
@@ -100,6 +101,7 @@ class TareaRead(BaseModel):
 def _serializar(db: Session, t: Tarea) -> TareaRead:
     binder = db.get(Binder, t.binder_id)
     d = TareaRead.model_validate(t)
+    d.binder_umr = (binder.umr or binder.agreement_number) if binder else None
     ocs = _ocurrencias(t, binder) if binder else []
     hechas = {h.fecha_ocurrencia for h in t.hechas}
     hoy = dt.date.today()
@@ -108,6 +110,13 @@ def _serializar(db: Session, t: Tarea) -> TareaRead:
     d.n_hechas = len([f for f in ocs if f in hechas])
     d.proxima = next((f for f in ocs if f not in hechas and _debida(t, f, hoy, False)), None)
     return d
+
+
+@router.get("/tareas", response_model=list[TareaRead])
+def listar_todas(db: Session = Depends(get_db)):
+    """Todas las tareas de todos los binders (página global). Mismos datos que la pestaña del binder."""
+    ts = db.scalars(select(Tarea).order_by(Tarea.id)).all()
+    return [_serializar(db, t) for t in ts]
 
 
 @router.get("/binders/{binder_id}/tareas", response_model=list[TareaRead])

@@ -308,6 +308,7 @@ export interface Tarea {
   fecha_inicio?: string | null;
   aviso_dias_antes: number;
   estado: string;
+  binder_umr?: string | null;
   n_ocurrencias: number;
   n_hechas: number;
   proxima?: string | null;
@@ -320,6 +321,7 @@ export interface TareaOcurrencia {
   estado: string;   // hecha | vencida | pendiente | futura
 }
 export const tareasApi = {
+  listAll: () => request<Tarea[]>("/tareas"),
   list: (binderId: number) => request<Tarea[]>(`/binders/${binderId}/tareas`),
   crear: (binderId: number, d: unknown) => request<Tarea>(`/binders/${binderId}/tareas`, { method: "POST", body: JSON.stringify(d) }),
   editar: (id: number, d: unknown) => request<Tarea>(`/tareas/${id}`, { method: "PUT", body: JSON.stringify(d) }),

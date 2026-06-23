@@ -10,6 +10,7 @@ import RecibosPage from "./pages/RecibosPage";
 import SiniestrosPage from "./pages/SiniestrosPage";
 import TriangulacionPage from "./pages/TriangulacionPage";
 import ConsultoriaPage from "./pages/ConsultoriaPage";
+import TareasPage from "./pages/TareasPage";
 import LpanPage from "./pages/LpanPage";
 import CierreContablePage from "./pages/CierreContablePage";
 import FinancieroPage from "./pages/FinancieroPage";
@@ -38,6 +39,7 @@ const EMOJI: Record<string, string> = {
   polizas: "📄",
   consultoria: "💼",
   comisiones: "💶",
+  tareas: "✅",
   ramos: "🏷️",
   cuentas: "🏧",
   usuarios: "👤",
@@ -63,6 +65,7 @@ type Page =
   | "polizas"
   | "consultoria"
   | "comisiones"
+  | "tareas"
   | "ramos"
   | "cuentas"
   | "usuarios"
@@ -85,6 +88,11 @@ const NEGOCIO: { id: Page; label: string }[] = [
   { id: "polizas", label: "Pólizas" },
   { id: "consultoria", label: "Consultoría" },
   { id: "comisiones", label: "Comisiones" },
+];
+
+// Menú lateral: Tareas (tareas recurrentes manuales de los binders).
+const TAREAS: { id: Page; label: string }[] = [
+  { id: "tareas", label: "Tareas" },
 ];
 
 // Menú lateral: Siniestros (Claims BDX de todos los binders).
@@ -131,6 +139,7 @@ const CONFIG: { id: Page; label: string }[] = [
 type Grupo = { titulo: string; items: { id: Page; label: string }[]; sm?: boolean };
 const GRUPOS: Grupo[] = [
   { titulo: "Negocio", items: NEGOCIO },
+  { titulo: "Tareas", items: TAREAS },
   { titulo: "Siniestros", items: [...SINIESTROS, ...TRIANGULACION, ...UCR] },
   { titulo: "Facturación", items: FACTURACION },
   { titulo: "Financiero", items: FINANCIERO },
@@ -412,6 +421,7 @@ export default function App() {
           {page === "recibos" && <RecibosPage />}
           {page === "lpan" && <LpanPage />}
           {page === "siniestros" && <SiniestrosPage />}
+          {page === "tareas" && <TareasPage />}
           {page === "triangulacion" && <TriangulacionPage />}
           {page === "ucr" && <EnConstruccion titulo="UCR" />}
           {page === "cierre" && <CierreContablePage />}
