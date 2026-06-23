@@ -189,16 +189,23 @@ def cobros(contrato_id: int, db: Session = Depends(get_db)):
     if c is None:
         raise HTTPException(status_code=404, detail=f"Contrato {contrato_id} no encontrado")
     recibos = {r.periodo: r for r in db.scalars(select(Recibo).where(Recibo.consultoria_id == c.id)).all()}
+    hoy = dt.date.today()
     out = []
     for f in _fechas_cobro(c):
         per = f.strftime("%Y-%m")
+        r = recibos.get(per)
+        # No mostrar cobros FUTUROS (cuyo mes aún no ha empezado), salvo que ya tengan recibo.
+        if r is None and dt.date(f.year, f.month, 1) > hoy:
+            continue
         base = Decimal(c.importe or 0)
         iva = _iva(c, base)
-        r = recibos.get(per)
+        adeu = r.prima_adeudada if r else None
+        cobrado = bool(r and adeu and (r.prima_cobrada or 0) >= adeu)
         out.append({
             "periodo": per, "fecha": f.isoformat(),
             "base": float(base), "iva": float(iva), "total": float(base + iva),
             "recibo_id": r.id if r else None, "recibo_numero": r.numero if r else None,
+            "recibo_cobrado": cobrado,
         })
     return {"contrato_id": c.id, "moneda": c.moneda, "cobros": out}
 

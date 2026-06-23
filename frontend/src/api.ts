@@ -282,6 +282,7 @@ export interface ConsultoriaCobro {
   total: number;
   recibo_id: number | null;
   recibo_numero: string | null;
+  recibo_cobrado?: boolean;
 }
 export const consultoriaApi = {
   list: () => request<ConsultoriaContrato[]>("/consultoria"),

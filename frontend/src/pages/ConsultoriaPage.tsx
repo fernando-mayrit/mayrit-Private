@@ -345,7 +345,9 @@ export default function ConsultoriaPage() {
                   <td>{co.recibo_numero ?? "—"}</td>
                   <td className="num" style={{ whiteSpace: "nowrap" }}>
                     {co.recibo_id
-                      ? <span className="pill pill-cobrado">Generado</span>
+                      ? <span className={`pill ${co.recibo_cobrado ? "pill-cobrado" : "pill-parcial"}`}>
+                          {co.recibo_cobrado ? "Cobrado" : "Pendiente de Cobro"}
+                        </span>
                       : <button className="btn-primary btn-sm" disabled={busyCobro === co.periodo} onClick={() => generar(co.periodo)}>
                           {busyCobro === co.periodo ? "…" : "Generar"}
                         </button>}
