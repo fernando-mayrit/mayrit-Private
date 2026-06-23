@@ -6,13 +6,16 @@ import FormPanel from "./FormPanel";
 
 // Tareas recurrentes manuales. Dos modos (mismos datos):
 //  - Por binder (prop binderId): solo las de ese binder; crear queda enganchado a él.
-//  - Global (sin binderId): todas las de todos los binders, con columna y selector de Binder.
+//  - Global (sin binderId): todas, AGRUPADAS en bloques Agencia → Programa → Binder. Al crear se elige
+//    el binder en cascada (Agencia → Programa → Binder).
 // La recurrencia se ajusta a la vigencia del binder (desde el efecto/fecha de inicio hasta el vto).
 
 const bindersApi = crud<Binder, unknown>("/binders");
 const FRECUENCIAS = ["Única", "Mensual", "Trimestral", "Semestral", "Anual", "Personalizada"];
 
 type Form = {
+  agencia_id: string;     // solo para la cascada al crear (global)
+  programa_id: string;    // idem
   binder_id: string;
   titulo: string;
   descripcion: string;
@@ -23,8 +26,8 @@ type Form = {
   estado: string;
 };
 const VACIO: Form = {
-  binder_id: "", titulo: "", descripcion: "", frecuencia: "Mensual", intervalo_meses: "1",
-  fecha_inicio: "", aviso_dias_antes: "5", estado: "Activa",
+  agencia_id: "", programa_id: "", binder_id: "", titulo: "", descripcion: "", frecuencia: "Mensual",
+  intervalo_meses: "1", fecha_inicio: "", aviso_dias_antes: "5", estado: "Activa",
 };
 
 const PILL: Record<string, [string, string]> = {
@@ -33,6 +36,8 @@ const PILL: Record<string, [string, string]> = {
   pendiente: ["pill-parcial", "Pendiente"],
   futura: ["pill-anulado", "Futura"],
 };
+
+const colACMP = (a: string, b: string) => a.localeCompare(b, "es");
 
 export default function TareasBinder({ binderId }: { binderId?: number }) {
   const esGlobal = binderId == null;
@@ -57,7 +62,7 @@ export default function TareasBinder({ binderId }: { binderId?: number }) {
     cargar();
     if (esGlobal) {
       bindersApi.list(undefined, 5000)
-        .then((bs) => setBinders((bs as Binder[]).sort((a, b) => (a.umr ?? "").localeCompare(b.umr ?? "", "es"))))
+        .then((bs) => setBinders(bs as Binder[]))
         .catch(() => {});
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -66,13 +71,37 @@ export default function TareasBinder({ binderId }: { binderId?: number }) {
   const set = (k: keyof Form, v: string) => setForm((s) => ({ ...s, [k]: v }));
   const dirty = useMemo(() => JSON.stringify(form) !== JSON.stringify(formIni), [form, formIni]);
 
+  // ── Cascada Agencia → Programa → Binder (a partir de la lista de binders) ──
+  const agencias = useMemo(() => {
+    const m = new Map<number, string>();
+    for (const b of binders)
+      if (b.productor_id != null) m.set(b.productor_id, b.coverholder_alias || b.coverholder_nombre || `#${b.productor_id}`);
+    return [...m.entries()].map(([id, nombre]) => ({ id, nombre })).sort((a, b) => colACMP(a.nombre, b.nombre));
+  }, [binders]);
+  const programasDeAgencia = useMemo(() => {
+    const aid = Number(form.agencia_id);
+    const m = new Map<number, string>();
+    for (const b of binders)
+      if (b.productor_id === aid && b.programa_id != null) m.set(b.programa_id, b.programa_nombre || `#${b.programa_id}`);
+    return [...m.entries()].map(([id, nombre]) => ({ id, nombre })).sort((a, b) => colACMP(a.nombre, b.nombre));
+  }, [binders, form.agencia_id]);
+  const bindersDePrograma = useMemo(() => {
+    const aid = Number(form.agencia_id), pid = Number(form.programa_id);
+    return binders.filter((b) => b.productor_id === aid && b.programa_id === pid)
+      .sort((a, b) => colACMP(a.umr ?? "", b.umr ?? ""));
+  }, [binders, form.agencia_id, form.programa_id]);
+
+  const onAgencia = (v: string) => setForm((s) => ({ ...s, agencia_id: v, programa_id: "", binder_id: "" }));
+  const onPrograma = (v: string) => setForm((s) => ({ ...s, programa_id: v, binder_id: "" }));
+
   function abrirNuevo() {
     const f = { ...VACIO, binder_id: esGlobal ? "" : String(binderId) };
     setForm(f); setFormIni(f); setEditId("nuevo");
   }
   function abrirEdicion(t: Tarea) {
     const f: Form = {
-      binder_id: String(t.binder_id), titulo: t.titulo, descripcion: t.descripcion ?? "", frecuencia: t.frecuencia,
+      agencia_id: "", programa_id: "", binder_id: String(t.binder_id), titulo: t.titulo,
+      descripcion: t.descripcion ?? "", frecuencia: t.frecuencia,
       intervalo_meses: t.intervalo_meses == null ? "1" : String(t.intervalo_meses),
       fecha_inicio: t.fecha_inicio ?? "", aviso_dias_antes: String(t.aviso_dias_antes ?? 5), estado: t.estado,
     };
@@ -82,7 +111,7 @@ export default function TareasBinder({ binderId }: { binderId?: number }) {
   async function guardar() {
     if (!form.titulo.trim()) return setError("El título es obligatorio.");
     const bid = esGlobal ? Number(form.binder_id) : binderId!;
-    if (editId === "nuevo" && !bid) return setError("Elige el binder.");
+    if (editId === "nuevo" && !bid) return setError("Elige Agencia, Programa y Binder.");
     setError(null); setSaving(true);
     const payload = {
       titulo: form.titulo.trim(),
@@ -123,11 +152,58 @@ export default function TareasBinder({ binderId }: { binderId?: number }) {
     } catch (e) { setError((e as Error).message); } finally { setBusyOc(null); }
   }
 
-  // En la página global, ordena por próxima pendiente (más urgente primero; las sin próxima al final).
-  const filas = useMemo(() => {
-    if (!esGlobal) return tareas;
-    return [...tareas].sort((a, b) => (a.proxima ?? "9999").localeCompare(b.proxima ?? "9999"));
+  // Ordena por próxima pendiente (más urgente primero; las sin próxima al final).
+  const porProxima = (a: Tarea, b: Tarea) => (a.proxima ?? "9999").localeCompare(b.proxima ?? "9999");
+
+  // Vista global agrupada en bloques: Agencia → Programa → Binder → tareas.
+  const bloques = useMemo(() => {
+    if (!esGlobal) return [];
+    const ag = new Map<string, Map<string, Map<string, Tarea[]>>>();
+    for (const t of tareas) {
+      const a = t.agencia || "(sin agencia)";
+      const p = t.programa || "(sin programa)";
+      const b = t.binder_umr || "—";
+      if (!ag.has(a)) ag.set(a, new Map());
+      const pm = ag.get(a)!;
+      if (!pm.has(p)) pm.set(p, new Map());
+      const bm = pm.get(p)!;
+      if (!bm.has(b)) bm.set(b, []);
+      bm.get(b)!.push(t);
+    }
+    return [...ag.entries()].sort((x, y) => colACMP(x[0], y[0])).map(([a, pm]) => ({
+      agencia: a,
+      programas: [...pm.entries()].sort((x, y) => colACMP(x[0], y[0])).map(([p, bm]) => ({
+        programa: p,
+        binders: [...bm.entries()].sort((x, y) => colACMP(x[0], y[0])).map(([b, ts]) => ({
+          binder: b, tareas: [...ts].sort(porProxima),
+        })),
+      })),
+    }));
   }, [tareas, esGlobal]);
+
+  const tablaDe = (ts: Tarea[]) => (
+    <table className="compacto" style={{ width: "100%" }}>
+      <thead>
+        <tr><th>Tarea</th><th>Frecuencia</th><th>Estado</th><th>Próxima pendiente</th><th className="num">Hechas</th><th></th></tr>
+      </thead>
+      <tbody>
+        {ts.map((t) => (
+          <tr key={t.id}>
+            <td>{t.titulo}</td>
+            <td>{t.frecuencia === "Personalizada" ? `Cada ${t.intervalo_meses} meses` : t.frecuencia}</td>
+            <td>{t.estado}</td>
+            <td>{t.proxima ? fmtFechaES(t.proxima) : "—"}</td>
+            <td className="num">{t.n_hechas}/{t.n_ocurrencias}</td>
+            <td className="acciones" style={{ whiteSpace: "nowrap" }}>
+              <button className="btn-link" onClick={() => abrirEdicion(t)}>Editar</button>
+              {" · "}
+              <button className="btn-link" onClick={() => abrirOc(t)}>Ocurrencias</button>
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
 
   return (
     <>
@@ -136,35 +212,33 @@ export default function TareasBinder({ binderId }: { binderId?: number }) {
       </div>
       {error && <div className="error">{error}</div>}
 
-      {filas.length === 0 ? (
+      {tareas.length === 0 ? (
         <div className="empty">{esGlobal ? "No hay tareas todavía." : "No hay tareas para este binder todavía."}</div>
+      ) : esGlobal ? (
+        <div className="tareas-bloques">
+          {bloques.map((a) => (
+            <section key={a.agencia} style={{ marginBottom: 22 }}>
+              <h3 style={{ margin: "0 0 6px", fontSize: 16, borderBottom: "2px solid var(--borde, #d0d4dc)", paddingBottom: 4 }}>
+                🏢 {a.agencia}
+              </h3>
+              {a.programas.map((p) => (
+                <div key={p.programa} style={{ margin: "0 0 14px 12px" }}>
+                  <div style={{ fontWeight: 600, color: "var(--texto-suave, #555)", margin: "8px 0 4px" }}>
+                    📋 {p.programa}
+                  </div>
+                  {p.binders.map((b) => (
+                    <div key={b.binder} style={{ margin: "0 0 8px 12px" }}>
+                      <div style={{ fontSize: 13, color: "var(--texto-suave, #666)", margin: "4px 0 2px" }}>📑 {b.binder}</div>
+                      {tablaDe(b.tareas)}
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </section>
+          ))}
+        </div>
       ) : (
-        <table className="compacto" style={{ width: "100%" }}>
-          <thead>
-            <tr>
-              {esGlobal && <th>Binder</th>}
-              <th>Tarea</th><th>Frecuencia</th><th>Estado</th><th>Próxima pendiente</th>
-              <th className="num">Hechas</th><th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {filas.map((t) => (
-              <tr key={t.id}>
-                {esGlobal && <td>{t.binder_umr ?? "—"}</td>}
-                <td>{t.titulo}</td>
-                <td>{t.frecuencia === "Personalizada" ? `Cada ${t.intervalo_meses} meses` : t.frecuencia}</td>
-                <td>{t.estado}</td>
-                <td>{t.proxima ? fmtFechaES(t.proxima) : "—"}</td>
-                <td className="num">{t.n_hechas}/{t.n_ocurrencias}</td>
-                <td className="acciones" style={{ whiteSpace: "nowrap" }}>
-                  <button className="btn-link" onClick={() => abrirEdicion(t)}>Editar</button>
-                  {" · "}
-                  <button className="btn-link" onClick={() => abrirOc(t)}>Ocurrencias</button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        tablaDe([...tareas].sort(porProxima))
       )}
 
       {editId !== null && (
@@ -176,13 +250,29 @@ export default function TareasBinder({ binderId }: { binderId?: number }) {
         >
           {esGlobal && (
             editId === "nuevo" ? (
-              <div className="field">
-                <label>Binder *</label>
-                <select value={form.binder_id} onChange={(e) => set("binder_id", e.target.value)}>
-                  <option value="">— elegir —</option>
-                  {binders.map((b) => <option key={b.id} value={b.id}>{b.umr || b.agreement_number || `#${b.id}`}</option>)}
-                </select>
-              </div>
+              <>
+                <div className="field">
+                  <label>Agencia *</label>
+                  <select value={form.agencia_id} onChange={(e) => onAgencia(e.target.value)}>
+                    <option value="">— elegir —</option>
+                    {agencias.map((a) => <option key={a.id} value={a.id}>{a.nombre}</option>)}
+                  </select>
+                </div>
+                <div className="field">
+                  <label>Programa *</label>
+                  <select value={form.programa_id} disabled={!form.agencia_id} onChange={(e) => onPrograma(e.target.value)}>
+                    <option value="">{form.agencia_id ? "— elegir —" : "elige primero la agencia"}</option>
+                    {programasDeAgencia.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+                  </select>
+                </div>
+                <div className="field">
+                  <label>Binder *</label>
+                  <select value={form.binder_id} disabled={!form.programa_id} onChange={(e) => set("binder_id", e.target.value)}>
+                    <option value="">{form.programa_id ? "— elegir —" : "elige primero el programa"}</option>
+                    {bindersDePrograma.map((b) => <option key={b.id} value={b.id}>{b.umr || b.agreement_number || `#${b.id}`}</option>)}
+                  </select>
+                </div>
+              </>
             ) : (
               <div className="field">
                 <label>Binder</label>

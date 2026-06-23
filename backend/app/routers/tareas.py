@@ -93,6 +93,8 @@ class TareaRead(BaseModel):
     aviso_dias_antes: int
     estado: str
     binder_umr: str | None = None
+    agencia: str | None = None       # coverholder (para agrupar Agencia → Programa → Binder)
+    programa: str | None = None
     n_ocurrencias: int = 0      # ocurrencias debidas (hasta hoy/aviso)
     n_hechas: int = 0
     proxima: dt.date | None = None   # próxima ocurrencia pendiente y debida
@@ -102,6 +104,8 @@ def _serializar(db: Session, t: Tarea) -> TareaRead:
     binder = db.get(Binder, t.binder_id)
     d = TareaRead.model_validate(t)
     d.binder_umr = (binder.umr or binder.agreement_number) if binder else None
+    d.agencia = (binder.productor.nombre if binder and binder.productor else None)
+    d.programa = (binder.programa.nombre if binder and binder.programa else None)
     ocs = _ocurrencias(t, binder) if binder else []
     hechas = {h.fecha_ocurrencia for h in t.hechas}
     hoy = dt.date.today()

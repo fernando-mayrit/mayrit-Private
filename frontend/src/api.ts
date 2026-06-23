@@ -309,6 +309,8 @@ export interface Tarea {
   aviso_dias_antes: number;
   estado: string;
   binder_umr?: string | null;
+  agencia?: string | null;
+  programa?: string | null;
   n_ocurrencias: number;
   n_hechas: number;
   proxima?: string | null;
