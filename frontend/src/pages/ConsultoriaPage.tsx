@@ -321,6 +321,7 @@ export default function ConsultoriaPage() {
           dirty={false}
           saving={false}
           saveLabel="Cerrar"
+          wide
           onSave={() => setCobrosDe(null)}
           onClose={() => setCobrosDe(null)}
         >
@@ -329,12 +330,12 @@ export default function ConsultoriaPage() {
             crea el recibo si falta y deja el Word listo para enviar en la carpeta de Facturas Emitidas.
           </p>
           {facturaMsg && <div className="ok" style={{ marginBottom: 8, wordBreak: "break-all" }}>📄 {facturaMsg}</div>}
-          <table className="compacto">
+          <table className="compacto" style={{ width: "100%" }}>
             <thead>
               <tr><th>Periodo</th><th>Fecha</th><th className="num">Base</th><th className="num">IVA</th><th className="num">Total</th><th>Recibo</th><th></th></tr>
             </thead>
             <tbody>
-              {cobros.map((co) => (
+              {[...cobros].reverse().map((co) => (
                 <tr key={co.periodo}>
                   <td>{co.periodo}</td>
                   <td>{fmtFechaES(co.fecha)}</td>
