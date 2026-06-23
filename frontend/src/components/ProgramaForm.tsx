@@ -121,7 +121,7 @@ export default function ProgramaForm({
         <label>Agencia (coverholder)</label>
         <select value={form.productor_id} onChange={(e) => setForm({ ...form, productor_id: e.target.value })}>
           <option value="">— Sin asignar —</option>
-          {productores.map((p) => (
+          {[...productores].sort((a, b) => a.nombre.localeCompare(b.nombre, "es")).map((p) => (
             <option key={p.id} value={p.id}>
               {p.alias ? `${p.nombre} (${p.alias})` : p.nombre}
             </option>

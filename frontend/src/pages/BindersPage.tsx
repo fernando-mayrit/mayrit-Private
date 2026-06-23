@@ -1253,6 +1253,7 @@ export default function BindersPage() {
               <option value="">— Elige agencia —</option>
               {agencias
                 .filter((a) => a.activa || String(a.id) === form.productor_id)
+                .sort((a, b) => a.nombre.localeCompare(b.nombre, "es"))
                 .map((a) => (
                 <option key={a.id} value={a.id}>
                   {a.nombre}

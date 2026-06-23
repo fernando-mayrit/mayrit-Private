@@ -519,7 +519,7 @@ export default function PolizaForm({
             label="Asegurado"
             required
             value={form.asegurado}
-            options={tomadores.map((t) => ({ value: t.nombre, label: t.nombre }))}
+            options={[...tomadores].sort((a, b) => a.nombre.localeCompare(b.nombre, "es")).map((t) => ({ value: t.nombre, label: t.nombre }))}
             onChange={(v) => set("asegurado", v)}
             onAdd={() => setAlta("tomador")}
             addTitle="Nuevo tomador"

@@ -61,7 +61,8 @@ export default function ConsultoriaPage() {
     (async () => {
       try {
         const [ps, cs] = await Promise.all([apiProductores.list(undefined, 5000), apiCuentas.list(undefined, 5000)]);
-        setProductores((ps as Productor[]).filter((p) => p.activa !== false));
+        setProductores((ps as Productor[]).filter((p) => p.activa !== false)
+          .sort((a, b) => (a.alias || a.nombre).localeCompare(b.alias || b.nombre, "es")));
         setCuentas(cs as CuentaBancaria[]);
       } catch (e) { setError((e as Error).message); }
       cargar();
