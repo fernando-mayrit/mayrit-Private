@@ -65,6 +65,14 @@ def _iva(c: ConsultoriaContrato, base: Decimal) -> Decimal:
     return (base * (c.impuestos_porc or Decimal(0)) / Decimal(100)).quantize(Decimal("0.01"))
 
 
+def _cobro_debido(c: ConsultoriaContrato, f: dt.date, hoy: dt.date, generado: bool) -> bool:
+    """Un cobro 'cuenta' y se muestra si ya tiene recibo o su AVISO ya ha saltado: `aviso_dias_antes`
+    antes de la fecha de facturación (según el contrato). Los cobros futuros aún sin aviso no salen."""
+    if generado:
+        return True
+    return _fecha_facturacion(c, f) - dt.timedelta(days=int(c.aviso_dias_antes or 0)) <= hoy
+
+
 # ── Schemas ──
 class ContratoIn(BaseModel):
     productor_id: int
@@ -132,9 +140,16 @@ def _serializar(db: Session, c: ConsultoriaContrato) -> ContratoRead:
     generados = {r.periodo for r in db.scalars(
         select(Recibo).where(Recibo.consultoria_id == c.id)
     ).all()}
-    d.n_cobros = len(fechas)
+    hoy = dt.date.today()
+    # Solo cuentan los cobros DEBIDOS: ya generados o con su aviso ya saltado (no los futuros).
+    debidos = [f for f in fechas if _cobro_debido(c, f, hoy, f.strftime("%Y-%m") in generados)]
+    d.n_cobros = len(debidos)
     d.n_generados = len(generados)
-    d.proximo_cobro = next((f for f in fechas if f.strftime("%Y-%m") not in generados), None)
+    # Próximo cobro PENDIENTE de hacer: el primer cobro debido sin recibo (None si nada toca aún).
+    d.proximo_cobro = next(
+        (f for f in fechas if f.strftime("%Y-%m") not in generados and _cobro_debido(c, f, hoy, False)),
+        None,
+    )
     return d
 
 
@@ -194,8 +209,8 @@ def cobros(contrato_id: int, db: Session = Depends(get_db)):
     for f in _fechas_cobro(c):
         per = f.strftime("%Y-%m")
         r = recibos.get(per)
-        # No mostrar cobros FUTUROS (cuyo mes aún no ha empezado), salvo que ya tengan recibo.
-        if r is None and dt.date(f.year, f.month, 1) > hoy:
+        # Solo se muestra un cobro cuando toca: ya generado o con su aviso ya saltado (no los futuros).
+        if not _cobro_debido(c, f, hoy, r is not None):
             continue
         base = Decimal(c.importe or 0)
         iva = _iva(c, base)
