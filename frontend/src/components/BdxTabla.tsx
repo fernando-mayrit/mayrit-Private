@@ -49,6 +49,7 @@ const CATALOGO: Col[] = [
   { key: "gross_written_premium", label: "GWP", tipo: "num" },
   { key: "written_line_pct", label: "Written Line %", tipo: "pct" },
   { key: "total_gwp_our_line", label: "GWP (our line)", tipo: "num" },
+  { key: "fees", label: "Fees", tipo: "num" },
   { key: "commission_coverholder_pct", label: "Comisión %", tipo: "pct" },
   { key: "commission_coverholder_amount", label: "Comisión", tipo: "num" },
   { key: "total_taxes_levies", label: "Impuestos", tipo: "num" },
