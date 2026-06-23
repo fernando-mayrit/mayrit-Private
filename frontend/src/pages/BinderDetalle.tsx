@@ -1382,6 +1382,12 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
                     <span className="nav-chevron">{abierto ? "▾" : "▸"}</span>
                     {p.periodo_label}{completo ? " ✓" : ""}
                   </h4>
+                  {!completo && (
+                    <a className="btn-secondary btn-sm" href={lpanApi.bdxExcelUrl(binder.id, p.periodo)}
+                       title="Descargar el BDX a procesar de este mes" download>
+                      ⬇️ Excel BDX
+                    </a>
+                  )}
                 </div>
                 {abierto && p.secciones.map((s) => (
                   <div key={s.section} style={{ marginBottom: 8 }}>

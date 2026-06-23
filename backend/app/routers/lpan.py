@@ -129,10 +129,17 @@ def _num_lpan(v) -> str:
     return f"{_d(v):,.2f}"
 
 
-def _generar_lpan_docx(carpeta: str, nombre: str, signing: str | None, umr_part: str,
-                       umr: str | None, tipo: str, gross, brokerage, tax, net, moneda: str) -> str:
+def _pct_lpan(v) -> str:
+    """Porcentaje para el documento, sin ceros sobrantes: 5 -> '5%', 32.5 -> '32.5%'."""
+    s = f"{_d(v):.2f}".rstrip("0").rstrip(".")
+    return f"{s}%"
+
+
+def _generar_lpan_docx(carpeta: str, nombre: str, signing: str | None, broker_ref1: str,
+                       umr: str | None, gross, brokerage, tax, net, moneda: str) -> str:
     """Rellena la plantilla LPAN con las cifras reales del bloque y la guarda como '<nombre>.docx'
-    en `carpeta`. Devuelve la ruta del documento."""
+    en `carpeta`. Devuelve la ruta del documento. `broker_ref1` (casilla 10) = código completo del
+    agreement, con las 3 letras del coverholder al final."""
     import docx  # carga perezosa
 
     plantilla = settings.lpan_plantilla
@@ -151,11 +158,15 @@ def _generar_lpan_docx(carpeta: str, nombre: str, signing: str | None, umr_part:
             zo.writestr(it, data)
 
     d = docx.Document(tmp)
-    todos = {"Premium": tipo, "Yes/No": "No"}
+    # Casilla 1: AP (Additional Premium) si la prima es positiva; RP (Return Premium) si es negativa.
+    transaccion = "RP" if _d(gross) < 0 else "AP"
+    # Casilla 19: el % de brokerage sobre la prima (no el importe).
+    brk_pct = (_d(brokerage) / _d(gross) * 100) if _d(gross) else 0
+    todos = {"Premium": transaccion, "Yes/No": "Yes / No"}   # casilla 6: se deja "Yes / No"
     una_vez = {
-        "Bureau": signing or "", "BrokerRef1": umr_part, "BrokerRef2": nombre,
-        "Line": "", "Taxes": _num_lpan(tax), "GrossPremium": _num_lpan(gross),
-        "Brokerage": _num_lpan(brokerage), "OCurrency": moneda, "SCurrency": moneda,
+        "Bureau": signing or "", "BrokerRef1": broker_ref1, "BrokerRef2": nombre,
+        "Line": "100%", "Taxes": _num_lpan(tax), "GrossPremium": _num_lpan(gross),
+        "Brokerage": _pct_lpan(brk_pct), "OCurrency": moneda, "SCurrency": moneda,
         "BureauPremium": _num_lpan(net), "UMR": umr or "",
     }
     vistos_tok: set[str] = set()
@@ -548,8 +559,8 @@ def generar_lpan(binder_id: int, payload: LpanCreate, db: Session = Depends(get_
     moneda = b.moneda or "EUR"
     # Documento Word ANTES de crear el registro (si la carpeta falla, no deja huérfano).
     if payload.carpeta:
-        _generar_lpan_docx(payload.carpeta, nombre, f.signing_number, _umr_part(b.agreement_number),
-                           b.umr, tipo, g["gross"], g["brk"], g["tax"], g["net"], moneda)
+        _generar_lpan_docx(payload.carpeta, nombre, f.signing_number, (b.agreement_number or ""),
+                           b.umr, g["gross"], g["brk"], g["tax"], g["net"], moneda)
     lp = Lpan(
         fdo_id=f.id, binder_id=binder_id, risk_code=rc, section=sec, periodo=per, tipo=tipo,
         num_lineas=g["num"], gross_premium=g["gross"], brokerage=g["brk"], tax=g["tax"], net_premium=g["net"],
