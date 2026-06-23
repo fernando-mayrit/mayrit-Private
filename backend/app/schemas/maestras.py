@@ -220,6 +220,7 @@ class ProgramaBase(BaseModel):
     productor_id: int | None = None
     notas: str | None = None
     activa: bool = True
+    impuestos_locales: bool = False
 
 
 class ProgramaCreate(ProgramaBase):
@@ -231,6 +232,7 @@ class ProgramaUpdate(BaseModel):
     productor_id: int | None = None
     notas: str | None = None
     activa: bool | None = None
+    impuestos_locales: bool | None = None
 
 
 class ProgramaRead(ProgramaBase):

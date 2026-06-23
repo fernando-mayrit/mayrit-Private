@@ -298,7 +298,7 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
   const [fechasPago, setFechasPago] = useState<Record<string, string>>({});
   // Diálogo de confirmación contundente para acciones sensibles
   const [confirmar, setConfirmar] = useState<
-    { titulo: string; mensaje: ReactNode; detalle?: ReactNode; confirmLabel?: string; doble?: boolean; accion: () => void } | null
+    { titulo: string; mensaje: ReactNode; importe?: ReactNode; detalle?: ReactNode; confirmLabel?: string; doble?: boolean; accion: () => void } | null
   >(null);
 
   // ── Importación desde SharePoint ──
@@ -432,7 +432,7 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
   // Totales del Premium (lo macheado) vs totales del Risk (todas las líneas). Cuando todo está
   // macheado, deben coincidir. Prima = our line + impuestos − comisión cedida; Comisión = brokerage.
   // Totales del Risk (todas las líneas) + nº de pólizas. Memoizado por `sel`.
-  const { riskLineas, riskPrima, riskComision, nPolizas } = useMemo(() => {
+  const { riskLineas, riskComision, riskLloyds, nPolizas } = useMemo(() => {
     const lineasRisk = sel?.lineas ?? [];
     // Nº de pólizas (mismo criterio que el contador del BDX): únicas por (asegurado + fechas),
     // une splits por risk code, ignora suplementos y excluye anuladas (prima neta our line ≤ 0).
@@ -446,8 +446,8 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
     for (const v of acc.values()) if (v > 0.005) np++;
     return {
       riskLineas: lineasRisk.length,
-      riskPrima: lineasRisk.reduce((a, l) => a + n(l.total_gwp_our_line) + n(l.total_taxes_levies) - n(l.commission_coverholder_amount), 0),
       riskComision: lineasRisk.reduce((a, l) => a + n(l.brokerage_amount), 0),
+      riskLloyds: lineasRisk.reduce((a, l) => a + n(l.net_premium_to_broker), 0),
       nPolizas: np,
     };
   }, [sel]);
@@ -461,8 +461,8 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
   }, [sel, selMeses]);
 
   const premLineas = premiums.reduce((a, p) => a + p.num_lineas, 0);
-  const premPrima = premiums.reduce((a, p) => a + n(p.prima), 0);
   const premComision = premiums.reduce((a, p) => a + n(p.comision), 0);
+  const premLloyds = premiums.reduce((a, p) => a + n(p.prima_lloyds), 0);
 
   // Fecha por (periodo, etapa) para las acciones del ciclo de cobro (cobro/traspaso/liquidación).
   const hoyISO = () => new Date().toISOString().slice(0, 10);
@@ -477,6 +477,14 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
     cfg: { titulo: string; verbo: ReactNode; detalle: string; confirmLabel: string; api: (b: number, p: string, f: string) => Promise<unknown> }
   ) {
     const fecha = fechaDe(periodo, etapa);
+    // Importe de la acción (lo que se va a dar por cobrado / traspasado / liquidado), según la etapa.
+    const grupo = premiums.find((x) => x.periodo === periodo);
+    const importeInfo =
+      etapa === "cobro"
+        ? { label: "Importe a cobrar", valor: grupo?.prima_lloyds }
+        : etapa === "traspaso"
+        ? { label: "Importe a traspasar", valor: grupo?.comision }
+        : { label: "Importe a liquidar", valor: grupo?.a_liquidar };
     setConfirmar({
       titulo: cfg.titulo,
       mensaje: (
@@ -484,6 +492,12 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
           {cfg.verbo} el Premium <b>{mesLargo(periodo)}</b> con fecha <b>{fmtFechaES(fecha)}</b>.
         </>
       ),
+      importe: grupo ? (
+        <>
+          <div className="ci-lbl">{importeInfo.label}</div>
+          <div className="ci-val">{imp(importeInfo.valor)} €</div>
+        </>
+      ) : undefined,
       detalle: cfg.detalle,
       confirmLabel: cfg.confirmLabel,
       accion: async () => {
@@ -947,9 +961,9 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
                 <tr>
                   <th>Mes Premium</th>
                   <th className="num">Líneas</th>
-                  <th className="num">Prima</th>
-                  <th className="num">Comisión</th>
-                  <th className="num">A liquidar</th>
+                  <th className="num">A Cobrar</th>
+                  <th className="num">A Traspasar</th>
+                  <th className="num">A Liquidar</th>
                   <th>💰 Cobro</th>
                   <th>🔁 Traspaso</th>
                   <th>🏦 Liquidación</th>
@@ -962,7 +976,7 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
                     <tr key={p.periodo}>
                       <td>{mesLargo(p.periodo)}</td>
                       <td className="num">{p.num_lineas}</td>
-                      <td className="num">{imp(n(p.prima))}</td>
+                      <td className="num">{imp(n(p.prima_lloyds))}</td>
                       <td className="num">{imp(n(p.comision))}</td>
                       <td className="num">{imp(n(p.a_liquidar))}</td>
                       <td>{celdaEtapa(p, "cobro", bloq)}</td>
@@ -974,14 +988,14 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
                 <tr style={{ fontWeight: 600, borderTop: "2px solid var(--borde)" }}>
                   <td>Total Premium</td>
                   <td className="num">{premLineas}</td>
-                  <td className="num">{imp(premPrima)}</td>
+                  <td className="num">{imp(premLloyds)}</td>
                   <td className="num">{imp(premComision)}</td>
                   <td colSpan={4}></td>
                 </tr>
                 <tr className="hint">
                   <td>Total Risk</td>
                   <td className="num">{riskLineas}</td>
-                  <td className="num">{imp(riskPrima)}</td>
+                  <td className="num">{imp(riskLloyds)}</td>
                   <td className="num">{imp(riskComision)}</td>
                   <td colSpan={4}>
                     {premLineas === riskLineas
@@ -1599,6 +1613,7 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
         <ConfirmDialog
           titulo={confirmar.titulo}
           mensaje={confirmar.mensaje}
+          importe={confirmar.importe}
           detalle={confirmar.detalle}
           confirmLabel={confirmar.confirmLabel}
           doble={confirmar.doble}

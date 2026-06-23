@@ -5,6 +5,7 @@ import { useState, type ReactNode } from "react";
 export default function ConfirmDialog({
   titulo,
   mensaje,
+  importe,
   detalle,
   confirmLabel = "Confirmar",
   doble = false,
@@ -13,6 +14,7 @@ export default function ConfirmDialog({
 }: {
   titulo: string;
   mensaje: ReactNode;
+  importe?: ReactNode;       // importe destacado en su propio cuadro (entre el mensaje y el detalle)
   detalle?: ReactNode;       // consecuencia destacada (en rojo)
   confirmLabel?: string;
   doble?: boolean;
@@ -31,6 +33,7 @@ export default function ConfirmDialog({
         </div>
         <div className="confirm-body">
           <div>{mensaje}</div>
+          {importe && <div className="confirm-importe">{importe}</div>}
           {detalle && <div className="confirm-detalle">{detalle}</div>}
           {doble && paso === 2 && (
             <div className="confirm-warn">

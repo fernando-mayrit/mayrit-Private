@@ -12,16 +12,18 @@ type FormState = {
   productor_id: string;
   notas: string;
   activa: boolean;
+  impuestos_locales: boolean;
 };
 
 function desde(p: Programa | null, productorInicial?: number | null): FormState {
-  if (!p) return { nombre: "", productor_id: productorInicial != null ? String(productorInicial) : "", notas: "", activa: true };
+  if (!p) return { nombre: "", productor_id: productorInicial != null ? String(productorInicial) : "", notas: "", activa: true, impuestos_locales: false };
   return {
     id: p.id,
     nombre: p.nombre,
     productor_id: p.productor_id != null ? String(p.productor_id) : "",
     notas: p.notas ?? "",
     activa: p.activa,
+    impuestos_locales: p.impuestos_locales,
   };
 }
 
@@ -71,6 +73,7 @@ export default function ProgramaForm({
       productor_id: form.productor_id ? Number(form.productor_id) : null,
       notas: form.notas.trim() || null,
       activa: form.activa !== false,
+      impuestos_locales: form.impuestos_locales,
     };
     try {
       const saved = form.id ? await api.update(form.id, payload) : await api.create(payload);
@@ -128,6 +131,10 @@ export default function ProgramaForm({
       <label className="check-inline" style={{ marginBottom: 14 }}>
         <input type="checkbox" checked={form.activa !== false} onChange={(e) => setForm({ ...form, activa: e.target.checked })} />
         Activo (desmárcalo para que deje de aparecer en los desplegables)
+      </label>
+      <label className="check-inline" style={{ marginBottom: 14 }}>
+        <input type="checkbox" checked={form.impuestos_locales} onChange={(e) => setForm({ ...form, impuestos_locales: e.target.checked })} />
+        Impuestos liquidados localmente por la agencia (excluir impuestos de "A Liquidar" — p. ej. agencias italianas)
       </label>
       <div className="field">
         <label>Notas</label>

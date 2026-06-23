@@ -153,6 +153,9 @@ class Programa(Base):
     productor_id: Mapped[int | None] = mapped_column(ForeignKey("productores.id"))  # agencia / coverholder
     notas: Mapped[str | None] = mapped_column(Text)
     activa: Mapped[bool] = mapped_column(Boolean, server_default=text("true"), default=True)
+    # Impuestos liquidados localmente por la agencia (p. ej. agencias italianas): sus impuestos NO
+    # se liquidan a través de Mayrit → se EXCLUYEN del importe 'A Liquidar' de sus binders.
+    impuestos_locales: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False, nullable=False)
 
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[dt.datetime] = mapped_column(

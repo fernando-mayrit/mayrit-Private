@@ -647,6 +647,9 @@ td.num, th.num { text-align: right; }
 .confirm-body { padding: 6px 20px 12px; font-size: 15px; color: var(--gris); line-height: 1.4; }
 .confirm-detalle { margin-top: 10px; padding: 10px 12px; background: #fde2dd; border-radius: 8px; color: var(--rojo); font-weight: 600; }
 .confirm-warn { margin-top: 12px; padding: 10px 12px; background: var(--rojo); color: #fff; border-radius: 8px; font-weight: 700; }
+.confirm-importe { margin-top: 10px; padding: 12px 14px; background: var(--gris-claro); border: 1px solid var(--borde); border-radius: 8px; text-align: center; }
+.confirm-importe .ci-lbl { font-size: 12px; text-transform: uppercase; letter-spacing: .4px; color: var(--gris-medio); }
+.confirm-importe .ci-val { font-size: 24px; font-weight: 800; color: var(--naranja-osc); }
 
 /* Recibos: estado de cobro (pill de color) */
 .pill { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; white-space: nowrap; }

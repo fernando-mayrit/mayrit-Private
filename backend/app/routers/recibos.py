@@ -34,6 +34,7 @@ from ..models.maestras import (
     Mercado,
     Poliza,
     Productor,
+    Programa,
     Recibo,
     SeccionMercado,
 )
@@ -298,7 +299,9 @@ def _campos_emision(db: Session, binder: Binder, periodo: str, lineas, fecha: dt
     deduccion = _q2(cedida + retenida + honorarios)
     gwp100 = _q2(S("gross_written_premium"))         # GWP al 100% (para la participación)
     adeudada = _q2(prima_bruta - cedida)             # pagador = Agencia
-    liquidar = _q2(adeudada - retenida)
+    # Impuestos liquidados localmente (p. ej. agencias italianas): se excluyen de 'A Liquidar'.
+    excl_imp = _impuestos_locales(db, binder.id)
+    liquidar = _q2(adeudada - retenida - (impuestos if excl_imp else D0))
 
     def pct(x):
         return _q4(x / prima_neta * 100) if prima_neta else None
@@ -814,23 +817,41 @@ def borrar(recibo_id: int, db: Session = Depends(get_db)):
 
 
 # ─────────────────── Cobro vía Premium BDX (deriva el cobro del recibo) ───────────────────
-def _comp_linea(l: BdxLinea):
-    """(adeudada, retenida, a_liquidar) de una línea, sobre our line (igual que en la emisión)."""
+def _comp_linea(l: BdxLinea, excluir_impuestos: bool = False):
+    """(adeudada, retenida, a_liquidar) de una línea, sobre our line (igual que en la emisión).
+
+    Si `excluir_impuestos` (binders con impuestos liquidados localmente por la agencia, p. ej.
+    agencias italianas), el importe 'A Liquidar' NO incluye los impuestos: esos impuestos no se
+    liquidan a través de Mayrit. El cobro (adeudada) y el traspaso (retenida) no cambian."""
     neta = l.total_gwp_our_line or D0
     imp = l.total_taxes_levies or D0
     cedida = l.commission_coverholder_amount or D0
     retenida = l.brokerage_amount or D0
     adeudada = (neta + imp) - cedida
-    return adeudada, retenida, adeudada - retenida
+    base_liquidar = adeudada - (imp if excluir_impuestos else D0)
+    return adeudada, retenida, base_liquidar - retenida
+
+
+def _impuestos_locales(db: Session, binder_id: int | None) -> bool:
+    """True si el binder cuelga de un programa con impuestos liquidados localmente (p. ej.
+    agencias italianas): sus impuestos NO se liquidan a través nuestro → se excluyen de 'A Liquidar'."""
+    if not binder_id:
+        return False
+    return bool(db.execute(
+        select(Programa.impuestos_locales)
+        .join(Binder, Binder.programa_id == Programa.id)
+        .where(Binder.id == binder_id)
+    ).scalar())
 
 
 def _recalcular_cobro_recibo(db: Session, recibo: Recibo) -> None:
     """El cobro/traspaso/liquidación del recibo se DERIVAN de sus líneas (vía Premium)."""
     lineas = db.scalars(select(BdxLinea).where(BdxLinea.recibo_id == recibo.id)).all()
+    excl = _impuestos_locales(db, recibo.binder_id)
     adeu = ret = liq = ret_tras = liq_liq = D0
     f_cobro, f_tras, f_liq = [], [], []
     for l in lineas:
-        a, r, q = _comp_linea(l)
+        a, r, q = _comp_linea(l, excl)
         if l.prima_cobrada:
             adeu += a
             ret += r
@@ -892,6 +913,7 @@ class PremiumGrupo(BaseModel):
     prima: Decimal          # Σ adeudada de sus líneas
     comision: Decimal       # Σ comisión retenida (brokerage)
     a_liquidar: Decimal     # Σ (adeudada − retenida)
+    prima_lloyds: Decimal   # Σ Net Premium to Lloyd's Broker (net_premium_to_broker)
     cobrado: bool           # todas sus líneas cobradas
     traspasado: bool        # todas sus líneas traspasadas
     liquidado: bool         # todas sus líneas liquidadas
@@ -919,6 +941,7 @@ def listar_premium(binder_id: int, db: Session = Depends(get_db)):
             BdxLinea.premium_bdx,
             BdxLinea.total_gwp_our_line, BdxLinea.total_taxes_levies,
             BdxLinea.commission_coverholder_amount, BdxLinea.brokerage_amount,
+            BdxLinea.net_premium_to_broker,
             BdxLinea.prima_cobrada, BdxLinea.premium_payment_date,
             BdxLinea.traspaso, BdxLinea.fecha_traspaso,
             BdxLinea.liquidado, BdxLinea.fecha_liquidacion,
@@ -930,15 +953,17 @@ def listar_premium(binder_id: int, db: Session = Depends(get_db)):
             select(Recibo.periodo).where(Recibo.binder_id == binder_id, Recibo.periodo.is_not(None))
         ).all()
     }
+    excl = _impuestos_locales(db, binder_id)
     grupos: dict[str, dict] = {}
     for l in lineas:
         per = l.premium_bdx.strftime("%Y-%m")
-        g = grupos.setdefault(per, {"num": 0, "prima": D0, "com": D0, "liq": D0, "cob": 0, "tra": 0, "liqd": 0, "fc": [], "ft": [], "fl": []})
-        a, r, q = _comp_linea(l)
+        g = grupos.setdefault(per, {"num": 0, "prima": D0, "com": D0, "liq": D0, "npb": D0, "cob": 0, "tra": 0, "liqd": 0, "fc": [], "ft": [], "fl": []})
+        a, r, q = _comp_linea(l, excl)
         g["num"] += 1
         g["prima"] += a
         g["com"] += r
         g["liq"] += q
+        g["npb"] += (l.net_premium_to_broker or D0)
         if l.prima_cobrada:
             g["cob"] += 1
             if l.premium_payment_date:
@@ -958,6 +983,7 @@ def listar_premium(binder_id: int, db: Session = Depends(get_db)):
             prima=_q2(g["prima"]),
             comision=_q2(g["com"]),
             a_liquidar=_q2(g["liq"]),
+            prima_lloyds=_q2(g["npb"]),
             cobrado=g["num"] > 0 and g["cob"] == g["num"],
             traspasado=g["num"] > 0 and g["tra"] == g["num"],
             liquidado=g["num"] > 0 and g["liqd"] == g["num"],
@@ -1027,8 +1053,9 @@ def traspasar_premium(binder_id: int, payload: AccionPremium, db: Session = Depe
 @router.post("/binders/{binder_id}/premium/liquidar")
 def liquidar_premium(binder_id: int, payload: AccionPremium, db: Session = Depends(get_db)):
     """🏦 Liquidar: paga a la compañía/Lloyd's la parte a liquidar (adeudada − comisión retenida)."""
+    excl = _impuestos_locales(db, binder_id)
     def setter(l):
-        a, r, q = _comp_linea(l)
+        a, r, q = _comp_linea(l, excl)
         l.liquidado = True
         l.fecha_liquidacion = payload.fecha
         l.liquidado_uw = _q2(q)

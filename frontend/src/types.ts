@@ -49,6 +49,7 @@ export interface Programa {
   productor_id: number | null;
   notas: string | null;
   activa: boolean;
+  impuestos_locales: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -57,6 +58,7 @@ export interface ProgramaWrite {
   productor_id?: number | null;
   notas?: string | null;
   activa?: boolean;
+  impuestos_locales?: boolean;
 }
 
 export interface Productor {

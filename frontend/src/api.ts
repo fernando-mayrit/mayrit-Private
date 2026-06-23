@@ -494,6 +494,7 @@ export interface PremiumGrupo {
   prima: string;
   comision: string;
   a_liquidar: string;
+  prima_lloyds: string;
   cobrado: boolean;
   traspasado: boolean;
   liquidado: boolean;
