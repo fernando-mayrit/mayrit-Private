@@ -31,7 +31,7 @@ const VACIO: FormState = {
   productor_id: "", concepto: "", fecha_inicio: new Date().toISOString().slice(0, 10),
   indefinido: false, duracion_meses: "12", frecuencia: "Mensual", importe: "",
   sujeto_impuestos: true, impuestos_porc: "21", cuenta_bancaria_id: "",
-  dia_facturacion: "", aviso_dias_antes: "5", estado: "Activo", notas: "",
+  dia_facturacion: "1", aviso_dias_antes: "5", estado: "Activo", notas: "",
 };
 
 export default function ConsultoriaPage() {
@@ -44,6 +44,7 @@ export default function ConsultoriaPage() {
   const [editId, setEditId] = useState<number | "nuevo" | null>(null);
   const [form, setForm] = useState<FormState>(VACIO);
   const [formIni, setFormIni] = useState<FormState>(VACIO);
+  const [corrigiendo, setCorrigiendo] = useState(false);   // contrato guardado: abre en solo lectura
 
   const [cobrosDe, setCobrosDe] = useState<ConsultoriaContrato | null>(null);
   const [cobros, setCobros] = useState<ConsultoriaCobro[]>([]);
@@ -68,7 +69,7 @@ export default function ConsultoriaPage() {
   }, []);
 
   function abrirNuevo() {
-    setForm(VACIO); setFormIni(VACIO); setEditId("nuevo");
+    setForm(VACIO); setFormIni(VACIO); setCorrigiendo(false); setEditId("nuevo");
   }
   function abrirEdicion(c: ConsultoriaContrato) {
     const f: FormState = {
@@ -82,10 +83,17 @@ export default function ConsultoriaPage() {
       aviso_dias_antes: String(c.aviso_dias_antes ?? 5),
       estado: c.estado, notas: c.notas ?? "",
     };
-    setForm(f); setFormIni(f); setEditId(c.id);
+    setForm(f); setFormIni(f); setCorrigiendo(false); setEditId(c.id);
   }
   const set = (k: keyof FormState, v: string | boolean) => setForm((s) => ({ ...s, [k]: v }));
   const dirty = useMemo(() => JSON.stringify(form) !== JSON.stringify(formIni), [form, formIni]);
+  // Un contrato ya guardado abre en SOLO LECTURA; "Corregir" lo habilita (como el modal de recibo).
+  const ro = editId !== "nuevo" && !corrigiendo;
+  function pedirCorregir() {
+    if (window.confirm("Vas a modificar un contrato ya guardado. Hazlo solo para corregir errores. ¿Continuar?")) setCorrigiendo(true);
+  }
+  // Día de facturación: "primero" (1) · "ultimo" (31, el backend lo ajusta a fin de mes) · "concreto".
+  const diaSel = form.dia_facturacion === "1" ? "primero" : form.dia_facturacion === "31" ? "ultimo" : "concreto";
 
   async function guardar() {
     if (!form.productor_id) return setError("Elige el cliente (productor).");
@@ -174,7 +182,7 @@ export default function ConsultoriaPage() {
           </thead>
           <tbody>
             {items.map((c) => (
-              <tr key={c.id} className="fila-click" onClick={() => abrirEdicion(c)}>
+              <tr key={c.id}>
                 <td>{c.productor_nombre ?? "—"}</td>
                 <td>{c.concepto ?? "—"}</td>
                 <td>{c.frecuencia}</td>
@@ -184,7 +192,9 @@ export default function ConsultoriaPage() {
                 <td>{c.estado}</td>
                 <td>{c.proximo_cobro ? fmtFechaES(c.proximo_cobro) : "—"}</td>
                 <td className="num">{c.n_generados}/{c.n_cobros}</td>
-                <td className="acciones" onClick={(e) => e.stopPropagation()}>
+                <td className="acciones" style={{ whiteSpace: "nowrap" }}>
+                  <button className="btn-link" onClick={() => abrirEdicion(c)}>Editar</button>
+                  {" · "}
                   <button className="btn-link" onClick={() => abrirCobros(c)}>Cobros</button>
                 </td>
               </tr>
@@ -196,78 +206,103 @@ export default function ConsultoriaPage() {
 
       {editId !== null && (
         <FormPanel
-          title={editId === "nuevo" ? "Nuevo contrato de consultoría" : "Editar contrato"}
+          title={editId === "nuevo" ? "Nuevo contrato de consultoría" : "Contrato de consultoría"}
           dirty={dirty}
           saving={saving}
+          readOnly={ro}
+          saveLabel={corrigiendo ? "Guardar corrección" : "Guardar"}
           onSave={guardar}
           onClose={() => setEditId(null)}
-          onDelete={typeof editId === "number" ? borrar : undefined}
+          onDelete={!ro && typeof editId === "number" ? borrar : undefined}
         >
+          {ro && (
+            <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
+              <button className="btn-sm btn-corregir" onClick={pedirCorregir}>✏️ Corregir</button>
+            </div>
+          )}
           <div className="field">
             <label>Cliente (productor) *</label>
-            <select value={form.productor_id} onChange={(e) => set("productor_id", e.target.value)}>
+            <select value={form.productor_id} onChange={(e) => set("productor_id", e.target.value)} disabled={ro}>
               <option value="">— elegir —</option>
               {productores.map((p) => <option key={p.id} value={p.id}>{p.alias || p.nombre}</option>)}
             </select>
           </div>
           <div className="field">
             <label>Concepto</label>
-            <input value={form.concepto} onChange={(e) => set("concepto", e.target.value)} placeholder="p. ej. Asesoría mensual" />
+            <input type="text" value={form.concepto} onChange={(e) => set("concepto", e.target.value)} placeholder="p. ej. Asesoría mensual" disabled={ro} />
           </div>
           <div className="field">
             <label>Fecha de inicio *</label>
-            <input type="date" className="inp-fecha" value={form.fecha_inicio} onChange={(e) => set("fecha_inicio", e.target.value)} />
+            <input type="date" value={form.fecha_inicio} onChange={(e) => set("fecha_inicio", e.target.value)} disabled={ro} />
           </div>
-          <div className="field">
-            <label><input type="checkbox" checked={form.indefinido} onChange={(e) => set("indefinido", e.target.checked)} /> Indefinido (sin fecha de fin)</label>
+          <div className="field check">
+            <input type="checkbox" checked={form.indefinido} onChange={(e) => set("indefinido", e.target.checked)} disabled={ro} />
+            <label>Indefinido (sin fecha de fin)</label>
           </div>
           {!form.indefinido && (
             <div className="field">
               <label>Duración (meses) *</label>
-              <input type="number" min={1} value={form.duracion_meses} onChange={(e) => set("duracion_meses", e.target.value)} />
+              <input type="number" min={1} value={form.duracion_meses} onChange={(e) => set("duracion_meses", e.target.value)} disabled={ro} />
             </div>
           )}
           <div className="field">
             <label>Frecuencia de cobro *</label>
-            <select value={form.frecuencia} onChange={(e) => set("frecuencia", e.target.value)}>
+            <select value={form.frecuencia} onChange={(e) => set("frecuencia", e.target.value)} disabled={ro}>
               {FRECUENCIAS.map((f) => <option key={f} value={f}>{f}</option>)}
             </select>
           </div>
           <div className="field">
             <label>Importe por cobro (€) *</label>
-            <input type="number" step="0.01" value={form.importe} onChange={(e) => set("importe", e.target.value)} />
+            <input type="number" step="0.01" value={form.importe} onChange={(e) => set("importe", e.target.value)} disabled={ro} />
           </div>
-          <div className="field">
-            <label><input type="checkbox" checked={form.sujeto_impuestos} onChange={(e) => set("sujeto_impuestos", e.target.checked)} /> Sujeto a impuestos (IVA)</label>
+          <div className="field check">
+            <input type="checkbox" checked={form.sujeto_impuestos} onChange={(e) => set("sujeto_impuestos", e.target.checked)} disabled={ro} />
+            <label>Sujeto a impuestos (IVA)</label>
           </div>
           {form.sujeto_impuestos && (
             <div className="field">
               <label>IVA (%)</label>
-              <input type="number" step="0.01" value={form.impuestos_porc} onChange={(e) => set("impuestos_porc", e.target.value)} />
+              <input type="number" step="0.01" value={form.impuestos_porc} onChange={(e) => set("impuestos_porc", e.target.value)} disabled={ro} />
             </div>
           )}
           <div className="field">
             <label>Cuenta bancaria</label>
-            <select value={form.cuenta_bancaria_id} onChange={(e) => set("cuenta_bancaria_id", e.target.value)}>
+            <select value={form.cuenta_bancaria_id} onChange={(e) => set("cuenta_bancaria_id", e.target.value)} disabled={ro}>
               <option value="">— ninguna —</option>
               {cuentas.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
             </select>
           </div>
           <div className="field">
             <label>Día de facturación (del mes)</label>
-            <input type="number" min={1} max={31} value={form.dia_facturacion}
-                   onChange={(e) => set("dia_facturacion", e.target.value)}
-                   placeholder="vacío = día del inicio" />
+            <select
+              value={diaSel}
+              onChange={(e) => {
+                const v = e.target.value;
+                set("dia_facturacion", v === "primero" ? "1" : v === "ultimo" ? "31" : "15");
+              }}
+              disabled={ro}
+            >
+              <option value="primero">Primer día del mes</option>
+              <option value="ultimo">Último día del mes</option>
+              <option value="concreto">El día… del mes</option>
+            </select>
           </div>
+          {diaSel === "concreto" && (
+            <div className="field">
+              <label>Día del mes (1–31) *</label>
+              <input type="number" min={1} max={31} value={form.dia_facturacion}
+                     onChange={(e) => set("dia_facturacion", e.target.value)} disabled={ro} />
+            </div>
+          )}
           <div className="field">
             <label>Avisar (días antes de facturar)</label>
             <input type="number" min={0} max={60} value={form.aviso_dias_antes}
-                   onChange={(e) => set("aviso_dias_antes", e.target.value)} />
+                   onChange={(e) => set("aviso_dias_antes", e.target.value)} disabled={ro} />
           </div>
           {typeof editId === "number" && (
             <div className="field">
               <label>Estado</label>
-              <select value={form.estado} onChange={(e) => set("estado", e.target.value)}>
+              <select value={form.estado} onChange={(e) => set("estado", e.target.value)} disabled={ro}>
                 <option value="Activo">Activo</option>
                 <option value="Finalizado">Finalizado</option>
               </select>
@@ -275,7 +310,7 @@ export default function ConsultoriaPage() {
           )}
           <div className="field">
             <label>Notas</label>
-            <textarea value={form.notas} onChange={(e) => set("notas", e.target.value)} rows={2} />
+            <textarea value={form.notas} onChange={(e) => set("notas", e.target.value)} rows={2} disabled={ro} />
           </div>
         </FormPanel>
       )}
