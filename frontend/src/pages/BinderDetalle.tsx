@@ -1353,8 +1353,10 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
 
             {/* ── Periodo → Sección → Risk Code ── */}
             {lpanData.periodos.length > 0 && (() => {
+              // Mes "completo" = todos los WP Status en Completed (los risk codes con prima 0 € no necesitan LPAN).
               const esCompleto = (p: typeof lpanData.periodos[number]) =>
-                p.secciones.length > 0 && p.secciones.every((s) => s.risk_codes.every((r) => r.lpan));
+                p.secciones.length > 0 && p.secciones.every((s) =>
+                  s.risk_codes.every((r) => r.lpan?.estado === "Completed" || Number(r.gross_premium) === 0));
               const abiertoDe = (p: typeof lpanData.periodos[number]) => periodoOverride[p.periodo] ?? !esCompleto(p);
               const todosAbiertos = lpanData.periodos.every(abiertoDe);
               return (
@@ -1368,9 +1370,10 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
             })()}
             <div className="lpan-bloques-scroll">
             {lpanData.periodos.map((p) => {
-              // Un bloque con prima 0 € (cobrado pero sin importe) no necesita LPAN.
+              // El tic ✓ del mes salta cuando TODOS los WP Status están en Completed.
+              // (un bloque con prima 0 € no necesita LPAN, no bloquea el tic.)
               const completo = p.secciones.length > 0 && p.secciones.every((s) =>
-                s.risk_codes.every((r) => r.lpan || Number(r.gross_premium) === 0));
+                s.risk_codes.every((r) => r.lpan?.estado === "Completed" || Number(r.gross_premium) === 0));
               const abierto = periodoOverride[p.periodo] ?? !completo; // pendiente -> abierto por defecto
               return (
               <div key={p.periodo} className="recibo-box" style={{ marginBottom: 14 }}>
@@ -1379,10 +1382,6 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
                     <span className="nav-chevron">{abierto ? "▾" : "▸"}</span>
                     {p.periodo_label}{completo ? " ✓" : ""}
                   </h4>
-                  <a className="btn-secondary btn-sm" href={lpanApi.bdxExcelUrl(binder.id, p.periodo)}
-                     title="Descargar el BDX a procesar de este mes" download>
-                    ⬇️ Excel BDX
-                  </a>
                 </div>
                 {abierto && p.secciones.map((s) => (
                   <div key={s.section} style={{ marginBottom: 8 }}>
