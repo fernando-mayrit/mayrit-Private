@@ -642,8 +642,15 @@ def _bdx_fila(l: "BdxLinea", b, coverholder: str) -> list:
 
     ourline = f(l.total_gwp_our_line)
     taxes = f(l.total_taxes_levies)
+    # Fin del periodo de reporte: si no está en BD, se deriva como último día del mes de inicio.
+    fin_periodo = l.reporting_period_end
+    if fin_periodo is None and l.reporting_period_start:
+        s = l.reporting_period_start
+        fin_periodo = s.replace(day=calendar.monthrange(s.year, s.month)[1])
+    # Suma asegurada: el 100% no se importó (solo our line) -> our line como respaldo.
+    suma_aseg = f(l.sum_insured_total if l.sum_insured_total is not None else l.sum_insured_our_line)
     return [
-        coverholder, b.yoa, b.umr, l.reporting_period_start, l.reporting_period_end,
+        coverholder, b.yoa, b.umr, l.reporting_period_start, fin_periodo,
         l.section_no, l.class_of_business, l.risk_code, l.type_of_insurance, l.certificate_ref,
         l.insured_name, l.insured_id, l.insured_address, l.insured_province, l.insured_postcode,
         l.insured_country, l.risk_inception_date, l.risk_expiry_date, l.location_risk_province,
@@ -652,7 +659,7 @@ def _bdx_fila(l: "BdxLinea", b, coverholder: str) -> list:
         f(l.gross_written_premium), ourline, f(l.fees), pc(l.commission_coverholder_pct),
         f(l.commission_coverholder_amount), taxes,
         (ourline or 0) + (taxes or 0), f(l.net_premium_to_broker), l.original_currency,
-        f(l.sum_insured_total), f(l.deductible_amount), l.deductible_basis,
+        suma_aseg, f(l.deductible_amount), l.deductible_basis,
         l.tax1_jurisdiction, l.tax1_type, f(l.tax1_taxable_premium), pc(l.tax1_pct), f(l.tax1_amount),
         l.tax1_administered_by, l.tax1_payable_by,
         l.tax2_jurisdiction, l.tax2_type, f(l.tax2_taxable_premium), pc(l.tax2_pct), f(l.tax2_amount),
