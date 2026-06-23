@@ -83,12 +83,25 @@ def _todos_risk_files():
     return out
 
 
+def _rows_de(full):
+    """Filas (tuplas de valores) de un Risk BDX. Soporta .xlsx (openpyxl) y .xls antiguo (xlrd)."""
+    try:
+        wb = openpyxl.load_workbook(full, data_only=True, read_only=True)
+        ws = wb["BDX"] if "BDX" in wb.sheetnames else wb.active
+        rows = list(ws.iter_rows(values_only=True))
+        wb.close()
+        return rows
+    except Exception:
+        import xlrd
+        book = xlrd.open_workbook(full)
+        names = book.sheet_names()
+        sh = book.sheet_by_name("BDX") if "BDX" in names else book.sheet_by_index(0)
+        return [tuple(sh.row_values(r)) for r in range(sh.nrows)]
+
+
 def _leer_risk(full):
     """Abre un Risk BDX. Devuelve (umr, cols, filas_datos) o None si no parece un bordereau Lloyd's."""
-    wb = openpyxl.load_workbook(full, data_only=True, read_only=True)
-    ws = wb["BDX"] if "BDX" in wb.sheetnames else wb.active
-    rows = list(ws.iter_rows(values_only=True))
-    wb.close()
+    rows = _rows_de(full)
     hdr_idx = next((i for i, r in enumerate(rows[:15])
                     if any("certificate" in _norm(c) for c in r)), None)
     if hdr_idx is None:
