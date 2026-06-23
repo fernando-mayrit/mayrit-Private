@@ -12,11 +12,13 @@ from collections import defaultdict
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..db import get_db
-from ..models.maestras import AvisoNivel, Bdx, BdxLinea, Binder, ConsultoriaContrato, Poliza, Productor, Recibo, Tarea
+from ..models.maestras import (
+    AvisoNivel, Bdx, BdxLinea, Binder, ConsultoriaContrato, Lpan, Poliza, Productor, Recibo, Tarea,
+)
 
 router = APIRouter(tags=["Avisos"])
 
@@ -34,6 +36,8 @@ TIPOS_AVISO: dict[str, dict] = {
     "risk_sin_recibo":     {"etiqueta": "Recibo pendiente de generar", "defecto": "medio"},
     "poliza_sin_renovar":  {"etiqueta": "Póliza por vencer sin renovar", "defecto": "medio"},
     "tarea_pendiente":     {"etiqueta": "Tarea de binder pendiente", "defecto": "medio"},
+    "lpan_mes_incompleto": {"etiqueta": "Mes con LPAN a medias", "defecto": "alto"},
+    "lpan_sin_procesar":   {"etiqueta": "LPAN sin WP/Procesado", "defecto": "bajo"},
 }
 
 
@@ -197,6 +201,86 @@ def _facturas_consultoria(db: Session) -> list[Aviso]:
     return avisos
 
 
+def _lpan_mes_incompleto(db: Session) -> list[Aviso]:
+    """ROJO: meses (binder+periodo) con ALGÚN LPAN generado pero con risk codes (prima our line > 0)
+    todavía SIN LPAN. Es decir, el mes está empezado pero a medias."""
+    # LPANs existentes: claves (periodo, sección, risk_code) y periodos con LPAN, por binder.
+    lpan_claves: dict[int, set] = defaultdict(set)
+    lpan_periodos: dict[int, set] = defaultdict(set)
+    for bid, per, sec, rc in db.execute(
+        select(Lpan.binder_id, Lpan.periodo, Lpan.section, Lpan.risk_code).where(Lpan.binder_id.is_not(None))
+    ).all():
+        lpan_claves[bid].add((per, int(sec or 0), (rc or "").strip()))
+        lpan_periodos[bid].add(per)
+    if not lpan_claves:
+        return []
+
+    # Prima (our line) por (binder, periodo, sección, risk_code), solo de binders con algún LPAN.
+    gross: dict[tuple, float] = defaultdict(float)
+    for bid, pbdx, sec, rc, g in db.execute(
+        select(Bdx.binder_id, BdxLinea.premium_bdx, BdxLinea.section_no, BdxLinea.risk_code,
+               func.sum(BdxLinea.total_gwp_our_line))
+        .join(BdxLinea, BdxLinea.bdx_id == Bdx.id)
+        .where(BdxLinea.incluido_en_premium.is_(True), BdxLinea.premium_bdx.is_not(None))
+        .group_by(Bdx.binder_id, BdxLinea.premium_bdx, BdxLinea.section_no, BdxLinea.risk_code)
+    ).all():
+        if bid in lpan_claves:
+            gross[(bid, pbdx.strftime("%Y-%m"), int(sec or 0), (rc or "").strip())] += float(g or 0)
+
+    # Risk codes que NECESITAN LPAN (prima > 0) por (binder, periodo).
+    need: dict[tuple[int, str], set] = defaultdict(set)
+    for (bid, per, sec, rc), g in gross.items():
+        if g > 0:
+            need[(bid, per)].add((per, sec, rc))
+
+    binders = {b.id: b for b in db.scalars(select(Binder)).all()}
+    parciales: dict[int, list[str]] = defaultdict(list)
+    for (bid, per), claves in need.items():
+        if per in lpan_periodos[bid] and (claves - lpan_claves[bid]):   # algún LPAN hecho y otros sin hacer
+            parciales[bid].append(per)
+
+    avisos: list[Aviso] = []
+    for bid, pers in parciales.items():
+        b = binders.get(bid)
+        if not b:
+            continue
+        pers.sort()
+        avisos.append(Aviso(
+            tipo="lpan_mes_incompleto", severidad="danger",
+            titulo="Mes con LPAN a medias",
+            detalle=f"{b.umr or b.agreement_number}: LPAN generados solo en parte en {', '.join(pers)}.",
+            binder_id=bid, umr=b.umr, periodos=pers, pagina="binders",
+        ))
+    avisos.sort(key=lambda a: a.umr or "")
+    return avisos
+
+
+def _lpan_sin_procesar(db: Session) -> list[Aviso]:
+    """VERDE: LPANs generados con el WP (work_package) y/o Procesado (fecha) sin rellenar."""
+    binders = {b.id: b for b in db.scalars(select(Binder)).all()}
+    por_binder: dict[int, set] = defaultdict(set)
+    n_por_binder: dict[int, int] = defaultdict(int)
+    for lp in db.scalars(select(Lpan).where(Lpan.binder_id.is_not(None))).all():
+        if not (lp.work_package or "").strip() or lp.fecha is None:
+            por_binder[lp.binder_id].add(lp.periodo)
+            n_por_binder[lp.binder_id] += 1
+    avisos: list[Aviso] = []
+    for bid, periodos in por_binder.items():
+        b = binders.get(bid)
+        if not b:
+            continue
+        pers = sorted(periodos)
+        n = n_por_binder[bid]
+        avisos.append(Aviso(
+            tipo="lpan_sin_procesar", severidad="info",
+            titulo="LPAN sin WP/Procesado",
+            detalle=f"{b.umr or b.agreement_number}: {n} LPAN sin WP y/o Procesado ({', '.join(pers)}).",
+            binder_id=bid, umr=b.umr, periodos=pers, pagina="binders",
+        ))
+    avisos.sort(key=lambda a: a.umr or "")
+    return avisos
+
+
 def _aplicar_niveles(db: Session, avisos: list[Aviso]) -> list[Aviso]:
     """Rellena el nivel (semáforo) de cada aviso: override del usuario por tipo, o el de defecto."""
     overrides = {a.tipo: a.nivel for a in db.scalars(select(AvisoNivel)).all()}
@@ -240,6 +324,8 @@ def listar_avisos(db: Session = Depends(get_db)):
     avisos += _risk_sin_recibo(db)
     avisos += _vencimientos_sin_renovar(db)
     avisos += _tareas_pendientes(db)
+    avisos += _lpan_mes_incompleto(db)
+    avisos += _lpan_sin_procesar(db)
     return _aplicar_niveles(db, avisos)
 
 
