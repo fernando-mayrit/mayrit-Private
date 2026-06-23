@@ -284,6 +284,20 @@ export default function App() {
     cargarAvisos();
   }, [page]);
 
+  // Auto-refresco de avisos SIN recargar la página: cada 60 s y al volver a la pestaña/ventana.
+  useEffect(() => {
+    const id = setInterval(cargarAvisos, 60_000);
+    const onVisible = () => { if (document.visibilityState === "visible") cargarAvisos(); };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", cargarAvisos);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", cargarAvisos);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   return (
     <div className="app">
       <header className="app-header">
@@ -309,7 +323,7 @@ export default function App() {
           ))}
         </nav>
         <div className="header-avisos">
-          <button className="campana" title="Avisos / tareas pendientes" onClick={() => setVerAvisos((v) => !v)}>
+          <button className="campana" title="Avisos / tareas pendientes" onClick={() => { if (!verAvisos) cargarAvisos(); setVerAvisos((v) => !v); }}>
             🔔{avisos.length > 0 && <span className="campana-badge">{avisos.length}</span>}
           </button>
           {verAvisos && (
