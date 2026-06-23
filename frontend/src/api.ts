@@ -336,7 +336,27 @@ export const tareasApi = {
     request(`/tareas/${id}/hecha`, { method: "POST", body: JSON.stringify(body) }),
   sincronizarTodas: () => request<{ binders: number; creadas: number; actualizadas: number }>("/tareas/sincronizar-auto", { method: "POST" }),
   sincronizarBinder: (binderId: number) => request<{ creadas: number; actualizadas: number }>(`/binders/${binderId}/tareas/sincronizar-auto`, { method: "POST" }),
+  agenda: (p?: { binderId?: number; soloPendientes?: boolean }) => {
+    const q = new URLSearchParams();
+    if (p?.binderId != null) q.set("binder_id", String(p.binderId));
+    if (p?.soloPendientes) q.set("solo_pendientes", "true");
+    const qs = q.toString();
+    return request<TareaAgendaItem[]>(`/tareas/agenda${qs ? `?${qs}` : ""}`);
+  },
 };
+export interface TareaAgendaItem {
+  tarea_id: number;
+  titulo: string;
+  categoria: string;
+  origen: string;
+  binder_id: number;
+  binder_umr?: string | null;
+  agencia?: string | null;
+  programa?: string | null;
+  fecha: string;
+  estado: string;
+  fecha_hecha?: string | null;
+}
 
 // ── Cierre contable mensual ──
 export interface CierreMes {

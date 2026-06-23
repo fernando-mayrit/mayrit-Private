@@ -176,6 +176,57 @@ def listar_todas(db: Session = Depends(get_db)):
     return [_serializar(db, t) for t in ts]
 
 
+class AgendaItem(BaseModel):
+    tarea_id: int
+    titulo: str
+    categoria: str
+    origen: str
+    binder_id: int
+    binder_umr: str | None = None
+    agencia: str | None = None
+    programa: str | None = None
+    fecha: dt.date            # fecha (límite) de la ocurrencia
+    estado: str               # hecha | vencida | pendiente | futura
+    fecha_hecha: dt.date | None = None
+
+
+@router.get("/tareas/agenda", response_model=list[AgendaItem])
+def agenda(binder_id: int | None = None, solo_pendientes: bool = False, db: Session = Depends(get_db)):
+    """Todas las ocurrencias (fechas límite) de las tareas activas, APLANADAS y con su estado, para la
+    vista por mes. 'pendiente' a efectos de filtro = no hecha y ya debida (vencida o pendiente)."""
+    hoy = dt.date.today()
+    q = select(Tarea).where(Tarea.estado != "Pausada")
+    if binder_id is not None:
+        q = q.where(Tarea.binder_id == binder_id)
+    out: list[AgendaItem] = []
+    for t in db.scalars(q.order_by(Tarea.id)).all():
+        binder = db.get(Binder, t.binder_id)
+        if not binder:
+            continue
+        hechas = {h.fecha_ocurrencia: h for h in t.hechas}
+        for f in _ocurrencias(t, binder):
+            h = hechas.get(f)
+            if h:
+                estado = "hecha"
+            elif f < hoy:
+                estado = "vencida"
+            elif _debida(t, f, hoy, False):
+                estado = "pendiente"
+            else:
+                estado = "futura"
+            if solo_pendientes and estado not in ("vencida", "pendiente"):
+                continue
+            out.append(AgendaItem(
+                tarea_id=t.id, titulo=t.titulo, categoria=t.categoria, origen=t.origen,
+                binder_id=t.binder_id, binder_umr=(binder.umr or binder.agreement_number),
+                agencia=(binder.productor.nombre if binder.productor else None),
+                programa=(binder.programa.nombre if binder.programa else None),
+                fecha=f, estado=estado, fecha_hecha=(h.fecha_hecha if h else None),
+            ))
+    out.sort(key=lambda x: (x.fecha, x.binder_umr or "", x.categoria))
+    return out
+
+
 @router.get("/binders/{binder_id}/tareas", response_model=list[TareaRead])
 def listar(binder_id: int, db: Session = Depends(get_db)):
     ts = db.scalars(select(Tarea).where(Tarea.binder_id == binder_id).order_by(Tarea.id)).all()

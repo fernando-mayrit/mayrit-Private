@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { tareasApi, crud, type Tarea, type TareaOcurrencia } from "../api";
+import { tareasApi, crud, type Tarea, type TareaOcurrencia, type TareaAgendaItem } from "../api";
 import type { Binder } from "../types";
 import { fmtFechaES } from "../format";
 import FormPanel from "./FormPanel";
@@ -63,8 +63,16 @@ export default function TareasBinder({ binderId }: { binderId?: number }) {
   const [ocs, setOcs] = useState<TareaOcurrencia[]>([]);
   const [busyOc, setBusyOc] = useState<string | null>(null);
 
+  const [vista, setVista] = useState<"bloques" | "mes">("bloques");
+  const [soloPend, setSoloPend] = useState(true);
+  const [agenda, setAgenda] = useState<TareaAgendaItem[]>([]);
+
   async function cargar() {
     try { setTareas(esGlobal ? await tareasApi.listAll() : await tareasApi.list(binderId!)); }
+    catch (e) { setError((e as Error).message); }
+  }
+  async function cargarAgenda() {
+    try { setAgenda(await tareasApi.agenda({ binderId: esGlobal ? undefined : binderId, soloPendientes: soloPend })); }
     catch (e) { setError((e as Error).message); }
   }
   useEffect(() => {
@@ -76,6 +84,10 @@ export default function TareasBinder({ binderId }: { binderId?: number }) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [binderId]);
+  useEffect(() => {
+    if (vista === "mes") cargarAgenda();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vista, soloPend, binderId]);
 
   const set = (k: keyof Form, v: string) => setForm((s) => ({ ...s, [k]: v }));
   const dirty = useMemo(() => JSON.stringify(form) !== JSON.stringify(formIni), [form, formIni]);
@@ -204,6 +216,33 @@ export default function TareasBinder({ binderId }: { binderId?: number }) {
     }));
   }, [tareas, esGlobal]);
 
+  // Vista por mes: agrupa las ocurrencias (fechas límite) por mes natural.
+  const meses = useMemo(() => {
+    const m = new Map<string, TareaAgendaItem[]>();
+    for (const a of agenda) {
+      const k = a.fecha.slice(0, 7);   // YYYY-MM
+      if (!m.has(k)) m.set(k, []);
+      m.get(k)!.push(a);
+    }
+    return [...m.entries()].sort((x, y) => x[0].localeCompare(y[0])).map(([k, items]) => ({
+      mes: k,
+      items: items.sort((p, q) => p.fecha.localeCompare(q.fecha) || (CAT_ORDEN[p.categoria] ?? 9) - (CAT_ORDEN[q.categoria] ?? 9)),
+      pendientes: items.filter((i) => i.estado === "vencida" || i.estado === "pendiente").length,
+    }));
+  }, [agenda]);
+  const mesLabel = (ym: string) => {
+    const [y, mm] = ym.split("-").map(Number);
+    const s = new Date(y, mm - 1, 1).toLocaleDateString("es-ES", { month: "long", year: "numeric" });
+    return s.charAt(0).toUpperCase() + s.slice(1);
+  };
+  async function toggleHechaAgenda(a: TareaAgendaItem) {
+    setBusyOc(a.tarea_id + a.fecha);
+    try {
+      await tareasApi.marcarHecha(a.tarea_id, { fecha_ocurrencia: a.fecha, deshacer: a.estado === "hecha" });
+      await Promise.all([cargar(), cargarAgenda()]);
+    } catch (e) { setError((e as Error).message); } finally { setBusyOc(null); }
+  }
+
   const tablaDe = (ts: Tarea[]) => (
     <table className="compacto" style={{ width: "100%" }}>
       <thead>
@@ -231,16 +270,68 @@ export default function TareasBinder({ binderId }: { binderId?: number }) {
 
   return (
     <>
-      <div className="toolbar" style={{ marginBottom: 8, justifyContent: "flex-end", gap: 8 }}>
-        <button className="btn-secondary" onClick={sincronizar} disabled={sincronizando}
-          title="Crea/actualiza las tareas Risk/Premium/Claims desde el intervalo y plazo de BDX del binder">
-          {sincronizando ? "Generando…" : "🔄 Generar automáticas"}
-        </button>
-        <button className="btn-primary" onClick={abrirNuevo}>＋ Nueva tarea</button>
+      <div className="toolbar" style={{ marginBottom: 8, justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <span style={{ display: "inline-flex", gap: 4 }}>
+            <button className={vista === "bloques" ? "btn-primary btn-sm" : "btn-secondary btn-sm"} onClick={() => setVista("bloques")}>Bloques</button>
+            <button className={vista === "mes" ? "btn-primary btn-sm" : "btn-secondary btn-sm"} onClick={() => setVista("mes")}>📅 Por mes</button>
+          </span>
+          {vista === "mes" && (
+            <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 13 }}>
+              <input type="checkbox" checked={soloPend} onChange={(e) => setSoloPend(e.target.checked)} /> Solo pendientes
+            </label>
+          )}
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button className="btn-secondary" onClick={sincronizar} disabled={sincronizando}
+            title="Crea/actualiza las tareas Risk/Premium/Claims desde el intervalo y plazo de BDX del binder">
+            {sincronizando ? "Generando…" : "🔄 Generar automáticas"}
+          </button>
+          <button className="btn-primary" onClick={abrirNuevo}>＋ Nueva tarea</button>
+        </div>
       </div>
       {error && <div className="error">{error}</div>}
 
-      {tareas.length === 0 ? (
+      {vista === "mes" ? (
+        meses.length === 0 ? (
+          <div className="empty">{soloPend ? "No hay tareas pendientes." : "No hay ocurrencias (revisa la vigencia y la frecuencia)."}</div>
+        ) : (
+          <div className="tareas-meses">
+            {meses.map((g) => (
+              <section key={g.mes} style={{ marginBottom: 18 }}>
+                <h3 style={{ margin: "0 0 6px", fontSize: 15, borderBottom: "2px solid var(--borde, #d0d4dc)", paddingBottom: 4 }}>
+                  📅 {mesLabel(g.mes)}{g.pendientes > 0 && <span className="hint" style={{ marginLeft: 8 }}>· {g.pendientes} pendiente{g.pendientes > 1 ? "s" : ""}</span>}
+                </h3>
+                <table className="compacto" style={{ width: "100%" }}>
+                  <thead>
+                    <tr><th>Fecha</th><th>Cat.</th>{esGlobal && <th>Binder</th>}<th>Tarea</th><th>Estado</th><th></th></tr>
+                  </thead>
+                  <tbody>
+                    {g.items.map((a) => {
+                      const [cls, txt] = PILL[a.estado] ?? ["pill-anulado", a.estado];
+                      const k = a.tarea_id + a.fecha;
+                      return (
+                        <tr key={k}>
+                          <td>{fmtFechaES(a.fecha)}</td>
+                          <td><span className={`pill ${CAT_PILL[a.categoria] ?? "pill-anulado"}`}>{a.categoria}</span></td>
+                          {esGlobal && <td>{a.binder_umr ?? "—"}</td>}
+                          <td>{a.titulo}{a.origen === "auto" && <span className="hint" style={{ marginLeft: 6 }}>· auto</span>}</td>
+                          <td><span className={`pill ${cls}`}>{txt}</span></td>
+                          <td className="num" style={{ whiteSpace: "nowrap" }}>
+                            {a.estado === "hecha"
+                              ? <button className="btn-link btn-sm" disabled={busyOc === k} onClick={() => toggleHechaAgenda(a)}>Deshacer</button>
+                              : <button className="btn-primary btn-sm" disabled={busyOc === k} onClick={() => toggleHechaAgenda(a)}>{busyOc === k ? "…" : "Marcar hecha"}</button>}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </section>
+            ))}
+          </div>
+        )
+      ) : tareas.length === 0 ? (
         <div className="empty">{esGlobal ? "No hay tareas todavía." : "No hay tareas para este binder todavía."}</div>
       ) : esGlobal ? (
         <div className="tareas-bloques">
