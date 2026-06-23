@@ -318,16 +318,19 @@ def _campos_emision(db: Session, binder: Binder, periodo: str, lineas, fecha: dt
         estado="Emitido",
         # Contexto
         numero_poliza=None,                           # bordereau: varias pólizas
+        tipo_poliza="Binder",
         referencia=binder.umr or binder.agreement_number,
         nombre_mercado=mercados,
         mercado=mercados,
-        corredor=(binder.productor.nombre if binder.productor else None),
+        # Corredor = alias de la agencia (coverholder); si no tiene alias, el nombre.
+        corredor=((binder.productor.alias or binder.productor.nombre) if binder.productor else None),
         ramo=_ramos_binder(db, binder.id),
         produccion=None,
         fecha_efecto=binder.fecha_efecto,
         fecha_vencimiento=binder.fecha_vencimiento,
         yoa=_yoa_int(binder),
-        pago="Fraccionado" if (total and total != "1") else "Único",
+        # El recibo de binder es de un solo pago por periodo (no fraccionado).
+        pago="Único",
         moneda=binder.moneda or "EUR",
         prima_neta_poliza=prima_neta,
         participacion=(_q4(prima_neta / gwp100 * 100) if gwp100 else None),
