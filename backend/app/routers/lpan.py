@@ -17,6 +17,7 @@ Solo se genera un LPAN si todas las líneas del grupo están cobradas.
 """
 from __future__ import annotations
 
+import calendar
 import datetime as dt
 import os
 import tempfile
@@ -133,6 +134,18 @@ def _pct_lpan(v) -> str:
     """Porcentaje para el documento, sin ceros sobrantes: 5 -> '5%', 32.5 -> '32.5%'."""
     s = f"{_d(v):.2f}".rstrip("0").rstrip(".")
     return f"{s}%"
+
+
+def _sdd_de(periodo: str) -> dt.date | None:
+    """SDD (Settlement Due Date) = último día del 3er mes POSTERIOR al del Premium.
+    p.ej. Premium '2025-09' -> 31-dic-2025."""
+    try:
+        y, m = (int(x) for x in periodo.split("-")[:2])
+    except (ValueError, AttributeError):
+        return None
+    t = m + 3
+    y2, m2 = y + (t - 1) // 12, (t - 1) % 12 + 1
+    return dt.date(y2, m2, calendar.monthrange(y2, m2)[1])
 
 
 def _generar_lpan_docx(carpeta: str, nombre: str, signing: str | None, broker_ref1: str,
@@ -565,7 +578,7 @@ def generar_lpan(binder_id: int, payload: LpanCreate, db: Session = Depends(get_
         fdo_id=f.id, binder_id=binder_id, risk_code=rc, section=sec, periodo=per, tipo=tipo,
         num_lineas=g["num"], gross_premium=g["gross"], brokerage=g["brk"], tax=g["tax"], net_premium=g["net"],
         broker_ref1=b.agreement_number, broker_ref2=nombre, moneda=moneda,
-        work_package=None, fecha=None, sdd=None, estado="Work in Progress",
+        work_package=None, fecha=None, sdd=_sdd_de(per), estado="Work in Progress",
     )
     db.add(lp)
     db.commit()
