@@ -126,10 +126,28 @@ def importar_filas(db: Session, binder: Binder, filas: list[dict], origen: str =
     }
 
     cols = {c.name: c.type for c in BdxLinea.__table__.columns}
-    insertadas = actualizadas = sin_old_id = 0
+    insertadas = actualizadas = sin_old_id = auto_seccion = 0
+
+    # Fallback de sección: risk_code → nº de sección (1-based) SOLO cuando el código pertenece a una
+    # única sección declarada del binder. Cubre líneas que llegan con "Section No" vacío en el origen.
+    rc2sec: dict[str, int] = {}
+    rc_ambiguos: set[str] = set()
+    for i, s in enumerate(binder.secciones, start=1):
+        for rc in s.risk_codes:
+            code = (rc.codigo or "").strip()
+            if not code:
+                continue
+            if code in rc2sec and rc2sec[code] != i:
+                rc_ambiguos.add(code)
+            rc2sec[code] = i
 
     for fila in filas:
         datos = {campo: _coerce(campo, fila.get(campo), cols[campo]) for campo in sharepoint.MAPEO}
+        if datos.get("section_no") is None:
+            code = (datos.get("risk_code") or "").strip()
+            if code and code in rc2sec and code not in rc_ambiguos:
+                datos["section_no"] = rc2sec[code]
+                auto_seccion += 1
         oldid = datos.get("sp_old_id")
         if oldid is None:
             sin_old_id += 1
@@ -174,6 +192,7 @@ def importar_filas(db: Session, binder: Binder, filas: list[dict], origen: str =
         "insertadas": insertadas,
         "actualizadas": actualizadas,
         "sin_old_id": sin_old_id,
+        "auto_seccion": auto_seccion,
         "periodos": periodos,
         "conciliacion": {
             "lineas_sharepoint": sp_total,

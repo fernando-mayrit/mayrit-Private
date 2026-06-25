@@ -57,7 +57,7 @@ export default function LpanRow({
       const { carpeta } = await lpanApi.elegirCarpeta(prev || undefined);
       if (!carpeta) return; // cancelado
       localStorage.setItem(key, carpeta);
-      await lpanApi.generarLpan(binderId, { risk_code: r.risk_code, section, periodo, carpeta });
+      await lpanApi.generarLpan(binderId, { risk_code: r.risk_code, section, periodo, comision_pct: r.comision_pct, carpeta });
       await onChanged();
     } finally {
       setSaving(false);
@@ -80,11 +80,26 @@ export default function LpanRow({
     }
   }
 
+  // Exención: marcar el grupo como "no requiere LPAN" (no se liquida al mercado) o quitar la marca.
+  async function toggleExencion() {
+    setSaving(true);
+    try {
+      if (r.exento_lpan) await lpanApi.quitarExencion(binderId, periodo, section, r.risk_code, r.comision_pct);
+      else {
+        const motivo = window.prompt("Motivo (opcional): por qué no se liquida al mercado / no requiere LPAN", "") ?? "";
+        await lpanApi.marcarExencion(binderId, { periodo, section, risk_code: r.risk_code, comision_pct: r.comision_pct, motivo: motivo.trim() || null });
+      }
+      await onChanged();
+    } finally {
+      setSaving(false);
+    }
+  }
+
   const statusOpts = WP_STATUS.includes(estado) || !estado ? WP_STATUS : [estado, ...WP_STATUS];
 
   return (
     <tr>
-      <th>{r.risk_code}</th>
+      <th>{r.risk_code}<span className="hint" style={{ display: "block", fontWeight: 400 }}>com. {Number(r.comision_pct).toFixed(2)}%</span></th>
       <td className="num">{r.num_lineas}</td>
       <td className="num">{fmtMiles(r.gross_premium)}</td>
       <td className="num">{brokeragePct}</td>
@@ -96,16 +111,27 @@ export default function LpanRow({
       <td>
         {lp ? (
           <span className="pill pill-cobrado" title={lp.tipo}>{lp.broker_ref2 || lp.tipo}</span>
+        ) : r.exento_lpan ? (
+          <span style={{ whiteSpace: "nowrap" }}>
+            <span className="pill pill-anulado" title={r.exencion_motivo || "No se liquida al mercado: no requiere LPAN"}>🚫 Exento</span>{" "}
+            <button className="btn-link btn-sm" disabled={busy || saving} onClick={toggleExencion}>Quitar</button>
+          </span>
+        ) : r.cubierto_historico ? (
+          <span className="pill pill-cobrado" title="Este risk code ya tiene un LPAN histórico (enviado en su día, sin distinguir comisión). No se rehace.">✓ LPAN histórico</span>
         ) : Number(r.gross_premium) === 0 ? (
           <span className="pill pill-pendiente" title="Prima neta 0 € (alta y devolución se netean): no requiere LPAN">Sin prima</span>
         ) : (
-          <button className="btn-secondary btn-sm"
-            disabled={busy || saving || !r.cobrado || !r.signing_number}
-            title={!r.signing_number ? "Falta el signing number del FDO de este risk code"
-              : !r.cobrado ? "El bloque no está cobrado" : "Generar el LPAN de este bloque"}
-            onClick={generar}>
-            Generar LPAN
-          </button>
+          <span style={{ whiteSpace: "nowrap" }}>
+            <button className="btn-secondary btn-sm"
+              disabled={busy || saving || !r.cobrado || !r.signing_number}
+              title={!r.signing_number ? "Falta el signing number del FDO de este risk code"
+                : !r.cobrado ? "El bloque no está cobrado" : "Generar el LPAN de este bloque"}
+              onClick={generar}>
+              Generar LPAN
+            </button>{" "}
+            <button className="btn-link btn-sm" disabled={busy || saving}
+              title="No se liquida al mercado: marcar como exento de LPAN" onClick={toggleExencion}>No requiere</button>
+          </span>
         )}
       </td>
       {lp ? (

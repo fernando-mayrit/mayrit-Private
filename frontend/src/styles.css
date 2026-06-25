@@ -237,8 +237,10 @@ tr.estado-cerrado .btn-link { color: #ffd9cc; }          /* enlaces legibles sob
 .lpan-seccion-tit { font-size: 12px; font-weight: 700; color: var(--naranja-osc); margin: 6px 0 3px; }
 /* Tabla de periodo del LPAN: anchos fijos para que todas las secciones alineen igual */
 .lpan-periodo-tabla { table-layout: fixed; width: 100%; }
-/* El listado de bloques de periodos hace scroll propio; lo de arriba (FDO + botón) queda fijo */
-.lpan-bloques-scroll { max-height: calc(100vh - 330px); overflow-y: auto; padding-right: 4px; }
+/* La pestaña LPAN llena el alto disponible: el listado de bloques scrollea POR DENTRO (con las
+   cabeceras fijas) y la pantalla completa NO scrollea. */
+.lpan-tab { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.lpan-bloques-scroll { flex: 1; min-height: 0; overflow-y: auto; padding-right: 4px; }
 .lpan-bloques-scroll .lpan-periodo-tabla thead th { position: sticky; top: 0; background: #fff; z-index: 1; }
 /* Cabecera de caja plegable (FDO / periodos de LPAN) */
 .lpan-colap { cursor: pointer; user-select: none; display: flex; align-items: center; gap: 6px; }

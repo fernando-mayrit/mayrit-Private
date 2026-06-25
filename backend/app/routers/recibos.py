@@ -33,6 +33,7 @@ from ..models.maestras import (
     CuentaBancaria,
     Mercado,
     Poliza,
+    PremiumNota,
     Productor,
     Programa,
     Recibo,
@@ -927,6 +928,7 @@ class PremiumGrupo(BaseModel):
     fecha_pago: dt.date | None = None
     fecha_traspaso: dt.date | None = None
     fecha_liquidacion: dt.date | None = None
+    nota: str | None = None    # nota libre del mes (PremiumNota)
 
 
 class AccionPremium(BaseModel):
@@ -978,6 +980,8 @@ def listar_premium(binder_id: int, db: Session = Depends(get_db)):
             g["liqd"] += 1
             if l.fecha_liquidacion:
                 g["fl"].append(l.fecha_liquidacion)
+    notas = {n.periodo: n.nota for n in db.scalars(
+        select(PremiumNota).where(PremiumNota.binder_id == binder_id)).all()}
     return [
         PremiumGrupo(
             periodo=per,
@@ -996,9 +1000,37 @@ def listar_premium(binder_id: int, db: Session = Depends(get_db)):
             fecha_pago=max(g["fc"]) if g["fc"] else None,
             fecha_traspaso=max(g["ft"]) if g["ft"] else None,
             fecha_liquidacion=max(g["fl"]) if g["fl"] else None,
+            nota=notas.get(per),
         )
         for per, g in sorted(grupos.items())
     ]
+
+
+class PremiumNotaIn(BaseModel):
+    periodo: str            # 'YYYY-MM'
+    nota: str | None = None
+
+
+@router.put("/binders/{binder_id}/premium/nota")
+def guardar_nota_premium(binder_id: int, payload: PremiumNotaIn, db: Session = Depends(get_db)):
+    """Crea/actualiza/borra la nota libre de un mes de Premium del binder. nota vacía = se borra."""
+    if db.get(Binder, binder_id) is None:
+        raise HTTPException(status_code=404, detail=f"Binder {binder_id} no encontrado")
+    texto = (payload.nota or "").strip() or None
+    fila = db.scalar(select(PremiumNota).where(
+        PremiumNota.binder_id == binder_id, PremiumNota.periodo == payload.periodo))
+    if texto is None:
+        if fila is not None:
+            db.delete(fila)
+            db.commit()
+        return {"periodo": payload.periodo, "nota": None}
+    if fila is None:
+        fila = PremiumNota(binder_id=binder_id, periodo=payload.periodo, nota=texto)
+        db.add(fila)
+    else:
+        fila.nota = texto
+    db.commit()
+    return {"periodo": payload.periodo, "nota": texto}
 
 
 def _accion_premium(db: Session, binder_id: int, periodo: str, setter, exigir_recibo: bool = False, mov: dict | None = None) -> dict:

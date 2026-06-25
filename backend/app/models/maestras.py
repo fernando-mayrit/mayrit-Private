@@ -531,6 +531,40 @@ class BdxBloqueo(Base):
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class PremiumNota(Base):
+    """Nota libre de UN mes de Premium de un binder (binder + periodo 'YYYY-MM'). Para apuntar cosas
+    del cierre/liquidación de ese mes (p. ej. 'riesgos no liquidados al mercado')."""
+
+    __tablename__ = "premium_notas"
+    __table_args__ = (UniqueConstraint("binder_id", "periodo", name="uq_premium_nota"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    binder_id: Mapped[int] = mapped_column(ForeignKey("binders.id", ondelete="CASCADE"), index=True)
+    periodo: Mapped[str] = mapped_column(String(7))   # 'YYYY-MM'
+    nota: Mapped[str | None] = mapped_column(Text)
+    updated_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class LpanExencion(Base):
+    """Grupo de Premium (binder + periodo + sección + risk code) marcado como EXENTO de LPAN: una
+    decisión explícita de que esas primas NO se liquidan al mercado, así que no se espera LPAN. Sirve
+    para que el mes no salga como pendiente sin confundirlo con un LPAN realmente por hacer."""
+
+    __tablename__ = "lpan_exenciones"
+    __table_args__ = (UniqueConstraint("binder_id", "periodo", "section", "risk_code", "comision_pct", name="uq_lpan_exencion"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    binder_id: Mapped[int] = mapped_column(ForeignKey("binders.id", ondelete="CASCADE"), index=True)
+    periodo: Mapped[str] = mapped_column(String(7))   # 'YYYY-MM'
+    section: Mapped[int] = mapped_column(Integer)
+    risk_code: Mapped[str] = mapped_column(String(20))
+    comision_pct: Mapped[Decimal] = mapped_column(Numeric(7, 2), server_default="0")  # comisión total % del grupo
+    motivo: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class Fdo(Base):
     """FDO (Declaración) que se envía a Xchanging por cada (binder, risk code). Xchanging devuelve un
     `signing_number`; a partir de ahí los LPAN de ese risk code cuelgan de ese signing."""
@@ -578,6 +612,9 @@ class Lpan(Base):
     section: Mapped[int] = mapped_column(Integer, server_default="0", default=0)  # nº de sección del bordereau
     periodo: Mapped[str] = mapped_column(String(7))     # 'YYYY-MM' del Premium BDX
     tipo: Mapped[str] = mapped_column(String(10), server_default="PM", default="PM")  # FDO/PM/AP/RP
+    # Comisión total % del grupo (coverholder % + brokerage %). Separa LPAN distintos del mismo
+    # (sección, risk code, periodo) cuando hay líneas con comisiones distintas.
+    comision_pct: Mapped[Decimal | None] = mapped_column(Numeric(7, 2))
     num_lineas: Mapped[int] = mapped_column(Integer, server_default="0", default=0)
     # Importes (campos del LPAN): 18 gross our line, 19 brokerage+coverholder, 17 tax, 25 net a UW
     gross_premium: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))

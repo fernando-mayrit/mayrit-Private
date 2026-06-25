@@ -32,7 +32,9 @@ from sqlalchemy.orm import Session, load_only, selectinload
 
 from ..config import settings
 from ..db import get_db
-from ..models.maestras import Bdx, BdxLinea, Binder, BinderSeccion, Fdo, Lpan, Poliza, SeccionRiskCode
+from ..models.maestras import (
+    Bdx, BdxLinea, Binder, BinderSeccion, Fdo, Lpan, LpanExencion, Poliza, SeccionRiskCode,
+)
 
 router = APIRouter(tags=["LPAN"])
 
@@ -118,11 +120,16 @@ def _generar_fdo_docx(carpeta: str, broker_ref: str, ref1: str, umr: str | None,
     return destino
 
 
-def _nombre_lpan(agreement: str | None, periodo: str, section: int, risk_code: str) -> str:
+def _nombre_lpan(agreement: str | None, periodo: str, section: int, risk_code: str,
+                 comision_pct: "Decimal | None" = None) -> str:
     """Nombre/Broker Ref 2 del LPAN (patrón histórico): '<UMR> <MM> BDX-S<sec>-<rc>-<MMAA>'
-    (p.ej. periodo 2019-07, PI0219CRO, S1, E7 -> 'PI0219 07 BDX-S1-E7-0719')."""
+    (p.ej. periodo 2019-07, PI0219CRO, S1, E7 -> 'PI0219 07 BDX-S1-E7-0719'). Si el risk code tiene
+    varias comisiones, se añade el sufijo de comisión '-35.00' para distinguir los LPAN."""
     yyyy, mm = (periodo.split("-") + ["", ""])[:2]
-    return f"{_umr_part(agreement)} {mm} BDX-S{section}-{risk_code}-{mm}{yyyy[2:]}"
+    base = f"{_umr_part(agreement)} {mm} BDX-S{section}-{risk_code}-{mm}{yyyy[2:]}"
+    if comision_pct is not None:
+        base += f"-{_d(comision_pct):.2f}"
+    return base
 
 
 def _num_lpan(v) -> str:
@@ -254,6 +261,7 @@ class RiskCodeFdo(BaseModel):
 
 class RcEnSeccion(BaseModel):
     risk_code: str
+    comision_pct: Decimal = Decimal(0)    # comisión total % del grupo (separa LPAN del mismo rc)
     signing_number: str | None = None     # del FDO del risk code (si lo tiene)
     num_lineas: int
     gross_premium: Decimal
@@ -261,6 +269,12 @@ class RcEnSeccion(BaseModel):
     tax: Decimal
     net_premium: Decimal
     cobrado: bool
+    liquidado: bool = False     # todas sus líneas liquidadas (informativo)
+    exento_lpan: bool = False   # marcado a mano como exento de LPAN (no se liquida al mercado) → resuelto
+    exencion_motivo: str | None = None
+    # El (sección, risk code, periodo) ya tiene algún LPAN (aunque sea de otra comisión): histórico
+    # cubierto. El desdoble por comisión solo exige LPAN nuevo en grupos SIN ningún LPAN.
+    cubierto_historico: bool = False
     lpan: LpanRead | None = None
 
 
@@ -324,6 +338,7 @@ class LpanCreate(BaseModel):
     risk_code: str
     section: int = 0
     periodo: str
+    comision_pct: Decimal = Decimal(0)   # comisión total % del grupo a generar
     tipo: str = "PM"
     carpeta: str | None = None   # si se indica, genera el documento Word del LPAN en esa carpeta
 
@@ -365,8 +380,15 @@ def _secciones_declaradas(db: Session, binder_id: int) -> list[tuple[int, str | 
     return out
 
 
-def _grupos_premium(db: Session, binder_id: int) -> dict[tuple[str, int, str], dict]:
-    """Líneas del Premium (incluidas en premium) agrupadas por (periodo 'YYYY-MM', sección, risk_code)."""
+def _comm_pct(l) -> Decimal:
+    """Comisión TOTAL % de una línea = Coverholder commission % + Brokerage %, a 2 decimales.
+    Las líneas del mismo (sección, risk code) con distinta comisión total van en LPAN separados."""
+    return (_d(l.commission_coverholder_pct) + _d(l.brokerage_pct)).quantize(Decimal("0.01"))
+
+
+def _grupos_premium(db: Session, binder_id: int) -> dict[tuple[str, int, str, Decimal], dict]:
+    """Líneas del Premium (incluidas en premium) agrupadas por (periodo 'YYYY-MM', sección, risk_code,
+    comisión total %). La comisión separa LPAN distintos dentro del mismo risk code."""
     lineas = db.scalars(
         select(BdxLinea)
         .join(Bdx, BdxLinea.bdx_id == Bdx.id)
@@ -375,15 +397,18 @@ def _grupos_premium(db: Session, binder_id: int) -> dict[tuple[str, int, str], d
             BdxLinea.risk_code, BdxLinea.section_no, BdxLinea.premium_bdx,
             BdxLinea.total_gwp_our_line, BdxLinea.total_taxes_levies,
             BdxLinea.commission_coverholder_amount, BdxLinea.brokerage_amount,
-            BdxLinea.final_net_premium_uw, BdxLinea.prima_cobrada,
+            BdxLinea.commission_coverholder_pct, BdxLinea.brokerage_pct,
+            BdxLinea.final_net_premium_uw, BdxLinea.prima_cobrada, BdxLinea.liquidado,
         ))
     ).all()
-    grupos: dict[tuple[str, int, str], dict] = {}
+    grupos: dict[tuple[str, int, str, Decimal], dict] = {}
     for l in lineas:
         rc = (l.risk_code or "—").strip() or "—"
         sec = int(l.section_no) if l.section_no is not None else 0
         per = l.premium_bdx.strftime("%Y-%m")
-        g = grupos.setdefault((per, sec, rc), {"num": 0, "gross": D0, "brk": D0, "tax": D0, "net": D0, "cobr": 0})
+        comm = _comm_pct(l)
+        g = grupos.setdefault((per, sec, rc, comm),
+                              {"num": 0, "gross": D0, "brk": D0, "tax": D0, "net": D0, "cobr": 0, "liqd": 0, "comm": comm})
         g["num"] += 1
         g["gross"] += _d(l.total_gwp_our_line)
         g["brk"] += _d(l.commission_coverholder_amount) + _d(l.brokerage_amount)
@@ -391,6 +416,8 @@ def _grupos_premium(db: Session, binder_id: int) -> dict[tuple[str, int, str], d
         g["net"] += _d(l.final_net_premium_uw)
         if l.prima_cobrada:
             g["cobr"] += 1
+        if l.liquidado:
+            g["liqd"] += 1
     return grupos
 
 
@@ -426,7 +453,11 @@ def vista(binder_id: int, db: Session = Depends(get_db)):
     grupos = _grupos_premium(db, binder_id)
     fdos = {(f.section, f.risk_code): f for f in db.scalars(select(Fdo).where(Fdo.binder_id == binder_id)).all()}
     lpans = db.scalars(select(Lpan).where(Lpan.binder_id == binder_id)).all()
-    lpan_por = {(lp.periodo, lp.section, lp.risk_code): lp for lp in lpans}
+    lpan_por = {(lp.periodo, lp.section, lp.risk_code, _d(lp.comision_pct)): lp for lp in lpans}
+    # (periodo, sección, risk code) que YA tienen algún LPAN (de cualquier comisión): histórico cubierto.
+    lpan_rc = {(lp.periodo, lp.section, lp.risk_code) for lp in lpans}
+    exenciones = {(e.periodo, e.section, (e.risk_code or "").strip(), _d(e.comision_pct)): e
+                  for e in db.scalars(select(LpanExencion).where(LpanExencion.binder_id == binder_id)).all()}
 
     # FDO/signing por (sección, risk code) DECLARADOS en el binder (no derivados del Premium).
     # Se añaden, por si acaso, combinaciones con FDO ya creado que no estén declaradas.
@@ -440,26 +471,74 @@ def vista(binder_id: int, db: Session = Depends(get_db)):
     ) for (sec, rc) in claves]
 
     periodos: list[PeriodoLpan] = []
-    for per in sorted({p for (p, _, _) in grupos}, reverse=True):  # más reciente arriba
+    for per in sorted({p for (p, _, _, _) in grupos}, reverse=True):  # más reciente arriba
         secciones: list[SeccionLpan] = []
-        for sec in sorted({s for (p, s, _) in grupos if p == per}):
+        for sec in sorted({s for (p, s, _, _) in grupos if p == per}):
             rcs: list[RcEnSeccion] = []
-            for rc in sorted({r for (p, s, r) in grupos if p == per and s == sec}):
-                g = grupos[(per, sec, rc)]
-                lp = lpan_por.get((per, sec, rc))
+            # Una fila por (risk code, comisión total %): el mismo rc con comisiones distintas se separa.
+            for (rc, comm) in sorted({(r, c) for (p, s, r, c) in grupos if p == per and s == sec}):
+                g = grupos[(per, sec, rc, comm)]
+                lp = lpan_por.get((per, sec, rc, comm))
                 f = fdos.get((sec, rc))
+                ex = exenciones.get((per, sec, rc, comm))
                 rcs.append(RcEnSeccion(
-                    risk_code=rc,
+                    risk_code=rc, comision_pct=comm,
                     signing_number=f.signing_number if f else None,
                     num_lineas=g["num"], gross_premium=g["gross"], brokerage=g["brk"],
                     tax=g["tax"], net_premium=g["net"],
                     cobrado=(g["num"] > 0 and g["cobr"] == g["num"]),
+                    liquidado=(g["num"] > 0 and g["liqd"] == g["num"]),
+                    exento_lpan=ex is not None, exencion_motivo=ex.motivo if ex else None,
+                    cubierto_historico=(lp is None and (per, sec, rc) in lpan_rc),
                     lpan=LpanRead.model_validate(lp, from_attributes=True) if lp else None,
                 ))
             secciones.append(SeccionLpan(section=sec, risk_codes=rcs))
         periodos.append(PeriodoLpan(periodo=per, periodo_label=_periodo_label(per), secciones=secciones))
 
     return VistaLpan(fdos=fdos_out, periodos=periodos)
+
+
+class ExencionIn(BaseModel):
+    periodo: str
+    section: int
+    risk_code: str
+    comision_pct: Decimal = Decimal(0)
+    motivo: str | None = None
+
+
+@router.post("/binders/{binder_id}/lpan/exencion")
+def marcar_exencion(binder_id: int, payload: ExencionIn, db: Session = Depends(get_db)):
+    """Marca un grupo (periodo + sección + risk code + comisión %) como EXENTO de LPAN: esas primas no
+    se liquidan al mercado, así que el mes deja de salir como pendiente de LPAN por ese grupo."""
+    _binder_o_404(binder_id, db)
+    rc = (payload.risk_code or "").strip()
+    comm = _d(payload.comision_pct).quantize(Decimal("0.01"))
+    ex = db.scalar(select(LpanExencion).where(
+        LpanExencion.binder_id == binder_id, LpanExencion.periodo == payload.periodo,
+        LpanExencion.section == payload.section, LpanExencion.risk_code == rc,
+        LpanExencion.comision_pct == comm))
+    if ex is None:
+        db.add(LpanExencion(binder_id=binder_id, periodo=payload.periodo, section=payload.section,
+                            risk_code=rc, comision_pct=comm, motivo=(payload.motivo or None)))
+    else:
+        ex.motivo = payload.motivo or None
+    db.commit()
+    return {"ok": True, "exento": True}
+
+
+@router.delete("/binders/{binder_id}/lpan/exencion")
+def quitar_exencion(binder_id: int, periodo: str, section: int, risk_code: str,
+                    comision_pct: Decimal = Decimal(0), db: Session = Depends(get_db)):
+    """Quita la exención de LPAN de un grupo → vuelve a contar como pendiente si no tiene LPAN."""
+    comm = _d(comision_pct).quantize(Decimal("0.01"))
+    ex = db.scalar(select(LpanExencion).where(
+        LpanExencion.binder_id == binder_id, LpanExencion.periodo == periodo,
+        LpanExencion.section == section, LpanExencion.risk_code == (risk_code or "").strip(),
+        LpanExencion.comision_pct == comm))
+    if ex is not None:
+        db.delete(ex)
+        db.commit()
+    return {"ok": True, "exento": False}
 
 
 @router.get("/elegir-carpeta")
@@ -553,6 +632,7 @@ def generar_lpan(binder_id: int, payload: LpanCreate, db: Session = Depends(get_
     b = _binder_o_404(binder_id, db)
     rc, per = (payload.risk_code or "").strip(), (payload.periodo or "").strip()
     sec = int(payload.section or 0)
+    comm = _d(payload.comision_pct).quantize(Decimal("0.01"))
     tipo = payload.tipo or "PM"
     f = db.scalar(select(Fdo).where(Fdo.binder_id == binder_id, Fdo.section == sec, Fdo.risk_code == rc))
     if f is None:
@@ -560,22 +640,25 @@ def generar_lpan(binder_id: int, payload: LpanCreate, db: Session = Depends(get_
     if not f.signing_number:
         raise HTTPException(status_code=409, detail=f"El FDO del risk code {rc} (sección {sec}) aún no tiene signing number.")
     grupos = _grupos_premium(db, binder_id)
-    g = grupos.get((per, sec, rc))
+    g = grupos.get((per, sec, rc, comm))
     if not g or g["num"] == 0:
-        raise HTTPException(status_code=404, detail=f"No hay líneas de Premium para {rc} (sección {sec}) en {per}.")
+        raise HTTPException(status_code=404, detail=f"No hay líneas de Premium para {rc} (sección {sec}, comisión {comm}%) en {per}.")
     if g["cobr"] != g["num"]:
         raise HTTPException(status_code=409, detail=f"Hay líneas sin cobrar en {rc} {per}: no se puede generar el LPAN.")
-    if db.scalar(select(Lpan).where(Lpan.fdo_id == f.id, Lpan.periodo == per, Lpan.section == sec, Lpan.tipo == tipo)):
-        raise HTTPException(status_code=409, detail=f"Ya existe un LPAN {tipo} para {rc} sección {sec} {per}.")
+    if db.scalar(select(Lpan).where(Lpan.fdo_id == f.id, Lpan.periodo == per, Lpan.section == sec,
+                                    Lpan.tipo == tipo, Lpan.comision_pct == comm)):
+        raise HTTPException(status_code=409, detail=f"Ya existe un LPAN {tipo} para {rc} sección {sec} {per} (comisión {comm}%).")
 
-    nombre = _nombre_lpan(b.agreement_number, per, sec, rc)
+    # Si el risk code tiene varias comisiones en ese mes, el nombre lleva el sufijo de comisión.
+    varias = len({c for (p, s, r, c) in grupos if p == per and s == sec and r == rc}) > 1
+    nombre = _nombre_lpan(b.agreement_number, per, sec, rc, comm if varias else None)
     moneda = b.moneda or "EUR"
     # Documento Word ANTES de crear el registro (si la carpeta falla, no deja huérfano).
     if payload.carpeta:
         _generar_lpan_docx(payload.carpeta, nombre, f.signing_number, (b.agreement_number or ""),
                            b.umr, g["gross"], g["brk"], g["tax"], g["net"], moneda)
     lp = Lpan(
-        fdo_id=f.id, binder_id=binder_id, risk_code=rc, section=sec, periodo=per, tipo=tipo,
+        fdo_id=f.id, binder_id=binder_id, risk_code=rc, section=sec, periodo=per, tipo=tipo, comision_pct=comm,
         num_lineas=g["num"], gross_premium=g["gross"], brokerage=g["brk"], tax=g["tax"], net_premium=g["net"],
         broker_ref1=b.agreement_number, broker_ref2=nombre, moneda=moneda,
         work_package=None, fecha=None, sdd=_sdd_de(per), estado="Work in Progress",

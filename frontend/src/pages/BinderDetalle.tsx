@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { bdxApi, recibosApi, siniestrosApi, claimsBdxApi, triangulacionApi, lpanApi, resumenBinder, type BdxDetalle, type BdxPreview, type BdxImportResult, type ExcelDir, type PremiumGrupo, type ClaimsBdxVista, type Triangulacion, type MetricaTriangulo, type VistaLpan, type ResumenBinder, type ResumenItem } from "../api";
 import type { Binder, Bdx, BdxLinea, Recibo, Siniestro } from "../types";
 import BdxLineaPanel from "../components/BdxLineaPanel";
@@ -333,6 +333,10 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
   const [excelModo, setExcelModo] = useState<"risk" | "premium">("risk");
   // Premiums del binder (grupos por mes) y fecha de pago por periodo (para el cobro)
   const [premiums, setPremiums] = useState<PremiumGrupo[]>([]);
+  // Nota libre por mes de Premium (editor inline)
+  const [notaEdit, setNotaEdit] = useState<string | null>(null);   // periodo en edición
+  const [notaText, setNotaText] = useState("");
+  const [notaSaving, setNotaSaving] = useState(false);
   const [fechasPago, setFechasPago] = useState<Record<string, string>>({});
   // Diálogo de confirmación contundente para acciones sensibles
   const [confirmar, setConfirmar] = useState<
@@ -373,6 +377,18 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
   }
   async function refrescarSel() {
     if (sel) setSel(await bdxApi.detalle(sel.id));
+  }
+  function abrirNota(p: PremiumGrupo) {
+    setNotaEdit(p.periodo); setNotaText(p.nota ?? "");
+  }
+  async function guardarNota() {
+    if (notaEdit == null) return;
+    setNotaSaving(true);
+    try {
+      await recibosApi.guardarNotaPremium(binder.id, notaEdit, notaText.trim() || null);
+      setPremiums(await recibosApi.listarPremium(binder.id));
+      setNotaEdit(null);
+    } catch (e) { setError((e as Error).message); } finally { setNotaSaving(false); }
   }
   async function refrescarBloqueos() {
     const bl = await bdxApi.listarBloqueos(binder.id);
@@ -1025,13 +1041,16 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
                   <th>💰 Cobro</th>
                   <th>🔁 Traspaso</th>
                   <th>🏦 Liquidación</th>
+                  <th>📝 Nota</th>
                 </tr>
               </thead>
               <tbody>
                 {premiums.map((p) => {
                   const bloq = bloqueos.has(`premium:${p.periodo}`);
+                  const editando = notaEdit === p.periodo;
                   return (
-                    <tr key={p.periodo}>
+                    <Fragment key={p.periodo}>
+                    <tr>
                       <td>{mesLargo(p.periodo)}</td>
                       <td className="num">{p.num_lineas}</td>
                       <td className="num">{imp(n(p.prima_lloyds))}</td>
@@ -1040,7 +1059,28 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
                       <td>{celdaEtapa(p, "cobro", bloq)}</td>
                       <td>{celdaEtapa(p, "traspaso", bloq)}</td>
                       <td>{celdaEtapa(p, "liquidacion", bloq)}</td>
+                      <td style={{ maxWidth: 220 }}>
+                        <button className="btn-link" title={p.nota || "Añadir nota"} onClick={() => abrirNota(p)}
+                          style={{ whiteSpace: "nowrap" }}>
+                          {p.nota ? "📝 " : "＋ "}
+                          {p.nota && <span className="hint" style={{ color: "inherit" }}>{p.nota.length > 28 ? p.nota.slice(0, 28) + "…" : p.nota}</span>}
+                        </button>
+                      </td>
                     </tr>
+                    {editando && (
+                      <tr>
+                        <td colSpan={9} style={{ background: "var(--fondo-suave, #f7f8fa)" }}>
+                          <div style={{ display: "flex", gap: 8, alignItems: "flex-start", padding: "6px 4px" }}>
+                            <textarea rows={2} style={{ flex: 1 }} value={notaText} autoFocus
+                              placeholder="Nota del mes de Premium (p. ej. riesgos no liquidados al mercado)"
+                              onChange={(e) => setNotaText(e.target.value)} />
+                            <button className="btn-primary btn-sm" disabled={notaSaving} onClick={guardarNota}>{notaSaving ? "…" : "Guardar"}</button>
+                            <button className="btn-secondary btn-sm" disabled={notaSaving} onClick={() => setNotaEdit(null)}>Cancelar</button>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                    </Fragment>
                   );
                 })}
                 <tr style={{ fontWeight: 600, borderTop: "2px solid var(--borde)" }}>
@@ -1048,14 +1088,14 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
                   <td className="num">{premLineas}</td>
                   <td className="num">{imp(premLloyds)}</td>
                   <td className="num">{imp(premComision)}</td>
-                  <td colSpan={4}></td>
+                  <td colSpan={5}></td>
                 </tr>
                 <tr className="hint">
                   <td>Total Risk</td>
                   <td className="num">{riskLineas}</td>
                   <td className="num">{imp(riskLloyds)}</td>
                   <td className="num">{imp(riskComision)}</td>
-                  <td colSpan={4}>
+                  <td colSpan={5}>
                     {premLineas === riskLineas
                       ? "✓ todo el Risk macheado"
                       : `faltan ${riskLineas - premLineas} línea(s) por machear`}
@@ -1410,7 +1450,7 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
               // Mes "completo" = todos los WP Status en Completed (los risk codes con prima 0 € no necesitan LPAN).
               const esCompleto = (p: typeof lpanData.periodos[number]) =>
                 p.secciones.length > 0 && p.secciones.every((s) =>
-                  s.risk_codes.every((r) => r.lpan?.estado === "Completed" || Number(r.gross_premium) === 0));
+                  s.risk_codes.every((r) => r.lpan?.estado === "Completed" || Number(r.gross_premium) === 0 || r.exento_lpan || r.cubierto_historico));
               const abiertoDe = (p: typeof lpanData.periodos[number]) => periodoOverride[p.periodo] ?? !esCompleto(p);
               const todosAbiertos = lpanData.periodos.every(abiertoDe);
               return (
@@ -1427,7 +1467,7 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
               // El tic ✓ del mes salta cuando TODOS los WP Status están en Completed.
               // (un bloque con prima 0 € no necesita LPAN, no bloquea el tic.)
               const completo = p.secciones.length > 0 && p.secciones.every((s) =>
-                s.risk_codes.every((r) => r.lpan?.estado === "Completed" || Number(r.gross_premium) === 0));
+                s.risk_codes.every((r) => r.lpan?.estado === "Completed" || Number(r.gross_premium) === 0 || r.exento_lpan || r.cubierto_historico));
               const abierto = periodoOverride[p.periodo] ?? !completo; // pendiente -> abierto por defecto
               return (
               <div key={p.periodo} className="recibo-box" style={{ marginBottom: 14 }}>
@@ -1470,7 +1510,7 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
                       <tbody>
                         {s.risk_codes.map((r) => (
                           <LpanRow
-                            key={r.risk_code}
+                            key={`${r.risk_code}-${r.comision_pct}`}
                             r={r}
                             section={s.section}
                             periodo={p.periodo}

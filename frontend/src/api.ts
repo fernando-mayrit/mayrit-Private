@@ -103,6 +103,7 @@ export interface RiskCodeFdo {
 }
 export interface RcEnSeccion {
   risk_code: string;
+  comision_pct: number | string;
   signing_number: string | null;
   num_lineas: number;
   gross_premium: number | string;
@@ -110,6 +111,10 @@ export interface RcEnSeccion {
   tax: number | string;
   net_premium: number | string;
   cobrado: boolean;
+  liquidado: boolean;
+  exento_lpan: boolean;
+  exencion_motivo: string | null;
+  cubierto_historico: boolean;
   lpan: LpanRegistro | null;
 }
 export interface SeccionLpan {
@@ -158,8 +163,12 @@ export const lpanApi = {
   actualizarFdo: (fdoId: number, datos: { signing_number?: string | null; work_package?: string | null; fecha_proceso?: string | null; work_package_status?: string | null; fecha_signing?: string | null; notas?: string | null }) =>
     request<FdoRegistro>(`/fdo/${fdoId}`, { method: "PUT", body: JSON.stringify(datos) }),
   borrarFdo: (fdoId: number) => request(`/fdo/${fdoId}`, { method: "DELETE" }),
-  generarLpan: (binderId: number, data: { risk_code: string; section: number; periodo: string; tipo?: string; carpeta?: string | null }) =>
+  generarLpan: (binderId: number, data: { risk_code: string; section: number; periodo: string; comision_pct: number | string; tipo?: string; carpeta?: string | null }) =>
     request<LpanRegistro>(`/binders/${binderId}/lpan`, { method: "POST", body: JSON.stringify(data) }),
+  marcarExencion: (binderId: number, data: { periodo: string; section: number; risk_code: string; comision_pct: number | string; motivo?: string | null }) =>
+    request(`/binders/${binderId}/lpan/exencion`, { method: "POST", body: JSON.stringify(data) }),
+  quitarExencion: (binderId: number, periodo: string, section: number, risk_code: string, comision_pct: number | string) =>
+    request(`/binders/${binderId}/lpan/exencion?periodo=${encodeURIComponent(periodo)}&section=${section}&risk_code=${encodeURIComponent(risk_code)}&comision_pct=${comision_pct}`, { method: "DELETE" }),
   actualizarLpan: (lpanId: number, datos: { work_package?: string | null; fecha?: string | null; sdd?: string | null; estado?: string | null; liberado?: string | null; pagado?: string | null }) =>
     request<LpanRegistro>(`/lpan/${lpanId}`, { method: "PUT", body: JSON.stringify(datos) }),
   borrarLpan: (lpanId: number) => request(`/lpan/${lpanId}`, { method: "DELETE" }),
@@ -667,6 +676,8 @@ export const recibosApi = {
     request(`/binders/${binderId}/premium/traspasar`, { method: "POST", body: JSON.stringify({ periodo, fecha }) }),
   liquidarPremium: (binderId: number, periodo: string, fecha: string) =>
     request(`/binders/${binderId}/premium/liquidar`, { method: "POST", body: JSON.stringify({ periodo, fecha }) }),
+  guardarNotaPremium: (binderId: number, periodo: string, nota: string | null) =>
+    request<{ periodo: string; nota: string | null }>(`/binders/${binderId}/premium/nota`, { method: "PUT", body: JSON.stringify({ periodo, nota }) }),
   excelPreview: (binderId: number, ruta: string, hoja?: string) =>
     request<ExcelPreview>(`/binders/${binderId}/premium/excel-preview`, { method: "POST", body: JSON.stringify({ ruta, hoja: hoja ?? null }) }),
   matchExcel: (binderId: number, data: { ruta: string; hoja: string; certificado: string; importe: string | null; periodo: string }) =>
@@ -687,6 +698,7 @@ export interface PremiumGrupo {
   fecha_pago: string | null;
   fecha_traspaso: string | null;
   fecha_liquidacion: string | null;
+  nota: string | null;
 }
 export interface ExcelPreview {
   hojas: string[];
