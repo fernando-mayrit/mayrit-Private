@@ -115,7 +115,7 @@ PERIODO_MIN = "2021-06"           # antes de junio 2021 no se generó comisión:
 # dato del recibo (fecha_contable la usa el Cierre Contable); solo afecta a la agrupación aquí.
 # Recibos tipo «Comisiones»/Iberian que NO son la comisión de Iberian-RC Profesional (fueron otra
 # cosa puntual, asegurado «Iberian Insurance Group, S.L.», 100% cedida; ya no se repetirá). Se excluyen.
-EXCLUIR_RECIBOS = {"2023-0094", "2023-0095", "2023-0096"}
+EXCLUIR_RECIBOS = {"2023-0094", "2023-0095", "2023-0096", "2023-0101"}
 CORRECCIONES_MES = {
     "2022-0041": "2022-03",   # es de marzo 2022 (su fecha_contable dice 2022-04-01)
     "2022-0106": "2022-09",   # es de septiembre 2022 (su fecha_contable dice octubre)
