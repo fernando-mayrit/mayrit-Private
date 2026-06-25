@@ -242,11 +242,13 @@ def _crear_recibo_cobro(db: Session, c: ConsultoriaContrato, fecha: dt.date, per
     r = Recibo(
         consultoria_id=c.id, periodo=periodo, anio=fecha.year, estado="Emitido",
         numero=_siguiente_numero(db, fecha.year),
-        tipo_poliza="Consultoría", asegurado=(c.concepto or (c.productor.nombre if c.productor else None)),
+        tipo_poliza="Consultoría", asegurado=(c.productor.nombre if c.productor else None),
         corredor=((c.productor.alias or c.productor.nombre) if c.productor else None),
         pagador=(c.productor.nombre if c.productor else None),
         ramo="Consultoría", moneda=c.moneda, cuenta=cuenta,
         fecha_efecto=fecha, fecha_vencimiento=fecha, fecha_contable=fecha,
+        # El listado de recibos usa fecha_efecto_recibo / fecha_vcto_recibo (no fecha_efecto).
+        fecha_efecto_recibo=fecha, fecha_vcto_recibo=fecha,
         honorarios=base, comision_retenida=base, impuestos_porc=c.impuestos_porc,
         impuestos_recibo=iva, prima_bruta_recibo=base + iva, prima_adeudada=base + iva,
     )
