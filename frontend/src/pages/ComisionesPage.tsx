@@ -74,17 +74,16 @@ export default function ComisionesPage() {
   const PILL: Record<string, string> = { Preparado: "pill-parcial", Ratificado: "pill-cobrado" };
 
   return (
-    <div>
+    <div className="container lista-page">
       <PageHeader emoji="💶" title="Comisiones" />
-      <p className="hint" style={{ marginBottom: 10 }}>
-        <b>Iberian</b> — comisión del Premium del programa <b>Iberian-RC Profesional</b>. Se prepara el recibo
-        (tipo Comisiones, prima 0, día 1 del mes) con la comisión estimada del Premium; queda <b>pendiente de
-        ratificar</b> hasta que Iberian envía la comisión definitiva y el reparto del 85% cedido entre sus dos
-        sociedades. Mayrit retiene el 15%.
+      <p className="hint" style={{ marginBottom: 8 }}>
+        <b>Iberian</b> · comisión del Premium del programa <b>Iberian-RC Profesional</b> (cedida 85% / retenida 15%).
+        Se prepara con la estimación del Premium y se ratifica con las cifras definitivas de Iberian.
       </p>
       {error && <div className="error">{error}</div>}
 
-      <table className="compacto" style={{ width: "100%" }}>
+      <div className="lista-scroll">
+      <table className="compacto bdx-tabla" style={{ width: "100%" }}>
         <thead>
           <tr>
             <th>Mes</th>
@@ -130,6 +129,7 @@ export default function ComisionesPage() {
           ))}
         </tbody>
       </table>
+      </div>
 
       {ratDe && (
         <FormPanel
