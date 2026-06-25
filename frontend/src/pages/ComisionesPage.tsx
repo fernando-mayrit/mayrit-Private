@@ -23,7 +23,6 @@ const mesLargo = (per: string) => {
 export default function ComisionesPage() {
   const [meses, setMeses] = useState<MesComision[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState<string | null>(null);
 
   // Ratificación
   const [ratDe, setRatDe] = useState<MesComision | null>(null);
@@ -39,11 +38,6 @@ export default function ComisionesPage() {
   }
   useEffect(() => { cargar(); }, []);
 
-  async function preparar(per: string) {
-    setBusy(per); setError(null);
-    try { await comisionesApi.preparar(per); await cargar(); }
-    catch (e) { setError((e as Error).message); } finally { setBusy(null); }
-  }
   // El borrado se hace DESDE la edición y siempre con confirmación (ConfirmDialog).
   function pedirBorrar(m: MesComision) {
     setConfirmar({
@@ -70,6 +64,9 @@ export default function ComisionesPage() {
 
   async function repartir() {
     if (!ratDe) return;
+    // Un recibo no se prepara sin su reparto: en meses nuevos exigimos meterlo antes de generar.
+    if (!ratDe.recibo_numero && sumaReparto <= 0)
+      return setError("Mete el reparto de la comisión cedida antes de generar el recibo.");
     setSaving(true); setError(null);
     try {
       await comisionesApi.reparto(ratDe.periodo, {
@@ -126,9 +123,7 @@ export default function ComisionesPage() {
               <td>{m.recibo_numero ?? "—"}</td>
               <td className="acciones" style={{ whiteSpace: "nowrap" }}>
                 {!m.recibo_numero
-                  ? <button className="btn-primary btn-sm" disabled={busy === m.periodo} onClick={() => preparar(m.periodo)}>
-                      {busy === m.periodo ? "…" : "Preparar"}
-                    </button>
+                  ? <button className="btn-primary btn-sm" onClick={() => abrirReparto(m)}>Preparar</button>
                   : conReparto
                     ? <button className="btn-link btn-sm" onClick={() => abrirReparto(m)}>Editar</button>
                     : <button className="btn-primary btn-sm" onClick={() => abrirReparto(m)}>Reparto</button>}
@@ -142,13 +137,14 @@ export default function ComisionesPage() {
 
       {ratDe && (
         <FormPanel
-          title={`${ratDe.liq_id ? "Editar" : "Reparto cedida —"} ${mesLargo(ratDe.periodo)}`}
-          dirty saving={saving} saveLabel="Guardar reparto"
+          title={`${ratDe.liq_id ? "Editar reparto" : !ratDe.recibo_numero ? "Preparar recibo" : "Reparto cedida"} — ${mesLargo(ratDe.periodo)}`}
+          dirty saving={saving} saveLabel={!ratDe.recibo_numero ? "Generar recibo" : "Guardar reparto"}
           onSave={repartir} onClose={() => setRatDe(null)}
           onDelete={ratDe.liq_id ? () => pedirBorrar(ratDe) : undefined}
         >
           <p className="hint" style={{ marginBottom: 8 }}>
             Reparte el <b>8,5% cedido</b> (85% de la comisión) entre las dos sociedades, según lo que indique Iberian.
+            {!ratDe.recibo_numero && <> Al guardar se <b>genera el recibo</b> de este mes.</>}
           </p>
           <div className="field">
             <label>Comisión del mes</label>

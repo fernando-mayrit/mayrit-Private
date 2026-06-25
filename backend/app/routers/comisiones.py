@@ -139,7 +139,11 @@ def listar_iberian(db: Session = Depends(get_db)):
     for per in sorted(set(bases) | set(hist) | set(liqs), reverse=True):
         base = bases.get(per, D0)
         l, h = liqs.get(per), hist.get(per)
-        m = MesComision(periodo=per, base_prima=_q2(base), comision_premium=_comision_de_base(base))
+        est = _comision_de_base(base)
+        # Por defecto (mes sin preparar) se muestran la cedida/retenida ESTIMADAS (85/15 del 10%);
+        # si hay recibo histórico o liquidación, se sobreescriben con las reales más abajo.
+        m = MesComision(periodo=per, base_prima=_q2(base), comision_premium=est,
+                        cedida=_q2(est * Decimal("0.85")), retenida=_q2(est * Decimal("0.15")))
         if h:   # ya hay recibo histórico: la comisión/cedida/retenida salen de él
             m.comision = _q2(h["comision"]); m.cedida = _q2(h["cedida"]); m.retenida = _q2(h["retenida"])
             m.estado = "Emitido"
@@ -197,8 +201,9 @@ class RepartoIn(BaseModel):
 
 @router.put("/comisiones/iberian/{periodo}/reparto", response_model=MesComision)
 def reparto(periodo: str, payload: RepartoIn, db: Session = Depends(get_db)):
-    """Mete el reparto del 85% cedido entre las dos sociedades (varía cada mes). Si el mes ya tenía
-    recibo (histórico), crea la liquidación enlazándolo; si no, hay que «Preparar» antes."""
+    """Guarda el reparto del 85% cedido entre las dos sociedades (varía cada mes). Si el mes aún no
+    tiene recibo, se GENERA aquí (un recibo no se prepara sin su reparto). Si ya tenía recibo histórico,
+    se enlaza sin tocarlo."""
     prog = _programa_iberian(db)
     if not prog:
         raise HTTPException(status_code=404, detail="No se encuentra el programa Iberian-RC Profesional")
@@ -207,14 +212,27 @@ def reparto(periodo: str, payload: RepartoIn, db: Session = Depends(get_db)):
         ComisionLiquidacion.fuente == "Iberian", ComisionLiquidacion.periodo == periodo))
     if liq is None:
         h = _hist_por_periodo(db).get(periodo)
-        if not h:
-            raise HTTPException(status_code=409, detail="No hay recibo de comisiones para este mes; prepáralo primero.")
+        fecha = _dia1(periodo)
         liq = ComisionLiquidacion(
-            fuente="Iberian", programa_id=prog.id, periodo=periodo, fecha=_dia1(periodo),
-            comision_premium=_comision_de_base(base), comision_definitiva=_q2(h["comision"]),
+            fuente="Iberian", programa_id=prog.id, periodo=periodo, fecha=fecha,
+            comision_premium=_comision_de_base(base),
+            comision_definitiva=_q2(h["comision"]) if h else None,
             cedida_pct=Decimal(85), retenida_pct=Decimal(15),
-            pago1_nombre=PAGO1_DEFECTO, pago2_nombre=PAGO2_DEFECTO, estado="Ratificado", recibo_id=h["recibo_id"],
+            pago1_nombre=PAGO1_DEFECTO, pago2_nombre=PAGO2_DEFECTO, estado="Ratificado",
+            recibo_id=h["recibo_id"] if h else None,
         )
+        if not h:   # mes nuevo: se genera el recibo del módulo al guardar el reparto
+            r = Recibo(
+                periodo=periodo, anio=fecha.year, estado="Emitido", numero=_siguiente_numero(db, fecha.year),
+                tipo_poliza="Comisiones", asegurado=prog.nombre, corredor="Iberian", ramo="Comisiones", moneda="EUR",
+                referencia=REF_MODULO, fecha_efecto=fecha, fecha_vencimiento=fecha, fecha_contable=fecha,
+                fecha_efecto_recibo=fecha, fecha_vcto_recibo=fecha,
+                prima_bruta_recibo=D0, prima_neta_recibo=D0, prima_adeudada=D0,
+            )
+            _aplicar_a_recibo(liq, r)
+            db.add(r)
+            db.flush()
+            liq.recibo_id = r.id
         db.add(liq)
     if payload.comision_definitiva is not None:
         liq.comision_definitiva = _q2(payload.comision_definitiva)
