@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { comisionesApi, type MesComision } from "../api";
+import { fmtMiles } from "../format";
 import PageHeader from "../components/PageHeader";
 import FormPanel from "../components/FormPanel";
 
@@ -7,8 +8,9 @@ import FormPanel from "../components/FormPanel";
 // Iberian-RC Profesional. Se PREPARA el recibo (estimado del Premium) y queda pendiente de RATIFICAR
 // cuando Iberian envía la comisión definitiva y el reparto del 85% cedido entre sus dos sociedades.
 
-const eur = (v: number | string | null | undefined) =>
-  new Intl.NumberFormat("es-ES", { style: "currency", currency: "EUR" }).format(Number(v ?? 0));
+// Formato único de la app (miles con punto, decimales con coma). Intl con es-ES no agrupa los
+// números de 4 cifras (1234 -> "1234"), por eso usamos fmtMiles.
+const eur = (v: number | string | null | undefined) => `${fmtMiles(v)} €`;
 const num = (v: number | string | null | undefined) => Number(v ?? 0);
 const mesLargo = (per: string) => {
   const [y, m] = per.split("-").map(Number);
