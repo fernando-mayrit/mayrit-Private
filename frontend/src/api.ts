@@ -300,7 +300,7 @@ export const consultoriaApi = {
 // ── Comisiones (liquidación mensual; fuente Iberian) ──
 export interface MesComision {
   periodo: string;
-  base_neta?: number | string;        // Σ Net Premium to Broker del mes (base del 10%)
+  base_prima?: number | string;       // Σ GWP (our line) del mes (base del 10%)
   comision_premium: number | string;
   liq_id?: number | null;
   estado?: string | null;             // Preparado | Ratificado
