@@ -524,6 +524,8 @@ export default function TareasBinder({ binderId }: { binderId?: number }) {
       </div>
       {error && <div className="error">{error}</div>}
 
+      {/* En la página global, el contenido va en lista-scroll (header/toolbar fijos, scroll en la lista). */}
+      <div className={esGlobal ? "lista-scroll" : undefined}>
       {esGlobal && vista === "mes" ? (
         meses.length === 0 ? (
           <div className="empty">{soloPend ? "No hay tareas pendientes." : "No hay ocurrencias (revisa la vigencia y la frecuencia)."}</div>
@@ -604,6 +606,7 @@ export default function TareasBinder({ binderId }: { binderId?: number }) {
       ) : (
         tablaDe([...tareas].sort(porProxima))
       )}
+      </div>
 
       {editId !== null && (
         <FormPanel
