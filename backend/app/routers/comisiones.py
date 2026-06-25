@@ -109,6 +109,7 @@ def _mes_de_liq(db: Session, liq: ComisionLiquidacion, base: Decimal) -> MesComi
 
 
 REF_MODULO = "comision-iberian"   # marca los recibos creados por este módulo (vs. los históricos)
+PERIODO_MIN = "2021-06"           # antes de junio 2021 no se generó comisión: no se listan esos meses
 
 
 def _hist_por_periodo(db: Session) -> dict[str, dict]:
@@ -141,6 +142,8 @@ def listar_iberian(db: Session = Depends(get_db)):
         select(ComisionLiquidacion).where(ComisionLiquidacion.fuente == "Iberian")).all()}
     out: list[MesComision] = []
     for per in sorted(set(bases) | set(hist) | set(liqs), reverse=True):
+        if per < PERIODO_MIN:   # antes de jun-2021 no hubo comisión: se omite
+            continue
         base = bases.get(per, D0)
         l, h = liqs.get(per), hist.get(per)
         est = _comision_de_base(base)
