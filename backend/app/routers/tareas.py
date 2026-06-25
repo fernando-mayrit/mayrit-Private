@@ -39,23 +39,34 @@ def _paso(t: Tarea) -> int:
 
 
 def _ocurrencias(t: Tarea, binder: Binder) -> list[dt.date]:
-    """Fechas de las ocurrencias: desde fecha_inicio (o efecto del binder), cada `paso` meses, hasta
-    el vencimiento del binder (con tope de seguridad si el binder no tuviera vencimiento)."""
+    """Fechas de las entregas: desde fecha_inicio (o efecto del binder), cada `paso` meses. El nº de
+    entregas = nº de periodos de cobertura del binder; las fechas NO se cortan en el vencimiento —
+    el binder vencido sigue 'vivo' con entregas de run-off DESPUÉS del vto. Si la tarea tiene una
+    fecha_fin explícita (y coherente, posterior al inicio), se usa como tope."""
     inicio = t.fecha_inicio or binder.fecha_efecto
     if not inicio:
         return []
     paso = _paso(t)
     if paso <= 0:
         return [inicio]
-    fin = t.fecha_fin or binder.fecha_vencimiento or _add_months(inicio, 120)
-    out, k = [], 0
-    while k < 1200:
-        f = _add_months(inicio, k * paso)
-        if f > fin:
-            break
-        out.append(f)
-        k += 1
-    return out
+    # Tope explícito por fecha_fin (solo si es coherente: posterior o igual al inicio).
+    if t.fecha_fin and t.fecha_fin >= inicio:
+        out, k = [], 0
+        while k < 1200:
+            f = _add_months(inicio, k * paso)
+            if f > t.fecha_fin:
+                break
+            out.append(f)
+            k += 1
+        return out
+    # Sin fin explícito: una entrega por cada periodo de cobertura (las del run-off caen tras el vto).
+    ef, venc = binder.fecha_efecto, binder.fecha_vencimiento
+    if not ef or not venc:
+        return [_add_months(inicio, k * paso) for k in range(120)]
+    n = 0
+    while n < 1200 and _add_months(ef, n * paso) <= venc:
+        n += 1
+    return [_add_months(inicio, k * paso) for k in range(max(n, 1))]
 
 
 def _debida(t: Tarea, f: dt.date, hoy: dt.date, hecha: bool) -> bool:
@@ -182,15 +193,9 @@ def _sincronizar_binder(db: Session, binder: Binder) -> dict:
         plazo = int(getattr(binder, c_plazo, None) or 0)
         paso = PASO_MESES[frecuencia]
         inicio = _add_months(binder.fecha_efecto, paso) + dt.timedelta(days=plazo)   # 1ª fecha límite
-        # Nº de periodos = cuántos arrancan dentro de la vigencia. El fin se fija en la enésima
-        # ocurrencia (mismo paso que _ocurrencias) para que entren TODOS los periodos sin sobrar.
-        if binder.fecha_vencimiento:
-            n = 0
-            while _add_months(binder.fecha_efecto, n * paso) <= binder.fecha_vencimiento:
-                n += 1
-            fin = _add_months(inicio, max(n - 1, 0) * paso)
-        else:
-            fin = None
+        # No fijamos fecha_fin: el nº de entregas (y el run-off tras el vto) lo calcula _ocurrencias
+        # por nº de periodos de cobertura. La entrega del último periodo cae DESPUÉS del vencimiento.
+        fin = None
         t = db.scalar(select(Tarea).where(
             Tarea.binder_id == binder.id, Tarea.origen == "auto", Tarea.categoria == categoria))
         if t:
