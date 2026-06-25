@@ -933,18 +933,23 @@ export default function BindersPage() {
   // Sumatorios de lo visible: nº de binders y suma de primas (GWP our line).
   const totalPrimas = useMemo(() => visibles.reduce((s, b) => s + (b.gwp_our_line ?? 0), 0), [visibles]);
 
-  // Campo "Notificado (fecha)" de un grupo de límite. Si el límite está en rojo (umbral de
-  // notificación superado) y aún no tiene fecha, se DESTACA: es el que hay que rellenar.
+  // Campo "Notificado (fecha)" de un grupo de límite. Solo etiqueta + input (misma altura que las
+  // cajas de al lado, para que no descuadre). El estado (% de consumo y ✅/⚠) va EN la etiqueta.
   function campoNotificado(gi: number) {
     if (!form) return null;
     const g = form.limites[gi];
     if (!g) return null;
     const pendiente = g.estado === "rojo" && !g.fecha_notificacion;
+    const informado = g.estado === "informado";
     return (
       <div className={`field${pendiente ? " notif-pend" : ""}`}>
         <label>
           Notificado (fecha)
+          {g.consumo_pct != null && (
+            <span className="notif-pct"> · {fmtMiles(g.consumo_pct)} %</span>
+          )}
           {pendiente && <span className="notif-pend-badge">⚠ a notificar</span>}
+          {informado && <span className="notif-ok-badge">✅ notificado</span>}
         </label>
         <input
           type="date"
@@ -952,13 +957,6 @@ export default function BindersPage() {
           value={g.fecha_notificacion ?? ""}
           onChange={(e) => setGrupoCampo(gi, "fecha_notificacion", e.target.value)}
         />
-        {g.estado === "informado" ? (
-          <span className="hint" style={{ color: "#1a7f37", fontWeight: 600 }}>
-            ✅ Notificado al mercado{g.consumo_pct != null ? ` · consumo ${fmtMiles(g.consumo_pct)} %` : ""}
-          </span>
-        ) : g.consumo_pct != null ? (
-          <span className="hint">Consumo {fmtMiles(g.consumo_pct)} %{pendiente ? " — supera el umbral" : ""}</span>
-        ) : null}
       </div>
     );
   }

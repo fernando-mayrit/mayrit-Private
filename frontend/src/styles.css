@@ -666,11 +666,16 @@ td.num, th.num { text-align: right; }
 .notif-informado { color: #1a7f37; }
 
 /* Campo "Notificado (fecha)" pendiente de rellenar (límite que supera el umbral) */
-.field.notif-pend { background: #fde2dd; border: 1px solid #f1b0a7; border-radius: 8px; padding: 8px 10px; }
-.field.notif-pend .inp-fecha { border-color: #b42318; }
+/* Resaltar el campo "a notificar" SIN cambiar su tamaño (para no descuadrar la fila): solo el input. */
+.field.notif-pend .inp-fecha { border-color: #b42318; box-shadow: 0 0 0 2px rgba(180, 35, 24, 0.12); }
+.notif-pct { font-weight: 400; color: var(--gris-medio); }
 .notif-pend-badge {
   margin-left: 8px; font-size: 12px; font-weight: 700; color: #b42318;
   background: #fff; border: 1px solid #f1b0a7; border-radius: 999px; padding: 1px 8px;
+}
+.notif-ok-badge {
+  margin-left: 8px; font-size: 12px; font-weight: 700; color: #1a7f37;
+  background: #fff; border: 1px solid #aedcba; border-radius: 999px; padding: 1px 8px;
 }
 
 /* Diálogo de confirmación contundente (acciones sensibles) */
