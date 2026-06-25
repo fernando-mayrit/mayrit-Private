@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import datetime as dt
 from collections import defaultdict
+from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -17,7 +18,8 @@ from sqlalchemy.orm import Session
 
 from ..db import get_db
 from ..models.maestras import (
-    AvisoNivel, Bdx, BdxLinea, Binder, ConsultoriaContrato, Lpan, Poliza, Productor, Recibo, Tarea,
+    AvisoNivel, Bdx, BdxLinea, Binder, ConsultoriaContrato, Lpan, LpanExencion, Poliza, Productor,
+    Recibo, Tarea,
 )
 
 router = APIRouter(tags=["Avisos"])
@@ -204,41 +206,60 @@ def _facturas_consultoria(db: Session) -> list[Aviso]:
 
 
 def _lpan_mes_incompleto(db: Session) -> list[Aviso]:
-    """ROJO: meses (binder+periodo) con ALGÚN LPAN generado pero con risk codes (prima our line > 0)
-    todavía SIN LPAN. Es decir, el mes está empezado pero a medias."""
-    # LPANs existentes: claves (periodo, sección, risk_code) y periodos con LPAN, por binder.
-    lpan_claves: dict[int, set] = defaultdict(set)
+    """ROJO: meses (binder+periodo) con ALGÚN LPAN generado pero con grupos (prima our line > 0)
+    todavía SIN LPAN, ni exentos, ni cubiertos por un LPAN histórico. El mes está a medias.
+    Los grupos se distinguen por (sección, risk_code, comisión total %): el desdoble por comisión."""
+    def _q2(x) -> Decimal:
+        return Decimal(str(x or 0)).quantize(Decimal("0.01"))
+
+    # LPAN por comisión concreta, LPAN histórico (sin comisión = cubre el rc entero), y periodos con LPAN.
+    lpan_exact: dict[int, set] = defaultdict(set)       # bid -> {(per, sec, rc, comm)}
+    lpan_rc_hist: dict[int, set] = defaultdict(set)     # bid -> {(per, sec, rc)} con LPAN lumped (comm NULL)
     lpan_periodos: dict[int, set] = defaultdict(set)
-    for bid, per, sec, rc in db.execute(
-        select(Lpan.binder_id, Lpan.periodo, Lpan.section, Lpan.risk_code).where(Lpan.binder_id.is_not(None))
+    for bid, per, sec, rc, comm in db.execute(
+        select(Lpan.binder_id, Lpan.periodo, Lpan.section, Lpan.risk_code, Lpan.comision_pct)
+        .where(Lpan.binder_id.is_not(None))
     ).all():
-        lpan_claves[bid].add((per, int(sec or 0), (rc or "").strip()))
+        k = (per, int(sec or 0), (rc or "").strip())
         lpan_periodos[bid].add(per)
-    if not lpan_claves:
+        if comm is None:
+            lpan_rc_hist[bid].add(k)
+        else:
+            lpan_exact[bid].add((*k, _q2(comm)))
+    if not lpan_periodos:
         return []
 
-    # Prima (our line) por (binder, periodo, sección, risk_code), solo de binders con algún LPAN.
-    gross: dict[tuple, float] = defaultdict(float)
-    for bid, pbdx, sec, rc, g in db.execute(
-        select(Bdx.binder_id, BdxLinea.premium_bdx, BdxLinea.section_no, BdxLinea.risk_code,
+    # Grupos exentos (no requieren LPAN), por (binder, per, sec, rc, comm).
+    exento: set = set()
+    for e in db.scalars(select(LpanExencion)).all():
+        exento.add((e.binder_id, e.periodo, int(e.section or 0), (e.risk_code or "").strip(), _q2(e.comision_pct)))
+
+    # Prima (our line) por (binder, periodo, sección, risk_code, comisión total %).
+    comm_expr = func.round(func.coalesce(BdxLinea.commission_coverholder_pct, 0)
+                           + func.coalesce(BdxLinea.brokerage_pct, 0), 2)
+    need: dict[tuple[int, str], set] = defaultdict(set)
+    for bid, pbdx, sec, rc, comm, g in db.execute(
+        select(Bdx.binder_id, BdxLinea.premium_bdx, BdxLinea.section_no, BdxLinea.risk_code, comm_expr,
                func.sum(BdxLinea.total_gwp_our_line))
         .join(BdxLinea, BdxLinea.bdx_id == Bdx.id)
         .where(BdxLinea.incluido_en_premium.is_(True), BdxLinea.premium_bdx.is_not(None))
-        .group_by(Bdx.binder_id, BdxLinea.premium_bdx, BdxLinea.section_no, BdxLinea.risk_code)
+        .group_by(Bdx.binder_id, BdxLinea.premium_bdx, BdxLinea.section_no, BdxLinea.risk_code, comm_expr)
     ).all():
-        if bid in lpan_claves:
-            gross[(bid, pbdx.strftime("%Y-%m"), int(sec or 0), (rc or "").strip())] += float(g or 0)
-
-    # Risk codes que NECESITAN LPAN (prima > 0) por (binder, periodo).
-    need: dict[tuple[int, str], set] = defaultdict(set)
-    for (bid, per, sec, rc), g in gross.items():
-        if g > 0:
-            need[(bid, per)].add((per, sec, rc))
+        if bid not in lpan_periodos or float(g or 0) <= 0:
+            continue
+        per = pbdx.strftime("%Y-%m"); s = int(sec or 0); r = (rc or "").strip(); c = _q2(comm)
+        if (per, s, r) in lpan_rc_hist[bid]:        # cubierto por LPAN histórico lumped
+            continue
+        if (per, s, r, c) in lpan_exact[bid]:       # ya tiene su LPAN de esa comisión
+            continue
+        if (bid, per, s, r, c) in exento:           # marcado exento (no requiere LPAN)
+            continue
+        need[(bid, per)].add((s, r, c))
 
     binders = {b.id: b for b in db.scalars(select(Binder)).all()}
     parciales: dict[int, list[str]] = defaultdict(list)
-    for (bid, per), claves in need.items():
-        if per in lpan_periodos[bid] and (claves - lpan_claves[bid]):   # algún LPAN hecho y otros sin hacer
+    for (bid, per), grupos in need.items():
+        if per in lpan_periodos[bid] and grupos:   # algún LPAN hecho y otros grupos sin resolver
             parciales[bid].append(per)
 
     avisos: list[Aviso] = []

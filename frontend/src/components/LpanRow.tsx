@@ -96,6 +96,8 @@ export default function LpanRow({
   }
 
   const statusOpts = WP_STATUS.includes(estado) || !estado ? WP_STATUS : [estado, ...WP_STATUS];
+  // Al pasar a Completed se bloquean WP, Procesado y SDD (cambia el estado a otro para volver a editar).
+  const bloqueado = estado === "Completed";
 
   return (
     <tr>
@@ -137,10 +139,13 @@ export default function LpanRow({
       {lp ? (
         <>
           <td><input type="text" value={wp} placeholder="BNIXQUR" style={{ width: 90 }}
+            disabled={bloqueado} title={bloqueado ? "Bloqueado al estar Completed" : undefined}
             onChange={(e) => setWp(e.target.value)} /></td>
           <td><input type="date" className="inp-fecha" value={fproc}
+            disabled={bloqueado} title={bloqueado ? "Bloqueado al estar Completed" : undefined}
             onChange={(e) => setFproc(e.target.value)} /></td>
           <td><input type="date" className="inp-fecha" value={sdd}
+            disabled={bloqueado} title={bloqueado ? "Bloqueado al estar Completed" : undefined}
             onChange={(e) => setSdd(e.target.value)} /></td>
           <td>
             <select value={estado} onChange={(e) => setEstado(e.target.value)}>

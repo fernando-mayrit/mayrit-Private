@@ -453,9 +453,10 @@ def vista(binder_id: int, db: Session = Depends(get_db)):
     grupos = _grupos_premium(db, binder_id)
     fdos = {(f.section, f.risk_code): f for f in db.scalars(select(Fdo).where(Fdo.binder_id == binder_id)).all()}
     lpans = db.scalars(select(Lpan).where(Lpan.binder_id == binder_id)).all()
-    lpan_por = {(lp.periodo, lp.section, lp.risk_code, _d(lp.comision_pct)): lp for lp in lpans}
-    # (periodo, sección, risk code) que YA tienen algún LPAN (de cualquier comisión): histórico cubierto.
-    lpan_rc = {(lp.periodo, lp.section, lp.risk_code) for lp in lpans}
+    lpan_por = {(lp.periodo, lp.section, lp.risk_code, _d(lp.comision_pct)): lp for lp in lpans if lp.comision_pct is not None}
+    # (periodo, sección, risk code) con un LPAN histórico SIN comisión (lumped): cubre el rc entero.
+    # Solo los lumped (comision_pct NULL); los LPAN nuevos con comisión concreta NO cubren otras comisiones.
+    lpan_rc_hist = {(lp.periodo, lp.section, lp.risk_code) for lp in lpans if lp.comision_pct is None}
     exenciones = {(e.periodo, e.section, (e.risk_code or "").strip(), _d(e.comision_pct)): e
                   for e in db.scalars(select(LpanExencion).where(LpanExencion.binder_id == binder_id)).all()}
 
@@ -489,7 +490,7 @@ def vista(binder_id: int, db: Session = Depends(get_db)):
                     cobrado=(g["num"] > 0 and g["cobr"] == g["num"]),
                     liquidado=(g["num"] > 0 and g["liqd"] == g["num"]),
                     exento_lpan=ex is not None, exencion_motivo=ex.motivo if ex else None,
-                    cubierto_historico=(lp is None and (per, sec, rc) in lpan_rc),
+                    cubierto_historico=(lp is None and (per, sec, rc) in lpan_rc_hist),
                     lpan=LpanRead.model_validate(lp, from_attributes=True) if lp else None,
                 ))
             secciones.append(SeccionLpan(section=sec, risk_codes=rcs))
