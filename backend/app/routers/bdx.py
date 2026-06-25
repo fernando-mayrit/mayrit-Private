@@ -6,13 +6,14 @@ Claims va en otro módulo.
 import datetime as dt
 import os
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
 
 from ..config import settings
 from ..db import get_db
+from .. import bdx_import
 from ..models.maestras import Binder, Bdx, BdxBloqueo, BdxLinea
 from ..schemas import maestras as sch
 
@@ -90,6 +91,46 @@ def excel_dir(sub: str = ""):
             files.append({"name": nombre, "size": st.st_size, "mtime": int(st.st_mtime)})
     rel = os.path.relpath(destino, base)
     return {"base": base, "sub": "" if rel == "." else rel.replace("\\", "/"), "dirs": dirs, "files": files}
+
+
+# ── Subir Risk BDX desde un Excel del navegador (funciona en local y en Azure) ──
+async def _leer_xlsx(file: UploadFile) -> bytes:
+    if not (file.filename or "").lower().endswith(".xlsx"):
+        raise HTTPException(status_code=400, detail="Solo se admite .xlsx (convierte los .xls antes de subir).")
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="El fichero está vacío.")
+    return content
+
+
+@router.post("/binders/{binder_id}/bdx/risk-excel-preview")
+async def risk_excel_preview(binder_id: int, file: UploadFile = File(...), db: Session = Depends(get_db)):
+    """Vista previa del Risk BDX subido (sin escribir): líneas, periodos, totales, mapeo y muestra."""
+    b = db.get(Binder, binder_id)
+    if b is None:
+        raise HTTPException(status_code=404, detail=f"Binder {binder_id} no encontrado")
+    content = await _leer_xlsx(file)
+    try:
+        return bdx_import.preview_risk_excel(db, b, content)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"No se pudo leer el Excel: {e}")
+
+
+@router.post("/binders/{binder_id}/bdx/risk-excel-import")
+async def risk_excel_import(binder_id: int, file: UploadFile = File(...), db: Session = Depends(get_db)):
+    """Importa las líneas del Risk BDX subido al BDX del binder (dedup por clave natural)."""
+    b = db.get(Binder, binder_id)
+    if b is None:
+        raise HTTPException(status_code=404, detail=f"Binder {binder_id} no encontrado")
+    content = await _leer_xlsx(file)
+    try:
+        return bdx_import.importar_risk_excel(db, b, content)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"No se pudo importar el Excel: {e}")
 
 
 def _cab(b: Bdx, num: int | None = None) -> dict:

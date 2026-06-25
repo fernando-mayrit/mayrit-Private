@@ -1,5 +1,5 @@
-import { Fragment, useEffect, useMemo, useState } from "react";
-import { bdxApi, recibosApi, siniestrosApi, claimsBdxApi, triangulacionApi, lpanApi, resumenBinder, type BdxDetalle, type BdxPreview, type BdxImportResult, type ExcelDir, type PremiumGrupo, type ClaimsBdxVista, type Triangulacion, type MetricaTriangulo, type VistaLpan, type ResumenBinder, type ResumenItem } from "../api";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { bdxApi, recibosApi, siniestrosApi, claimsBdxApi, triangulacionApi, lpanApi, resumenBinder, type BdxDetalle, type BdxPreview, type BdxImportResult, type PremiumGrupo, type ClaimsBdxVista, type Triangulacion, type MetricaTriangulo, type VistaLpan, type ResumenBinder, type ResumenItem } from "../api";
 import type { Binder, Bdx, BdxLinea, Recibo, Siniestro } from "../types";
 import BdxLineaPanel from "../components/BdxLineaPanel";
 import BdxTabla from "../components/BdxTabla";
@@ -10,6 +10,7 @@ import SiniestroModal from "../components/SiniestroModal";
 import LpanFdoRow from "../components/LpanFdoRow";
 import LpanRow from "../components/LpanRow";
 import PremiumMatch from "../components/PremiumMatch";
+import RiskExcelImport from "../components/RiskExcelImport";
 import TareasBinder from "../components/TareasBinder";
 import ConfirmDialog from "../components/ConfirmDialog";
 import FormPanel from "../components/FormPanel";
@@ -311,12 +312,9 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
     }
   }
 
-  // ── Selector de Excel (carpeta servida por el backend) ──
-  const [excelOpen, setExcelOpen] = useState(false);
-  const [excelDir, setExcelDir] = useState<ExcelDir | null>(null);
-  const [excelBusy, setExcelBusy] = useState(false);
-  const [excelErr, setExcelErr] = useState<string | null>(null);
-  const [excelSel, setExcelSel] = useState<string | null>(null);
+  // ── Subir Risk/Premium desde un Excel del navegador (multipart) ──
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [subirFile, setSubirFile] = useState<File | null>(null);
   // PC: IBNR manual (% s/ GWP). La siniestralidad sale de los Claims importados (no simulada).
   const [ibnrPct, setIbnrPct] = useState("0");
   // Selección de meses/periodos en la tabla de Datos.
@@ -328,8 +326,6 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
   const [generando, setGenerando] = useState<string | null>(null); // periodo cuyo preview se está pidiendo
   const [borrador, setBorrador] = useState<ReciboPreview | null>(null); // recibo precalculado a emitir
   const [emitiendo, setEmitiendo] = useState(false);
-  // Macheo de un Premium (Excel) seleccionado
-  const [matchExcel, setMatchExcel] = useState<{ ruta: string; nombre: string } | null>(null);
   const [excelModo, setExcelModo] = useState<"risk" | "premium">("risk");
   // Premiums del binder (grupos por mes) y fecha de pago por periodo (para el cobro)
   const [premiums, setPremiums] = useState<PremiumGrupo[]>([]);
@@ -433,28 +429,11 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
     setImportError(null);
   }
 
-  async function cargarCarpeta(sub: string) {
-    setExcelBusy(true);
-    setExcelErr(null);
-    try {
-      setExcelDir(await bdxApi.excelDir(sub));
-    } catch (e) {
-      setExcelErr((e as Error).message);
-    } finally {
-      setExcelBusy(false);
-    }
-  }
+  // Abre el selector de fichero del navegador para subir el Excel de Risk o Premium.
   function elegirExcel(modo: "risk" | "premium" = "risk") {
     setExcelModo(modo);
-    setExcelOpen(true);
-    setExcelSel(null);
-    setExcelDir(null);
-    cargarCarpeta("");
-  }
-  function subirCarpeta() {
-    const sub = excelDir?.sub ?? "";
-    const padre = sub.includes("/") ? sub.slice(0, sub.lastIndexOf("/")) : "";
-    cargarCarpeta(padre);
+    setSubirFile(null);
+    if (fileRef.current) { fileRef.current.value = ""; fileRef.current.click(); }
   }
 
   // Cifras por mes (Reporting Start): GWP (our line), Net Premium to Broker, comisión (brokerage).
@@ -951,13 +930,22 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
         })()
       )}
 
+      {/* Input de fichero oculto para Subir Risk/Premium (lo dispara el botón). */}
+      <input ref={fileRef} type="file" accept=".xlsx" style={{ display: "none" }}
+        onChange={(e) => { const f = e.target.files?.[0]; if (f) setSubirFile(f); }} />
+      {subirFile && excelModo === "risk" && (
+        <RiskExcelImport binderId={binder.id} file={subirFile}
+          onClose={() => setSubirFile(null)}
+          onImported={() => { setSubirFile(null); cargar(); }} />
+      )}
+      {subirFile && excelModo === "premium" && (
+        <PremiumMatch binderId={binder.id} file={subirFile} nombre={subirFile.name}
+          onClose={() => setSubirFile(null)}
+          onApplied={async (periodo) => { setSubirFile(null); await cargar(); pedirBloquearPremium(periodo); }} />
+      )}
+
       {tab === "bdx" && (
         <>
-          {excelSel && (
-            <div className="hint" style={{ marginBottom: 10 }}>
-              Seleccionado «{excelSel}». La carga del Excel estará disponible en el próximo paso.
-            </div>
-          )}
 
           {loading ? (
             <div className="loading">Cargando…</div>
@@ -1727,89 +1715,6 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
         />
       )}
 
-      {/* Macheo de un Premium (Excel) con el Risk */}
-      {matchExcel && (
-        <PremiumMatch
-          binderId={binder.id}
-          ruta={matchExcel.ruta}
-          nombre={matchExcel.nombre}
-          onClose={() => setMatchExcel(null)}
-          onApplied={async (periodo) => {
-            setMatchExcel(null);
-            await cargar();
-            pedirBloquearPremium(periodo);
-          }}
-        />
-      )}
-
-      {/* Selector de Excel (carpeta servida por el backend) */}
-      {excelOpen && (
-        <div className="overlay">
-          <div className="panel" role="dialog" aria-modal="true" aria-label="Seleccionar Excel">
-            <div className="panel-head">
-              <h2>{excelModo === "premium" ? "Subir Premium" : "Subir Risk"}</h2>
-              <button className="panel-close" onClick={() => setExcelOpen(false)} aria-label="Cerrar">
-                ✕
-              </button>
-            </div>
-            <div className="panel-body">
-              {excelErr && <div className="error">⚠ {excelErr}</div>}
-              <div className="hint" style={{ marginBottom: 8 }}>
-                📁 {excelDir ? (excelDir.sub ? excelDir.sub : "(carpeta base)") : "…"}
-              </div>
-              <div className="toolbar" style={{ marginBottom: 8 }}>
-                <button className="btn-secondary btn-sm" onClick={subirCarpeta} disabled={!excelDir?.sub}>
-                  ↑ Subir
-                </button>
-              </div>
-              {excelBusy ? (
-                <div className="loading">Leyendo carpeta…</div>
-              ) : excelDir ? (
-                <table className="compacto">
-                  <tbody>
-                    {excelDir.dirs.map((d) => (
-                      <tr
-                        key={"d:" + d}
-                        className="fila-click"
-                        onClick={() => cargarCarpeta(excelDir.sub ? `${excelDir.sub}/${d}` : d)}
-                      >
-                        <td>📁 {d}</td>
-                      </tr>
-                    ))}
-                    {excelDir.files.map((f) => (
-                      <tr
-                        key={"f:" + f.name}
-                        className="fila-click"
-                        onClick={() => {
-                          const ruta = excelDir.sub ? `${excelDir.sub}/${f.name}` : f.name;
-                          setExcelOpen(false);
-                          if (excelModo === "premium") {
-                            setMatchExcel({ ruta, nombre: f.name });
-                          } else {
-                            setExcelSel(f.name); // Risk: carga pendiente (parser del Risk Excel)
-                          }
-                        }}
-                      >
-                        <td>📄 {f.name}</td>
-                      </tr>
-                    ))}
-                    {excelDir.dirs.length === 0 && excelDir.files.length === 0 && (
-                      <tr>
-                        <td className="hint">(carpeta vacía de Excel)</td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              ) : null}
-            </div>
-            <div className="panel-actions">
-              <button className="btn-secondary" onClick={() => setExcelOpen(false)}>
-                Cerrar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Importar BDX desde SharePoint: preview → importar → conciliación */}
       {importAbierto && (

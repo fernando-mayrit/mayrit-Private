@@ -13,8 +13,10 @@ Normalizaciones (decididas con datos reales):
 from __future__ import annotations
 
 import datetime as dt
+import io
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
+import openpyxl
 from sqlalchemy import Boolean, Date, Integer, Numeric, select
 from sqlalchemy.orm import Session
 
@@ -203,3 +205,148 @@ def importar_filas(db: Session, binder: Binder, filas: list[dict], origen: str =
             "gwp_ok": abs(sp_gwp - db_gwp) < Decimal("0.01"),
         },
     }
+
+
+# ── Importación de Risk desde un Excel subido (sin SharePoint) ───────────────────────────────────
+# Reaprovecha el MAPEO (columna interna → nombre de columna del bordereau) y la coacción de tipos.
+_CLAVES_FILA = ("certificate_ref", "total_gwp_our_line", "gross_written_premium", "section_no")
+
+
+def _resolver_columnas(headers: list[str]) -> dict[str, int]:
+    """Para cada campo del MAPEO, el índice de la columna del Excel cuyo título casa (con alias)."""
+    norm = {}
+    for i, h in enumerate(headers):
+        k = sharepoint._norm(h).lower()
+        if k:
+            norm.setdefault(k, i)
+    out: dict[str, int] = {}
+    for campo, alias in sharepoint.MAPEO.items():
+        for nm in (alias if isinstance(alias, list) else [alias]):
+            i = norm.get(sharepoint._norm(nm).lower())
+            if i is not None:
+                out[campo] = i
+                break
+    return out
+
+
+def parse_risk_excel(content: bytes) -> tuple[list[dict], dict]:
+    """Lee el Excel (primera hoja), detecta la cabecera y devuelve (filas, meta). Cada fila es un dict
+    {campo_interno: valor_crudo} con las columnas reconocidas del MAPEO."""
+    wb = openpyxl.load_workbook(io.BytesIO(content), read_only=True, data_only=True)
+    ws = wb[wb.sheetnames[0]]
+    rows = list(ws.iter_rows(values_only=True))
+    # Cabecera = la fila con más celdas de texto entre las primeras 15.
+    best_i, best_n = 0, -1
+    for i in range(min(15, len(rows))):
+        n = sum(1 for v in rows[i] if isinstance(v, str) and v.strip())
+        if n > best_n:
+            best_i, best_n = i, n
+    headers = [str(v).strip() if v is not None else "" for v in (rows[best_i] if rows else [])]
+    colmap = _resolver_columnas(headers)
+    filas: list[dict] = []
+    for r in rows[best_i + 1:]:
+        if not any(v not in (None, "") for v in r):
+            continue
+        fila = {campo: (r[idx] if idx < len(r) else None) for campo, idx in colmap.items()}
+        if not any(fila.get(k) not in (None, "") for k in _CLAVES_FILA):
+            continue
+        filas.append(fila)
+    usados = set(colmap.values())
+    meta = {
+        "n_filas": len(filas),
+        "cabecera_fila": best_i + 1,
+        "mapeadas": {campo: headers[i] for campo, i in colmap.items()},
+        "sin_mapear": [headers[i] for i in range(len(headers)) if headers[i] and i not in usados],
+    }
+    return filas, meta
+
+
+def _coerce_fila(cols: dict, fila: dict) -> dict:
+    return {campo: _coerce(campo, fila.get(campo), cols[campo])
+            for campo in sharepoint.MAPEO if campo in cols and campo != "sp_old_id"}
+
+
+def preview_risk_excel(db: Session, binder: Binder, content: bytes) -> dict:
+    """Coacciona las filas y devuelve un resumen (sin escribir): nº líneas, periodos, totales y muestra."""
+    filas, meta = parse_risk_excel(content)
+    cols = {c.name: c.type for c in BdxLinea.__table__.columns}
+    coerced = [_coerce_fila(cols, f) for f in filas]
+    periodos = sorted({d["reporting_period_start"].strftime("%Y-%m") for d in coerced if d.get("reporting_period_start")})
+    tot_our = sum((d.get("total_gwp_our_line") or Decimal(0)) for d in coerced)
+    tot_100 = sum((d.get("gross_written_premium") or Decimal(0)) for d in coerced)
+    muestra = [{
+        "certificado": d.get("certificate_ref"), "asegurado": d.get("insured_name"),
+        "section_no": d.get("section_no"), "risk_code": d.get("risk_code"),
+        "reporting": d["reporting_period_start"].isoformat() if d.get("reporting_period_start") else None,
+        "gwp_our_line": float(d["total_gwp_our_line"]) if d.get("total_gwp_our_line") is not None else None,
+        "comision_pct": float((d.get("commission_coverholder_pct") or 0) + (d.get("brokerage_pct") or 0)),
+    } for d in coerced[:8]]
+    return {
+        "n_lineas": meta["n_filas"], "periodos": periodos,
+        "total_gwp_our_line": float(round(tot_our, 2)), "total_gwp_100": float(round(tot_100, 2)),
+        "mapeadas": meta["mapeadas"], "sin_mapear": meta["sin_mapear"], "muestra": muestra,
+    }
+
+
+def importar_risk_excel(db: Session, binder: Binder, content: bytes) -> dict:
+    """Inserta las líneas del Excel en el BDX Risk del binder. Dedup por clave natural (certificado +
+    sección + reporting start + tipo de transacción + GWP our line): re-subir el mismo fichero no duplica."""
+    filas, _ = parse_risk_excel(content)
+    cols = {c.name: c.type for c in BdxLinea.__table__.columns}
+    bdx = db.scalars(select(Bdx).where(Bdx.binder_id == binder.id, Bdx.tipo == "Risk")).first()
+    if bdx is None:
+        bdx = Bdx(binder_id=binder.id, tipo="Risk", estado="Abierto", notas="Importado de Excel")
+        db.add(bdx)
+        db.flush()
+
+    # Fallback de sección por risk code declarado (cuando la línea llega sin sección).
+    rc2sec: dict[str, int] = {}
+    rc_amb: set[str] = set()
+    for i, s in enumerate(binder.secciones, start=1):
+        for rc in s.risk_codes:
+            code = (rc.codigo or "").strip()
+            if not code:
+                continue
+            if code in rc2sec and rc2sec[code] != i:
+                rc_amb.add(code)
+            rc2sec[code] = i
+
+    # Clave natural para no duplicar al re-subir: certificado + sección + reporting + GWP our line
+    # (el SIGNO del GWP ya separa Original de Devolución, sin depender del texto del tipo).
+    def _nk(d: dict) -> tuple:
+        return ((d.get("certificate_ref") or "").strip(), int(d.get("section_no") or 0),
+                str(d.get("reporting_period_start") or ""), str(d.get("total_gwp_our_line") or ""))
+
+    existentes = {_nk({
+        "certificate_ref": l.certificate_ref, "section_no": l.section_no,
+        "reporting_period_start": l.reporting_period_start, "total_gwp_our_line": l.total_gwp_our_line,
+    }) for l in db.scalars(select(BdxLinea).where(BdxLinea.bdx_id == bdx.id)).all()}
+
+    insertadas = duplicadas = auto_seccion = 0
+    for fila in filas:
+        datos = _coerce_fila(cols, fila)
+        if datos.get("section_no") is None:
+            code = (datos.get("risk_code") or "").strip()
+            if code and code in rc2sec and code not in rc_amb:
+                datos["section_no"] = rc2sec[code]
+                auto_seccion += 1
+        nk = _nk(datos)
+        if nk in existentes:
+            duplicadas += 1
+            continue
+        existentes.add(nk)
+        linea = BdxLinea(bdx_id=bdx.id)
+        for k, v in datos.items():
+            setattr(linea, k, v)
+        db.add(linea)
+        insertadas += 1
+
+    db.flush()
+    starts = [l.reporting_period_start for l in bdx.lineas if l.reporting_period_start]
+    ends = [l.reporting_period_end for l in bdx.lineas if l.reporting_period_end]
+    bdx.reporting_period_start = min(starts) if starts else None
+    bdx.reporting_period_end = max(ends) if ends else None
+    db.commit()
+    periodos = sorted({str(p) for p in (l.reporting_period_start for l in bdx.lineas) if p})
+    return {"bdx_id": bdx.id, "insertadas": insertadas, "duplicadas": duplicadas,
+            "auto_seccion": auto_seccion, "total_lineas": len(bdx.lineas), "periodos": periodos}

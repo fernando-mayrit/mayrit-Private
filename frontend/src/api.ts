@@ -25,6 +25,21 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+// Subida multipart (FormData): NO se pone Content-Type (el navegador añade el boundary).
+async function requestForm<T>(path: string, form: FormData): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, { method: "POST", body: form });
+  if (!res.ok) {
+    let detail = `${res.status} ${res.statusText}`;
+    try {
+      const body = await res.json();
+      if (body?.detail) detail = typeof body.detail === "string" ? body.detail : JSON.stringify(body.detail);
+    } catch { /* sin cuerpo JSON */ }
+    throw new Error(detail);
+  }
+  if (res.status === 204) return undefined as T;
+  return res.json() as Promise<T>;
+}
+
 // Exporta a Excel (.xlsx) un conjunto de cabeceras + filas (lo genera el backend con estilo).
 export async function exportarXlsx(payload: {
   nombre: string;
@@ -591,7 +606,34 @@ export const bdxApi = {
     request<BdxImportResult>(`/binders/${binderId}/bdx/import`, { method: "POST" }),
   excelDir: (sub = "") =>
     request<ExcelDir>(`/bdx/excel-dir${sub ? `?sub=${encodeURIComponent(sub)}` : ""}`),
+  // Subir Risk BDX desde un Excel del navegador (multipart): preview (no escribe) → import.
+  riskExcelPreview: (binderId: number, file: File) => {
+    const fd = new FormData(); fd.append("file", file);
+    return requestForm<RiskExcelPreview>(`/binders/${binderId}/bdx/risk-excel-preview`, fd);
+  },
+  riskExcelImport: (binderId: number, file: File) => {
+    const fd = new FormData(); fd.append("file", file);
+    return requestForm<RiskExcelImportResult>(`/binders/${binderId}/bdx/risk-excel-import`, fd);
+  },
 };
+
+export interface RiskExcelPreview {
+  n_lineas: number;
+  periodos: string[];
+  total_gwp_our_line: number;
+  total_gwp_100: number;
+  mapeadas: Record<string, string>;
+  sin_mapear: string[];
+  muestra: { certificado: string | null; asegurado: string | null; section_no: number | null; risk_code: string | null; reporting: string | null; gwp_our_line: number | null; comision_pct: number }[];
+}
+export interface RiskExcelImportResult {
+  bdx_id: number;
+  insertadas: number;
+  duplicadas: number;
+  auto_seccion: number;
+  total_lineas: number;
+  periodos: string[];
+}
 
 export interface ExcelDir {
   base: string;
@@ -678,10 +720,16 @@ export const recibosApi = {
     request(`/binders/${binderId}/premium/liquidar`, { method: "POST", body: JSON.stringify({ periodo, fecha }) }),
   guardarNotaPremium: (binderId: number, periodo: string, nota: string | null) =>
     request<{ periodo: string; nota: string | null }>(`/binders/${binderId}/premium/nota`, { method: "PUT", body: JSON.stringify({ periodo, nota }) }),
-  excelPreview: (binderId: number, ruta: string, hoja?: string) =>
-    request<ExcelPreview>(`/binders/${binderId}/premium/excel-preview`, { method: "POST", body: JSON.stringify({ ruta, hoja: hoja ?? null }) }),
-  matchExcel: (binderId: number, data: { ruta: string; hoja: string; certificado: string; importe: string | null; periodo: string }) =>
-    request<MatchResult>(`/binders/${binderId}/premium/match-excel`, { method: "POST", body: JSON.stringify(data) }),
+  excelPreview: (binderId: number, file: File, hoja?: string) => {
+    const fd = new FormData(); fd.append("file", file); if (hoja) fd.append("hoja", hoja);
+    return requestForm<ExcelPreview>(`/binders/${binderId}/premium/excel-preview`, fd);
+  },
+  matchExcel: (binderId: number, file: File, data: { hoja: string; certificado: string; importe: string | null; periodo: string }) => {
+    const fd = new FormData();
+    fd.append("file", file); fd.append("hoja", data.hoja); fd.append("certificado", data.certificado);
+    if (data.importe) fd.append("importe", data.importe); fd.append("periodo", data.periodo);
+    return requestForm<MatchResult>(`/binders/${binderId}/premium/match-excel`, fd);
+  },
 };
 
 export interface PremiumGrupo {

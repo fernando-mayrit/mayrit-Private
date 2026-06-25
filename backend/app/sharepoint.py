@@ -19,28 +19,28 @@ from .config import settings
 # Reporting Standard + columnas internas de Mayrit). Se compara normalizando espacios.
 MAPEO: dict[str, str] = {
     # Periodo de reporte (por línea)
-    "reporting_period_start": "Reporting Period Start Date",
-    "reporting_period_end": "Reporting Period (End Date)",
+    "reporting_period_start": ["Reporting Period Start Date", "Reporting Period"],
+    "reporting_period_end": ["Reporting Period (End Date)", "Reporting Period End Date"],
     # Identificación
     "section_no": "Section No",
     "class_of_business": "Class of Business",
     "risk_code": "Risk Code",
-    "type_of_insurance": "Type of Insurance (Direct or Reinsurance)",
+    "type_of_insurance": ["Type of Insurance (Direct or Reinsurance)", "Type"],
     "certificate_ref": "Certificate Ref",
     # Asegurado
-    "insured_name": "Insured Full Name, Last Name or Company Name",
+    "insured_name": ["Insured Full Name, Last Name or Company Name", "Assured"],
     "insured_id": "ID Insured/Policyholder",
     "insured_address": "Insured Address",
     "insured_province": "Insured Country Sub-division: State, Province, Territory, Canton",
     "insured_postcode": "Insured Postcode, Zip Code or Similar",
     "insured_country": "Insured Country (see code list)",
     # Riesgo
-    "risk_inception_date": "Risk Inception Date",
-    "risk_expiry_date": "Risk Expiry Date",
+    "risk_inception_date": ["Risk Inception Date", "Inception"],
+    "risk_expiry_date": ["Risk Expiry Date", "Expiry"],
     "location_risk_province": "Location of Risk - Country Sub-division: State, Province, Territ",
     "location_risk_country": "Location of risk - Country (Location ID)",
     "risk_transaction_type": ["Risk Transaction Type"],
-    "transaction_type": ["Transaction Type"],
+    "transaction_type": ["Transaction Type", "Transaction Type (Original, additional, return premium)"],
     "effective_date_transaction": "Effective Date of Transaction",
     "expiry_date_transaction": "Expiry Date of Transaction",
     # Prima
@@ -53,8 +53,8 @@ MAPEO: dict[str, str] = {
     "fees": ["Fees"],
     # La plantilla varía por binder: en unas listas es "Commission %/Amount" y en otras
     # "Commission Coverholder %/Amount". Se prueban los alias en orden.
-    "commission_coverholder_pct": ["Commission Coverholder %", "Commission %"],
-    "commission_coverholder_amount": ["Commission Coverholder Amount", "Commission Amount"],
+    "commission_coverholder_pct": ["Commission Coverholder %", "Commission %", "CH Commission"],
+    "commission_coverholder_amount": ["Commission Coverholder Amount", "Commission Amount", "Commission Coverholder"],
     "total_taxes_levies": "Total Taxes and Levies",
     "total_gwp_including_tax": "Gross Premium including tax (Our Line)",
     "net_premium_to_broker": "Net Premium to Lloyd´s Broker in original currency",
@@ -99,8 +99,8 @@ MAPEO: dict[str, str] = {
     "pct_for_lloyds": "% for Lloyd's",
     "policy_issuance_date": "Policy issuance date",
     "policy_number_reinsured": "Policy Number Reinsured",
-    "brokerage_pct": "Brokerage % of gross premium",
-    "brokerage_amount": "Brokerage Amount (Original Currency)",
+    "brokerage_pct": ["Brokerage % of gross premium", "BRK"],
+    "brokerage_amount": ["Brokerage Amount (Original Currency)", "BRK CCY"],
     "final_net_premium_uw": "Final Net Premium to UW (Original Currency)",
     # Premium (subconjunto)
     "incluido_en_premium": "Incluido en Premium",

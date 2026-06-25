@@ -10,13 +10,13 @@ const eur = (v: unknown) => (v == null || v === "" ? "—" : `${fmtMiles(v)} €
 
 export default function PremiumMatch({
   binderId,
-  ruta,
+  file,
   nombre,
   onClose,
   onApplied,
 }: {
   binderId: number;
-  ruta: string;
+  file: File;
   nombre: string;
   onClose: () => void;
   onApplied: (periodo: string) => void;
@@ -34,7 +34,7 @@ export default function PremiumMatch({
     setBusy(true);
     setError(null);
     try {
-      const p = await recibosApi.excelPreview(binderId, ruta, h);
+      const p = await recibosApi.excelPreview(binderId, file, h);
       setPrev(p);
       setHoja(p.hoja);
       setCertificado(p.mapeo.certificado ?? "");
@@ -58,7 +58,7 @@ export default function PremiumMatch({
     setBusy(true);
     setError(null);
     try {
-      setMatch(await recibosApi.matchExcel(binderId, { ruta, hoja, certificado, importe: importe || null, periodo }));
+      setMatch(await recibosApi.matchExcel(binderId, file, { hoja, certificado, importe: importe || null, periodo }));
     } catch (e) {
       setError((e as Error).message);
     } finally {

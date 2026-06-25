@@ -14,7 +14,7 @@ import re
 from decimal import Decimal, ROUND_HALF_UP
 
 import openpyxl
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile
 from openpyxl.styles import Font, PatternFill
 from openpyxl.utils import get_column_letter
 from pydantic import BaseModel
@@ -1156,20 +1156,28 @@ def _sugerir(cols: list[str], guardado: str | None, claves: list[str]) -> str | 
     return None
 
 
-class ExcelPreviewReq(BaseModel):
-    ruta: str
-    hoja: str | None = None
+async def _wb_subido(file: UploadFile):
+    """Carga un workbook openpyxl desde el Excel subido (.xlsx)."""
+    if not (file.filename or "").lower().endswith(".xlsx"):
+        raise HTTPException(status_code=400, detail="Solo se admite .xlsx (convierte los .xls antes de subir).")
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="El fichero está vacío.")
+    try:
+        return openpyxl.load_workbook(io.BytesIO(content), read_only=True, data_only=True)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"No se pudo leer el Excel: {e}")
 
 
 @router.post("/binders/{binder_id}/premium/excel-preview")
-def excel_preview(binder_id: int, payload: ExcelPreviewReq, db: Session = Depends(get_db)):
-    """Lee hojas/cabeceras del Excel y sugiere el mapeo (recordado de la agencia o por palabras clave)."""
+async def excel_preview(binder_id: int, file: UploadFile = File(...), hoja: str | None = Form(None),
+                        db: Session = Depends(get_db)):
+    """Lee hojas/cabeceras del Excel subido y sugiere el mapeo (recordado de la agencia o por palabras clave)."""
     binder = db.get(Binder, binder_id)
     if binder is None:
         raise HTTPException(status_code=404, detail=f"Binder {binder_id} no encontrado")
-    destino = _resolver_excel(payload.ruta)
-    wb = openpyxl.load_workbook(destino, read_only=True, data_only=True)
-    hoja = payload.hoja if (payload.hoja and payload.hoja in wb.sheetnames) else wb.sheetnames[0]
+    wb = await _wb_subido(file)
+    hoja = hoja if (hoja and hoja in wb.sheetnames) else wb.sheetnames[0]
     ws = wb[hoja]
     hdr_i, cols = _cabecera(ws)
     columnas = [c for c in cols if c]
@@ -1222,24 +1230,25 @@ def _a_decimal(v) -> Decimal | None:
 
 
 @router.post("/binders/{binder_id}/premium/match-excel")
-def match_excel(binder_id: int, payload: MatchExcelReq, db: Session = Depends(get_db)):
-    """Casa las filas del Excel con las líneas Risk del binder por Certificate Ref (importe como
+async def match_excel(binder_id: int, file: UploadFile = File(...), hoja: str = Form(...),
+                      certificado: str = Form(...), importe: str | None = Form(None),
+                      periodo: str = Form(...), db: Session = Depends(get_db)):
+    """Casa las filas del Excel subido con las líneas Risk del binder por Certificate Ref (importe como
     comprobación). Guarda el mapeo en la agencia. NO aplica: devuelve preview + ids macheados."""
     binder = db.get(Binder, binder_id)
     if binder is None:
         raise HTTPException(status_code=404, detail=f"Binder {binder_id} no encontrado")
-    _rango_mes(payload.periodo)
-    destino = _resolver_excel(payload.ruta)
-    wb = openpyxl.load_workbook(destino, read_only=True, data_only=True)
-    if payload.hoja not in wb.sheetnames:
-        raise HTTPException(status_code=404, detail=f"Hoja '{payload.hoja}' no encontrada")
-    ws = wb[payload.hoja]
+    _rango_mes(periodo)
+    wb = await _wb_subido(file)
+    if hoja not in wb.sheetnames:
+        raise HTTPException(status_code=404, detail=f"Hoja '{hoja}' no encontrada")
+    ws = wb[hoja]
     hdr_i, cols = _cabecera(ws)
     try:
-        cert_idx = cols.index(payload.certificado)
+        cert_idx = cols.index(certificado)
     except ValueError:
-        raise HTTPException(status_code=422, detail=f"Columna de certificado '{payload.certificado}' no está en la hoja")
-    imp_idx = cols.index(payload.importe) if (payload.importe and payload.importe in cols) else None
+        raise HTTPException(status_code=422, detail=f"Columna de certificado '{certificado}' no está en la hoja")
+    imp_idx = cols.index(importe) if (importe and importe in cols) else None
 
     # Líneas Risk del binder indexadas por certificate_ref
     risk = db.scalars(
@@ -1285,8 +1294,8 @@ def match_excel(binder_id: int, payload: MatchExcelReq, db: Session = Depends(ge
 
     # Recordar el mapeo en la agencia
     if binder.productor:
-        binder.productor.premium_col_certificado = payload.certificado
-        binder.productor.premium_col_importe = payload.importe
+        binder.productor.premium_col_certificado = certificado
+        binder.productor.premium_col_importe = importe
         db.commit()
 
     resumen = {
@@ -1295,7 +1304,7 @@ def match_excel(binder_id: int, payload: MatchExcelReq, db: Session = Depends(ge
         "importe_distinto": sum(1 for f in filas if f.estado == "importe_distinto"),
         "no_encontrada": sum(1 for f in filas if f.estado == "no_encontrada"),
     }
-    return {"periodo": payload.periodo, "filas": filas, "matched_ids": matched_ids, "resumen": resumen}
+    return {"periodo": periodo, "filas": filas, "matched_ids": matched_ids, "resumen": resumen}
 
 
 # ──────────────────────── Exportación genérica a Excel (.xlsx) ────────────────────────
