@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { comisionesApi, type MesComision } from "../api";
 import { fmtMiles } from "../format";
 import PageHeader from "../components/PageHeader";
 import FormPanel from "../components/FormPanel";
 import NumberInput from "../components/NumberInput";
+import ConfirmDialog from "../components/ConfirmDialog";
 
 // Comisiones — liquidación mensual. Fuente Iberian: la comisión (coverholder) del Premium del programa
 // Iberian-RC Profesional. Se PREPARA el recibo (estimado del Premium) y queda pendiente de RATIFICAR
@@ -30,6 +31,7 @@ export default function ComisionesPage() {
   const [p1, setP1] = useState("");
   const [p2, setP2] = useState("");
   const [saving, setSaving] = useState(false);
+  const [confirmar, setConfirmar] = useState<{ titulo: string; mensaje: ReactNode; accion: () => void } | null>(null);
 
   async function cargar() {
     try { setMeses(await comisionesApi.iberian()); }
@@ -42,12 +44,19 @@ export default function ComisionesPage() {
     try { await comisionesApi.preparar(per); await cargar(); }
     catch (e) { setError((e as Error).message); } finally { setBusy(null); }
   }
-  async function borrar(m: MesComision) {
-    if (!m.liq_id) return;
-    if (!confirm(`¿Borrar la liquidación de ${mesLargo(m.periodo)} y su recibo?`)) return;
-    setBusy(m.periodo); setError(null);
-    try { await comisionesApi.borrar(m.liq_id); await cargar(); }
-    catch (e) { setError((e as Error).message); } finally { setBusy(null); }
+  // El borrado se hace DESDE la edición y siempre con confirmación (ConfirmDialog).
+  function pedirBorrar(m: MesComision) {
+    setConfirmar({
+      titulo: "Borrar el reparto",
+      mensaje: <>Vas a borrar el reparto de <b>{mesLargo(m.periodo)}</b> (y, si el recibo lo creó este módulo, también el recibo). Esta acción no se puede deshacer.</>,
+      accion: async () => {
+        setConfirmar(null);
+        if (!m.liq_id) return;
+        setSaving(true); setError(null);
+        try { await comisionesApi.borrar(m.liq_id); setRatDe(null); await cargar(); }
+        catch (e) { setError((e as Error).message); } finally { setSaving(false); }
+      },
+    });
   }
   function abrirReparto(m: MesComision) {
     setRatDe(m);
@@ -111,13 +120,8 @@ export default function ComisionesPage() {
               <td className="num">{m.cedida != null ? eur(m.cedida) : "—"}</td>
               <td className="num">{m.retenida != null ? eur(m.retenida) : "—"}</td>
               <td>{m.estado ? <span className={`pill ${PILL[m.estado] ?? "pill-anulado"}`}>{m.estado}</span> : "—"}</td>
-              <td style={{ fontSize: 12 }}>
-                {conReparto
-                  ? <>
-                      {m.pago1_nombre?.split(",")[0]}: <b>{eur(m.pago1_importe)}</b>
-                      {m.pago2_importe != null && <> · {m.pago2_nombre?.split(",")[0]}: <b>{eur(m.pago2_importe)}</b></>}
-                    </>
-                  : "—"}
+              <td style={{ textAlign: "center" }}>
+                {conReparto ? <span className="pill pill-cobrado" title="Reparto registrado">✓</span> : "—"}
               </td>
               <td>{m.recibo_numero ?? "—"}</td>
               <td className="acciones" style={{ whiteSpace: "nowrap" }}>
@@ -125,10 +129,9 @@ export default function ComisionesPage() {
                   ? <button className="btn-primary btn-sm" disabled={busy === m.periodo} onClick={() => preparar(m.periodo)}>
                       {busy === m.periodo ? "…" : "Preparar"}
                     </button>
-                  : <>
-                      <button className="btn-primary btn-sm" onClick={() => abrirReparto(m)}>{conReparto ? "Reparto ✓" : "Reparto"}</button>
-                      {m.liq_id && <>{" · "}<button className="btn-link btn-sm" disabled={busy === m.periodo} onClick={() => borrar(m)}>Borrar</button></>}
-                    </>}
+                  : conReparto
+                    ? <button className="btn-link btn-sm" onClick={() => abrirReparto(m)}>Editar</button>
+                    : <button className="btn-primary btn-sm" onClick={() => abrirReparto(m)}>Reparto</button>}
               </td>
             </tr>
             );
@@ -139,9 +142,10 @@ export default function ComisionesPage() {
 
       {ratDe && (
         <FormPanel
-          title={`Reparto cedida — ${mesLargo(ratDe.periodo)}`}
+          title={`${ratDe.liq_id ? "Editar" : "Reparto cedida —"} ${mesLargo(ratDe.periodo)}`}
           dirty saving={saving} saveLabel="Guardar reparto"
           onSave={repartir} onClose={() => setRatDe(null)}
+          onDelete={ratDe.liq_id ? () => pedirBorrar(ratDe) : undefined}
         >
           <p className="hint" style={{ marginBottom: 8 }}>
             Reparte el <b>8,5% cedido</b> (85% de la comisión) entre las dos sociedades, según lo que indique Iberian.
@@ -171,6 +175,17 @@ export default function ComisionesPage() {
               placeholder={fmtMiles(num(ratDe.comision ?? ratDe.comision_premium))} />
           </div>
         </FormPanel>
+      )}
+
+      {confirmar && (
+        <ConfirmDialog
+          titulo={confirmar.titulo}
+          mensaje={confirmar.mensaje}
+          detalle="Se borrará la liquidación de comisión de este mes."
+          confirmLabel="Borrar"
+          onConfirm={confirmar.accion}
+          onClose={() => setConfirmar(null)}
+        />
       )}
     </div>
   );
