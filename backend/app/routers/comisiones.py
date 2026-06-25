@@ -115,6 +115,7 @@ PERIODO_MIN = "2021-06"           # antes de junio 2021 no se generó comisión:
 # dato del recibo (fecha_contable la usa el Cierre Contable); solo afecta a la agrupación aquí.
 CORRECCIONES_MES = {
     "2022-0041": "2022-03",   # es de marzo 2022 (su fecha_contable dice 2022-04-01)
+    "2022-0106": "2022-09",   # es de septiembre 2022 (su fecha_contable dice octubre)
 }
 
 
