@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { bdxApi, recibosApi, siniestrosApi, claimsBdxApi, triangulacionApi, lpanApi, resumenBinder, type BdxDetalle, type BdxPreview, type BdxImportResult, type ExcelDir, type PremiumGrupo, type ClaimsBdxVista, type Triangulacion, type MetricaTriangulo, type VistaLpan, type ResumenBinder } from "../api";
+import { bdxApi, recibosApi, siniestrosApi, claimsBdxApi, triangulacionApi, lpanApi, resumenBinder, type BdxDetalle, type BdxPreview, type BdxImportResult, type ExcelDir, type PremiumGrupo, type ClaimsBdxVista, type Triangulacion, type MetricaTriangulo, type VistaLpan, type ResumenBinder, type ResumenItem } from "../api";
 import type { Binder, Bdx, BdxLinea, Recibo, Siniestro } from "../types";
 import BdxLineaPanel from "../components/BdxLineaPanel";
 import BdxTabla from "../components/BdxTabla";
@@ -20,6 +20,41 @@ import { fmtMiles, fmtFechaES, estadoCobro, estadoSiniestroClase } from "../form
 function n(v: unknown): number {
   const x = Number(String(v ?? "").replace(",", "."));
   return isNaN(x) ? 0 : x;
+}
+
+// Cuadro del Resumen: cada línea con un check; el Total suma solo las líneas marcadas
+// (todas marcadas por defecto). Permite ver el sumatorio de una selección de secciones/mercados/risk codes.
+function ResumenCuadro({ titulo, col, datos, imp }: {
+  titulo: string; col: string; datos: ResumenItem[]; imp: (v: string | number | null | undefined) => string;
+}) {
+  const [sel, setSel] = useState<Set<string>>(() => new Set(datos.map((d) => d.clave)));
+  const toggle = (clave: string) =>
+    setSel((prev) => { const s = new Set(prev); s.has(clave) ? s.delete(clave) : s.add(clave); return s; });
+  const total = datos.reduce((a, it) => a + (sel.has(it.clave) ? Number(it.gwp) : 0), 0);
+  return (
+    <div style={{ flex: "1 1 280px", minWidth: 260 }}>
+      <h4 style={{ margin: "0 0 6px" }}>{titulo}</h4>
+      <table className="compacto" style={{ width: "100%" }}>
+        <thead><tr><th style={{ width: 28 }}></th><th>{col}</th><th className="num">GWP our line</th></tr></thead>
+        <tbody>
+          {datos.map((it) => (
+            <tr key={it.clave} style={{ opacity: sel.has(it.clave) ? 1 : 0.45 }}>
+              <td style={{ textAlign: "center" }}>
+                <input type="checkbox" checked={sel.has(it.clave)} onChange={() => toggle(it.clave)} />
+              </td>
+              <td>{it.clave}</td>
+              <td className="num">{imp(it.gwp)}</td>
+            </tr>
+          ))}
+          <tr>
+            <td></td>
+            <td><b>Total</b></td>
+            <td className="num"><b>{imp(total)}</b></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  );
 }
 
 const MESES_ES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
@@ -727,34 +762,11 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
           {!resumen ? (
             <div className="loading">Cargando…</div>
           ) : (
-            <>
-              <p style={{ margin: "0 0 14px" }}>
-                Total primas (GWP our line): <b>{imp(resumen.total)} €</b>
-              </p>
-              <div style={{ display: "flex", gap: 24, flexWrap: "wrap", alignItems: "flex-start" }}>
-                {[
-                  { t: "Por Sección", c: "Sección", d: resumen.por_seccion },
-                  { t: "Por Mercado", c: "Mercado", d: resumen.por_mercado },
-                  { t: "Por Risk Code", c: "Risk Code", d: resumen.por_risk_code },
-                ].map((g) => (
-                  <div key={g.t} style={{ flex: "1 1 280px", minWidth: 260 }}>
-                    <h4 style={{ margin: "0 0 6px" }}>{g.t}</h4>
-                    <table className="compacto" style={{ width: "100%" }}>
-                      <thead><tr><th>{g.c}</th><th className="num">GWP our line</th></tr></thead>
-                      <tbody>
-                        {g.d.map((it) => (
-                          <tr key={it.clave}><td>{it.clave}</td><td className="num">{imp(it.gwp)}</td></tr>
-                        ))}
-                        <tr>
-                          <td><b>Total</b></td>
-                          <td className="num"><b>{imp(g.d.reduce((a, it) => a + Number(it.gwp), 0))}</b></td>
-                        </tr>
-                      </tbody>
-                    </table>
-                  </div>
-                ))}
-              </div>
-            </>
+            <div style={{ display: "flex", gap: 24, flexWrap: "wrap", alignItems: "flex-start" }}>
+              <ResumenCuadro titulo="Por Sección" col="Sección" datos={resumen.por_seccion} imp={imp} />
+              <ResumenCuadro titulo="Por Mercado" col="Mercado" datos={resumen.por_mercado} imp={imp} />
+              <ResumenCuadro titulo="Por Risk Code" col="Risk Code" datos={resumen.por_risk_code} imp={imp} />
+            </div>
           )}
         </div>
       )}
