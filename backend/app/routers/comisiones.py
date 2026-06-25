@@ -123,6 +123,7 @@ CORRECCIONES_MES = {
     "2022-0041": "2022-03",   # es de marzo 2022 (su fecha_contable dice 2022-04-01)
     "2022-0106": "2022-09",   # es de septiembre 2022 (su fecha_contable dice octubre)
     "2023-0013": "2022-12",   # es de diciembre 2022 (6061.49 = 10% de dic; su fecha_contable dice ene-2023)
+    "2024-0062": "2023-12",   # es de diciembre 2023 (importe inflado por una compensación de pagos con Iberian); su fecha_contable dice feb-2024
 }
 
 
