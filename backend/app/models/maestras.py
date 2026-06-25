@@ -1025,3 +1025,47 @@ class ComisionLiquidacion(Base):
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     recibo: Mapped["Recibo | None"] = relationship()
+
+
+class Transferencia(Base):
+    """Movimiento de dinero (ledger). Calca la lista SharePoint `TLiquidaciones`: una fila por
+    movimiento, clasificada por Origen (de qué nace) · Tipo (concepto) · Subtipo (Cobro/Traspaso/
+    Liquidación). El subtipo marca el sentido: Cobro = entrada, Liquidación = salida (pago al
+    mercado/cía o comisión cedida), Traspaso = movimiento interno entre cuentas propias.
+
+    Origen normal:  los movimientos de Primas/Comisiones/Honorarios se generan al gestionar los
+    recibos (cobrar/traspasar/liquidar/pagar). Los de Siniestros (Cobro/Liquidación) se dan de
+    ALTA A MANO y solo registran el movimiento (no tocan el siniestro). Enlaza con Contabilidad."""
+
+    __tablename__ = "transferencias"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    sp_old_id: Mapped[int | None] = mapped_column(Integer, index=True)   # _OldID de TLiquidaciones (idempotencia)
+
+    origen: Mapped[str] = mapped_column(String(30), index=True)          # Binder | Póliza | Comisiones | Consultoría | Slip de Reaseguro
+    tipo: Mapped[str] = mapped_column(String(20), index=True)            # Primas | Siniestros | Comisiones | Honorarios
+    subtipo: Mapped[str] = mapped_column(String(20))                     # Cobro | Liquidación | Traspaso
+    sentido: Mapped[str] = mapped_column(String(10), index=True)         # entrada | salida | interno
+
+    fecha: Mapped[dt.date | None] = mapped_column(Date, index=True)      # fecha del movimiento
+    anio: Mapped[int | None] = mapped_column(Integer, index=True)        # año del movimiento (filtro)
+    periodo: Mapped[dt.date | None] = mapped_column(Date)                # periodo de riesgo al que corresponde
+    importe: Mapped[Decimal] = mapped_column(Numeric(18, 2), server_default=text("0"), default=0)
+
+    numero_poliza: Mapped[str | None] = mapped_column(String(120), index=True)
+    recibo_id: Mapped[int | None] = mapped_column(ForeignKey("recibos.id", ondelete="SET NULL"), index=True)
+    recibo_num: Mapped[str | None] = mapped_column(String(40))           # nº de recibo del origen (p.ej. '2017-0001')
+    binder_id: Mapped[int | None] = mapped_column(ForeignKey("binders.id", ondelete="SET NULL"), index=True)
+    siniestro_id: Mapped[int | None] = mapped_column(ForeignKey("siniestros.id", ondelete="SET NULL"), index=True)
+
+    mercado: Mapped[str | None] = mapped_column(String(200))
+    cuenta_origen: Mapped[str | None] = mapped_column(String(120))
+    cuenta_destino: Mapped[str | None] = mapped_column(String(120))
+    notas: Mapped[str | None] = mapped_column(Text)
+
+    manual: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)  # alta a mano (siniestros/ajustes)
+
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    recibo: Mapped["Recibo | None"] = relationship()

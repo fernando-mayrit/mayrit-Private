@@ -15,6 +15,7 @@ import TareasPage from "./pages/TareasPage";
 import LpanPage from "./pages/LpanPage";
 import CierreContablePage from "./pages/CierreContablePage";
 import FinancieroPage from "./pages/FinancieroPage";
+import TransferenciasPage from "./pages/TransferenciasPage";
 import RamosPage from "./pages/RamosPage";
 import CuentasBancariasPage from "./pages/CuentasBancariasPage";
 import UsuariosPage from "./pages/UsuariosPage";
@@ -435,7 +436,7 @@ export default function App() {
           {page === "ucr" && <EnConstruccion titulo="UCR" />}
           {page === "cierre" && <CierreContablePage />}
           {page === "financiero" && <FinancieroPage />}
-          {page === "transferencias" && <EnConstruccion titulo="Transferencias" />}
+          {page === "transferencias" && <TransferenciasPage />}
           {page === "contabilidad" && <EnConstruccion titulo="Contabilidad" />}
           {page === "polizas" && <PolizasPage />}
           {page === "consultoria" && <ConsultoriaPage />}

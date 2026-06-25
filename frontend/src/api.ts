@@ -322,6 +322,71 @@ export const comisionesApi = {
   borrar: (liqId: number) => request(`/comisiones/${liqId}`, { method: "DELETE" }),
 };
 
+// ── Transferencias (ledger de movimientos de dinero) ──
+export interface Transferencia {
+  id: number;
+  origen: string;
+  tipo: string;
+  subtipo: string;
+  sentido: string;                  // entrada | salida | interno
+  fecha?: string | null;
+  anio?: number | null;
+  periodo?: string | null;
+  importe: number | string;
+  numero_poliza?: string | null;
+  recibo_id?: number | null;
+  recibo_num?: string | null;
+  binder_id?: number | null;
+  siniestro_id?: number | null;
+  mercado?: string | null;
+  cuenta_origen?: string | null;
+  cuenta_destino?: string | null;
+  notas?: string | null;
+  manual: boolean;
+}
+export interface TransferenciaListada {
+  items: Transferencia[];
+  total_entradas: number | string;
+  total_salidas: number | string;
+  total_traspasos: number | string;
+  neto: number | string;
+  n_total: number;
+}
+export interface TransferenciasOpciones {
+  origenes: string[];
+  tipos: string[];
+  subtipos: string[];
+  anios: number[];
+  cuentas: string[];
+}
+export interface TransferenciaFiltros {
+  anio?: number | null;
+  origen?: string | null;
+  tipo?: string | null;
+  subtipo?: string | null;
+  sentido?: string | null;
+  q?: string | null;
+  limit?: number;
+}
+export const transferenciasApi = {
+  listar: (f: TransferenciaFiltros = {}) => {
+    const qs = new URLSearchParams();
+    if (f.anio) qs.set("anio", String(f.anio));
+    if (f.origen) qs.set("origen", f.origen);
+    if (f.tipo) qs.set("tipo", f.tipo);
+    if (f.subtipo) qs.set("subtipo", f.subtipo);
+    if (f.sentido) qs.set("sentido", f.sentido);
+    if (f.q) qs.set("q", f.q);
+    if (f.limit) qs.set("limit", String(f.limit));
+    const s = qs.toString();
+    return request<TransferenciaListada>(`/transferencias${s ? `?${s}` : ""}`);
+  },
+  opciones: () => request<TransferenciasOpciones>("/transferencias/opciones"),
+  crear: (d: Partial<Transferencia>) => request<Transferencia>("/transferencias", { method: "POST", body: JSON.stringify(d) }),
+  editar: (id: number, d: Partial<Transferencia>) => request<Transferencia>(`/transferencias/${id}`, { method: "PUT", body: JSON.stringify(d) }),
+  borrar: (id: number) => request(`/transferencias/${id}`, { method: "DELETE" }),
+};
+
 // ── Tareas recurrentes manuales por binder ──
 export interface Tarea {
   id: number;
