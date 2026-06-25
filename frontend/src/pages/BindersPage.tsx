@@ -42,7 +42,7 @@ type LimiteGrupo = {
   notificacion: string;
   fecha_notificacion: string;
   // Consumo de este límite (solo lectura, viene del backend; no se envía en el payload).
-  estado?: "verde" | "ambar" | "rojo" | null;
+  estado?: "verde" | "ambar" | "rojo" | "informado" | null;
   consumo_pct?: number | null;
 };
 type RiskCodeForm = { codigo: string; comision_mayrit: string };
@@ -195,17 +195,26 @@ function fechaCorta(iso: string | null): string {
 }
 
 // Semáforo de notificación: consumo del GWP our line frente al umbral de notificación del
-// límite MÁS CRÍTICO del binder. 🟢 lejos · 🟡 a <10 puntos del umbral · 🔴 umbral alcanzado.
-const NOTIF_ICONO: Record<string, string> = { verde: "🟢", ambar: "🟡", rojo: "🔴" };
+// límite MÁS CRÍTICO del binder. 🟢 lejos · 🟡 a <10 puntos del umbral · 🔴 umbral alcanzado ·
+// ✅ excedido y YA notificado al mercado (tiene fecha de notificación).
+const NOTIF_ICONO: Record<string, string> = { verde: "🟢", ambar: "🟡", rojo: "🔴", informado: "✅" };
 function NotifCelda({ b }: { b: Binder }) {
   if (!b.notif_estado) return <>—</>;
+  const pct = fmtMiles(b.notif_consumo_pct ?? 0);
+  if (b.notif_estado === "informado") {
+    return (
+      <span className="notif notif-informado" title={`Límite excedido y ya notificado al mercado · consumo ${pct} %`}>
+        ✅ Informado
+      </span>
+    );
+  }
   const umbral = b.limites?.[0]?.notificacion;
   const titulo =
-    `Consumo ${fmtMiles(b.notif_consumo_pct ?? 0)} %` +
+    `Consumo ${pct} %` +
     (umbral != null ? ` · umbral de notificación ${fmtMiles(umbral)} %` : "");
   return (
     <span className={`notif notif-${b.notif_estado}`} title={titulo}>
-      {NOTIF_ICONO[b.notif_estado]} {fmtMiles(b.notif_consumo_pct ?? 0)} %
+      {NOTIF_ICONO[b.notif_estado]} {pct} %
     </span>
   );
 }
@@ -943,9 +952,13 @@ export default function BindersPage() {
           value={g.fecha_notificacion ?? ""}
           onChange={(e) => setGrupoCampo(gi, "fecha_notificacion", e.target.value)}
         />
-        {g.consumo_pct != null && (
+        {g.estado === "informado" ? (
+          <span className="hint" style={{ color: "#1a7f37", fontWeight: 600 }}>
+            ✅ Notificado al mercado{g.consumo_pct != null ? ` · consumo ${fmtMiles(g.consumo_pct)} %` : ""}
+          </span>
+        ) : g.consumo_pct != null ? (
           <span className="hint">Consumo {fmtMiles(g.consumo_pct)} %{pendiente ? " — supera el umbral" : ""}</span>
-        )}
+        ) : null}
       </div>
     );
   }

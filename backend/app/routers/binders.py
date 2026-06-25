@@ -112,7 +112,8 @@ def _suplemento_dict(s: BinderSuplemento) -> dict:
 
 # Aviso (ámbar) cuando faltan <= estos puntos porcentuales para el umbral de notificación.
 MARGEN_AVISO_PUNTOS = 10.0
-_SEV_RANK = {"verde": 0, "ambar": 1, "rojo": 2}
+# 'informado' = límite excedido (rojo) que YA se ha notificado al mercado (tiene fecha_notificacion).
+_SEV_RANK = {"verde": 0, "informado": 1, "ambar": 2, "rojo": 3}
 
 
 def _severidad(consumo_pct: float, umbral_pct: float | None) -> str:
@@ -183,6 +184,9 @@ def _metricas_binders(db: Session, binders: list[Binder]) -> dict[int, dict]:
                     continue
                 pct = consumo.get(lim.id, 0.0) / cap * 100.0
                 estado = _severidad(pct, _f(lim.notificacion))
+                # Si el límite está excedido pero ya se notificó al mercado, deja de ser 'rojo'.
+                if estado == "rojo" and lim.fecha_notificacion is not None:
+                    estado = "informado"
                 m["por_limite"][lim.id] = {"estado": estado, "consumo_pct": round(pct, 1)}
                 clave = (_SEV_RANK[estado], pct)
                 if mejor is None or clave > mejor[0]:

@@ -663,6 +663,7 @@ td.num, th.num { text-align: right; }
 .notif-verde { color: #1a7f37; }
 .notif-ambar { color: #a16207; }
 .notif-rojo  { color: #b42318; }
+.notif-informado { color: #1a7f37; }
 
 /* Campo "Notificado (fecha)" pendiente de rellenar (límite que supera el umbral) */
 .field.notif-pend { background: #fde2dd; border: 1px solid #f1b0a7; border-radius: 8px; padding: 8px 10px; }
