@@ -77,8 +77,9 @@ export default function ComisionesPage() {
     <div className="container lista-page">
       <PageHeader emoji="💶" title="Comisiones" />
       <p className="hint" style={{ marginBottom: 8 }}>
-        <b>Iberian</b> · comisión del Premium del programa <b>Iberian-RC Profesional</b> (cedida 85% / retenida 15%).
-        Se prepara con la estimación del Premium y se ratifica con las cifras definitivas de Iberian.
+        <b>Iberian</b> · programa <b>Iberian-RC Profesional</b>. Comisión = <b>10%</b> del Net Premium to Broker
+        del mes; de ahí <b>8,5% cedida</b> (85%) y <b>1,5% retenida</b> (15%). Se prepara con la estimación del
+        Premium y se ratifica con las cifras definitivas de Iberian.
       </p>
       {error && <div className="error">{error}</div>}
 
@@ -87,9 +88,10 @@ export default function ComisionesPage() {
         <thead>
           <tr>
             <th>Mes</th>
-            <th className="num">Comisión</th>
-            <th className="num">Cedida 85%</th>
-            <th className="num">Retenida 15%</th>
+            <th className="num">Net Premium</th>
+            <th className="num">Comisión 10%</th>
+            <th className="num">Cedida 8,5%</th>
+            <th className="num">Retenida 1,5%</th>
             <th>Estado</th>
             <th>Reparto del 85%</th>
             <th>Recibo</th>
@@ -100,6 +102,7 @@ export default function ComisionesPage() {
           {meses.map((m) => (
             <tr key={m.periodo}>
               <td>{mesLargo(m.periodo)}</td>
+              <td className="num">{eur(m.base_neta)}</td>
               <td className="num">{eur(m.comision ?? m.comision_premium)}{m.liq_id ? "" : <span className="hint"> (est.)</span>}</td>
               <td className="num">{m.liq_id ? eur(m.cedida) : "—"}</td>
               <td className="num">{m.liq_id ? eur(m.retenida) : "—"}</td>
