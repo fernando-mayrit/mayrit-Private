@@ -2,14 +2,16 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   transferenciasApi,
   type Transferencia,
+  type TransferenciaListada,
   type TransferenciasOpciones,
   type TransferenciaFiltros,
 } from "../api";
-import { fmtMiles, fmtFechaES } from "../format";
+import { fmtMiles } from "../format";
 import PageHeader from "../components/PageHeader";
 import FormPanel from "../components/FormPanel";
 import NumberInput from "../components/NumberInput";
 import ConfirmDialog from "../components/ConfirmDialog";
+import TablaDatos, { type Col } from "../components/TablaDatos";
 
 // Transferencias = ledger de movimientos de dinero (calca TLiquidaciones). El sentido lo marca el
 // subtipo: Cobro = entrada, Liquidación = salida, Traspaso = interno. Los de Siniestros se dan de alta a mano.
@@ -23,10 +25,40 @@ const SUBTIPOS = ["Cobro", "Liquidación", "Traspaso"];
 const ORIGENES = ["Binder", "Póliza", "Comisiones", "Consultoría", "Slip de Reaseguro"];
 const TIPOS = ["Primas", "Siniestros", "Comisiones", "Honorarios"];
 
+const cuentaTexto = (t: Transferencia) =>
+  t.cuenta_origen && t.cuenta_destino
+    ? `${t.cuenta_origen} → ${t.cuenta_destino}`
+    : (t.cuenta_destino ?? t.cuenta_origen ?? "");
+
+// Columnas del listado: ordenables (clic en la cabecera) y filtrables (▾), igual que en Binders/Siniestros.
+const TR_COLS: Col<Transferencia>[] = [
+  { key: "fecha", label: "Fecha", tipo: "date" },
+  { key: "origen", label: "Origen", tipo: "text" },
+  { key: "tipo", label: "Tipo", tipo: "text" },
+  {
+    key: "subtipo", label: "Subtipo", tipo: "text",
+    render: (t) => <span className={`pill ${SENT_PILL[t.sentido] ?? "pill-anulado"}`}>{t.subtipo}</span>,
+  },
+  {
+    key: "importe", label: "Importe", tipo: "num",
+    render: (t) => (
+      <span style={{ color: t.sentido === "salida" ? "#b00" : t.sentido === "entrada" ? "#0a0" : undefined, fontWeight: 600 }}>
+        {t.sentido === "salida" ? "−" : t.sentido === "entrada" ? "+" : ""}{eur(t.importe)}
+      </span>
+    ),
+  },
+  { key: "numero_poliza", label: "Nº Póliza", tipo: "text" },
+  { key: "recibo_num", label: "Recibo", tipo: "text" },
+  { key: "mercado", label: "Mercado", tipo: "text" },
+  { key: "cuenta", label: "Cuenta", tipo: "text", width: 180, calc: cuentaTexto },
+  { key: "notas", label: "Notas", tipo: "text", width: 220 },
+];
+const TR_DEFAULT = TR_COLS.map((c) => c.key);
+
 type FormState = Partial<Transferencia>;
 
 export default function TransferenciasPage() {
-  const [data, setData] = useState<{ items: Transferencia[]; ent: number; sal: number; tra: number; neto: number; n: number } | null>(null);
+  const [data, setData] = useState<TransferenciaListada | null>(null);
   const [opciones, setOpciones] = useState<TransferenciasOpciones | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [cargando, setCargando] = useState(false);
@@ -37,6 +69,7 @@ export default function TransferenciasPage() {
   const [tipo, setTipo] = useState("");
   const [subtipo, setSubtipo] = useState("");
   const [sentido, setSentido] = useState("");
+  const [cuenta, setCuenta] = useState("");
   const [q, setQ] = useState("");
 
   // Alta / edición manual
@@ -45,15 +78,14 @@ export default function TransferenciasPage() {
   const [confirmar, setConfirmar] = useState<{ titulo: string; mensaje: ReactNode; accion: () => void } | null>(null);
 
   const filtros: TransferenciaFiltros = useMemo(
-    () => ({ anio: anio || null, origen: origen || null, tipo: tipo || null, subtipo: subtipo || null, sentido: sentido || null, q: q.trim() || null }),
-    [anio, origen, tipo, subtipo, sentido, q],
+    () => ({ anio: anio || null, origen: origen || null, tipo: tipo || null, subtipo: subtipo || null, sentido: sentido || null, cuenta: cuenta || null, q: q.trim() || null }),
+    [anio, origen, tipo, subtipo, sentido, cuenta, q],
   );
 
   async function cargar() {
     setCargando(true);
     try {
-      const r = await transferenciasApi.listar(filtros);
-      setData({ items: r.items, ent: num(r.total_entradas), sal: num(r.total_salidas), tra: num(r.total_traspasos), neto: num(r.neto), n: r.n_total });
+      setData(await transferenciasApi.listar(filtros));
       setError(null);
     } catch (e) { setError((e as Error).message); }
     finally { setCargando(false); }
@@ -107,103 +139,91 @@ export default function TransferenciasPage() {
   return (
     <div className="container lista-page">
       <PageHeader emoji="🔁" title="Transferencias" />
-      <p className="hint" style={{ marginBottom: 8 }}>
-        Movimientos de dinero (entradas y salidas). Los de <b>Primas/Comisiones/Honorarios</b> nacen de los recibos;
-        los <b>cobros y pagos de Siniestros</b> se dan de alta a mano. El sentido lo marca el subtipo:
-        Cobro = entrada, Liquidación = salida, Traspaso = interno.
-      </p>
 
-      {/* Filtros */}
-      <div className="filtros-barra" style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 10 }}>
-        <select value={anio} onChange={(e) => setAnio(e.target.value ? Number(e.target.value) : "")}>
-          <option value="">Año (todos)</option>
-          {(opciones?.anios ?? []).map((a) => <option key={a} value={a}>{a}</option>)}
-        </select>
-        <select value={origen} onChange={(e) => setOrigen(e.target.value)}>
-          <option value="">Origen (todos)</option>
-          {(opciones?.origenes ?? ORIGENES).map((o) => <option key={o} value={o}>{o}</option>)}
-        </select>
-        <select value={tipo} onChange={(e) => setTipo(e.target.value)}>
-          <option value="">Tipo (todos)</option>
-          {(opciones?.tipos ?? TIPOS).map((t) => <option key={t} value={t}>{t}</option>)}
-        </select>
-        <select value={subtipo} onChange={(e) => setSubtipo(e.target.value)}>
-          <option value="">Subtipo (todos)</option>
-          {(opciones?.subtipos ?? SUBTIPOS).map((s) => <option key={s} value={s}>{s}</option>)}
-        </select>
-        <select value={sentido} onChange={(e) => setSentido(e.target.value)}>
-          <option value="">Sentido (todos)</option>
-          <option value="entrada">Entrada</option>
-          <option value="salida">Salida</option>
-          <option value="interno">Interno</option>
-        </select>
-        <input type="search" placeholder="Buscar póliza, recibo, mercado, notas…" value={q} onChange={(e) => setQ(e.target.value)} style={{ minWidth: 240 }} />
-        <button className="btn-primary" style={{ marginLeft: "auto" }} onClick={nuevo}>＋ Nuevo movimiento</button>
-      </div>
-
-      {/* Totales */}
-      {data && (
-        <div className="kpi-row" style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 10 }}>
-          <Kpi label={`Entradas`} valor={eur(data.ent)} clase="kpi-verde" />
-          <Kpi label={`Salidas`} valor={eur(data.sal)} clase="kpi-rojo" />
-          <Kpi label={`Traspasos`} valor={eur(data.tra)} clase="kpi-ambar" />
-          <Kpi label={`Neto (entradas − salidas)`} valor={eur(data.neto)} clase={data.neto >= 0 ? "kpi-verde" : "kpi-rojo"} />
-          <Kpi label={`Movimientos`} valor={String(data.n)} />
+      {/* Filtros (izquierda, alineados con el borde superior del contador) + contador (derecha).
+          El botón Nuevo movimiento va debajo de los filtros. */}
+      <div className="bdx-topbar tr-cab" style={{ alignItems: "flex-start", marginTop: 4 }}>
+        <div className="tr-filtros">
+          <div className="toolbar tr-filtros-row" style={{ flexWrap: "wrap", marginBottom: 8 }}>
+            <input
+              type="search"
+              placeholder="Buscar póliza, recibo, mercado, notas…"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              style={{ flex: "1 1 200px", minWidth: 170 }}
+            />
+            <select className="filtro" value={anio} onChange={(e) => setAnio(e.target.value ? Number(e.target.value) : "")} title="Filtrar por año">
+              <option value="">Año: todos</option>
+              {(opciones?.anios ?? []).map((a) => <option key={a} value={a}>{a}</option>)}
+            </select>
+            <select className="filtro" value={origen} onChange={(e) => setOrigen(e.target.value)} title="Filtrar por origen">
+              <option value="">Origen: todos</option>
+              {(opciones?.origenes ?? ORIGENES).map((o) => <option key={o} value={o}>{o}</option>)}
+            </select>
+            <select className="filtro" value={tipo} onChange={(e) => setTipo(e.target.value)} title="Filtrar por tipo">
+              <option value="">Tipo: todos</option>
+              {(opciones?.tipos ?? TIPOS).map((t) => <option key={t} value={t}>{t}</option>)}
+            </select>
+            <select className="filtro" value={subtipo} onChange={(e) => setSubtipo(e.target.value)} title="Filtrar por subtipo">
+              <option value="">Subtipo: todos</option>
+              {(opciones?.subtipos ?? SUBTIPOS).map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+            <select className="filtro" value={sentido} onChange={(e) => setSentido(e.target.value)} title="Filtrar por sentido">
+              <option value="">Sentido: todos</option>
+              <option value="entrada">Entrada</option>
+              <option value="salida">Salida</option>
+              <option value="interno">Interno</option>
+            </select>
+            <select className="filtro" value={cuenta} onChange={(e) => setCuenta(e.target.value)} title="Filtrar por cuenta bancaria">
+              <option value="">Cuenta: todas</option>
+              {(opciones?.cuentas ?? []).map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+          <button className="btn-primary" onClick={nuevo}>＋ Nuevo movimiento</button>
         </div>
-      )}
+
+        {/* Contador (mismo formato que la pestaña Siniestros) */}
+        {data && (
+          <div className="bdx-totales">
+            <div className="tot-col">
+              <div className="tot-row tot-cab"><span>Primas</span><b /></div>
+              <div className="tot-row"><span>Cobros</span><b>{eur(data.primas_cobros)}</b></div>
+              <div className="tot-row"><span>Liquidaciones</span><b>{eur(data.primas_liquidaciones)}</b></div>
+              <div className="tot-row"><span>Liq. Comisiones</span><b>{eur(data.comisiones_liquidacion)}</b></div>
+              <div className="tot-row"><span>Traspasos Com.</span><b>{eur(data.comisiones_traspaso)}</b></div>
+              <div className="tot-row tot-pdte"><span>TOTAL</span><b>{eur(data.primas_total)}</b></div>
+            </div>
+            <div className="tot-col">
+              <div className="tot-row tot-cab"><span>Siniestros</span><b /></div>
+              <div className="tot-row"><span>Cobros</span><b>{eur(data.siniestros_cobros)}</b></div>
+              <div className="tot-row"><span>Liquidaciones</span><b>{eur(data.siniestros_liquidaciones)}</b></div>
+              <div className="tot-row tot-pdte"><span>TOTAL</span><b>{eur(data.siniestros_total)}</b></div>
+            </div>
+          </div>
+        )}
+      </div>
 
       {error && <div className="error">{error}</div>}
 
-      <div className="lista-scroll">
-        <table className="compacto bdx-tabla" style={{ width: "100%" }}>
-          <thead>
-            <tr>
-              <th>Fecha</th>
-              <th>Origen</th>
-              <th>Tipo</th>
-              <th>Subtipo</th>
-              <th className="num">Importe</th>
-              <th>Nº Póliza</th>
-              <th>Recibo</th>
-              <th>Mercado</th>
-              <th>Cuenta</th>
-              <th>Notas</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {data?.items.map((t) => (
-              <tr key={t.id}>
-                <td>{fmtFechaES(t.fecha)}</td>
-                <td>{t.origen}</td>
-                <td>{t.tipo}</td>
-                <td><span className={`pill ${SENT_PILL[t.sentido] ?? "pill-anulado"}`}>{t.subtipo}</span></td>
-                <td className="num" style={{ color: t.sentido === "salida" ? "#b00" : t.sentido === "entrada" ? "#0a0" : undefined, fontWeight: 600 }}>
-                  {t.sentido === "salida" ? "−" : t.sentido === "entrada" ? "+" : ""}{eur(t.importe)}
-                </td>
-                <td>{t.numero_poliza ?? "—"}</td>
-                <td>{t.recibo_num ?? "—"}</td>
-                <td>{t.mercado ?? "—"}</td>
-                <td title={`${t.cuenta_origen ?? ""}${t.cuenta_destino ? ` → ${t.cuenta_destino}` : ""}`} style={{ maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {t.cuenta_origen && t.cuenta_destino ? `${t.cuenta_origen} → ${t.cuenta_destino}` : (t.cuenta_destino ?? t.cuenta_origen ?? "—")}
-                </td>
-                <td title={t.notas ?? undefined} style={{ maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.notas ?? "—"}</td>
-                <td className="acciones">
-                  {t.manual
-                    ? <button className="btn-link btn-sm" onClick={() => setForm(t)}>Editar</button>
-                    : <span className="hint" title="Generado por el recibo">auto</span>}
-                </td>
-              </tr>
-            ))}
-            {data && data.items.length === 0 && !cargando && (
-              <tr><td colSpan={11} className="empty">No hay movimientos con esos filtros.</td></tr>
-            )}
-          </tbody>
-        </table>
-        {data && data.n > data.items.length && (
-          <p className="hint" style={{ marginTop: 6 }}>Mostrando los {data.items.length} más recientes de {data.n}. Afina con los filtros para ver el resto.</p>
-        )}
-      </div>
+      {data && data.items.length === 0 && !cargando ? (
+        <div className="empty">No hay movimientos con esos filtros.</div>
+      ) : (
+        <TablaDatos
+          filas={data?.items ?? []}
+          columnas={TR_COLS}
+          defaultKeys={TR_DEFAULT}
+          storageKey="mayrit.transferencias.tabla.v1"
+          defaultSort={{ key: "fecha", dir: -1 }}
+          rowAction={(t) =>
+            t.manual
+              ? <button className="btn-link btn-sm" onClick={() => setForm(t)}>Editar</button>
+              : <span className="hint" title="Generado por el recibo">auto</span>
+          }
+        />
+      )}
+      {data && data.n_total > data.items.length && (
+        <p className="hint" style={{ marginTop: 6 }}>Mostrando los {data.items.length} más recientes de {data.n_total}. Afina con los filtros (arriba) para ver el resto.</p>
+      )}
 
       {form && (
         <FormPanel
@@ -284,15 +304,6 @@ export default function TransferenciasPage() {
           onClose={() => setConfirmar(null)}
         />
       )}
-    </div>
-  );
-}
-
-function Kpi({ label, valor, clase }: { label: string; valor: string; clase?: string }) {
-  return (
-    <div className={`kpi-card ${clase ?? ""}`} style={{ minWidth: 150 }}>
-      <div className="kpi-label">{label}</div>
-      <div className="kpi-valor">{valor}</div>
     </div>
   );
 }

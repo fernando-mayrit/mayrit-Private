@@ -230,8 +230,11 @@ class RepartoIn(BaseModel):
 @router.put("/comisiones/iberian/{periodo}/reparto", response_model=MesComision)
 def reparto(periodo: str, payload: RepartoIn, db: Session = Depends(get_db)):
     """Guarda el reparto del 85% cedido entre las dos sociedades (varía cada mes). Si el mes aún no
-    tiene recibo, se GENERA aquí (un recibo no se prepara sin su reparto). Si ya tenía recibo histórico,
-    se enlaza sin tocarlo."""
+    tiene recibo, se GENERA aquí. El recibo se puede generar AUNQUE no tengamos todavía el desglose
+    Iberian/Hauora (a veces lo envían más tarde): en ese caso el recibo queda completo (deducción,
+    cedida 85%, retenida 15%) y la liquidación queda en estado «Pendiente Reparto». Si ya tenía
+    recibo histórico, se enlaza sin tocarlo."""
+    hay_reparto = payload.pago1_importe is not None or payload.pago2_importe is not None
     prog = _programa_iberian(db)
     if not prog:
         raise HTTPException(status_code=404, detail="No se encuentra el programa Iberian-RC Profesional")
@@ -246,7 +249,7 @@ def reparto(periodo: str, payload: RepartoIn, db: Session = Depends(get_db)):
             comision_premium=_comision_de_base(base),
             comision_definitiva=_q2(h["comision"]) if h else None,
             cedida_pct=Decimal(85), retenida_pct=Decimal(15),
-            pago1_nombre=PAGO1_DEFECTO, pago2_nombre=PAGO2_DEFECTO, estado="Ratificado",
+            pago1_nombre=PAGO1_DEFECTO, pago2_nombre=PAGO2_DEFECTO, estado="Preparado",
             recibo_id=h["recibo_id"] if h else None,
         )
         if not h:   # mes nuevo: se genera el recibo del módulo al guardar el reparto
@@ -266,7 +269,9 @@ def reparto(periodo: str, payload: RepartoIn, db: Session = Depends(get_db)):
         liq.comision_definitiva = _q2(payload.comision_definitiva)
     liq.pago1_importe = _q2(payload.pago1_importe) if payload.pago1_importe is not None else None
     liq.pago2_importe = _q2(payload.pago2_importe) if payload.pago2_importe is not None else None
-    liq.estado = "Ratificado"
+    # Con desglose Iberian/Hauora → Ratificado. Sin desglose todavía → Pendiente Reparto (el recibo
+    # ya está generado y completo; solo falta repartir el 85% cedido entre las sociedades).
+    liq.estado = "Ratificado" if hay_reparto else "Pendiente Reparto"
     # Solo se recalcula el recibo si es PROPIO del módulo; los históricos no se tocan.
     r = db.get(Recibo, liq.recibo_id) if liq.recibo_id else None
     if r and (r.referencia or "") == REF_MODULO:

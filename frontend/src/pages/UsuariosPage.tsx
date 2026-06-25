@@ -52,15 +52,17 @@ export default function UsuariosPage() {
     }
   }
 
-  async function borrar() {
-    if (!editing || editing === "nuevo") return;
-    if (!confirm(`¿Borrar el usuario "${editing.nombre}"?`)) return;
+  async function borrar(u?: Usuario) {
+    const obj = u ?? (editing && editing !== "nuevo" ? editing : null);
+    if (!obj) return;
+    if (!confirm(`¿Borrar el usuario "${obj.nombre}"?`)) return;
     try {
-      await usuariosApi.remove(editing.id);
+      await usuariosApi.remove(obj.id);
       setEditing(null);
       cargar();
     } catch (e) {
-      setFormError((e as Error).message);
+      const msg = (e as Error).message;
+      if (u) setError(msg); else setFormError(msg);
     }
   }
 
@@ -109,6 +111,9 @@ export default function UsuariosPage() {
                   <button className="btn-link" onClick={() => abrir(u)}>
                     Editar
                   </button>
+                  <button className="btn-link btn-link-danger" onClick={() => borrar(u)}>
+                    Borrar
+                  </button>
                 </td>
               </tr>
             ))}
@@ -124,7 +129,7 @@ export default function UsuariosPage() {
           error={formError}
           onSave={guardar}
           onClose={() => setEditing(null)}
-          onDelete={editing !== "nuevo" ? borrar : undefined}
+          onDelete={editing !== "nuevo" ? () => borrar() : undefined}
         >
           <div className="field">
             <label>

@@ -43,6 +43,7 @@ export default function TablaDatos<T extends { id: number }>({
   rowClass,
   defaultSort,
   resetSignal,
+  onFiltrar,
 }: {
   filas: T[];
   columnas: Col<T>[];
@@ -54,6 +55,7 @@ export default function TablaDatos<T extends { id: number }>({
   rowClass?: (r: T) => string | undefined; // clase CSS por fila (p. ej. atenuar inactivos)
   defaultSort?: { key: string; dir: 1 | -1 }; // orden inicial si no hay uno guardado
   resetSignal?: number;   // al cambiar, limpia los filtros por columna
+  onFiltrar?: (filas: T[]) => void; // filas realmente visibles (tras filtros por columna), para totales/export del padre
 }) {
   const COLS_KEY = `${storageKey}.cols`;
   const SORT_KEY = `${storageKey}.sort`;
@@ -206,6 +208,12 @@ export default function TablaDatos<T extends { id: number }>({
     }
     return d;
   }, [filas, filtros, sort, columnas]);
+
+  // Informar al padre de las filas visibles (tras los filtros por columna) para que recalcule
+  // totales/exportación. Se usa un ref para no exigir que el callback sea estable.
+  const onFiltrarRef = useRef(onFiltrar);
+  onFiltrarRef.current = onFiltrar;
+  useEffect(() => { onFiltrarRef.current?.(datos); }, [datos]);
 
   function celda(r: T, col: Col<T>) {
     if (col.render) return col.render(r);

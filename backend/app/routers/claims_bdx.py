@@ -14,10 +14,12 @@ import calendar
 import datetime as dt
 import io
 import json
+import re
 from decimal import Decimal
 
 import openpyxl
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile
+from openpyxl.comments import Comment
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 from pydantic import BaseModel
@@ -337,6 +339,190 @@ def excel(binder_id: int, periodo: str, modo: str = "vivo", db: Session = Depend
     nombre = f"Claims BDX {b.umr or binder_id} {periodo}.xlsx"
     return Response(
         content=contenido,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{nombre}"'},
+    )
+
+
+# ─────────────── Comparar un Claims BDX subido con los siniestros de la app ───────────────
+BLUE_FILL = PatternFill("solid", fgColor="9BC2E6")   # relleno azul para las celdas que difieren
+EXTRA_COL = "Comparación"
+
+
+def _hk(v) -> str:
+    """Normaliza un texto de cabecera (minúsculas, sin signos) para emparejar columnas de forma
+    tolerante (paréntesis, barras, etc.)."""
+    s = "" if v is None else str(v).strip().lower()
+    return re.sub(r"[^a-z0-9]+", " ", s).strip()
+
+
+def _hv(v) -> str:
+    """Normaliza un VALOR de texto para comparar (trim + colapsa espacios + minúsculas)."""
+    if v is None:
+        return ""
+    return " ".join(str(v).strip().lower().split())
+
+
+def _to_date(v):
+    if v in (None, ""):
+        return None
+    if isinstance(v, dt.datetime):
+        return v.date()
+    if isinstance(v, dt.date):
+        return v
+    try:
+        return dt.date.fromisoformat(str(v)[:10])
+    except ValueError:
+        return None
+
+
+def _to_num(v) -> float:
+    if v in (None, ""):
+        return 0.0
+    if isinstance(v, (int, float, Decimal)):
+        return float(v)
+    try:
+        return float(str(v).replace(",", "."))
+    except ValueError:
+        return 0.0
+
+
+def _igual(h: str, a, b) -> bool:
+    if h in H_FECHA:
+        return _to_date(a) == _to_date(b)
+    if h in H_NUM:
+        return round(_to_num(a), 2) == round(_to_num(b), 2)
+    return _hv(a) == _hv(b)
+
+
+def _clave_fila(d: dict) -> tuple:
+    return (_hv(d.get("Certificate Reference")), _hv(d.get("Claim Reference / Number")))
+
+
+def _leer_bdx_subido(contenido: bytes) -> list[dict]:
+    """Lee un Claims BDX (plantilla Lloyd's) subido y devuelve sus filas mapeadas a HEADERS.
+    Detecta la fila de cabecera y empareja columnas de forma tolerante a signos."""
+    try:
+        wb = openpyxl.load_workbook(io.BytesIO(contenido), data_only=True, read_only=True)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail=f"No se pudo leer el Excel: {e}")
+    ws = wb.active
+    filas = list(ws.iter_rows(values_only=True))
+    norm_h = {_hk(h): h for h in HEADERS}
+    hdr_idx, colmap = None, {}
+    for i, row in enumerate(filas[:25]):
+        cells = [_hk(c) for c in row]
+        if sum(1 for c in cells if c in norm_h) >= 5:
+            hdr_idx = i
+            for j, c in enumerate(cells):
+                if c in norm_h and norm_h[c] not in colmap:
+                    colmap[norm_h[c]] = j
+            break
+    if hdr_idx is None:
+        raise HTTPException(status_code=400,
+                            detail="No se reconocen las columnas del Claims BDX en el fichero (¿es la plantilla de Lloyd's?).")
+    out = []
+    for row in filas[hdr_idx + 1:]:
+        if row is None or all(c in (None, "") for c in row):
+            continue
+        d = {h: (row[colmap[h]] if (h in colmap and colmap[h] < len(row)) else None) for h in HEADERS}
+        if not (d.get("Certificate Reference") or d.get("Claim Reference / Number") or d.get("UCR")):
+            continue
+        out.append(d)
+    return out
+
+
+def _periodo_de_filas(file_rows: list[dict]) -> str:
+    fechas = [f for f in (_to_date(d.get("Reporting Period (End Date)")) for d in file_rows) if f]
+    f = max(fechas) if fechas else dt.date.today()
+    return f"{f.year:04d}-{f.month:02d}"
+
+
+def _excel_comparacion(app_filas: list[dict], file_by_key: dict[tuple, dict]) -> bytes:
+    cols = [EXTRA_COL] + HEADERS
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Comparación Claims"
+    ws.append(cols)
+    for c in ws[1]:
+        c.font = HEAD_FONT
+        c.fill = HEAD_FILL
+        c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    ws.row_dimensions[1].height = 70
+
+    def _formatos(fila_xl):
+        for j, h in enumerate(HEADERS):
+            c = fila_xl[j + 1]
+            c.font = BODY_FONT
+            if h in H_FECHA:
+                c.number_format = "dd/mm/yyyy"
+            elif h in H_NUM:
+                c.number_format = "#,##0.00"
+
+    usados, r = set(), 2
+    for fila in app_filas:
+        k = _clave_fila(fila)
+        fr = file_by_key.get(k)
+        if fr is not None:
+            usados.add(k)
+        difs = [h for h in HEADERS if not _igual(h, fila.get(h), fr.get(h))] if fr is not None else []
+        estado = "Difiere" if difs else ("Coincide" if fr is not None else "Solo en la app")
+        ws.append([estado] + [fila.get(h) for h in HEADERS])
+        fila_xl = ws[r]
+        fila_xl[0].font = BODY_FONT
+        _formatos(fila_xl)
+        for h in difs:
+            c = fila_xl[HEADERS.index(h) + 1]
+            c.fill = BLUE_FILL
+            fv = fr.get(h)
+            c.comment = Comment(f"BDX subido: {fv if fv not in (None, '') else '(vacío)'}", "Mayrit")
+        r += 1
+
+    # Filas del fichero subido que no tienen siniestro en la app: todas sus celdas en azul.
+    for k, fr in file_by_key.items():
+        if k in usados:
+            continue
+        ws.append(["Solo en el BDX subido"] + [fr.get(h) for h in HEADERS])
+        fila_xl = ws[r]
+        fila_xl[0].font = BODY_FONT
+        _formatos(fila_xl)
+        for j, h in enumerate(HEADERS):
+            if fr.get(h) not in (None, ""):
+                fila_xl[j + 1].fill = BLUE_FILL
+        r += 1
+
+    ws.column_dimensions["A"].width = 20
+    for j, h in enumerate(HEADERS, start=2):
+        ancho = max([len(h)] + [len(_norm(f.get(h))) for f in app_filas]) if app_filas else len(h)
+        ws.column_dimensions[get_column_letter(j)].width = min(max(ancho + 1, 10), 45)
+    ws.freeze_panes = "B2"
+    ws.auto_filter.ref = f"A1:{get_column_letter(len(cols))}{max(ws.max_row, 1)}"
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return buf.getvalue()
+
+
+@router.post("/binders/{binder_id}/claims-bdx/comparar")
+def comparar(binder_id: int, file: UploadFile = File(...), db: Session = Depends(get_db)):
+    """Compara un Claims BDX (Excel) subido con los siniestros de la app y devuelve un Excel con las
+    celdas que difieren resaltadas en azul (con comentario del valor del fichero)."""
+    b = _binder_o_404(binder_id, db)
+    contenido = file.file.read()
+    if not contenido:
+        raise HTTPException(status_code=400, detail="El fichero está vacío.")
+    file_rows = _leer_bdx_subido(contenido)
+    if not file_rows:
+        raise HTTPException(status_code=400, detail="El fichero no contiene filas de siniestros reconocibles.")
+    periodo = _periodo_de_filas(file_rows)
+    app_filas, _ = _construir(db, b, periodo)
+    file_by_key: dict[tuple, dict] = {}
+    for d in file_rows:
+        file_by_key.setdefault(_clave_fila(d), d)
+    contenido_xlsx = _excel_comparacion(app_filas, file_by_key)
+    nombre = f"Comparacion Claims {b.umr or binder_id}.xlsx"
+    return Response(
+        content=contenido_xlsx,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="{nombre}"'},
     )

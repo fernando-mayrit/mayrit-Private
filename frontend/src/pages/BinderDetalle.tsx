@@ -6,7 +6,7 @@ import BdxTabla from "../components/BdxTabla";
 import TablaDatos, { type Col } from "../components/TablaDatos";
 import NumberInput from "../components/NumberInput";
 import ReciboModal from "../components/ReciboModal";
-import SiniestroModal from "../components/SiniestroModal";
+import SiniestroModal, { type PolizaBinder } from "../components/SiniestroModal";
 import LpanFdoRow from "../components/LpanFdoRow";
 import LpanRow from "../components/LpanRow";
 import PremiumMatch from "../components/PremiumMatch";
@@ -152,6 +152,82 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
   const [siniestros, setSiniestros] = useState<Siniestro[]>([]);
   const [sinCargado, setSinCargado] = useState(false);
   const [editSin, setEditSin] = useState<Siniestro | null>(null);
+  const [nuevoSin, setNuevoSin] = useState(false);
+  const [ucrGen, setUcrGen] = useState<string | null>(null);
+  const [subiendoClaims, setSubiendoClaims] = useState(false);
+  const claimsBdxRef = useRef<HTMLInputElement>(null);
+
+  async function generarUcr() {
+    try { setUcrGen((await siniestrosApi.nextUcr(binder.id)).ucr); }
+    catch (e) { setError((e as Error).message); }
+  }
+  async function subirClaimsBdx(file: File) {
+    setSubiendoClaims(true);
+    setError(null);
+    try {
+      const blob = await siniestrosApi.compararClaimsBdx(binder.id, file);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `Comparacion Claims ${binder.umr ?? binder.id}.xlsx`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) { setError((e as Error).message); }
+    finally { setSubiendoClaims(false); }
+  }
+
+  // Pólizas del Risk BDX para el alta manual de siniestros: una entrada por combinación distinta de
+  // (asegurado · certificate · sección · risk code), para que un certificate con varias secciones o
+  // risk codes ofrezca todas. Fechas tomadas de la primera línea de esa combinación.
+  const polizasSiniestro = useMemo<PolizaBinder[]>(() => {
+    const por: Map<string, PolizaBinder> = new Map();
+    for (const l of sel?.lineas ?? []) {
+      const cert = (l.certificate_ref ?? "").trim();
+      const insured = (l.insured_name ?? "").trim();
+      if (!cert && !insured) continue;
+      const section = l.section_no ?? null;
+      const risk = (l.risk_code ?? "").trim() || null;
+      const clave = `${cert}|${section ?? ""}|${risk ?? ""}`;
+      if (por.has(clave)) continue;
+      por.set(clave, {
+        clave,
+        insured: insured || "(sin asegurado)",
+        certificate: cert,
+        section,
+        risk_code: risk,
+        risk_inception: l.risk_inception_date ?? null,
+        risk_expiry: l.risk_expiry_date ?? null,
+      });
+    }
+    return [...por.values()].sort(
+      (a, b) =>
+        a.insured.localeCompare(b.insured, "es") ||
+        a.certificate.localeCompare(b.certificate) ||
+        (a.section ?? 0) - (b.section ?? 0) ||
+        (a.risk_code ?? "").localeCompare(b.risk_code ?? ""),
+    );
+  }, [sel]);
+
+  // Totales del cuadro de Siniestros (incurrido = pagado + reservas).
+  const sinTot = useMemo(() => {
+    const nSin = siniestros.length;
+    const abiertos = siniestros.filter((s) => !s.date_closed).length;
+    const reclamado = siniestros.reduce((a, s) => a + n(s.amount_claimed), 0);
+    const reservaFees = siniestros.reduce((a, s) => a + n(s.reserves_fees), 0);
+    const pagosFees = siniestros.reduce((a, s) => a + n(s.paid_fees), 0);
+    const reservaIndem = siniestros.reduce((a, s) => a + n(s.reserves_indemnity), 0);
+    const pagosIndem = siniestros.reduce((a, s) => a + n(s.paid_indemnity), 0);
+    const totalFees = reservaFees + pagosFees;
+    const totalIndem = reservaIndem + pagosIndem;
+    const lin = sel?.lineas ?? [];
+    const gwpOL = lin.reduce((a, l) => a + n(l.total_gwp_our_line), 0);
+    const comCover = lin.reduce((a, l) => a + n(l.commission_coverholder_amount), 0);
+    const brokerage = lin.reduce((a, l) => a + n(l.brokerage_amount), 0);
+    return {
+      nSin, abiertos, reclamado, reservaFees, pagosFees, reservaIndem, pagosIndem,
+      totalFees, totalIndem, total: totalFees + totalIndem, netUW: gwpOL - comCover - brokerage,
+    };
+  }, [siniestros, sel]);
 
   async function cargarSiniestros() {
     try {
@@ -1242,6 +1318,88 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
 
       {tab === "siniestros" && (
         <>
+          <div className="bdx-topbar" style={{ alignItems: "flex-start", marginBottom: 10 }}>
+            <div className="bdx-acciones" style={{ position: "relative" }}>
+              {ucrGen && (
+                <span style={{ position: "absolute", top: "100%", left: 0, marginTop: 4, zIndex: 20, display: "inline-flex", alignItems: "center", gap: 6, background: "#fff7f3", border: "1px solid #f3d4c6", borderRadius: 999, padding: "4px 10px", fontSize: 13, whiteSpace: "nowrap", boxShadow: "0 2px 8px rgba(0,0,0,.12)" }}>
+                  Nuevo UCR: <b>{ucrGen}</b>
+                  <button className="btn-link btn-sm" onClick={() => navigator.clipboard?.writeText(ucrGen)}>Copiar</button>
+                  <button className="btn-link btn-sm" onClick={() => setUcrGen(null)}>✕</button>
+                </span>
+              )}
+              <button
+                className="btn-primary btn-sm"
+                onClick={() => setNuevoSin(true)}
+                disabled={polizasSiniestro.length === 0}
+                title={polizasSiniestro.length === 0
+                  ? "No hay pólizas: carga primero el Risk BDX del binder para poder dar de alta un siniestro."
+                  : "Alta manual de un siniestro a partir de una póliza del binder"}
+              >
+                ＋ Nuevo siniestro
+              </button>
+              <button className="btn-secondary btn-sm" onClick={generarUcr} title="Genera el siguiente UCR libre del binder (para copiar)">
+                🔖 Nuevo UCR
+              </button>
+              <button
+                className="btn-secondary btn-sm"
+                onClick={() => claimsBdxRef.current?.click()}
+                disabled={subiendoClaims}
+                title="Sube un Claims BDX (Excel) y descarga un Excel con las celdas que difieren de los siniestros de la app (en azul)"
+              >
+                {subiendoClaims ? "Comparando…" : "📤 Subir Claims Bdx"}
+              </button>
+              <input
+                ref={claimsBdxRef}
+                type="file"
+                accept=".xlsx"
+                style={{ display: "none" }}
+                onChange={(e) => { const f = e.target.files?.[0]; e.currentTarget.value = ""; if (f) subirClaimsBdx(f); }}
+              />
+              {polizasSiniestro.length === 0 && (
+                <span className="hint">Sin pólizas en el Risk BDX: no se pueden dar de alta siniestros.</span>
+              )}
+            </div>
+            {siniestros.length > 0 && (() => {
+              const t = sinTot;
+              const pct = (x: number) => (t.total > 0 ? `${fmtMiles((x / t.total) * 100)} %` : "—");
+              const ratioStr = t.netUW > 0 ? `${fmtMiles((t.total / t.netUW) * 100)} %` : "—";
+              return (
+                <div className="bdx-totales">
+                  <div className="tot-col">
+                    <div className="tot-row"><span>Nº Siniestros</span><b>{fmtMiles(t.nSin, 0)}</b></div>
+                    <div className="tot-row"><span>Abiertos</span><b>{fmtMiles(t.abiertos, 0)}</b></div>
+                    <div className="tot-row"><span>Cerrados</span><b>{fmtMiles(t.nSin - t.abiertos, 0)}</b></div>
+                    <div className="tot-row"><span>Cantidad Reclamada</span><b>{fmtMiles(t.reclamado)}</b></div>
+                  </div>
+                  <div className="tot-col">
+                    <div className="tot-row"><span>% Fees</span><b>{pct(t.totalFees)}</b></div>
+                    <div className="tot-row"><span>Reserva Fees</span><b>{fmtMiles(t.reservaFees)}</b></div>
+                    <div className="tot-row"><span>Pagos Fees</span><b>{fmtMiles(t.pagosFees)}</b></div>
+                    <div className="tot-row tot-pdte"><span>Total Fees</span><b>{fmtMiles(t.totalFees)}</b></div>
+                  </div>
+                  <div className="tot-col">
+                    <div className="tot-row"><span>% Indem.</span><b>{pct(t.totalIndem)}</b></div>
+                    <div className="tot-row"><span>Reserva Indem.</span><b>{fmtMiles(t.reservaIndem)}</b></div>
+                    <div className="tot-row"><span>Pagos Indem.</span><b>{fmtMiles(t.pagosIndem)}</b></div>
+                    <div className="tot-row tot-pdte"><span>Total Indem.</span><b>{fmtMiles(t.totalIndem)}</b></div>
+                  </div>
+                  <div className="tot-col">
+                    <div className="tot-row" style={{ visibility: "hidden" }}><span>·</span><b>·</b></div>
+                    <div className="tot-row"><span>Reserva Total</span><b>{fmtMiles(t.reservaFees + t.reservaIndem)}</b></div>
+                    <div className="tot-row"><span>Pagos Total</span><b>{fmtMiles(t.pagosFees + t.pagosIndem)}</b></div>
+                    <div className="tot-row tot-pdte"><span>Total</span><b>{fmtMiles(t.total)}</b></div>
+                  </div>
+                  <div className="tot-col">
+                    <div className="tot-row"><span title="GWP our line − comisión coverholder − brokerage">Prima Neta</span><b>{fmtMiles(t.netUW)}</b></div>
+                    <div className="tot-ratios">
+                      <div className="tot-row tot-ratio"><span title="Nº siniestros / Nº pólizas">Ratio Frecuencia</span><b>{nPolizas > 0 ? `${fmtMiles((t.nSin / nPolizas) * 100)} %` : "—"}</b></div>
+                      <div className="tot-row tot-ratio"><span title="Siniestralidad / (GWP our line − com. coverholder − brokerage)">Ratio Siniestralidad</span><b>{ratioStr}</b></div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
           {!sinCargado ? (
             <div className="loading">Cargando…</div>
           ) : siniestros.length === 0 ? (
@@ -1251,83 +1409,31 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
                 : "Sin siniestros migrados todavía."}
             </div>
           ) : (
-            (() => {
-              const nSin = siniestros.length;
-              const abiertos = siniestros.filter((s) => !s.date_closed).length;
-              const reclamado = siniestros.reduce((a, s) => a + n(s.amount_claimed), 0);
-              const reservaFees = siniestros.reduce((a, s) => a + n(s.reserves_fees), 0);
-              const pagosFees = siniestros.reduce((a, s) => a + n(s.paid_fees), 0);
-              const totalFees = reservaFees + pagosFees; // incurrido fees = pagado + reservas
-              const reservaIndem = siniestros.reduce((a, s) => a + n(s.reserves_indemnity), 0);
-              const pagosIndem = siniestros.reduce((a, s) => a + n(s.paid_indemnity), 0);
-              const totalIndem = reservaIndem + pagosIndem; // incurrido indem = pagado + reservas
-              const total = totalFees + totalIndem; // siniestralidad total (incurrido real)
-              const pct = (x: number) => (total > 0 ? `${fmtMiles((x / total) * 100)} %` : "—");
-              // Ratio de siniestralidad = siniestralidad / (GWP our line − com. coverholder − brokerage).
-              const lin = sel?.lineas ?? [];
-              const gwpOL = lin.reduce((a, l) => a + n(l.total_gwp_our_line), 0);
-              const comCover = lin.reduce((a, l) => a + n(l.commission_coverholder_amount), 0);
-              const brokerage = lin.reduce((a, l) => a + n(l.brokerage_amount), 0);
-              const netUW = gwpOL - comCover - brokerage;
-              const ratioStr = netUW > 0 ? `${fmtMiles((total / netUW) * 100)} %` : "—";
-              return (
-                <>
-                  <div className="bdx-topbar">
-                    <div />
-                    <div className="bdx-totales">
-                      <div className="tot-col">
-                        <div className="tot-row"><span>Nº Siniestros</span><b>{fmtMiles(nSin, 0)}</b></div>
-                        <div className="tot-row"><span>Abiertos</span><b>{fmtMiles(abiertos, 0)}</b></div>
-                        <div className="tot-row"><span>Cerrados</span><b>{fmtMiles(nSin - abiertos, 0)}</b></div>
-                        <div className="tot-row"><span>Cantidad Reclamada</span><b>{fmtMiles(reclamado)}</b></div>
-                      </div>
-                      <div className="tot-col">
-                        <div className="tot-row"><span>% Fees</span><b>{pct(totalFees)}</b></div>
-                        <div className="tot-row"><span>Reserva Fees</span><b>{fmtMiles(reservaFees)}</b></div>
-                        <div className="tot-row"><span>Pagos Fees</span><b>{fmtMiles(pagosFees)}</b></div>
-                        <div className="tot-row tot-pdte"><span>Total Fees</span><b>{fmtMiles(totalFees)}</b></div>
-                      </div>
-                      <div className="tot-col">
-                        <div className="tot-row"><span>% Indem.</span><b>{pct(totalIndem)}</b></div>
-                        <div className="tot-row"><span>Reserva Indem.</span><b>{fmtMiles(reservaIndem)}</b></div>
-                        <div className="tot-row"><span>Pagos Indem.</span><b>{fmtMiles(pagosIndem)}</b></div>
-                        <div className="tot-row tot-pdte"><span>Total Indem.</span><b>{fmtMiles(totalIndem)}</b></div>
-                      </div>
-                      <div className="tot-col">
-                        <div className="tot-row" style={{ visibility: "hidden" }}><span>·</span><b>·</b></div>
-                        <div className="tot-row"><span>Reserva Total</span><b>{fmtMiles(reservaFees + reservaIndem)}</b></div>
-                        <div className="tot-row"><span>Pagos Total</span><b>{fmtMiles(pagosFees + pagosIndem)}</b></div>
-                        <div className="tot-row tot-pdte"><span>Total</span><b>{fmtMiles(total)}</b></div>
-                      </div>
-                      <div className="tot-col">
-                        <div className="tot-row"><span title="GWP our line − comisión coverholder − brokerage">Prima Neta</span><b>{fmtMiles(netUW)}</b></div>
-                        <div className="tot-ratios">
-                          <div className="tot-row tot-ratio"><span title="Nº siniestros / Nº pólizas">Ratio Frecuencia</span><b>{nPolizas > 0 ? `${fmtMiles((nSin / nPolizas) * 100)} %` : "—"}</b></div>
-                          <div className="tot-row tot-ratio"><span title="Siniestralidad / (GWP our line − com. coverholder − brokerage)">Ratio Siniestralidad</span><b>{ratioStr}</b></div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                  <TablaDatos
-                    filas={siniestros}
-                    columnas={SIN_COLS}
-                    defaultKeys={SIN_DEFAULT}
-                    storageKey="mayrit.siniestros.tabla.v2"
-                    rowAction={(s) => (
-                      <button className="btn-link" onClick={() => setEditSin(s)}>Editar</button>
-                    )}
-                  />
-                </>
-              );
-            })()
+            <TablaDatos
+              filas={siniestros}
+              columnas={SIN_COLS}
+              defaultKeys={SIN_DEFAULT}
+              storageKey="mayrit.siniestros.tabla.v2"
+              rowAction={(s) => (
+                <button className="btn-link" onClick={() => setEditSin(s)}>Editar</button>
+              )}
+            />
           )}
-          {editSin && (
+          {(editSin || nuevoSin) && (
             <SiniestroModal
               siniestro={editSin}
-              onClose={() => setEditSin(null)}
+              binderId={binder.id}
+              binderUmr={binder.umr ?? undefined}
+              polizas={polizasSiniestro}
+              onClose={() => { setEditSin(null); setNuevoSin(false); }}
               onSaved={(s) => {
-                setSiniestros((arr) => arr.map((x) => (x.id === s.id ? { ...x, ...s } : x)));
+                setSiniestros((arr) =>
+                  arr.some((x) => x.id === s.id)
+                    ? arr.map((x) => (x.id === s.id ? { ...x, ...s } : x))
+                    : [...arr, s],
+                );
                 setEditSin(null);
+                setNuevoSin(false);
               }}
             />
           )}
@@ -1568,17 +1674,13 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
           return (
             <>
               <div style={{ marginBottom: 8 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <div className="bdx-topbar" style={{ alignItems: "flex-start", marginBottom: 8 }}>
+                  <div className="toolbar" style={{ flexWrap: "wrap", marginBottom: 0 }}>
                     <select className="filtro" value={triMetrica} onChange={(e) => setTriMetrica(e.target.value as MetricaTriangulo)}>
                       <option value="incurrido">Incurrido (pagado + reservas)</option>
                       <option value="pagado">Pagado</option>
                       <option value="num">Nº de siniestros</option>
                       <option value="pct">% Siniestralidad (s/ Net to UWs)</option>
-                    </select>
-                    <select className="filtro" value={triVista} onChange={(e) => setTriVista(e.target.value as "cal" | "edad")}>
-                      <option value="cal">Vista: Calendario</option>
-                      <option value="edad">Vista: Por antigüedad</option>
                     </select>
                     <select
                       className="filtro"
@@ -1592,17 +1694,27 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
                       {tri.risk_codes.map((rc) => <option key={`rc:${rc}`} value={`rc:${rc}`}>Código {rc}</option>)}
                       {tri.secciones.map((s) => <option key={`sec:${s}`} value={`sec:${s}`}>Sección {s}</option>)}
                     </select>
+                    <button
+                      className={"btn-toggle" + (triVista === "edad" ? " on" : "")}
+                      onClick={() => setTriVista((v) => (v === "cal" ? "edad" : "cal"))}
+                      title="Cambia entre vista Calendario y Por antigüedad"
+                    >
+                      Vista: {triVista === "cal" ? "Calendario" : "Por antigüedad"}
+                    </button>
                     <button className="btn-secondary" onClick={exportarTriangulo} title="Exportar a Excel la métrica y el ámbito seleccionados">⤓ Excel</button>
                   </div>
-                  <div style={{ textAlign: "right" }}>
-                    <div className="hint">
-                      GWP Our Line: <b>{imp(tri.gwp_our_line)}</b> · Net to UWs: <b>{imp(tri.net_uw)}</b>
-                      {" · "}Incurrido actual: <b>{imp(tri.incurrido_actual)}</b>
-                      {" · "}Siniestralidad: <b>{ratio == null ? "—" : `${fmtMiles(ratio)} %`}</b>
+                  <div className="bdx-totales">
+                    <div className="tot-col">
+                      <div className="tot-row"><span>GWP Our Line</span><b>{imp(tri.gwp_our_line)}</b></div>
+                      <div className="tot-row"><span>Net to UWs</span><b>{imp(tri.net_uw)}</b></div>
                     </div>
-                    <div className="hint" title="El % del IBNR y el del Ultimate son sobre Net to UWs.">
-                      IBNR sugerido: <b>{imp(tri.ibnr_sugerido)}{ibnrPct == null ? "" : ` (${fmtMiles(ibnrPct)} %)`}</b>
-                      {" · "}Ultimate: <b>{imp(tri.ultimate_sugerido)}{ultPct == null ? "" : ` (${fmtMiles(ultPct)} %)`}</b>
+                    <div className="tot-col">
+                      <div className="tot-row"><span>Incurrido actual</span><b>{imp(tri.incurrido_actual)}</b></div>
+                      <div className="tot-row"><span>Siniestralidad</span><b>{ratio == null ? "—" : `${fmtMiles(ratio)} %`}</b></div>
+                    </div>
+                    <div className="tot-col">
+                      <div className="tot-row" title="% sobre Net to UWs"><span>IBNR sugerido</span><b>{imp(tri.ibnr_sugerido)}{ibnrPct == null ? "" : ` (${fmtMiles(ibnrPct)} %)`}</b></div>
+                      <div className="tot-row" title="% sobre Net to UWs"><span>Ultimate</span><b>{imp(tri.ultimate_sugerido)}{ultPct == null ? "" : ` (${fmtMiles(ultPct)} %)`}</b></div>
                     </div>
                   </div>
                 </div>

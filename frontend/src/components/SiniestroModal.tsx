@@ -1,9 +1,23 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { siniestrosApi } from "../api";
 import type { Siniestro } from "../types";
 import FormPanel from "./FormPanel";
 import NumberInput from "./NumberInput";
 import { estadoSiniestroClase, fmtMiles } from "../format";
+
+// Póliza del Risk BDX del binder, para el alta de un siniestro: al elegir asegurado/certificate
+// se rellenan solos certificate, sección, risk code e inicio/fin de riesgo.
+export type PolizaBinder = {
+  clave: string;        // identificador único de la combinación (certificate + sección + risk code)
+  insured: string;
+  certificate: string;
+  section: number | null;
+  risk_code: string | null;
+  risk_inception: string | null;
+  risk_expiry: string | null;
+};
+// Campos que en el alta se autocompletan desde la póliza y NO son editables.
+const AUTO_KEYS = new Set(["certificate", "section", "risk_code", "risk_inception", "risk_expiry"]);
 
 // Modal de edición de un siniestro, con el mismo formato que el de Recibos:
 //  · pastilla de estado + botón "Editar" (en color) bajo el título
@@ -82,22 +96,68 @@ function aForm(s: Siniestro): Form {
   }
   return f;
 }
+// Formulario vacío para el alta de un siniestro nuevo.
+function formVacio(): Form {
+  const f: Form = {};
+  for (const c of TODOS) f[c.key as string] = "";
+  return f;
+}
 
 export default function SiniestroModal({
   siniestro,
+  binderId,
+  binderUmr,
+  polizas = [],
   onClose,
   onSaved,
 }: {
-  siniestro: Siniestro;
+  siniestro: Siniestro | null;   // null = alta de un siniestro nuevo
+  binderId: number;
+  binderUmr?: string;
+  polizas?: PolizaBinder[];      // pólizas del Risk BDX (solo para el alta)
   onClose: () => void;
   onSaved: (s: Siniestro) => void;
 }) {
-  const inicial = useMemo(() => aForm(siniestro), [siniestro]);
+  const nuevo = siniestro == null;
+  const tienePolizas = nuevo && polizas.length > 0;
+  const inicial = useMemo(() => (siniestro ? aForm(siniestro) : formVacio()), [siniestro]);
   const [form, setForm] = useState<Form>(inicial);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Abre bloqueado (solo consulta) para evitar cambios accidentales; "Editar" desbloquea.
-  const [bloqueado, setBloqueado] = useState(true);
+  // En edición abre BLOQUEADO (solo consulta) para evitar cambios accidentales; "Editar" desbloquea.
+  // En alta abre desbloqueado para poder rellenar directamente.
+  const [bloqueado, setBloqueado] = useState(!nuevo);
+
+  // ── Alta: selección de asegurado → (póliza/sección/risk code) → autocompletado ──
+  const [selAseg, setSelAseg] = useState("");
+  const [selClave, setSelClave] = useState("");
+  const asegurados = useMemo(
+    () => [...new Set(polizas.map((p) => p.insured).filter(Boolean))].sort((a, b) => a.localeCompare(b, "es")),
+    [polizas],
+  );
+  // Combinaciones (certificate · sección · risk code) del asegurado elegido.
+  const polizasAseg = useMemo(() => polizas.filter((p) => p.insured === selAseg), [polizas, selAseg]);
+  // Al cambiar de asegurado, autoselecciona si solo hay una combinación; si hay varias, exige elegir.
+  useEffect(() => {
+    if (!tienePolizas) return;
+    setSelClave(polizasAseg.length === 1 ? polizasAseg[0].clave : "");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selAseg]);
+  // Al resolver la combinación, vuelca sus datos en los campos automáticos.
+  useEffect(() => {
+    if (!tienePolizas) return;
+    const pol = polizas.find((p) => p.insured === selAseg && p.clave === selClave);
+    setForm((f) => ({
+      ...f,
+      insured: selAseg,
+      certificate: pol?.certificate ?? "",
+      section: pol?.section != null ? String(pol.section) : "",
+      risk_code: pol?.risk_code ?? "",
+      risk_inception: pol?.risk_inception ? String(pol.risk_inception).slice(0, 10) : "",
+      risk_expiry: pol?.risk_expiry ? String(pol.risk_expiry).slice(0, 10) : "",
+    }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selAseg, selClave]);
 
   const dirty = useMemo(() => TODOS.some((c) => form[c.key as string] !== inicial[c.key as string]), [form, inicial]);
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
@@ -120,8 +180,10 @@ export default function SiniestroModal({
         else if (c.tipo === "num") payload[c.key as string] = raw.replace(",", ".");
         else payload[c.key as string] = raw;
       }
-      const actualizado = await siniestrosApi.actualizar(siniestro.id, payload as Partial<Siniestro>);
-      onSaved(actualizado);
+      const guardado = nuevo
+        ? await siniestrosApi.crear(binderId, payload as Partial<Siniestro>)
+        : await siniestrosApi.actualizar(siniestro!.id, payload as Partial<Siniestro>);
+      onSaved(guardado);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -132,7 +194,14 @@ export default function SiniestroModal({
   // Campo según su tipo. El bloque Información (campos de IDENT) NO es editable nunca: solo se
   // habilita el resto al pulsar "Editar".
   const Campo = (c: Campo) => {
-    const dis = bloqueado || IDENT.some((x) => x.key === c.key);
+    // · En edición: el bloque Identificación no se edita nunca.
+    // · En alta con pólizas: los campos autocompletados (certificate, sección, risk code, fechas)
+    //   no se editan (vienen de la póliza); el resto sí.
+    // · En alta sin pólizas (no hay Risk BDX): Identificación editable a mano.
+    const dis =
+      bloqueado ||
+      (!nuevo && IDENT.some((x) => x.key === c.key)) ||
+      (tienePolizas && AUTO_KEYS.has(c.key as string));
     return (
       <div className={"field" + (c.full ? " full-w" : "")} key={c.key as string} style={c.full ? { gridColumn: "1 / -1" } : undefined}>
         <label>{c.label}</label>
@@ -170,17 +239,22 @@ export default function SiniestroModal({
     );
   };
 
-  const claseEstado = siniestro.status ? estadoSiniestroClase(siniestro.status) : null;
+  const claseEstado = siniestro?.status ? estadoSiniestroClase(siniestro.status) : null;
+  const umr = siniestro?.binder_umr ?? binderUmr;
 
   return (
     <FormPanel
       title={
-        <>
-          Siniestro ·{" "}
-          <span style={{ color: "var(--naranja-osc)" }}>
-            {siniestro.reference || siniestro.certificate || siniestro.id}
-          </span>
-        </>
+        nuevo ? (
+          "Nuevo siniestro"
+        ) : (
+          <>
+            Siniestro ·{" "}
+            <span style={{ color: "var(--naranja-osc)" }}>
+              {siniestro!.reference || siniestro!.certificate || siniestro!.id}
+            </span>
+          </>
+        )
       }
       dirty={dirty}
       saving={saving}
@@ -192,15 +266,17 @@ export default function SiniestroModal({
     >
       {/* Barra de estado/acciones bajo el título (mismo patrón que el modal de Recibos) */}
       <div className="recibo-acciones-top">
-        {siniestro.status ? (
+        {siniestro?.status ? (
           <span className={`pill pill-sin-${claseEstado} pill-estado-lg`}>{siniestro.status}</span>
         ) : (
-          <span className="pill pill-estado-lg">Sin estado</span>
+          <span className="pill pill-estado-lg">{nuevo ? "Alta nueva" : "Sin estado"}</span>
         )}
-        {siniestro.binder_umr && (
-          <span className="hint">{siniestro.binder_umr}{siniestro.binder_programa ? ` · ${siniestro.binder_programa}` : ""}</span>
+        {umr && (
+          <span className="hint">{umr}{siniestro?.binder_programa ? ` · ${siniestro.binder_programa}` : ""}</span>
         )}
-        {bloqueado ? (
+        {nuevo ? (
+          <span className="hint" style={{ marginLeft: "auto" }}>✏️ Rellena los datos del siniestro</span>
+        ) : bloqueado ? (
           <button className="btn-sm btn-corregir" style={{ marginLeft: "auto" }} onClick={() => setBloqueado(false)}>
             ✏️ Editar
           </button>
@@ -212,8 +288,42 @@ export default function SiniestroModal({
       {/* ── Bloque Información: ancho completo ── */}
       <div className="recibo-box">
         <h4>Información</h4>
-        {/* Asegurado arriba del todo */}
-        {Campo(identCampo("insured"))}
+        {/* Asegurado arriba del todo. En el alta (con pólizas del Risk BDX) es un selector con
+            búsqueda; al elegir póliza se rellenan certificate/sección/risk code/fechas. */}
+        {tienePolizas ? (
+          <>
+            <div className="field full-w" style={{ gridColumn: "1 / -1" }}>
+              <label>Asegurado</label>
+              <input
+                type="text"
+                list="sin-aseg-list"
+                value={selAseg}
+                placeholder="Escribe para buscar o elige un asegurado…"
+                onChange={(e) => setSelAseg(e.target.value)}
+              />
+              <datalist id="sin-aseg-list">
+                {asegurados.map((a) => <option key={a} value={a} />)}
+              </datalist>
+            </div>
+            {polizasAseg.length > 1 && (
+              <div className="field full-w" style={{ gridColumn: "1 / -1" }}>
+                <label>Póliza · {polizasAseg.length} combinaciones (certificate / sección / risk code), elige una</label>
+                <select value={selClave} onChange={(e) => setSelClave(e.target.value)}>
+                  <option value="">— Elige certificate / sección / risk code —</option>
+                  {polizasAseg.map((p) => (
+                    <option key={p.clave} value={p.clave}>
+                      {p.certificate || "(sin certificate)"}
+                      {p.section != null ? ` · Secc. ${p.section}` : ""}
+                      {p.risk_code ? ` · ${p.risk_code}` : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </>
+        ) : (
+          Campo(identCampo("insured"))
+        )}
         {/* Certificate (estrecho) + Sección + Risk Code (centrados) + Inicio/Fin riesgo,
             cada caja ajustada a su contenido y empujadas a la izquierda */}
         <div className="campos-grid campos-fill" style={{ gridTemplateColumns: "1fr 52px 60px max-content max-content" }}>

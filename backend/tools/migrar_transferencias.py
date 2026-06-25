@@ -1,10 +1,14 @@
 """
-Volcado histórico del ledger de movimientos de dinero desde SharePoint 'Mayrit - TLiquidaciones1'
-(lectura en vivo) a la tabla `transferencias`. Es la variante ampliada (incluye CuentaOrigen/
-CuentaDestino/Mercado). Cada fila = un movimiento (Origen · Tipo · Subtipo; importe en Cobro/
-Traspaso/Liquidacion según el subtipo).
+Volcado del ledger de movimientos de dinero desde SharePoint 'Mayrit - TLiquidaciones' (lectura en
+vivo) a la tabla `transferencias`. Cada fila = un movimiento (Origen · Tipo · Subtipo; importe en
+Cobro/Traspaso/Liquidacion según el subtipo).
 
-- Idempotente: casa por `sp_old_id` (= Id del elemento en la lista de SharePoint).
+- Idempotente por CONTENIDO (origen·tipo·subtipo·fecha·importe·periodo·póliza·recibo), NO por el Id de
+  SharePoint: el histórico se cargó desde una copia antigua ('TLiquidaciones1') cuyos Id no coinciden
+  con los de esta lista, así que deduplicar por Id volvería a meter todo. Por contenido solo entra lo
+  que falta.
+- Esta lista NO tiene Mercado/CuentaOrigen/CuentaDestino (las tenía la copia 'TLiquidaciones1'): esos
+  campos quedan a None en los movimientos nuevos.
 - Enlaza `recibo_id` por nº de recibo y `binder_id` por UMR/agreement (= NumeroPoliza) cuando Origen=Binder.
 - DRY-RUN por defecto. Para aplicar: --apply.
 
@@ -23,7 +27,7 @@ from app import sharepoint
 from app.db import SessionLocal
 from app.models.maestras import Binder, Recibo, Transferencia
 
-LISTA = "Mayrit - TLiquidaciones1"
+LISTA = "Mayrit - TLiquidaciones"
 
 MAPEO = {
     "origen": "Origen",
@@ -84,6 +88,13 @@ def _importe(f, subtipo: str) -> Decimal:
     return Decimal(0)
 
 
+def _clave(origen, tipo, subtipo, fecha, importe, periodo, numpol, recibo):
+    """Clave de CONTENIDO para deduplicar contra lo ya cargado. No se usa el Id de SharePoint porque
+    el histórico se volcó desde otra lista (Id distintos)."""
+    return (origen or "—", tipo or "—", subtipo or "—", fecha, Decimal(importe or 0),
+            periodo, numpol or None, recibo or None)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--apply", action="store_true")
@@ -99,16 +110,16 @@ def main():
             if k:
                 by_umr[k.strip()] = b.id
     recibo_id_de = {r.numero.strip(): r.id for r in db.scalars(select(Recibo)).all() if r.numero}
-    ya_sp = {t.sp_old_id for t in db.scalars(select(Transferencia)).all() if t.sp_old_id is not None}
+    # Dedup por CONTENIDO: lo que ya hay en la BD (venga de donde venga), contado por multiplicidad.
+    existentes: Counter = Counter()
+    for t in db.scalars(select(Transferencia)).all():
+        existentes[_clave(t.origen, t.tipo, t.subtipo, t.fecha, t.importe, t.periodo,
+                          t.numero_poliza, t.recibo_num)] += 1
 
     nuevas, ya = [], 0
     cont_origen, cont_tipo, cont_sub = Counter(), Counter(), Counter()
     enlazados_recibo = enlazados_binder = 0
     for f in filas:
-        sp_id = f.get("_sp_id")
-        if sp_id in ya_sp:
-            ya += 1
-            continue
         subtipo = (f.get("subtipo") or "").strip()
         # Normaliza la variante sin tilde.
         if subtipo == "Liquidacion":
@@ -116,8 +127,15 @@ def main():
         origen = (f.get("origen") or "").strip() or "—"
         tipo = (f.get("tipo") or "").strip() or "—"
         fecha = _fecha(f.get("fecha"))
+        periodo = _fecha(f.get("periodo"))
+        importe = _importe(f, subtipo)
         numero_poliza = (str(f.get("numero_poliza")).strip() if f.get("numero_poliza") else None)
         recibo_num = (str(f.get("recibo")).strip() if f.get("recibo") else None)
+        k = _clave(origen, tipo, subtipo or "—", fecha, importe, periodo, numero_poliza, recibo_num)
+        if existentes.get(k, 0) > 0:   # ya está en la BD: consúmelo y salta
+            existentes[k] -= 1
+            ya += 1
+            continue
         rid = recibo_id_de.get(recibo_num) if recibo_num else None
         bid = by_umr.get(numero_poliza) if (origen == "Binder" and numero_poliza) else None
         if rid:
@@ -128,12 +146,12 @@ def main():
         cont_tipo[tipo] += 1
         cont_sub[subtipo or "—"] += 1
         nuevas.append(Transferencia(
-            sp_old_id=sp_id,
+            sp_old_id=f.get("_sp_id"),
             origen=origen, tipo=tipo, subtipo=subtipo or "—",
             sentido=SENTIDO.get(subtipo, "interno"),
             fecha=fecha, anio=fecha.year if fecha else None,
-            periodo=_fecha(f.get("periodo")),
-            importe=_importe(f, subtipo),
+            periodo=periodo,
+            importe=importe,
             numero_poliza=numero_poliza, recibo_num=recibo_num, recibo_id=rid, binder_id=bid,
             mercado=(str(f.get("mercado")).strip() if f.get("mercado") else None),
             cuenta_origen=(str(f.get("cuenta_origen")).strip() if f.get("cuenta_origen") else None),
@@ -142,7 +160,7 @@ def main():
             manual=False,
         ))
 
-    print(f"== Migración TLiquidaciones1 -> transferencias (DRY-RUN={'NO' if args.apply else 'SÍ'}) ==")
+    print(f"== Migración {LISTA} -> transferencias (DRY-RUN={'NO' if args.apply else 'SÍ'}) ==")
     print(f"Filas en SharePoint: {len(filas)} · ya en BD: {ya} · nuevas: {len(nuevas)}")
     print(f"Enlace recibo: {enlazados_recibo} · enlace binder: {enlazados_binder}")
     print(f"Por origen:  {dict(cont_origen)}")

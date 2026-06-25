@@ -72,12 +72,17 @@ export default function LpanPage() {
     [items, fPrograma, fTipo],
   );
 
+  // Filas que la tabla muestra de verdad (tras sus filtros por columna). Hasta que la tabla
+  // informa por primera vez, caemos a `filtrados`. Los totales y el export usan esto.
+  const [visibles, setVisibles] = useState<LpanGlobal[] | null>(null);
+  const base = visibles ?? filtrados;
+
   const tot = useMemo(() => ({
-    nLpan: filtrados.length,
-    gross: filtrados.reduce((a, l) => a + n(l.gross_premium), 0),
-    tax: filtrados.reduce((a, l) => a + n(l.tax), 0),
-    net: filtrados.reduce((a, l) => a + n(l.net_premium), 0),
-  }), [filtrados]);
+    nLpan: base.length,
+    gross: base.reduce((a, l) => a + n(l.gross_premium), 0),
+    tax: base.reduce((a, l) => a + n(l.tax), 0),
+    net: base.reduce((a, l) => a + n(l.net_premium), 0),
+  }), [base]);
 
   function abrirExport() {
     let visibles: string[] = DEFAULT_KEYS;
@@ -109,7 +114,7 @@ export default function LpanPage() {
         nombre: `lpans${suf}`,
         hoja: "LPANs",
         headers: cols.map((c) => c.label),
-        filas: filtrados.map((l) => cols.map((c) => valorExport(l, c))),
+        filas: base.map((l) => cols.map((c) => valorExport(l, c))),
       });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -168,6 +173,7 @@ export default function LpanPage() {
             defaultKeys={DEFAULT_KEYS}
             storageKey={STORAGE_KEY}
             defaultSort={{ key: "periodo", dir: -1 }}
+            onFiltrar={setVisibles}
           />
         </>
       )}
@@ -177,7 +183,7 @@ export default function LpanPage() {
           title="Exportar a Excel"
           dirty={false}
           saving={expSaving}
-          saveLabel={`Descargar (${filtrados.length} filas)`}
+          saveLabel={`Descargar (${base.length} filas)`}
           error={error}
           onSave={descargarExcel}
           onClose={() => setExportando(false)}

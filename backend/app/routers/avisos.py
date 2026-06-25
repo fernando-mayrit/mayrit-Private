@@ -18,8 +18,8 @@ from sqlalchemy.orm import Session, selectinload
 
 from ..db import get_db
 from ..models.maestras import (
-    AvisoNivel, Bdx, BdxLinea, Binder, ConsultoriaContrato, Lpan, LpanExencion, Poliza, Productor,
-    Recibo, Tarea, TareaPaso,
+    AvisoNivel, Bdx, BdxLinea, Binder, ComisionLiquidacion, ConsultoriaContrato, Lpan, LpanExencion,
+    Poliza, Productor, Recibo, Tarea, TareaPaso,
 )
 
 router = APIRouter(tags=["Avisos"])
@@ -41,6 +41,7 @@ TIPOS_AVISO: dict[str, dict] = {
     "tarea_pendiente":     {"etiqueta": "Tarea de binder pendiente", "defecto": "medio"},
     "lpan_mes_incompleto": {"etiqueta": "Mes con LPAN a medias", "defecto": "alto"},
     "lpan_sin_procesar":   {"etiqueta": "LPAN sin WP/Procesado", "defecto": "bajo"},
+    "comision_sin_reparto": {"etiqueta": "Comisión pendiente de reparto", "defecto": "bajo"},
 }
 
 
@@ -389,6 +390,22 @@ def _tareas_pendientes(db: Session) -> list[Aviso]:
     return avisos
 
 
+def _comision_sin_reparto(db: Session) -> list[Aviso]:
+    """Comisiones cuyo recibo ya se generó pero aún no tienen el desglose Iberian/Hauora (la fuente lo
+    envía más tarde). Aviso informativo (verde): el recibo está bien, solo falta repartir el 85% cedido."""
+    avisos: list[Aviso] = []
+    for liq in db.scalars(select(ComisionLiquidacion).where(
+            ComisionLiquidacion.estado == "Pendiente Reparto")).all():
+        y, m = liq.periodo.split("-")
+        avisos.append(Aviso(
+            tipo="comision_sin_reparto", severidad="info",
+            titulo="Comisión pendiente de reparto",
+            detalle=f"{liq.fuente} · {m}/{y}: recibo generado, falta el desglose entre sociedades.",
+            periodo=liq.periodo, pagina="comisiones",
+        ))
+    return avisos
+
+
 @router.get("/avisos", response_model=list[Aviso])
 def listar_avisos(db: Session = Depends(get_db)):
     """Lista de avisos/tareas pendientes (calculados al vuelo), ordenados por importancia."""
@@ -400,6 +417,7 @@ def listar_avisos(db: Session = Depends(get_db)):
     avisos += _tareas_pendientes(db)
     avisos += _lpan_mes_incompleto(db)
     avisos += _lpan_sin_procesar(db)
+    avisos += _comision_sin_reparto(db)
     return _aplicar_niveles(db, avisos)
 
 

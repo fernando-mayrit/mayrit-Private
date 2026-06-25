@@ -67,6 +67,15 @@ class TransferenciaListada(BaseModel):
     total_traspasos: Decimal
     neto: Decimal
     n_total: int
+    # Cuadro de mando (mismas fórmulas que el Excel): caja Primas y caja Siniestros.
+    primas_cobros: Decimal = Decimal(0)
+    primas_liquidaciones: Decimal = Decimal(0)
+    comisiones_liquidacion: Decimal = Decimal(0)
+    comisiones_traspaso: Decimal = Decimal(0)
+    primas_total: Decimal = Decimal(0)            # cobros − liquidaciones − liq.comisiones − traspasos com.
+    siniestros_cobros: Decimal = Decimal(0)
+    siniestros_liquidaciones: Decimal = Decimal(0)
+    siniestros_total: Decimal = Decimal(0)        # cobros − liquidaciones
 
 
 class TransferenciaCrear(BaseModel):
@@ -119,6 +128,7 @@ def listar(
     tipo: str | None = None,
     subtipo: str | None = None,
     sentido: str | None = None,
+    cuenta: str | None = None,
     q: str | None = None,
     limit: int = 500,
 ):
@@ -133,6 +143,11 @@ def listar(
         filtros.append(Transferencia.subtipo == subtipo)
     if sentido:
         filtros.append(Transferencia.sentido == sentido)
+    if cuenta:
+        filtros.append(or_(
+            Transferencia.cuenta_origen == cuenta,
+            Transferencia.cuenta_destino == cuenta,
+        ))
     if q:
         like = f"%{q.strip()}%"
         filtros.append(or_(
@@ -155,6 +170,19 @@ def listar(
     tra = Decimal(por_sentido.get("interno", (0, 0))[0])
     n_total = sum(n for _, n in por_sentido.values())
 
+    # Cuadro de mando por (tipo, subtipo) sobre TODO el conjunto filtrado.
+    desg = db.execute(
+        select(Transferencia.tipo, Transferencia.subtipo, func.coalesce(func.sum(Transferencia.importe), 0))
+        .where(*filtros).group_by(Transferencia.tipo, Transferencia.subtipo)
+    ).all()
+    g = {(t, s): Decimal(v) for t, s, v in desg}
+    pc = g.get(("Primas", "Cobro"), Decimal(0))
+    pl = g.get(("Primas", "Liquidación"), Decimal(0))
+    cl = g.get(("Comisiones", "Liquidación"), Decimal(0))
+    ct = g.get(("Comisiones", "Traspaso"), Decimal(0))
+    sc = g.get(("Siniestros", "Cobro"), Decimal(0))
+    sl = g.get(("Siniestros", "Liquidación"), Decimal(0))
+
     items = db.scalars(
         base.order_by(Transferencia.fecha.desc().nullslast(), Transferencia.id.desc()).limit(limit)
     ).all()
@@ -162,6 +190,11 @@ def listar(
     return TransferenciaListada(
         items=items, total_entradas=ent, total_salidas=sal,
         total_traspasos=tra, neto=ent - sal, n_total=n_total,
+        primas_cobros=pc, primas_liquidaciones=pl,
+        comisiones_liquidacion=cl, comisiones_traspaso=ct,
+        primas_total=pc - pl - cl - ct,
+        siniestros_cobros=sc, siniestros_liquidaciones=sl,
+        siniestros_total=sc - sl,
     )
 
 

@@ -147,14 +147,6 @@ const GRUPOS: Grupo[] = [
   { titulo: "Contabilidad", items: CONTABILIDAD },
   { titulo: "Tareas", items: TAREAS },
 ];
-const GRUPO_CONFIG: Grupo = { titulo: "Configuración", items: CONFIG, sm: true };
-const MENU_KEY = "mayrit.menu";
-
-// Título del grupo que contiene una página (para abrirlo automáticamente al navegar).
-function grupoDe(p: Page): string | undefined {
-  return [...GRUPOS, GRUPO_CONFIG].find((g) => g.items.some((it) => it.id === p))?.titulo;
-}
-
 function NavGroup({
   grupo,
   page,
@@ -201,34 +193,8 @@ function NavGroup({
 export default function App() {
   const [page, setPage] = useState<Page>("inicio");
 
-  // Estado abierto/cerrado de cada grupo del menú (persistido). Por defecto sólo se abre el grupo
-  // de la página activa; el resto, plegados para ahorrar espacio.
-  const [abiertos, setAbiertos] = useState<Record<string, boolean>>(() => {
-    try {
-      return JSON.parse(localStorage.getItem(MENU_KEY) || "{}");
-    } catch {
-      return {};
-    }
-  });
-  function guardarAbiertos(next: Record<string, boolean>) {
-    setAbiertos(next);
-    try {
-      localStorage.setItem(MENU_KEY, JSON.stringify(next));
-    } catch {
-      /* sin localStorage: no se persiste */
-    }
-  }
-  function esAbierto(titulo: string): boolean {
-    return titulo in abiertos ? abiertos[titulo] : grupoDe(page) === titulo;
-  }
-  function toggleGrupo(titulo: string) {
-    guardarAbiertos({ ...abiertos, [titulo]: !esAbierto(titulo) });
-  }
-  // Navegar: abre (y deja abierto) el grupo de la página destino para no ocultar el ítem activo.
   function ir(p: Page) {
     setPage(p);
-    const t = grupoDe(p);
-    if (t) guardarAbiertos({ ...abiertos, [t]: true });
   }
 
   // Identificación de usuario (sin contraseña): autologin por equipo + selector.
@@ -278,6 +244,7 @@ export default function App() {
   // Avisos / tareas pendientes (campana + panel de Inicio). Se recargan al navegar.
   const [avisos, setAvisos] = useState<Aviso[]>([]);
   const [verAvisos, setVerAvisos] = useState(false);
+  const [verConfig, setVerConfig] = useState(false);
   const [configNiveles, setConfigNiveles] = useState(false);
   const [niveles, setNiveles] = useState<AvisoNivel[]>([]);
   function cargarAvisos() {
@@ -294,6 +261,16 @@ export default function App() {
   useEffect(() => {
     cargarAvisos();
   }, [page]);
+
+  // Cerrar el desplegable de Configuración al hacer clic fuera de él.
+  useEffect(() => {
+    if (!verConfig) return;
+    const cerrar = (e: MouseEvent) => {
+      if (!(e.target as HTMLElement).closest(".header-config")) setVerConfig(false);
+    };
+    document.addEventListener("mousedown", cerrar);
+    return () => document.removeEventListener("mousedown", cerrar);
+  }, [verConfig]);
 
   // Auto-refresco de avisos SIN recargar la página: cada 60 s y al volver a la pestaña/ventana.
   useEffect(() => {
@@ -393,6 +370,29 @@ export default function App() {
             </div>
           )}
         </div>
+        <div className="header-config">
+          <button
+            className={"header-config-btn" + (CONFIG.some((c) => c.id === page) ? " active" : "")}
+            title="Configuración"
+            onClick={() => setVerConfig((v) => !v)}
+          >
+            ⚙️ Configuración <span className="header-config-chevron">{verConfig ? "▴" : "▾"}</span>
+          </button>
+          {verConfig && (
+            <div className="config-pop">
+              {CONFIG.map((it) => (
+                <button
+                  key={it.id}
+                  className={"config-item" + (page === it.id ? " active" : "")}
+                  onClick={() => { ir(it.id); setVerConfig(false); }}
+                >
+                  <span className="nav-emoji">{EMOJI[it.id]}</span>
+                  {it.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
         <div className="header-user">
           <span>👤 {usuario ?? "—"}</span>
           <button className="btn-link" onClick={() => setEligiendo(true)}>
@@ -408,16 +408,6 @@ export default function App() {
             {GRUPOS.map((g) => (
               <NavGroup key={g.titulo} grupo={g} page={page} onIr={ir} />
             ))}
-          </nav>
-          <nav className="sidebar-nav sidebar-bottom">
-            <NavGroup
-              grupo={GRUPO_CONFIG}
-              page={page}
-              colapsable
-              abierto={esAbierto(GRUPO_CONFIG.titulo)}
-              onToggle={() => toggleGrupo(GRUPO_CONFIG.titulo)}
-              onIr={ir}
-            />
           </nav>
         </aside>
 

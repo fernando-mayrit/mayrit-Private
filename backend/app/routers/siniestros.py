@@ -173,6 +173,27 @@ def ratios(db: Session = Depends(get_db)):
     return {"total": total, "por_programa": por_programa}
 
 
+def _con_contexto(s: Siniestro) -> sch.SiniestroReadGlobal:
+    out = sch.SiniestroReadGlobal.model_validate(s)
+    out.binder_umr = s.binder.umr if s.binder else None
+    out.binder_agreement = s.binder.agreement_number if s.binder else None
+    out.binder_programa = s.binder.programa.nombre if (s.binder and s.binder.programa) else None
+    return out
+
+
+@router.post("/binders/{binder_id}/siniestros", response_model=sch.SiniestroReadGlobal, status_code=201)
+def crear(binder_id: int, datos: sch.SiniestroUpdate, db: Session = Depends(get_db)):
+    """Alta manual de un siniestro en el binder. Solo aplica los campos enviados."""
+    b = _binder_o_404(binder_id, db)
+    s = Siniestro(binder_id=b.id)
+    for k, v in datos.model_dump(exclude_unset=True).items():
+        setattr(s, k, v)
+    db.add(s)
+    db.commit()
+    db.refresh(s)
+    return _con_contexto(s)
+
+
 @router.put("/siniestros/{siniestro_id}", response_model=sch.SiniestroReadGlobal)
 def actualizar(siniestro_id: int, datos: sch.SiniestroUpdate, db: Session = Depends(get_db)):
     """Edición manual de un siniestro. Solo aplica los campos enviados."""
@@ -183,11 +204,30 @@ def actualizar(siniestro_id: int, datos: sch.SiniestroUpdate, db: Session = Depe
         setattr(s, k, v)
     db.commit()
     db.refresh(s)
-    out = sch.SiniestroReadGlobal.model_validate(s)
-    out.binder_umr = s.binder.umr if s.binder else None
-    out.binder_agreement = s.binder.agreement_number if s.binder else None
-    out.binder_programa = s.binder.programa.nombre if (s.binder and s.binder.programa) else None
-    return out
+    return _con_contexto(s)
+
+
+@router.get("/binders/{binder_id}/siniestros/next-ucr")
+def next_ucr(binder_id: int, db: Session = Depends(get_db)):
+    """Siguiente UCR libre del binder: UMR + sufijo correlativo de 2 letras (AA, AB, … AZ, BA…).
+    Solo lo calcula y lo devuelve para copiar; no lo asigna a ningún siniestro."""
+    b = _binder_o_404(binder_id, db)
+    umr = (b.umr or "").strip()
+    if not umr:
+        raise HTTPException(status_code=400, detail="El binder no tiene UMR; no se puede generar el UCR.")
+    usados = {(s.ucr or "").strip() for s in db.scalars(
+        select(Siniestro).where(Siniestro.binder_id == b.id, Siniestro.ucr.isnot(None))).all()}
+    max_n = -1
+    for u in usados:
+        suf = u[len(umr):] if u.startswith(umr) else u[-2:]
+        if len(suf) == 2 and suf.isalpha():
+            n = (ord(suf[0].upper()) - 65) * 26 + (ord(suf[1].upper()) - 65)
+            max_n = max(max_n, n)
+    nxt = max_n + 1
+    if nxt > 26 * 26 - 1:
+        raise HTTPException(status_code=409, detail="Se ha agotado el rango de sufijos de 2 letras (ZZ).")
+    suf = chr(65 + nxt // 26) + chr(65 + nxt % 26)
+    return {"ucr": f"{umr}{suf}", "sufijo": suf, "umr": umr}
 
 
 @router.get("/binders/{binder_id}/siniestros", response_model=list[sch.SiniestroRead])

@@ -85,6 +85,16 @@ h1, h2, h3 { font-family: var(--fuente-titulo); font-weight: 600; color: var(--g
 .aviso-item.nivel-borde-bajo  { border-left-color: #3bab57; }
 /* Puntos del semáforo un poco más grandes y nítidos en la lista. */
 .avisos-lista .nivel-dot { width: 13px; height: 13px; box-shadow: 0 0 0 1px rgba(0,0,0,.08) inset; }
+/* Configuración: desplegable en la cabecera (arriba a la derecha). */
+.header-config { position: relative; margin-left: 14px; }
+.header-config-btn { display: flex; align-items: center; gap: 5px; background: none; border: 1px solid transparent; border-radius: 8px; padding: 6px 10px; font-size: 13.5px; font-weight: 600; color: var(--gris); cursor: pointer; }
+.header-config-btn:hover { background: #fff7f3; color: var(--naranja-osc); }
+.header-config-btn.active { color: var(--naranja-osc); border-color: #f3d4c6; background: #fff7f3; }
+.header-config-chevron { font-size: 10px; }
+.config-pop { position: absolute; right: 0; top: 40px; min-width: 200px; background: #fff; border: 1px solid var(--borde); border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,.15); z-index: 50; padding: 6px; display: flex; flex-direction: column; }
+.config-item { display: flex; align-items: center; gap: 9px; text-align: left; background: none; border: none; border-radius: 7px; padding: 9px 12px; font-size: 13.5px; color: var(--gris); cursor: pointer; }
+.config-item:hover { background: #fff7f3; color: var(--naranja-osc); }
+.config-item.active { background: #fff1ea; color: var(--naranja-osc); font-weight: 600; }
 .header-user { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--gris); margin-left: 14px; }
 /* Chip sutil de avisos en Inicio (no invasivo): una línea clicable que abre la campana */
 .inicio-avisos-chip { margin-top: 14px; background: #fff7f3; color: var(--naranja-osc); border: 1px solid #f3d4c6; border-radius: 999px; padding: 6px 14px; font-size: 13px; cursor: pointer; }
@@ -209,6 +219,13 @@ button {
 .btn-danger-solid:hover { background: #c0392b; border-color: #c0392b; }
 .btn-link { background: none; border: none; color: var(--naranja); padding: 4px 8px; }
 .btn-link:hover { text-decoration: underline; }
+.btn-link-danger { color: var(--rojo); }
+/* Botón conmutador on/off (p. ej. Vista en Triangulación): apagado gris, encendido naranja. */
+.btn-toggle { background: #fff; color: var(--gris); border: 1px solid var(--borde); padding: 9px 14px; }
+.btn-toggle::before { content: "○ "; }
+.btn-toggle.on { background: var(--naranja); color: #fff; border-color: var(--naranja); font-weight: 600; }
+.btn-toggle.on::before { content: "● "; }
+.btn-toggle:hover { border-color: var(--naranja); }
 
 table { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid var(--borde); border-radius: 10px; overflow: hidden; }
 th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--borde); font-size: 12px; }
@@ -415,12 +432,17 @@ td.num, th.num { text-align: right; }
 /* Barra superior de la tabla de BDX: info de líneas a la izq. + cuadro de totales a la dcha. */
 .bdx-topbar { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 8px; }
 .bdx-acciones { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+/* Transferencias: filtros a la izquierda (ocupan el resto) alineados con el contador a la derecha. */
+.tr-filtros { flex: 1; min-width: 0; }
+.tr-filtros-row { margin-bottom: 8px; }
 .bdx-totales { display: flex; border: 1px solid var(--borde); border-radius: 10px; overflow: hidden; background: #fff; }
 .tot-col { padding: 8px 14px; border-left: 1px solid var(--borde); min-width: 190px; }
 .tot-col:first-child { border-left: none; }
 .tot-row { display: flex; justify-content: space-between; gap: 18px; font-size: 13px; padding: 2px 0; }
 .tot-row span { color: var(--gris-medio); }
 .tot-row b { font-variant-numeric: tabular-nums; }
+.tot-row.tot-cab { border-bottom: 1px solid var(--borde); margin-bottom: 3px; padding-bottom: 3px; }
+.tot-row.tot-cab span { color: var(--naranja-osc); font-weight: 700; text-decoration: underline; }
 .tot-row.tot-pdte { border-top: 1px solid var(--borde); margin-top: 2px; padding-top: 4px; }
 .tot-row.tot-pdte span, .tot-row.tot-pdte b { color: var(--naranja-osc); font-weight: 600; }
 /* Triángulo de siniestralidad: primera columna (origen) fija al hacer scroll horizontal. */

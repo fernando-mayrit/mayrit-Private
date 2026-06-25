@@ -76,6 +76,25 @@ export const siniestrosApi = {
       method: "PUT",
       body: JSON.stringify(datos),
     }),
+  crear: (binderId: number, datos: Partial<import("./types").Siniestro>) =>
+    request<import("./types").Siniestro>(`/binders/${binderId}/siniestros`, {
+      method: "POST",
+      body: JSON.stringify(datos),
+    }),
+  nextUcr: (binderId: number) =>
+    request<{ ucr: string; sufijo: string; umr: string }>(`/binders/${binderId}/siniestros/next-ucr`),
+  // Compara un Claims BDX subido con los siniestros de la app; devuelve un Excel (diferencias en azul).
+  compararClaimsBdx: async (binderId: number, file: File): Promise<Blob> => {
+    const form = new FormData();
+    form.append("file", file);
+    const res = await fetch(`${BASE}/binders/${binderId}/claims-bdx/comparar`, { method: "POST", body: form });
+    if (!res.ok) {
+      let msg = `Error al comparar el Claims BDX (${res.status})`;
+      try { msg = (await res.json()).detail ?? msg; } catch { /* ignora */ }
+      throw new Error(msg);
+    }
+    return res.blob();
+  },
 };
 
 // ── LPAN / FDO (notas de pago a Lloyd's por risk code) ──
@@ -375,6 +394,14 @@ export interface TransferenciaListada {
   total_traspasos: number | string;
   neto: number | string;
   n_total: number;
+  primas_cobros: number | string;
+  primas_liquidaciones: number | string;
+  comisiones_liquidacion: number | string;
+  comisiones_traspaso: number | string;
+  primas_total: number | string;
+  siniestros_cobros: number | string;
+  siniestros_liquidaciones: number | string;
+  siniestros_total: number | string;
 }
 export interface TransferenciasOpciones {
   origenes: string[];
@@ -389,6 +416,7 @@ export interface TransferenciaFiltros {
   tipo?: string | null;
   subtipo?: string | null;
   sentido?: string | null;
+  cuenta?: string | null;
   q?: string | null;
   limit?: number;
 }
@@ -400,6 +428,7 @@ export const transferenciasApi = {
     if (f.tipo) qs.set("tipo", f.tipo);
     if (f.subtipo) qs.set("subtipo", f.subtipo);
     if (f.sentido) qs.set("sentido", f.sentido);
+    if (f.cuenta) qs.set("cuenta", f.cuenta);
     if (f.q) qs.set("q", f.q);
     if (f.limit) qs.set("limit", String(f.limit));
     const s = qs.toString();

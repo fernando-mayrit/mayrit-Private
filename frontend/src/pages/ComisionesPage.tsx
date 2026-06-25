@@ -68,9 +68,8 @@ export default function ComisionesPage() {
 
   async function repartir() {
     if (!ratDe) return;
-    // Un recibo no se prepara sin su reparto: en meses nuevos exigimos meterlo antes de generar.
-    if (!ratDe.recibo_numero && sumaReparto <= 0)
-      return setError("Mete el reparto de la comisión cedida antes de generar el recibo.");
+    // El recibo se puede generar AUNQUE no tengamos todavía el desglose Iberian/Hauora (a veces lo
+    // envían más tarde): en ese caso queda «Pendiente Reparto» y salta un aviso verde.
     setSaving(true); setError(null);
     try {
       await comisionesApi.reparto(ratDe.periodo, {
@@ -83,7 +82,10 @@ export default function ComisionesPage() {
     } catch (e) { setError((e as Error).message); } finally { setSaving(false); }
   }
 
-  const PILL: Record<string, string> = { Emitido: "pill-anulado", Preparado: "pill-parcial", Ratificado: "pill-cobrado" };
+  const PILL: Record<string, string> = {
+    Emitido: "pill-anulado", Preparado: "pill-parcial",
+    "Pendiente Reparto": "pill-parcial", Ratificado: "pill-cobrado",
+  };
 
   return (
     <div className="container lista-page">
@@ -122,7 +124,11 @@ export default function ComisionesPage() {
               <td className="num">{m.retenida != null ? eur(m.retenida) : "—"}</td>
               <td>{m.estado ? <span className={`pill ${PILL[m.estado] ?? "pill-anulado"}`}>{m.estado}</span> : "—"}</td>
               <td style={{ textAlign: "center" }}>
-                {conReparto ? <span className="pill pill-cobrado" title="Reparto registrado">✓</span> : "—"}
+                {conReparto
+                  ? <span className="pill pill-cobrado" title="Reparto registrado">✓</span>
+                  : m.recibo_numero
+                    ? <span className="pill pill-parcial" title="Recibo generado; falta el desglose Iberian/Hauora">Pendiente</span>
+                    : "—"}
               </td>
               <td title={m.recibos && m.recibos.length > 1 ? `Recibos del mes: ${m.recibos.join(", ")}` : undefined}
                   style={m.recibos && m.recibos.length > 1 ? { cursor: "help", textDecoration: "underline dotted" } : undefined}>
@@ -152,6 +158,8 @@ export default function ComisionesPage() {
           <p className="hint" style={{ marginBottom: 8 }}>
             Reparte el <b>8,5% cedido</b> (85% de la comisión) entre las dos sociedades, según lo que indique Iberian.
             {!ratDe.recibo_numero && <> Al guardar se <b>genera el recibo</b> de este mes.</>}
+            {" "}Si aún no tienes el desglose de Iberian, <b>déjalo en blanco</b>: el recibo se genera igual y el mes
+            queda <b>«Pendiente Reparto»</b> (con un aviso verde) hasta que lo completes.
           </p>
           <div className="field">
             <label>Comisión del mes</label>
