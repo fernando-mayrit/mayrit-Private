@@ -39,6 +39,7 @@ from ..models.maestras import (
     SeccionMercado,
 )
 from ..schemas import maestras as sch
+from .. import transferencias_auto
 
 router = APIRouter(tags=["Recibos"])
 
@@ -801,6 +802,8 @@ def gestion(recibo_id: int, payload: GestionRecibo, db: Session = Depends(get_db
         raise HTTPException(status_code=422, detail=f"Acción desconocida: {a!r}")
 
     _recompute(r)
+    # Cierra el ciclo: genera/borra la transferencia (movimiento de dinero) de esta acción.
+    transferencias_auto.sync_recibo_accion(db, r, a)
     db.commit()
     db.refresh(r)
     return _read(db, r)
@@ -998,10 +1001,12 @@ def listar_premium(binder_id: int, db: Session = Depends(get_db)):
     ]
 
 
-def _accion_premium(db: Session, binder_id: int, periodo: str, setter, exigir_recibo: bool = False) -> dict:
+def _accion_premium(db: Session, binder_id: int, periodo: str, setter, exigir_recibo: bool = False, mov: dict | None = None) -> dict:
     """Aplica una acción (setter) a todas las líneas del Premium y recalcula los recibos.
     Si `exigir_recibo`, exige que el periodo tenga su Recibo generado (líneas con recibo_id):
-    no se puede cobrar/liquidar/traspasar una prima sin recibo emitido."""
+    no se puede cobrar/liquidar/traspasar una prima sin recibo emitido.
+    Si `mov` (dict con tipo/subtipo/fecha/importe_de), genera la transferencia del binder con la
+    suma de las líneas (o la borra al deshacer, cuando la suma queda a 0)."""
     _exigir_premium_no_bloqueado(db, binder_id, periodo)
     lineas = _lineas_premium(db, binder_id, periodo)
     if not lineas:
@@ -1020,6 +1025,13 @@ def _accion_premium(db: Session, binder_id: int, periodo: str, setter, exigir_re
     recibos = db.scalars(select(Recibo).where(Recibo.id.in_(rids))).all() if rids else []
     for r in recibos:
         _recalcular_cobro_recibo(db, r)
+    if mov is not None:
+        binder = db.get(Binder, binder_id)
+        importe = sum((Decimal(mov["importe_de"](l) or 0) for l in lineas), Decimal(0))
+        transferencias_auto.sync_binder(
+            db, binder, periodo=periodo, tipo=mov["tipo"], subtipo=mov["subtipo"],
+            importe=importe, fecha=mov["fecha"],
+        )
     db.commit()
     return {"lineas": len(lineas), "recibos_actualizados": len(recibos)}
 
@@ -1031,7 +1043,8 @@ def cobrar_premium(binder_id: int, payload: AccionPremium, db: Session = Depends
         l.prima_cobrada = True
         l.premium_payment_date = payload.fecha
         l.ingresado = l.net_premium_to_broker   # importe cobrado de la línea (para la columna 'Cobrado' del BDX)
-    return _accion_premium(db, binder_id, payload.periodo, setter, exigir_recibo=True)
+    return _accion_premium(db, binder_id, payload.periodo, setter, exigir_recibo=True,
+                           mov={"tipo": "Primas", "subtipo": "Cobro", "fecha": payload.fecha, "importe_de": lambda l: l.ingresado})
 
 
 @router.post("/binders/{binder_id}/premium/descobrar")
@@ -1041,7 +1054,9 @@ def descobrar_premium(binder_id: int, payload: AccionPremium, db: Session = Depe
         l.prima_cobrada = False
         l.premium_payment_date = None
         l.ingresado = None                       # revierte el importe cobrado de la línea
-    return _accion_premium(db, binder_id, payload.periodo, setter)
+    # importe queda a 0 → la transferencia de Cobro se borra sola.
+    return _accion_premium(db, binder_id, payload.periodo, setter,
+                           mov={"tipo": "Primas", "subtipo": "Cobro", "fecha": None, "importe_de": lambda l: l.ingresado})
 
 
 @router.post("/binders/{binder_id}/premium/traspasar")
@@ -1051,7 +1066,8 @@ def traspasar_premium(binder_id: int, payload: AccionPremium, db: Session = Depe
         l.traspaso = True
         l.fecha_traspaso = payload.fecha
         l.traspasado = l.brokerage_amount
-    return _accion_premium(db, binder_id, payload.periodo, setter, exigir_recibo=True)
+    return _accion_premium(db, binder_id, payload.periodo, setter, exigir_recibo=True,
+                           mov={"tipo": "Comisiones", "subtipo": "Traspaso", "fecha": payload.fecha, "importe_de": lambda l: l.traspasado})
 
 
 @router.post("/binders/{binder_id}/premium/liquidar")
@@ -1063,7 +1079,8 @@ def liquidar_premium(binder_id: int, payload: AccionPremium, db: Session = Depen
         l.liquidado = True
         l.fecha_liquidacion = payload.fecha
         l.liquidado_uw = _q2(q)
-    return _accion_premium(db, binder_id, payload.periodo, setter, exigir_recibo=True)
+    return _accion_premium(db, binder_id, payload.periodo, setter, exigir_recibo=True,
+                           mov={"tipo": "Primas", "subtipo": "Liquidación", "fecha": payload.fecha, "importe_de": lambda l: l.liquidado_uw})
 
 
 # ─────────────── Macheo automático desde Excel (cualquier formato) ───────────────
