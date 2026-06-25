@@ -119,7 +119,10 @@ def _hist_por_periodo(db: Session) -> dict[str, dict]:
             Recibo.tipo_poliza == "Comisiones", Recibo.corredor == "Iberian")).all():
         if (r.referencia or "") == REF_MODULO:
             continue
-        d = out.setdefault(r.periodo, {"comision": D0, "cedida": D0, "retenida": D0, "nums": [], "recibo_id": r.id})
+        # El mes REAL de la comisión es la fecha CONTABLE (el `periodo` a veces apunta al mes en que se
+        # emitió, no al de la comisión: p. ej. 2025-0034 es de enero pero su periodo dice marzo).
+        per = r.fecha_contable.strftime("%Y-%m") if r.fecha_contable else r.periodo
+        d = out.setdefault(per, {"comision": D0, "cedida": D0, "retenida": D0, "nums": [], "recibo_id": r.id})
         d["comision"] += (r.deduccion_total or D0)
         d["cedida"] += (r.comision_cedida or D0)
         d["retenida"] += (r.comision_retenida or D0)
