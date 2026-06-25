@@ -312,6 +312,7 @@ export interface MesComision {
   pago2_nombre?: string | null;
   pago2_importe?: number | string | null;
   recibo_numero?: string | null;
+  recibos?: string[];
 }
 export const comisionesApi = {
   iberian: () => request<MesComision[]>("/comisiones/iberian"),

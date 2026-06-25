@@ -61,6 +61,10 @@ export default function ComisionesPage() {
   // Cedida esperada (85%): por la comisión tecleada (si se ajusta) o la del mes.
   const cedidaEsperada = useMemo(() => (defi ? num(defi) * 0.85 : num(ratDe?.cedida ?? 0)), [defi, ratDe]);
   const sumaReparto = useMemo(() => num(p1) + num(p2), [p1, p2]);
+  // Al teclear una sociedad, la otra se autocompleta con la diferencia hasta la cedida (editable).
+  const resto = (v: string) => { const r = cedidaEsperada - num(v); return r > 0 ? r.toFixed(2) : "0"; };
+  const setIberian = (v: string) => { setP1(v); setP2(resto(v)); };
+  const setHauora = (v: string) => { setP2(v); setP1(resto(v)); };
 
   async function repartir() {
     if (!ratDe) return;
@@ -120,7 +124,10 @@ export default function ComisionesPage() {
               <td style={{ textAlign: "center" }}>
                 {conReparto ? <span className="pill pill-cobrado" title="Reparto registrado">✓</span> : "—"}
               </td>
-              <td>{m.recibo_numero ?? "—"}</td>
+              <td title={m.recibos && m.recibos.length > 1 ? `Recibos del mes: ${m.recibos.join(", ")}` : undefined}
+                  style={m.recibos && m.recibos.length > 1 ? { cursor: "help", textDecoration: "underline dotted" } : undefined}>
+                {m.recibo_numero ?? "—"}
+              </td>
               <td className="acciones" style={{ whiteSpace: "nowrap" }}>
                 {!m.recibo_numero
                   ? <button className="btn-primary btn-sm" onClick={() => abrirReparto(m)}>Preparar</button>
@@ -153,11 +160,11 @@ export default function ComisionesPage() {
           </div>
           <div className="field">
             <label>Iberian Insurance Broker, S.L.</label>
-            <NumberInput value={p1} onChange={setP1} decimals={2} suffix="€" />
+            <NumberInput value={p1} onChange={setIberian} decimals={2} suffix="€" />
           </div>
           <div className="field">
             <label>Hauora Brokerage, S.L. <span className="hint">(desaparecerá)</span></label>
-            <NumberInput value={p2} onChange={setP2} decimals={2} suffix="€" />
+            <NumberInput value={p2} onChange={setHauora} decimals={2} suffix="€" />
           </div>
           {(p1 || p2) && (
             <div className={`hint${Math.abs(sumaReparto - cedidaEsperada) > 0.01 ? " error" : ""}`}>

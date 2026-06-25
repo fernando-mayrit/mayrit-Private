@@ -91,7 +91,8 @@ class MesComision(BaseModel):
     pago1_importe: Decimal | None = None
     pago2_nombre: str | None = None
     pago2_importe: Decimal | None = None
-    recibo_numero: str | None = None
+    recibo_numero: str | None = None       # resumen ("2021-0090 (+1)" si hay varios)
+    recibos: list[str] = []                # todos los nº de recibo del mes (para el tooltip)
 
 
 def _mes_de_liq(db: Session, liq: ComisionLiquidacion, base: Decimal) -> MesComision:
@@ -147,6 +148,7 @@ def listar_iberian(db: Session = Depends(get_db)):
         if h:   # ya hay recibo histórico: la comisión/cedida/retenida salen de él
             m.comision = _q2(h["comision"]); m.cedida = _q2(h["cedida"]); m.retenida = _q2(h["retenida"])
             m.estado = "Emitido"
+            m.recibos = h["nums"]
             m.recibo_numero = h["nums"][0] if len(h["nums"]) == 1 else f"{h['nums'][0]} (+{len(h['nums']) - 1})"
         if l:   # hay liquidación del módulo (estado + reparto; y comisión propia si es mes nuevo)
             m.liq_id = l.id; m.estado = l.estado
@@ -157,6 +159,7 @@ def listar_iberian(db: Session = Depends(get_db)):
                 com = _comision_efectiva(l)
                 m.comision = _q2(com); m.cedida = _q2(com * l.cedida_pct / 100); m.retenida = _q2(com * l.retenida_pct / 100)
                 m.recibo_numero = r.numero if r else None
+                m.recibos = [r.numero] if r else []
         out.append(m)
     return out
 
