@@ -83,6 +83,7 @@ export default function TareasBinder({ binderId }: { binderId?: number }) {
   const [vista, setVista] = useState<"bloques" | "mes">("bloques");
   const [soloPend, setSoloPend] = useState(true);
   const [agenda, setAgenda] = useState<TareaAgendaItem[]>([]);
+  const [agCol, setAgCol] = useState<Record<string, boolean>>({});   // agencias plegadas (bloques)
 
   async function cargar() {
     try { setTareas(esGlobal ? await tareasApi.listAll() : await tareasApi.list(binderId!)); }
@@ -582,12 +583,16 @@ export default function TareasBinder({ binderId }: { binderId?: number }) {
         <div className="empty">{esGlobal ? "No hay tareas todavía." : "No hay tareas para este binder todavía."}</div>
       ) : esGlobal ? (
         <div className="tareas-bloques">
-          {bloques.map((a) => (
+          {bloques.map((a) => {
+            const plegada = agCol[a.agencia] ?? false;
+            return (
             <section key={a.agencia} style={{ marginBottom: 22 }}>
-              <h3 style={{ margin: "0 0 6px", fontSize: 16, borderBottom: "2px solid var(--borde, #d0d4dc)", paddingBottom: 4 }}>
+              <h3 style={{ margin: "0 0 6px", fontSize: 16, borderBottom: "2px solid var(--borde, #d0d4dc)", paddingBottom: 4, cursor: "pointer", userSelect: "none" }}
+                onClick={() => setAgCol((s) => ({ ...s, [a.agencia]: !plegada }))}>
+                <span style={{ display: "inline-block", width: 18, color: "var(--texto-suave, #777)" }}>{plegada ? "＋" : "－"}</span>
                 🏢 {a.agencia}
               </h3>
-              {a.programas.map((p) => (
+              {!plegada && a.programas.map((p) => (
                 <div key={p.programa} style={{ margin: "0 0 14px 12px" }}>
                   <div style={{ fontWeight: 600, color: "var(--texto-suave, #555)", margin: "8px 0 4px" }}>
                     📋 {p.programa}
@@ -601,7 +606,8 @@ export default function TareasBinder({ binderId }: { binderId?: number }) {
                 </div>
               ))}
             </section>
-          ))}
+            );
+          })}
         </div>
       ) : (
         tablaDe([...tareas].sort(porProxima))
