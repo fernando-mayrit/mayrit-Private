@@ -3,6 +3,7 @@ import { comisionesApi, type MesComision } from "../api";
 import { fmtMiles } from "../format";
 import PageHeader from "../components/PageHeader";
 import FormPanel from "../components/FormPanel";
+import NumberInput from "../components/NumberInput";
 
 // Comisiones — liquidación mensual. Fuente Iberian: la comisión (coverholder) del Premium del programa
 // Iberian-RC Profesional. Se PREPARA el recibo (estimado del Premium) y queda pendiente de RATIFICAR
@@ -152,11 +153,11 @@ export default function ComisionesPage() {
           </div>
           <div className="field">
             <label>Iberian Insurance Broker, S.L.</label>
-            <input type="number" step="0.01" value={p1} onChange={(e) => setP1(e.target.value)} />
+            <NumberInput value={p1} onChange={setP1} decimals={2} suffix="€" />
           </div>
           <div className="field">
             <label>Hauora Brokerage, S.L. <span className="hint">(desaparecerá)</span></label>
-            <input type="number" step="0.01" value={p2} onChange={(e) => setP2(e.target.value)} />
+            <NumberInput value={p2} onChange={setP2} decimals={2} suffix="€" />
           </div>
           {(p1 || p2) && (
             <div className={`hint${Math.abs(sumaReparto - cedidaEsperada) > 0.01 ? " error" : ""}`}>
@@ -166,8 +167,8 @@ export default function ComisionesPage() {
           )}
           <div className="field" style={{ marginTop: 10 }}>
             <label>Comisión definitiva <span className="hint">(opcional, solo si Iberian la ajusta; en blanco = 10% del GWP)</span></label>
-            <input type="number" step="0.01" value={defi} onChange={(e) => setDefi(e.target.value)}
-              placeholder={String(num(ratDe.comision ?? ratDe.comision_premium))} />
+            <NumberInput value={defi} onChange={setDefi} decimals={2} suffix="€"
+              placeholder={fmtMiles(num(ratDe.comision ?? ratDe.comision_premium))} />
           </div>
         </FormPanel>
       )}
