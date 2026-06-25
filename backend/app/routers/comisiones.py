@@ -111,9 +111,10 @@ def _mes_de_liq(db: Session, liq: ComisionLiquidacion, base: Decimal) -> MesComi
 REF_MODULO = "comision-iberian"   # marca los recibos creados por este módulo (vs. los históricos)
 PERIODO_MIN = "2021-06"           # antes de junio 2021 no se generó comisión: no se listan esos meses
 # Recibos tipo «Comisiones»/Iberian que NO son la comisión de Iberian-RC Profesional (fueron otra
-# cosa puntual; ya no se repetirá). Se reconocen porque van 100% cedidos (retenida = 0): la comisión
-# real siempre se reparte 85/15 (retenida > 0). Esta regla los excluye todos (también los futuros).
-# `EXCLUIR_RECIBOS` es una escotilla manual extra para cualquier caso raro que NO sea 100% cedido.
+# cosa puntual; ya no se repetirá). Se reconocen porque NO van repartidos 85/15: tienen un lado a 0
+# (100% cedido, retenida=0; o 100% retenido, cedida=0). La comisión real siempre tiene cedida>0 Y
+# retenida>0. Esta regla los excluye todos (también los futuros). `EXCLUIR_RECIBOS` es una escotilla
+# manual extra para cualquier caso raro que sí esté repartido 85/15 pero haya que sacar.
 EXCLUIR_RECIBOS: set[str] = set()
 # Correcciones puntuales del mes de comisión de recibos históricos cuyas fechas no concuerdan
 # (ni fecha_contable ni periodo aciertan siempre). Recibo nº → mes real (YYYY-MM). No se toca el
@@ -133,8 +134,8 @@ def _hist_por_periodo(db: Session) -> dict[str, dict]:
             Recibo.tipo_poliza == "Comisiones", Recibo.corredor == "Iberian")).all():
         if (r.referencia or "") == REF_MODULO:
             continue
-        # 100% cedido (retenida 0) = no es comisión de Iberian-RC Profesional → se excluye.
-        if (r.comision_retenida or D0) == 0 or r.numero in EXCLUIR_RECIBOS:
+        # Sin reparto 85/15 (un lado a 0) = no es comisión de Iberian-RC Profesional → se excluye.
+        if (r.comision_cedida or D0) == 0 or (r.comision_retenida or D0) == 0 or r.numero in EXCLUIR_RECIBOS:
             continue
         # El mes REAL de la comisión es la fecha CONTABLE (el `periodo` a veces apunta al mes en que se
         # emitió, no al de la comisión: p. ej. 2025-0034 es de enero pero su periodo dice marzo).
