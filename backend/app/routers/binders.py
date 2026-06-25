@@ -113,7 +113,10 @@ def _suplemento_dict(s: BinderSuplemento) -> dict:
 # Aviso (ámbar) cuando faltan <= estos puntos porcentuales para el umbral de notificación.
 MARGEN_AVISO_PUNTOS = 10.0
 # 'informado' = límite excedido (rojo) que YA se ha notificado al mercado (tiene fecha_notificacion).
-_SEV_RANK = {"verde": 0, "informado": 1, "ambar": 2, "rojo": 3}
+# Prioridad para elegir el límite que se muestra en el listado: un 'rojo' (excedido SIN notificar)
+# manda sobre un 'informado'; el 'informado' se mantiene (gris) por encima de un 'ambar' (cerca del
+# umbral pero sin exceder), de modo que solo un nuevo EXCESO (rojo) rompe la calma del informado.
+_SEV_RANK = {"verde": 0, "ambar": 1, "informado": 2, "rojo": 3}
 
 
 def _severidad(consumo_pct: float, umbral_pct: float | None) -> str:

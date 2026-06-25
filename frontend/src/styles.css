@@ -663,7 +663,7 @@ td.num, th.num { text-align: right; }
 .notif-verde { color: #1a7f37; }
 .notif-ambar { color: #a16207; }
 .notif-rojo  { color: #b42318; }
-.notif-informado { color: #1a7f37; }
+.notif-informado { color: var(--gris-medio); font-weight: 500; }
 
 /* Campo "Notificado (fecha)" pendiente de rellenar (límite que supera el umbral) */
 /* Resaltar el campo "a notificar" SIN cambiar su tamaño (para no descuadrar la fila): solo el input. */

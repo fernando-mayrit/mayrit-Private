@@ -195,16 +195,17 @@ function fechaCorta(iso: string | null): string {
 }
 
 // Semáforo de notificación: consumo del GWP our line frente al umbral de notificación del
-// límite MÁS CRÍTICO del binder. 🟢 lejos · 🟡 a <10 puntos del umbral · 🔴 umbral alcanzado ·
-// ✅ excedido y YA notificado al mercado (tiene fecha de notificación).
-const NOTIF_ICONO: Record<string, string> = { verde: "🟢", ambar: "🟡", rojo: "🔴", informado: "✅" };
+// límite MÁS CRÍTICO del binder. 🟢 lejos · 🟡 a <10 puntos del umbral · 🔴 umbral alcanzado sin
+// notificar. Si está excedido pero YA notificado, se muestra el % en GRIS y sin semáforo (calma),
+// hasta que otra sección vuelva a exceder (entonces ese % saldría en rojo).
+const NOTIF_ICONO: Record<string, string> = { verde: "🟢", ambar: "🟡", rojo: "🔴" };
 function NotifCelda({ b }: { b: Binder }) {
   if (!b.notif_estado) return <>—</>;
   const pct = fmtMiles(b.notif_consumo_pct ?? 0);
   if (b.notif_estado === "informado") {
     return (
       <span className="notif notif-informado" title={`Límite excedido y ya notificado al mercado · consumo ${pct} %`}>
-        ✅ Informado
+        {pct} %
       </span>
     );
   }
