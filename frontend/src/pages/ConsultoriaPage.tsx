@@ -190,7 +190,7 @@ export default function ConsultoriaPage() {
                 <td className="num">{eur(c.importe)}</td>
                 <td className="num">{c.sujeto_impuestos ? `${fmtMiles(c.impuestos_porc)} %` : "—"}</td>
                 <td>{c.duracion_meses == null ? "Indefinido" : `${c.duracion_meses} meses`}</td>
-                <td>{c.estado}</td>
+                <td><span className={`pill ${c.estado === "Activo" ? "pill-cobrado" : "pill-anulado"}`}>{c.estado}</span></td>
                 <td>{c.proximo_cobro ? fmtFechaES(c.proximo_cobro) : "—"}</td>
                 <td className="num">{c.n_generados}/{c.n_cobros}</td>
                 <td className="acciones" style={{ whiteSpace: "nowrap" }}>
