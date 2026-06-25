@@ -675,6 +675,18 @@ export function usuarioEquipo() {
   return request<{ nombre: string | null }>("/usuario-equipo");
 }
 
+// Resumen del binder: Σ GWP (our line) por Sección, Mercado y Risk Code.
+export interface ResumenItem { clave: string; gwp: number | string }
+export interface ResumenBinder {
+  total: number | string;
+  por_seccion: ResumenItem[];
+  por_mercado: ResumenItem[];
+  por_risk_code: ResumenItem[];
+}
+export function resumenBinder(id: number) {
+  return request<ResumenBinder>(`/binders/${id}/resumen`);
+}
+
 // CRUD genérico para una colección (p. ej. "/mercados").
 export function crud<TRead, TWrite>(collection: string) {
   return {

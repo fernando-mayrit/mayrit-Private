@@ -4,8 +4,10 @@ Endpoints de Binders. Estructura anidada:
 Por eso lleva lógica propia (no el CRUD genérico de las maestras).
 """
 from collections import defaultdict
+from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, joinedload, selectinload
 
@@ -18,6 +20,7 @@ from ..models.maestras import (
     BinderLimite,
     BinderSeccion,
     BinderSuplemento,
+    Mercado,
     SeccionMercado,
     SeccionRiskCode,
     Siniestro,
@@ -344,6 +347,67 @@ def obtener(binder_id: int, db: Session = Depends(get_db)):
     if b is None:
         raise HTTPException(status_code=404, detail=f"Binder {binder_id} no encontrado")
     return _serializar(b, _metricas_binders(db, [b]).get(b.id))
+
+
+# ── Resumen del binder: Σ GWP (our line) por Sección, Mercado y Risk Code ──
+class ResumenItem(BaseModel):
+    clave: str
+    gwp: Decimal
+
+
+class ResumenBinder(BaseModel):
+    total: Decimal
+    por_seccion: list[ResumenItem]
+    por_mercado: list[ResumenItem]
+    por_risk_code: list[ResumenItem]
+
+
+@router.get("/{binder_id}/resumen", response_model=ResumenBinder)
+def resumen(binder_id: int, db: Session = Depends(get_db)):
+    """Sumatorio de primas (GWP our line) del Risk BDX del binder, desglosado por Sección, por Mercado
+    (repartiendo el GWP de cada sección según la participación de sus mercados) y por Risk Code."""
+    b = db.get(Binder, binder_id)
+    if b is None:
+        raise HTTPException(status_code=404, detail=f"Binder {binder_id} no encontrado")
+    D0 = Decimal(0)
+    q2 = lambda x: Decimal(x).quantize(Decimal("0.01"))   # noqa: E731
+    por_sec: dict[int, Decimal] = defaultdict(lambda: D0)
+    por_rc: dict[str, Decimal] = defaultdict(lambda: D0)
+    total = D0
+    for sec_no, rc, gwp in db.execute(
+        select(BdxLinea.section_no, BdxLinea.risk_code, func.sum(BdxLinea.total_gwp_our_line))
+        .join(Bdx, BdxLinea.bdx_id == Bdx.id)
+        .where(Bdx.binder_id == binder_id, Bdx.tipo == "Risk")
+        .group_by(BdxLinea.section_no, BdxLinea.risk_code)
+    ).all():
+        g = gwp or D0
+        if sec_no is not None:
+            por_sec[int(sec_no)] += g
+        por_rc[(rc or "—").strip() or "—"] += g
+        total += g
+
+    secciones = list(b.secciones)   # ordenadas por id → la N-ésima es la sección N
+    merc_ids = {sm.mercado_id for s in secciones for sm in s.mercados}
+    nombres = {m.id: (m.alias or m.nombre) for m in
+               db.scalars(select(Mercado).where(Mercado.id.in_(merc_ids))).all()} if merc_ids else {}
+    por_merc: dict[int, Decimal] = defaultdict(lambda: D0)
+    for sec_no, gwp in por_sec.items():
+        if 1 <= sec_no <= len(secciones):
+            for sm in secciones[sec_no - 1].mercados:
+                por_merc[sm.mercado_id] += gwp * (sm.participacion or D0) / 100
+
+    def sec_label(n: int) -> str:
+        ramo = secciones[n - 1].ramo if 1 <= n <= len(secciones) else None
+        return f"Sección {n}" + (f" · {ramo}" if ramo else "")
+
+    return ResumenBinder(
+        total=q2(total),
+        por_seccion=[ResumenItem(clave=sec_label(n), gwp=q2(g)) for n, g in sorted(por_sec.items())],
+        por_mercado=[ResumenItem(clave=nombres.get(mid, f"#{mid}"), gwp=q2(g))
+                     for mid, g in sorted(por_merc.items(), key=lambda kv: -kv[1])],
+        por_risk_code=[ResumenItem(clave=rc, gwp=q2(g))
+                       for rc, g in sorted(por_rc.items(), key=lambda kv: -kv[1])],
+    )
 
 
 @router.post("", response_model=sch.BinderRead, status_code=201)

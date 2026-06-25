@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { bdxApi, recibosApi, siniestrosApi, claimsBdxApi, triangulacionApi, lpanApi, type BdxDetalle, type BdxPreview, type BdxImportResult, type ExcelDir, type PremiumGrupo, type ClaimsBdxVista, type Triangulacion, type MetricaTriangulo, type VistaLpan } from "../api";
+import { bdxApi, recibosApi, siniestrosApi, claimsBdxApi, triangulacionApi, lpanApi, resumenBinder, type BdxDetalle, type BdxPreview, type BdxImportResult, type ExcelDir, type PremiumGrupo, type ClaimsBdxVista, type Triangulacion, type MetricaTriangulo, type VistaLpan, type ResumenBinder } from "../api";
 import type { Binder, Bdx, BdxLinea, Recibo, Siniestro } from "../types";
 import BdxLineaPanel from "../components/BdxLineaPanel";
 import BdxTabla from "../components/BdxTabla";
@@ -102,7 +102,8 @@ const SIN_DEFAULT = [
 ];
 
 export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBack: () => void }) {
-  const [tab, setTab] = useState<"datos" | "bloqueo" | "bdx" | "lpan" | "premium" | "calculos" | "recibos" | "siniestros" | "claimsbdx" | "triangulacion" | "tareas">("bdx");
+  const [tab, setTab] = useState<"resumen" | "datos" | "bloqueo" | "bdx" | "lpan" | "premium" | "calculos" | "recibos" | "siniestros" | "claimsbdx" | "triangulacion" | "tareas">("resumen");
+  const [resumen, setResumen] = useState<ResumenBinder | null>(null);
 
   // ── BDX (uno por binder) ──
   const [bdxs, setBdxs] = useState<Bdx[]>([]);
@@ -129,6 +130,7 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
     // Se recarga al abrir la pestaña (refleja correcciones sin re-importar de SharePoint).
     if (tab === "siniestros" || tab === "calculos") cargarSiniestros();
     if (tab === "lpan") cargarLpan();
+    if (tab === "resumen") resumenBinder(binder.id).then(setResumen).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
 
@@ -680,6 +682,9 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
       </div>
 
       <div className="tabs detalle-tabs">
+        <button className={"tab" + (tab === "resumen" ? " active" : "")} onClick={() => setTab("resumen")}>
+          Resumen
+        </button>
         <button className={"tab" + (tab === "bdx" ? " active" : "")} onClick={() => setTab("bdx")}>
           BDX
         </button>
@@ -716,6 +721,43 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
       </div>
 
       {error && <div className="error">⚠ {error}</div>}
+
+      {tab === "resumen" && (
+        <div className="resumen-binder">
+          {!resumen ? (
+            <div className="loading">Cargando…</div>
+          ) : (
+            <>
+              <p style={{ margin: "0 0 14px" }}>
+                Total primas (GWP our line): <b>{imp(resumen.total)} €</b>
+              </p>
+              <div style={{ display: "flex", gap: 24, flexWrap: "wrap", alignItems: "flex-start" }}>
+                {[
+                  { t: "Por Sección", c: "Sección", d: resumen.por_seccion },
+                  { t: "Por Mercado", c: "Mercado", d: resumen.por_mercado },
+                  { t: "Por Risk Code", c: "Risk Code", d: resumen.por_risk_code },
+                ].map((g) => (
+                  <div key={g.t} style={{ flex: "1 1 280px", minWidth: 260 }}>
+                    <h4 style={{ margin: "0 0 6px" }}>{g.t}</h4>
+                    <table className="compacto" style={{ width: "100%" }}>
+                      <thead><tr><th>{g.c}</th><th className="num">GWP our line</th></tr></thead>
+                      <tbody>
+                        {g.d.map((it) => (
+                          <tr key={it.clave}><td>{it.clave}</td><td className="num">{imp(it.gwp)}</td></tr>
+                        ))}
+                        <tr>
+                          <td><b>Total</b></td>
+                          <td className="num"><b>{imp(g.d.reduce((a, it) => a + Number(it.gwp), 0))}</b></td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      )}
 
       {tab === "datos" && (
         <>
