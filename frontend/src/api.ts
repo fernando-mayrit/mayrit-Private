@@ -316,8 +316,8 @@ export interface MesComision {
 export const comisionesApi = {
   iberian: () => request<MesComision[]>("/comisiones/iberian"),
   preparar: (periodo: string) => request<MesComision>(`/comisiones/iberian/${periodo}/preparar`, { method: "POST" }),
-  ratificar: (liqId: number, d: { comision_definitiva: number; pago1_importe?: number | null; pago2_importe?: number | null }) =>
-    request<MesComision>(`/comisiones/${liqId}/ratificar`, { method: "PUT", body: JSON.stringify(d) }),
+  reparto: (periodo: string, d: { pago1_importe?: number | null; pago2_importe?: number | null; comision_definitiva?: number | null }) =>
+    request<MesComision>(`/comisiones/iberian/${periodo}/reparto`, { method: "PUT", body: JSON.stringify(d) }),
   borrar: (liqId: number) => request(`/comisiones/${liqId}`, { method: "DELETE" }),
 };
 

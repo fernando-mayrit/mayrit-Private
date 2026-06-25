@@ -107,22 +107,53 @@ def _mes_de_liq(db: Session, liq: ComisionLiquidacion, base: Decimal) -> MesComi
     )
 
 
+REF_MODULO = "comision-iberian"   # marca los recibos creados por este módulo (vs. los históricos)
+
+
+def _hist_por_periodo(db: Session) -> dict[str, dict]:
+    """Recibos tipo «Comisiones» de Iberian que YA existían (históricos, no creados por el módulo),
+    agregados por periodo: comisión (Σ deducción), cedida, retenida y nº(s) de recibo."""
+    out: dict[str, dict] = {}
+    for r in db.scalars(select(Recibo).where(
+            Recibo.tipo_poliza == "Comisiones", Recibo.corredor == "Iberian")).all():
+        if (r.referencia or "") == REF_MODULO:
+            continue
+        d = out.setdefault(r.periodo, {"comision": D0, "cedida": D0, "retenida": D0, "nums": [], "recibo_id": r.id})
+        d["comision"] += (r.deduccion_total or D0)
+        d["cedida"] += (r.comision_cedida or D0)
+        d["retenida"] += (r.comision_retenida or D0)
+        d["nums"].append(r.numero)
+    return out
+
+
 @router.get("/comisiones/iberian", response_model=list[MesComision])
 def listar_iberian(db: Session = Depends(get_db)):
     prog = _programa_iberian(db)
     if not prog:
         raise HTTPException(status_code=404, detail="No se encuentra el programa Iberian-RC Profesional")
     bases = _base_por_mes(db, prog)
+    hist = _hist_por_periodo(db)
     liqs = {l.periodo: l for l in db.scalars(
         select(ComisionLiquidacion).where(ComisionLiquidacion.fuente == "Iberian")).all()}
     out: list[MesComision] = []
-    for per in sorted(set(bases) | set(liqs), reverse=True):
+    for per in sorted(set(bases) | set(hist) | set(liqs), reverse=True):
         base = bases.get(per, D0)
-        l = liqs.get(per)
-        if l:
-            out.append(_mes_de_liq(db, l, base))
-        else:
-            out.append(MesComision(periodo=per, base_prima=_q2(base), comision_premium=_comision_de_base(base)))
+        l, h = liqs.get(per), hist.get(per)
+        m = MesComision(periodo=per, base_prima=_q2(base), comision_premium=_comision_de_base(base))
+        if h:   # ya hay recibo histórico: la comisión/cedida/retenida salen de él
+            m.comision = _q2(h["comision"]); m.cedida = _q2(h["cedida"]); m.retenida = _q2(h["retenida"])
+            m.estado = "Emitido"
+            m.recibo_numero = h["nums"][0] if len(h["nums"]) == 1 else f"{h['nums'][0]} (+{len(h['nums']) - 1})"
+        if l:   # hay liquidación del módulo (estado + reparto; y comisión propia si es mes nuevo)
+            m.liq_id = l.id; m.estado = l.estado
+            m.pago1_nombre, m.pago1_importe = l.pago1_nombre, l.pago1_importe
+            m.pago2_nombre, m.pago2_importe = l.pago2_nombre, l.pago2_importe
+            if not h:
+                r = db.get(Recibo, l.recibo_id) if l.recibo_id else None
+                com = _comision_efectiva(l)
+                m.comision = _q2(com); m.cedida = _q2(com * l.cedida_pct / 100); m.retenida = _q2(com * l.retenida_pct / 100)
+                m.recibo_numero = r.numero if r else None
+        out.append(m)
     return out
 
 
@@ -144,6 +175,7 @@ def preparar_iberian(periodo: str, db: Session = Depends(get_db)):
     r = Recibo(
         periodo=periodo, anio=fecha.year, estado="Emitido", numero=_siguiente_numero(db, fecha.year),
         tipo_poliza="Comisiones", asegurado=prog.nombre, corredor="Iberian", ramo="Comisiones", moneda="EUR",
+        referencia=REF_MODULO,
         fecha_efecto=fecha, fecha_vencimiento=fecha, fecha_contable=fecha,
         fecha_efecto_recibo=fecha, fecha_vcto_recibo=fecha,
         prima_bruta_recibo=D0, prima_neta_recibo=D0, prima_adeudada=D0,
@@ -154,31 +186,47 @@ def preparar_iberian(periodo: str, db: Session = Depends(get_db)):
     liq.recibo_id = r.id
     db.add(liq)
     db.commit()
-    return _mes_de_liq(db, liq, base)
+    return next(m for m in listar_iberian(db) if m.periodo == periodo)
 
 
-class RatificarIn(BaseModel):
-    comision_definitiva: Decimal
+class RepartoIn(BaseModel):
     pago1_importe: Decimal | None = None
     pago2_importe: Decimal | None = None
+    comision_definitiva: Decimal | None = None   # opcional: solo si Iberian ajusta la comisión
 
 
-@router.put("/comisiones/{liq_id}/ratificar", response_model=MesComision)
-def ratificar(liq_id: int, payload: RatificarIn, db: Session = Depends(get_db)):
-    liq = db.get(ComisionLiquidacion, liq_id)
+@router.put("/comisiones/iberian/{periodo}/reparto", response_model=MesComision)
+def reparto(periodo: str, payload: RepartoIn, db: Session = Depends(get_db)):
+    """Mete el reparto del 85% cedido entre las dos sociedades (varía cada mes). Si el mes ya tenía
+    recibo (histórico), crea la liquidación enlazándolo; si no, hay que «Preparar» antes."""
+    prog = _programa_iberian(db)
+    if not prog:
+        raise HTTPException(status_code=404, detail="No se encuentra el programa Iberian-RC Profesional")
+    base = _base_por_mes(db, prog).get(periodo, D0)
+    liq = db.scalar(select(ComisionLiquidacion).where(
+        ComisionLiquidacion.fuente == "Iberian", ComisionLiquidacion.periodo == periodo))
     if liq is None:
-        raise HTTPException(status_code=404, detail=f"Liquidación {liq_id} no encontrada")
-    liq.comision_definitiva = _q2(payload.comision_definitiva)
+        h = _hist_por_periodo(db).get(periodo)
+        if not h:
+            raise HTTPException(status_code=409, detail="No hay recibo de comisiones para este mes; prepáralo primero.")
+        liq = ComisionLiquidacion(
+            fuente="Iberian", programa_id=prog.id, periodo=periodo, fecha=_dia1(periodo),
+            comision_premium=_comision_de_base(base), comision_definitiva=_q2(h["comision"]),
+            cedida_pct=Decimal(85), retenida_pct=Decimal(15),
+            pago1_nombre=PAGO1_DEFECTO, pago2_nombre=PAGO2_DEFECTO, estado="Ratificado", recibo_id=h["recibo_id"],
+        )
+        db.add(liq)
+    if payload.comision_definitiva is not None:
+        liq.comision_definitiva = _q2(payload.comision_definitiva)
     liq.pago1_importe = _q2(payload.pago1_importe) if payload.pago1_importe is not None else None
     liq.pago2_importe = _q2(payload.pago2_importe) if payload.pago2_importe is not None else None
     liq.estado = "Ratificado"
+    # Solo se recalcula el recibo si es PROPIO del módulo; los históricos no se tocan.
     r = db.get(Recibo, liq.recibo_id) if liq.recibo_id else None
-    if r:
+    if r and (r.referencia or "") == REF_MODULO:
         _aplicar_a_recibo(liq, r)
     db.commit()
-    prog = _programa_iberian(db)
-    base = _base_por_mes(db, prog).get(liq.periodo, D0) if prog else D0
-    return _mes_de_liq(db, liq, base)
+    return next(m for m in listar_iberian(db) if m.periodo == periodo)
 
 
 @router.delete("/comisiones/{liq_id}", status_code=204)
@@ -186,9 +234,10 @@ def borrar(liq_id: int, db: Session = Depends(get_db)):
     liq = db.get(ComisionLiquidacion, liq_id)
     if liq is None:
         raise HTTPException(status_code=404, detail=f"Liquidación {liq_id} no encontrada")
+    # Borra el recibo SOLO si lo creó el módulo (los históricos no se tocan).
     if liq.recibo_id:
         r = db.get(Recibo, liq.recibo_id)
-        if r:
+        if r and (r.referencia or "") == REF_MODULO:
             db.delete(r)
     db.delete(liq)
     db.commit()
