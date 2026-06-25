@@ -604,8 +604,6 @@ export const bdxApi = {
     request<BdxPreview>(`/binders/${binderId}/bdx/sharepoint-preview`),
   importarSharepoint: (binderId: number) =>
     request<BdxImportResult>(`/binders/${binderId}/bdx/import`, { method: "POST" }),
-  excelDir: (sub = "") =>
-    request<ExcelDir>(`/bdx/excel-dir${sub ? `?sub=${encodeURIComponent(sub)}` : ""}`),
   // Subir Risk BDX desde un Excel del navegador (multipart): preview (no escribe) → import.
   riskExcelPreview: (binderId: number, file: File) => {
     const fd = new FormData(); fd.append("file", file);
@@ -633,13 +631,6 @@ export interface RiskExcelImportResult {
   auto_seccion: number;
   total_lineas: number;
   periodos: string[];
-}
-
-export interface ExcelDir {
-  base: string;
-  sub: string;
-  dirs: string[];
-  files: { name: string; size: number; mtime: number }[];
 }
 
 export interface BdxPreview {

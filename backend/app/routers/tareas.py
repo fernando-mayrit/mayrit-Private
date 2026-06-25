@@ -13,7 +13,7 @@ from collections import defaultdict
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from ..db import get_db
 from ..models.maestras import (
@@ -21,6 +21,15 @@ from ..models.maestras import (
 )
 
 router = APIRouter(tags=["Tareas"])
+
+# Eager-load para los listados de tareas: evita N+1 (pasos+hechos, hechas, binder→productor/programa).
+def _opc_tarea():
+    return (
+        selectinload(Tarea.pasos).selectinload(TareaPaso.hechos),
+        selectinload(Tarea.hechas),
+        selectinload(Tarea.binder).selectinload(Binder.productor),
+        selectinload(Tarea.binder).selectinload(Binder.programa),
+    )
 
 PASO_MESES = {"Mensual": 1, "Trimestral": 3, "Semestral": 6, "Anual": 12}
 
@@ -282,7 +291,7 @@ def _serializar(db: Session, t: Tarea, datos: dict | None = None) -> TareaRead:
 @router.get("/tareas", response_model=list[TareaRead])
 def listar_todas(db: Session = Depends(get_db)):
     """Todas las tareas de todos los binders (página global). Mismos datos que la pestaña del binder."""
-    ts = db.scalars(select(Tarea).order_by(Tarea.id)).all()
+    ts = db.scalars(select(Tarea).options(*_opc_tarea()).order_by(Tarea.id)).all()
     datos = _periodos_datos(db, {t.binder_id for t in ts})
     return [_serializar(db, t, datos) for t in ts]
 
@@ -346,7 +355,7 @@ def agenda(binder_id: int | None = None, solo_pendientes: bool = False, db: Sess
     q = select(Tarea).where(Tarea.estado != "Pausada")
     if binder_id is not None:
         q = q.where(Tarea.binder_id == binder_id)
-    tareas = db.scalars(q.order_by(Tarea.id)).all()
+    tareas = db.scalars(q.options(*_opc_tarea()).order_by(Tarea.id)).all()
     datos = _periodos_datos(db, {t.binder_id for t in tareas})
     out: list[AgendaItem] = []
     for t in tareas:
@@ -383,7 +392,7 @@ def agenda(binder_id: int | None = None, solo_pendientes: bool = False, db: Sess
 
 @router.get("/binders/{binder_id}/tareas", response_model=list[TareaRead])
 def listar(binder_id: int, db: Session = Depends(get_db)):
-    ts = db.scalars(select(Tarea).where(Tarea.binder_id == binder_id).order_by(Tarea.id)).all()
+    ts = db.scalars(select(Tarea).where(Tarea.binder_id == binder_id).options(*_opc_tarea()).order_by(Tarea.id)).all()
     datos = _periodos_datos(db, {binder_id})
     return [_serializar(db, t, datos) for t in ts]
 

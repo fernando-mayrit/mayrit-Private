@@ -14,12 +14,12 @@ from decimal import Decimal
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from ..db import get_db
 from ..models.maestras import (
     AvisoNivel, Bdx, BdxLinea, Binder, ConsultoriaContrato, Lpan, LpanExencion, Poliza, Productor,
-    Recibo, Tarea,
+    Recibo, Tarea, TareaPaso,
 )
 
 router = APIRouter(tags=["Avisos"])
@@ -183,11 +183,17 @@ def _facturas_consultoria(db: Session) -> list[Aviso]:
     from .consultoria import _fechas_cobro      # lazy: evita import circular
     hoy = dt.date.today()
     avisos: list[Aviso] = []
-    contratos = db.scalars(select(ConsultoriaContrato).where(ConsultoriaContrato.estado == "Activo")).all()
+    contratos = db.scalars(select(ConsultoriaContrato).where(ConsultoriaContrato.estado == "Activo")
+                           .options(selectinload(ConsultoriaContrato.productor))).all()
+    # Recibos generados por contrato, en UNA query (evita N+1 por contrato).
+    gen_por: dict[int, set] = defaultdict(set)
+    ids = [c.id for c in contratos]
+    if ids:
+        for cid, per in db.execute(select(Recibo.consultoria_id, Recibo.periodo)
+                                   .where(Recibo.consultoria_id.in_(ids), Recibo.periodo.is_not(None))).all():
+            gen_por[cid].add(per)
     for c in contratos:
-        generados = {r.periodo for r in db.scalars(
-            select(Recibo).where(Recibo.consultoria_id == c.id, Recibo.periodo.is_not(None))
-        ).all()}
+        generados = gen_por.get(c.id, set())
         prox = next((f for f in _fechas_cobro(c) if f.strftime("%Y-%m") not in generados), None)
         if prox is None:
             continue
@@ -319,7 +325,8 @@ def _limite_sin_notificar(db: Session) -> list[Aviso]:
     al mercado. Reutiliza el cálculo de consumo/estado de la ficha de binders (misma definición)."""
     from .binders import _metricas_binders   # lazy: evita import circular
 
-    binders = list(db.scalars(select(Binder)).all())
+    binders = list(db.scalars(
+        select(Binder).options(selectinload(Binder.limites), selectinload(Binder.secciones))).all())
     met = _metricas_binders(db, binders)
     avisos: list[Aviso] = []
     for b in binders:
@@ -359,7 +366,8 @@ def _tareas_pendientes(db: Session) -> list[Aviso]:
 
     hoy = dt.date.today()
     binders = {b.id: b for b in db.scalars(select(Binder)).all()}
-    tareas = db.scalars(select(Tarea).where(Tarea.estado == "Activa")).all()
+    tareas = db.scalars(select(Tarea).where(Tarea.estado == "Activa").options(
+        selectinload(Tarea.pasos).selectinload(TareaPaso.hechos), selectinload(Tarea.hechas))).all()
     datos = _periodos_datos(db, {t.binder_id for t in tareas})
     avisos: list[Aviso] = []
     for t in tareas:

@@ -43,12 +43,6 @@ class Settings(BaseSettings):
     sp_pfx_path: str = ""
     sp_pfx_password: str = ""
 
-    # Carpeta base donde están los Excel de BDX (para el selector dentro de la app).
-    bdx_excel_dir: str = (
-        r"C:\Users\ferna\Mayrit Insurance Broker\Mayrit - Negocio - Documentos"
-        r"\Agencias de Suscripcion\Alea\Binders\Dale (CY)"
-    )
-
     # Plantilla Word (tokens) para generar los FDO/LPAN (formulario London Premium Advice Note).
     lpan_plantilla: str = (
         r"C:\Users\ferna\Mayrit Insurance Broker\Mayrit - Negocio - Documentos"

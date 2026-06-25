@@ -9,7 +9,6 @@ natural 'AÑO-NNNN'. Los "pendientes" (cobro/liquidación) los recalcula el back
 import calendar
 import datetime as dt
 import io
-import os
 import re
 from decimal import Decimal, ROUND_HALF_UP
 
@@ -1115,19 +1114,7 @@ def liquidar_premium(binder_id: int, payload: AccionPremium, db: Session = Depen
                            mov={"tipo": "Primas", "subtipo": "Liquidación", "fecha": payload.fecha, "importe_de": lambda l: l.liquidado_uw})
 
 
-# ─────────────── Macheo automático desde Excel (cualquier formato) ───────────────
-def _resolver_excel(ruta: str) -> str:
-    base = os.path.abspath(settings.bdx_excel_dir)
-    destino = os.path.abspath(os.path.join(base, ruta))
-    if os.path.commonpath([base, destino]) != base:
-        raise HTTPException(status_code=400, detail="Ruta fuera de la carpeta base.")
-    if not os.path.isfile(destino):
-        raise HTTPException(status_code=404, detail=f"No existe el fichero: {ruta}")
-    if not destino.lower().endswith(".xlsx"):
-        raise HTTPException(status_code=400, detail="Solo se admite .xlsx (convierte los .xls antes).")
-    return destino
-
-
+# ─────────────── Macheo automático del Premium desde un Excel subido ───────────────
 def _cabecera(ws, max_scan: int = 12):
     """Detecta la fila de cabecera (la que más celdas de texto tiene) y devuelve (idx, columnas)."""
     filas = []
@@ -1202,14 +1189,6 @@ async def excel_preview(binder_id: int, file: UploadFile = File(...), hoja: str 
             "importe": _sugerir(columnas, prod.premium_col_importe if prod else None, ["our line", "gross written", "net to broker", "net to", "gwp", "importe", "premium"]),
         },
     }
-
-
-class MatchExcelReq(BaseModel):
-    ruta: str
-    hoja: str
-    certificado: str           # nombre de la columna del Certificado
-    importe: str | None = None  # nombre de la columna del Importe (comprobación)
-    periodo: str                # mes del Premium 'YYYY-MM'
 
 
 class MatchRow(BaseModel):

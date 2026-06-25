@@ -4,7 +4,6 @@ Endpoints de BDX (bordereaux Risk/Premium). Estructura:
 Claims va en otro módulo.
 """
 import datetime as dt
-import os
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel
@@ -69,28 +68,6 @@ def _exigir_no_bloqueada(db: Session, bdx_id: int, linea: BdxLinea | sch.BdxLine
             status_code=409,
             detail="Periodo bloqueado: este BDX está cerrado y no admite cambios en sus líneas.",
         )
-
-
-@router.get("/bdx/excel-dir")
-def excel_dir(sub: str = ""):
-    """Lista (SOLO LECTURA) carpetas y ficheros Excel de la carpeta base de BDX, para el
-    selector dentro de la app. `sub` navega por subcarpetas, restringido a la base."""
-    base = os.path.abspath(settings.bdx_excel_dir)
-    destino = os.path.abspath(os.path.join(base, sub)) if sub else base
-    if os.path.commonpath([base, destino]) != base:  # no salir de la base
-        raise HTTPException(status_code=400, detail="Ruta fuera de la carpeta base.")
-    if not os.path.isdir(destino):
-        raise HTTPException(status_code=404, detail=f"No existe la carpeta: {destino}")
-    dirs, files = [], []
-    for nombre in sorted(os.listdir(destino), key=str.lower):
-        ruta = os.path.join(destino, nombre)
-        if os.path.isdir(ruta):
-            dirs.append(nombre)
-        elif nombre.lower().endswith((".xlsx", ".xls")):
-            st = os.stat(ruta)
-            files.append({"name": nombre, "size": st.st_size, "mtime": int(st.st_mtime)})
-    rel = os.path.relpath(destino, base)
-    return {"base": base, "sub": "" if rel == "." else rel.replace("\\", "/"), "dirs": dirs, "files": files}
 
 
 # ── Subir Risk BDX desde un Excel del navegador (funciona en local y en Azure) ──
