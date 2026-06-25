@@ -113,6 +113,9 @@ PERIODO_MIN = "2021-06"           # antes de junio 2021 no se generó comisión:
 # Correcciones puntuales del mes de comisión de recibos históricos cuyas fechas no concuerdan
 # (ni fecha_contable ni periodo aciertan siempre). Recibo nº → mes real (YYYY-MM). No se toca el
 # dato del recibo (fecha_contable la usa el Cierre Contable); solo afecta a la agrupación aquí.
+# Recibos tipo «Comisiones»/Iberian que NO son la comisión de Iberian-RC Profesional (fueron otra
+# cosa puntual, asegurado «Iberian Insurance Group, S.L.», 100% cedida; ya no se repetirá). Se excluyen.
+EXCLUIR_RECIBOS = {"2023-0094", "2023-0095", "2023-0096"}
 CORRECCIONES_MES = {
     "2022-0041": "2022-03",   # es de marzo 2022 (su fecha_contable dice 2022-04-01)
     "2022-0106": "2022-09",   # es de septiembre 2022 (su fecha_contable dice octubre)
@@ -127,6 +130,8 @@ def _hist_por_periodo(db: Session) -> dict[str, dict]:
     for r in db.scalars(select(Recibo).where(
             Recibo.tipo_poliza == "Comisiones", Recibo.corredor == "Iberian")).all():
         if (r.referencia or "") == REF_MODULO:
+            continue
+        if r.numero in EXCLUIR_RECIBOS:   # no son comisión de Iberian-RC Profesional
             continue
         # El mes REAL de la comisión es la fecha CONTABLE (el `periodo` a veces apunta al mes en que se
         # emitió, no al de la comisión: p. ej. 2025-0034 es de enero pero su periodo dice marzo).
