@@ -269,11 +269,13 @@ def _serializar(db: Session, t: Tarea, datos: dict | None = None) -> TareaRead:
     ocs = _ocurrencias(t, binder) if binder else []
     hechas = _fechas_hechas(t, binder, datos)
     hoy = dt.date.today()
-    debidas = [f for f in ocs if _debida(t, f, hoy, f in hechas)]
-    d.n_ocurrencias = len(debidas)
-    d.n_hechas = len([f for f in ocs if f in hechas])
+    # Una entrega solo "existe" cuando su plazo (con su aviso) ha llegado. Las futuras NO cuentan,
+    # aunque el dato del periodo ya esté cargado (auto-marcado): aparecen al cumplirse su fecha.
+    activas = [f for f in ocs if _debida(t, f, hoy, False)]
+    d.n_ocurrencias = len(activas)
+    d.n_hechas = len([f for f in activas if f in hechas])
     d.n_pasos = len(t.pasos)
-    d.proxima = next((f for f in ocs if f not in hechas and _debida(t, f, hoy, False)), None)
+    d.proxima = next((f for f in activas if f not in hechas), None)
     return d
 
 
@@ -356,14 +358,14 @@ def agenda(binder_id: int | None = None, solo_pendientes: bool = False, db: Sess
         done = _fechas_hechas(t, binder, datos)
         for k, f in enumerate(_ocurrencias(t, binder)):
             h = hechas.get(f)
-            if f in done:
+            if not _debida(t, f, hoy, False):
+                estado = "futura"      # su plazo aún no ha llegado (aunque el dato ya exista)
+            elif f in done:
                 estado = "hecha"
             elif f < hoy:
                 estado = "vencida"
-            elif _debida(t, f, hoy, False):
-                estado = "pendiente"
             else:
-                estado = "futura"
+                estado = "pendiente"
             if solo_pendientes and estado not in ("vencida", "pendiente"):
                 continue
             pasos, _ = _pasos_de_ocurrencia(t, binder, f, k, datos, manual)
@@ -465,14 +467,14 @@ def ocurrencias(tarea_id: int, incluir_futuras: bool = False, db: Session = Depe
         pasos, completa = _pasos_de_ocurrencia(t, binder, f, k, datos, manual)
         h = hechas.get(f)
         hecha = completa if t.pasos else (h is not None)
-        if hecha:
+        if not _debida(t, f, hoy, False):
+            estado = "futura"          # su plazo aún no ha llegado (aunque el dato del periodo ya exista)
+        elif hecha:
             estado = "hecha"
         elif f < hoy:
             estado = "vencida"
-        elif _debida(t, f, hoy, False):
-            estado = "pendiente"
         else:
-            estado = "futura"
+            estado = "pendiente"
         if estado == "futura" and not incluir_futuras:
             continue
         out.append(OcurrenciaOut(
