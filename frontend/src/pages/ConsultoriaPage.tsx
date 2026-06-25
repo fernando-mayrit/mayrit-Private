@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { consultoriaApi, crud, type ConsultoriaContrato, type ConsultoriaCobro } from "../api";
 import type { Productor, CuentaBancaria } from "../types";
 import { fmtMiles, fmtFechaES } from "../format";
 import PageHeader from "../components/PageHeader";
 import FormPanel from "../components/FormPanel";
+import ConfirmDialog from "../components/ConfirmDialog";
 
 const apiProductores = crud<Productor, unknown>("/productores");
 const apiCuentas = crud<CuentaBancaria, unknown>("/cuentas-bancarias");
@@ -49,6 +50,9 @@ export default function ConsultoriaPage() {
   const [cobrosDe, setCobrosDe] = useState<ConsultoriaContrato | null>(null);
   const [cobros, setCobros] = useState<ConsultoriaCobro[]>([]);
   const [busyCobro, setBusyCobro] = useState<string | null>(null);
+  const [confirmar, setConfirmar] = useState<{
+    titulo: string; mensaje: ReactNode; importe?: ReactNode; detalle?: ReactNode; confirmLabel: string; accion: () => void;
+  } | null>(null);
 
   async function cargar() {
     try {
@@ -151,6 +155,26 @@ export default function ConsultoriaPage() {
       setCobros((await consultoriaApi.cobros(cobrosDe.id)).cobros);
       await cargar();
     } catch (e) { setError((e as Error).message); } finally { setBusyCobro(null); }
+  }
+  // Confirmación antes de generar el recibo (como los cobros de los binders).
+  function pedirGenerar(co: ConsultoriaCobro) {
+    if (!cobrosDe) return;
+    setConfirmar({
+      titulo: "Generar recibo de consultoría",
+      mensaje: (
+        <>Vas a generar el recibo de <b>{cobrosDe.productor_nombre ?? "este cliente"}</b> del periodo{" "}
+          <b>{co.periodo}</b> con fecha <b>{fmtFechaES(co.fecha)}</b>.</>
+      ),
+      importe: (
+        <>
+          <div className="ci-lbl">Total (Base + IVA)</div>
+          <div className="ci-val">{eur(co.total)}</div>
+        </>
+      ),
+      detalle: "Se creará el recibo tipo «Consultoría».",
+      confirmLabel: "Generar recibo",
+      accion: () => { setConfirmar(null); generar(co.periodo); },
+    });
   }
   const [facturaMsg, setFacturaMsg] = useState<string | null>(null);
   async function generarFactura(periodo: string) {
@@ -349,7 +373,7 @@ export default function ConsultoriaPage() {
                       ? <span className={`pill ${co.recibo_cobrado ? "pill-cobrado" : "pill-parcial"}`}>
                           {co.recibo_cobrado ? "Cobrado" : "Pendiente de Cobro"}
                         </span>
-                      : <button className="btn-primary btn-sm" disabled={busyCobro === co.periodo} onClick={() => generar(co.periodo)}>
+                      : <button className="btn-primary btn-sm" disabled={busyCobro === co.periodo} onClick={() => pedirGenerar(co)}>
                           {busyCobro === co.periodo ? "…" : "Generar"}
                         </button>}
                     {" "}
@@ -362,6 +386,18 @@ export default function ConsultoriaPage() {
             </tbody>
           </table>
         </FormPanel>
+      )}
+
+      {confirmar && (
+        <ConfirmDialog
+          titulo={confirmar.titulo}
+          mensaje={confirmar.mensaje}
+          importe={confirmar.importe}
+          detalle={confirmar.detalle}
+          confirmLabel={confirmar.confirmLabel}
+          onConfirm={confirmar.accion}
+          onClose={() => setConfirmar(null)}
+        />
       )}
     </div>
   );
