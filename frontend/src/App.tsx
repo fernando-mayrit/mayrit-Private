@@ -10,6 +10,7 @@ import RecibosPage from "./pages/RecibosPage";
 import SiniestrosPage from "./pages/SiniestrosPage";
 import TriangulacionPage from "./pages/TriangulacionPage";
 import ConsultoriaPage from "./pages/ConsultoriaPage";
+import ComisionesPage from "./pages/ComisionesPage";
 import TareasPage from "./pages/TareasPage";
 import LpanPage from "./pages/LpanPage";
 import CierreContablePage from "./pages/CierreContablePage";
@@ -438,7 +439,7 @@ export default function App() {
           {page === "contabilidad" && <EnConstruccion titulo="Contabilidad" />}
           {page === "polizas" && <PolizasPage />}
           {page === "consultoria" && <ConsultoriaPage />}
-          {page === "comisiones" && <EnConstruccion titulo="Comisiones" />}
+          {page === "comisiones" && <ComisionesPage />}
           {page === "ramos" && <RamosPage />}
           {page === "cuentas" && <CuentasBancariasPage />}
           {page === "usuarios" && <UsuariosPage />}

@@ -297,6 +297,29 @@ export const consultoriaApi = {
       `/consultoria/${id}/cobros/generar-factura`, { method: "POST", body: JSON.stringify({ periodo }) }),
 };
 
+// ── Comisiones (liquidación mensual; fuente Iberian) ──
+export interface MesComision {
+  periodo: string;
+  comision_premium: number | string;
+  liq_id?: number | null;
+  estado?: string | null;             // Preparado | Ratificado
+  comision?: number | string | null;
+  cedida?: number | string | null;
+  retenida?: number | string | null;
+  pago1_nombre?: string | null;
+  pago1_importe?: number | string | null;
+  pago2_nombre?: string | null;
+  pago2_importe?: number | string | null;
+  recibo_numero?: string | null;
+}
+export const comisionesApi = {
+  iberian: () => request<MesComision[]>("/comisiones/iberian"),
+  preparar: (periodo: string) => request<MesComision>(`/comisiones/iberian/${periodo}/preparar`, { method: "POST" }),
+  ratificar: (liqId: number, d: { comision_definitiva: number; pago1_importe?: number | null; pago2_importe?: number | null }) =>
+    request<MesComision>(`/comisiones/${liqId}/ratificar`, { method: "PUT", body: JSON.stringify(d) }),
+  borrar: (liqId: number) => request(`/comisiones/${liqId}`, { method: "DELETE" }),
+};
+
 // ── Tareas recurrentes manuales por binder ──
 export interface Tarea {
   id: number;
