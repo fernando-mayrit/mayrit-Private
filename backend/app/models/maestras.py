@@ -996,3 +996,32 @@ class TareaPasoHecho(Base):
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     paso: Mapped["TareaPaso"] = relationship(back_populates="hechos")
+
+
+class ComisionLiquidacion(Base):
+    """Liquidación mensual de comisiones de una fuente (p. ej. Iberian). Se PREPARA con la comisión
+    estimada del Premium (coverholder) y queda PENDIENTE DE RATIFICAR hasta que la fuente envía las
+    cifras definitivas (comisión total + reparto del 85% cedido entre sus sociedades). Genera un recibo
+    tipo «Comisiones» (prima 0; deducción = comisión; cedida 85%; retenida Mayrit 15%)."""
+
+    __tablename__ = "comision_liquidaciones"
+    __table_args__ = (UniqueConstraint("fuente", "periodo", name="uq_comision_fuente_periodo"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    fuente: Mapped[str] = mapped_column(String(20))                 # 'Iberian' | 'Wii'
+    programa_id: Mapped[int | None] = mapped_column(ForeignKey("programas.id", ondelete="SET NULL"))
+    periodo: Mapped[str] = mapped_column(String(7))                 # 'YYYY-MM'
+    fecha: Mapped[dt.date] = mapped_column(Date)                    # día 1 del mes
+    comision_premium: Mapped[Decimal] = mapped_column(Numeric(18, 2), server_default=text("0"), default=0)   # estimada
+    comision_definitiva: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))                              # la que ratifica la fuente
+    cedida_pct: Mapped[Decimal] = mapped_column(Numeric(7, 4), server_default=text("85"), default=85)
+    retenida_pct: Mapped[Decimal] = mapped_column(Numeric(7, 4), server_default=text("15"), default=15)
+    pago1_nombre: Mapped[str | None] = mapped_column(String(200))   # sociedad 1 (Iberian Insurance Broker, S.L.)
+    pago1_importe: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    pago2_nombre: Mapped[str | None] = mapped_column(String(200))   # sociedad 2 (Hauora Brokerage, S.L. — desaparecerá)
+    pago2_importe: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    estado: Mapped[str] = mapped_column(String(20), server_default="Preparado", default="Preparado")  # Preparado | Ratificado
+    recibo_id: Mapped[int | None] = mapped_column(ForeignKey("recibos.id", ondelete="SET NULL"))
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    recibo: Mapped["Recibo | None"] = relationship()
