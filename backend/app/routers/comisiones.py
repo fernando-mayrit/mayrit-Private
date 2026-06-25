@@ -110,6 +110,12 @@ def _mes_de_liq(db: Session, liq: ComisionLiquidacion, base: Decimal) -> MesComi
 
 REF_MODULO = "comision-iberian"   # marca los recibos creados por este módulo (vs. los históricos)
 PERIODO_MIN = "2021-06"           # antes de junio 2021 no se generó comisión: no se listan esos meses
+# Correcciones puntuales del mes de comisión de recibos históricos cuyas fechas no concuerdan
+# (ni fecha_contable ni periodo aciertan siempre). Recibo nº → mes real (YYYY-MM). No se toca el
+# dato del recibo (fecha_contable la usa el Cierre Contable); solo afecta a la agrupación aquí.
+CORRECCIONES_MES = {
+    "2022-0041": "2022-03",   # es de marzo 2022 (su fecha_contable dice 2022-04-01)
+}
 
 
 def _hist_por_periodo(db: Session) -> dict[str, dict]:
@@ -122,7 +128,8 @@ def _hist_por_periodo(db: Session) -> dict[str, dict]:
             continue
         # El mes REAL de la comisión es la fecha CONTABLE (el `periodo` a veces apunta al mes en que se
         # emitió, no al de la comisión: p. ej. 2025-0034 es de enero pero su periodo dice marzo).
-        per = r.fecha_contable.strftime("%Y-%m") if r.fecha_contable else r.periodo
+        # Algunos recibos sueltos no cuadran con ninguna fecha → corrección explícita por número.
+        per = CORRECCIONES_MES.get(r.numero) or (r.fecha_contable.strftime("%Y-%m") if r.fecha_contable else r.periodo)
         d = out.setdefault(per, {"comision": D0, "cedida": D0, "retenida": D0, "nums": [], "recibo_id": r.id})
         d["comision"] += (r.deduccion_total or D0)
         d["cedida"] += (r.comision_cedida or D0)
