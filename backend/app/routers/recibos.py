@@ -748,7 +748,9 @@ def gestion(recibo_id: int, payload: GestionRecibo, db: Session = Depends(get_db
                 r.comision_cedida_fecha_pago = None
                 r.cuenta_pago_id = None
         else:
-            r.prima_cobrada = r.prima_adeudada
+            # En recibos de Comisiones no hay prima: lo que nos pagan (y se cobra) es la comisión,
+            # que vive en deduccion_total. En el resto, la prima adeudada.
+            r.prima_cobrada = r.deduccion_total if r.tipo_poliza == "Comisiones" else r.prima_adeudada
             r.comision_retenida_cobrada = r.comision_retenida
             r.liquidar_cobrado = r.liquidar
             r.prima_fecha_cobro = f

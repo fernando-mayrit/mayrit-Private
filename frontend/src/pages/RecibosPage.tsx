@@ -220,7 +220,8 @@ export default function RecibosPage() {
   // Pide confirmación antes de una acción íntegra (evita clics accidentales).
   function pedirGestion(r: Recibo, accion: "cobrar" | "liquidar" | "traspasar" | "pagar", deshacer: boolean, lbl: string) {
     const importe: Record<typeof accion, number> = {
-      cobrar: num(r.prima_adeudada),
+      // En comisiones se cobra la comisión (deduccion_total), no la prima (que es 0).
+      cobrar: num(r.tipo_poliza === "Comisiones" ? r.deduccion_total : r.prima_adeudada),
       liquidar: num(r.liquidar_cobrado),
       traspasar: num(r.comision_retenida_cobrada),
       pagar: num(r.comision_cedida_a_pagar) || num(r.comision_cedida),

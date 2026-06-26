@@ -116,6 +116,12 @@ export default function ReciboModal({
   // Por eso se oculta la caja de "Comisión cedida (corredor)" en binders.
   const esBinder = (recibo as Partial<Recibo>).binder_id != null;
 
+  // Recibo de Comisiones (p. ej. Iberian): no hay prima ni liquidación a la compañía. Lo que
+  // "nos tienen que pagar" es la COMISIÓN (deduccion_total), que es lo que se cobra. Por eso en
+  // estos recibos la caja "Cobro de primas" muestra la comisión y la de "Liquidación" no aplica.
+  const esComisiones = (recibo as Partial<Recibo>).tipo_poliza === "Comisiones";
+  const comisionCobrarPdte = n(f.deduccion_total) - n(f.prima_cobrada);
+
   // Campos reutilizables (en emisión, soloLectura → todos deshabilitados)
   const Money = ({ k, label, full }: { k: string; label: string; full?: boolean }) => (
     <div className="field">
@@ -237,28 +243,49 @@ export default function ReciboModal({
         {/* ── Columna derecha: 3 cajas ── */}
         <div className="recibo-col">
           <div className="recibo-box">
-            <h4>Cobro de primas</h4>
-            <Money k="prima_adeudada" label="Prima Adeudada" full />
-            <div className="campos-grid" style={{ gridTemplateColumns: "1fr 1fr" }}>
-              <Money k="prima_cobrada" label="Prima Cobrada" />
-              <RO label="Pendiente de Cobro" v={primaPdteCobro} />
-            </div>
-            <Fecha k="prima_fecha_cobro" label="Fecha de Cobro" />
+            <h4>{esComisiones ? "Cobro de la comisión" : "Cobro de primas"}</h4>
+            {esComisiones ? (
+              <>
+                {/* En comisiones lo que nos tienen que pagar es la comisión (deduccion_total). */}
+                <RO label="Comisión a cobrar" v={n(f.deduccion_total)} full />
+                <div className="campos-grid" style={{ gridTemplateColumns: "1fr 1fr" }}>
+                  <Money k="prima_cobrada" label="Cobrada" />
+                  <RO label="Pendiente de Cobro" v={comisionCobrarPdte} />
+                </div>
+                <Fecha k="prima_fecha_cobro" label="Fecha de Cobro" />
+              </>
+            ) : (
+              <>
+                <Money k="prima_adeudada" label="Prima Adeudada" full />
+                <div className="campos-grid" style={{ gridTemplateColumns: "1fr 1fr" }}>
+                  <Money k="prima_cobrada" label="Prima Cobrada" />
+                  <RO label="Pendiente de Cobro" v={primaPdteCobro} />
+                </div>
+                <Fecha k="prima_fecha_cobro" label="Fecha de Cobro" />
+              </>
+            )}
           </div>
 
-          <div className="recibo-box">
-            <h4>Liquidación a la Cía</h4>
-            <Money k="liquidar" label="A Liquidar" full />
-            <div className="campos-grid" style={{ gridTemplateColumns: "1fr 1fr" }}>
-              <Money k="liquidar_cobrado" label="A Liquidar Cobrado" />
-              <RO label="A Liquidar Pdte. Cobro" v={liqPdteCobro} />
+          {esComisiones ? (
+            <div className="recibo-box recibo-box-na">
+              <h4>Liquidación a la Cía</h4>
+              <span className="pill pill-anulado">No aplica</span>
             </div>
-            <div className="campos-grid" style={{ gridTemplateColumns: "1fr 1fr" }}>
-              <Money k="liquidar_liquidado" label="Liquidado" />
-              <RO label="Pdte. Liquidación" v={liqPdteLiquidacion} />
+          ) : (
+            <div className="recibo-box">
+              <h4>Liquidación a la Cía</h4>
+              <Money k="liquidar" label="A Liquidar" full />
+              <div className="campos-grid" style={{ gridTemplateColumns: "1fr 1fr" }}>
+                <Money k="liquidar_cobrado" label="A Liquidar Cobrado" />
+                <RO label="A Liquidar Pdte. Cobro" v={liqPdteCobro} />
+              </div>
+              <div className="campos-grid" style={{ gridTemplateColumns: "1fr 1fr" }}>
+                <Money k="liquidar_liquidado" label="Liquidado" />
+                <RO label="Pdte. Liquidación" v={liqPdteLiquidacion} />
+              </div>
+              <Fecha k="liquidar_fecha_liquidacion" label="Fecha de Liquidación" />
             </div>
-            <Fecha k="liquidar_fecha_liquidacion" label="Fecha de Liquidación" />
-          </div>
+          )}
 
           <div className="recibo-box">
             <h4>Comisión retenida (Mayrit)</h4>
