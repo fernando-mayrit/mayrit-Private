@@ -5,7 +5,7 @@ import FormPanel from "../components/FormPanel";
 import TablaDatos, { type Col } from "../components/TablaDatos";
 import { fmtMiles, fmtFechaES } from "../format";
 
-const STORAGE_KEY = "mayrit.lpans.global.tabla.v2";
+const STORAGE_KEY = "mayrit.lpans.global.tabla.v3";
 const n = (v: unknown) => Number(v) || 0;
 
 const COLS: Col<LpanGlobal>[] = [
@@ -33,7 +33,7 @@ const COLS: Col<LpanGlobal>[] = [
 const DEFAULT_KEYS = [
   "tipo", "periodo", "binder_umr", "poliza_numero", "section", "risk_code",
   "signing_number", "work_package", "gross_premium", "tax", "net_premium", "fecha", "estado",
-  "liberado", "pagado",
+  "sdd", "liberado", "pagado",
 ];
 
 export default function LpanPage() {
@@ -42,6 +42,8 @@ export default function LpanPage() {
   const [error, setError] = useState<string | null>(null);
   const [fPrograma, setFPrograma] = useState("");
   const [fTipo, setFTipo] = useState("");
+  const [fUmr, setFUmr] = useState("");
+  const [fSdd, setFSdd] = useState("");
   const [exportando, setExportando] = useState(false);
   const [expCols, setExpCols] = useState<Set<string>>(new Set());
   const [expSaving, setExpSaving] = useState(false);
@@ -69,8 +71,10 @@ export default function LpanPage() {
   const filtrados = useMemo(
     () => items
       .filter((l) => !fPrograma || l.programa === fPrograma)
-      .filter((l) => !fTipo || l.tipo === fTipo),
-    [items, fPrograma, fTipo],
+      .filter((l) => !fTipo || l.tipo === fTipo)
+      .filter((l) => !fUmr || (l.binder_umr ?? "").toLowerCase().includes(fUmr.toLowerCase()))
+      .filter((l) => !fSdd || `${fmtFechaES(l.sdd)} ${l.sdd ?? ""}`.toLowerCase().includes(fSdd.toLowerCase())),
+    [items, fPrograma, fTipo, fUmr, fSdd],
   );
 
   // Edición en línea de Liberado/Pagado: guarda en el backend (mismo registro que la pestaña del
@@ -200,6 +204,10 @@ export default function LpanPage() {
                   <option value="">Tipo: todos</option>
                   {tipos.map((t) => <option key={t} value={t}>{t}</option>)}
                 </select>
+                <input type="search" className="filtro" placeholder="Buscar UMR…" value={fUmr}
+                  title="Buscar por UMR (Binder)" onChange={(e) => setFUmr(e.target.value)} />
+                <input type="search" className="filtro" placeholder="Buscar SDD…" value={fSdd}
+                  title="Buscar por SDD (fecha)" onChange={(e) => setFSdd(e.target.value)} />
               </div>
             </div>
             <div className="bdx-totales">
