@@ -548,13 +548,13 @@ td.num, th.num { text-align: right; }
 .part-total.ok { color: #15803d; }
 .btn-sm { padding: 5px 10px; font-size: 13px; }
 
-/* Botón "Descarga" (Excel): verde corporativo de Excel, algo más alto, con el logo a la izquierda */
+/* Botón "Descarga" (Excel): fondo blanco con borde, logo de Excel a color y algo más alto */
 .btn-excel {
   display: inline-flex; align-items: center; gap: 7px;
-  background: #217346; color: #fff; border-color: #217346;
+  background: #fff; color: var(--gris); border-color: var(--borde);
   padding: 9px 16px; font-weight: 600;
 }
-.btn-excel:hover { background: #1a5c38; border-color: #1a5c38; }
+.btn-excel:hover { background: var(--gris-claro); }
 .btn-excel svg { display: block; flex: none; }
 
 /* Risk codes de una sección (casillas) */
