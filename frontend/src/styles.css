@@ -775,7 +775,8 @@ tr.fila-inactiva td { opacity: 0.55; }
 
 .inicio-accesos {
   margin-top: 28px; display: grid; gap: 14px;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  /* Los 5 accesos, siempre en una sola línea. */
+  grid-template-columns: repeat(5, 1fr);
 }
 .inicio-card {
   display: flex; flex-direction: column; align-items: center; gap: 8px;
