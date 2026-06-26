@@ -37,6 +37,12 @@ mayrit-backup.env
 *.dot
 *.pdf
 
+# Excepción: plantillas Word (documentos EN BLANCO con tokens, sin datos de clientes).
+# Se incluyen en el repo para que el backend pueda generar los Word también en Azure,
+# donde no existe la carpeta de OneDrive con las plantillas.
+!backend/app/plantillas/
+!backend/app/plantillas/*.dotx
+
 # ── Python (backend FastAPI) ─────────────────────────────────────────────────
 __pycache__/
 *.pyc

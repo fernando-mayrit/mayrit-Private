@@ -5,6 +5,17 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 _ENV = os.path.join(os.path.expanduser("~"), ".mayrit", ".env")
 _ENV_ALEA = os.path.join(os.path.expanduser("~"), ".alea", ".env")
 
+# Plantillas Word incluidas en el repo (fallback para Azure, donde no existe la carpeta de OneDrive).
+_PLANTILLAS_REPO = os.path.join(os.path.dirname(__file__), "plantillas")
+
+
+def _resolver_plantilla(preferida: str, nombre: str) -> str:
+    """Devuelve la plantilla de OneDrive si existe (uso local, así se editan en su sitio); si no
+    (p. ej. en Azure), la copia incluida en el repo (backend/app/plantillas/<nombre>)."""
+    if preferida and os.path.isfile(preferida):
+        return preferida
+    return os.path.join(_PLANTILLAS_REPO, nombre)
+
 
 def _leer_env(path: str) -> dict:
     d: dict = {}
@@ -49,13 +60,14 @@ class Settings(BaseSettings):
         r"\Documentacion\Plantillas\Plantilla LPAN.dotx"
     )
 
-    # Plantilla Word (tokens) para las facturas de Consultoría (honorarios).
-    factura_plantilla: str = (
+    # Plantilla Word (tokens) para las facturas de Consultoría (honorarios). La ruta LOCAL (OneDrive)
+    # se usa si existe; en Azure no existe y se cae a la copia del repo (ver `factura_plantilla`).
+    factura_plantilla_local: str = (
         r"C:\Users\ferna\Mayrit Insurance Broker\Mayrit - Negocio - Documentos"
         r"\Documentacion\Plantillas\Plantilla Factura.dotx"
     )
     # Plantilla Word (tokens) para las facturas de Comisiones (mismos tokens que la de Consultoría).
-    comisiones_plantilla: str = (
+    comisiones_plantilla_local: str = (
         r"C:\Users\ferna\Mayrit Insurance Broker\Mayrit - Negocio - Documentos"
         r"\Documentacion\Plantillas\Plantilla Factura Comisiones.dotx"
     )
@@ -65,6 +77,14 @@ class Settings(BaseSettings):
         r"C:\Users\ferna\Mayrit Insurance Broker\Mayrit - Sociedad - Documentos"
         r"\Societario\Cuentas"
     )
+
+    @property
+    def factura_plantilla(self) -> str:
+        return _resolver_plantilla(self.factura_plantilla_local, "Plantilla Factura.dotx")
+
+    @property
+    def comisiones_plantilla(self) -> str:
+        return _resolver_plantilla(self.comisiones_plantilla_local, "Plantilla Factura Comisiones.dotx")
 
     @property
     def database_url(self) -> str:
