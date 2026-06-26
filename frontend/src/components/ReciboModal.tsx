@@ -206,22 +206,24 @@ export default function ReciboModal({
           ) : corrigiendo ? (
             <span className="hint">✏️ Modo corrección — solo para corregir errores antes de enviar a contabilidad.</span>
           ) : (
-            <>
-              <span className="pill pill-cobrado pill-estado-lg">Emitido</span>
+            <span className="pill pill-cobrado pill-estado-lg">Emitido</span>
+          )}
+          {/* Grupo derecho: Word a la izquierda, Corregir a la derecha del todo */}
+          <div className="acciones-top-der">
+            {onWord && (
+              <button
+                className="btn-word btn-sm"
+                onClick={onWord}
+                disabled={generandoWord}
+                title="Generar el documento Word (factura) de este recibo"
+              >
+                {generandoWord ? "Generando…" : "📄 Word"}
+              </button>
+            )}
+            {!bloqueado && !corrigiendo && (
               <button className="btn-sm btn-corregir" onClick={pedirCorregir}>✏️ Corregir</button>
-            </>
-          )}
-          {onWord && (
-            <button
-              className="btn-secondary btn-sm"
-              style={{ marginLeft: "auto" }}
-              onClick={onWord}
-              disabled={generandoWord}
-              title="Generar el documento Word (factura) de este recibo"
-            >
-              {generandoWord ? "Generando…" : "📄 Word"}
-            </button>
-          )}
+            )}
+          </div>
         </div>
       )}
 

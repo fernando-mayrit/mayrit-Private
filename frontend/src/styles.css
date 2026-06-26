@@ -784,11 +784,19 @@ tr.fila-inactiva td { opacity: 0.55; }
 .recibo-acciones-top {
   display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
   margin-bottom: 12px; padding-bottom: 10px; border-bottom: 1px solid var(--borde);
+  /* Forma parte del encabezado: queda fija arriba y el resto scrollea por debajo de su línea. */
+  position: sticky; top: 0; z-index: 2; background: #fff; padding-top: 2px;
 }
 .recibo-acciones-top > button:first-of-type { margin-left: auto; }  /* acciones justificadas a la derecha */
 .pill-estado-lg { font-size: 14px; padding: 6px 14px; font-weight: 700; }
 .btn-corregir { background: #f5a524; color: #fff; border-color: #f5a524; font-weight: 600; }
 .btn-corregir:hover { background: #e0921a; border-color: #e0921a; }
+/* Grupo de acciones a la derecha de la barra (Word + Corregir) */
+.acciones-top-der { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+/* Botón Word: azul corporativo de Microsoft Word */
+.btn-word { background: #2b579a; color: #fff; border-color: #2b579a; font-weight: 600; }
+.btn-word:hover { background: #1f4178; border-color: #1f4178; }
+.btn-word:disabled { background: #9bb0d1; border-color: #9bb0d1; cursor: default; }
 
 /* Selector de columnas para exportar a Excel */
 .export-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 16px; }
