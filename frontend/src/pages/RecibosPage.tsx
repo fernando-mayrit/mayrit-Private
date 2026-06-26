@@ -518,7 +518,7 @@ export default function RecibosPage() {
           onClose={() => setSel(null)}
           onDelete={() => setConfBorrar(true)}
           onDescontabilizar={descontabilizar}
-          onWord={sel.tipo_poliza === "Consultoría" ? descargarWord : undefined}
+          onWord={sel.tipo_poliza === "Consultoría" || sel.tipo_poliza === "Comisiones" ? descargarWord : undefined}
           generandoWord={generandoWord}
         />
       )}

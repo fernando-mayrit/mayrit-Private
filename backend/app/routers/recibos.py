@@ -696,10 +696,13 @@ def recibo_word(recibo_id: int, db: Session = Depends(get_db)):
     if tipo == "Consultoría":
         from .consultoria import factura_docx_para_recibo   # lazy: evita import circular
         data, nombre = factura_docx_para_recibo(db, r)
+    elif tipo == "Comisiones":
+        from .comisiones import factura_comisiones_docx_para_recibo   # lazy: evita import circular
+        data, nombre = factura_comisiones_docx_para_recibo(db, r)
     else:
         raise HTTPException(
             status_code=400,
-            detail=f"Aún no hay plantilla de Word para recibos de tipo «{tipo or '—'}». De momento solo Consultoría.",
+            detail=f"Aún no hay plantilla de Word para recibos de tipo «{tipo or '—'}». De momento solo Consultoría y Comisiones.",
         )
     from urllib.parse import quote
     return StreamingResponse(

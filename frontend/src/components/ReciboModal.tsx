@@ -217,7 +217,7 @@ export default function ReciboModal({
               style={{ marginLeft: "auto" }}
               onClick={onWord}
               disabled={generandoWord}
-              title="Generar el documento Word de este recibo (factura de Consultoría)"
+              title="Generar el documento Word (factura) de este recibo"
             >
               {generandoWord ? "Generando…" : "📄 Word"}
             </button>

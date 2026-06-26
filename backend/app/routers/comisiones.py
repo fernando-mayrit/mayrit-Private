@@ -18,8 +18,11 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from ..config import settings
 from ..db import get_db
-from ..models.maestras import Bdx, BdxLinea, Binder, ComisionLiquidacion, Programa, Recibo
+from ..models.maestras import (
+    Bdx, BdxLinea, Binder, ComisionLiquidacion, CuentaBancaria, Programa, Recibo,
+)
 from .recibos import _q2, _siguiente_numero
 
 router = APIRouter(tags=["Comisiones"])
@@ -81,6 +84,72 @@ def _aplicar_a_recibo(liq: ComisionLiquidacion, r: Recibo) -> None:
 def _dia1(periodo: str) -> dt.date:
     y, m = (int(x) for x in periodo.split("-"))
     return dt.date(y, m, 1)
+
+
+def factura_comisiones_docx_para_recibo(db: Session, r: Recibo) -> tuple[bytes, str]:
+    """Genera el Word (factura) de un recibo de Comisiones para DESCARGAR desde su ficha. Es la
+    factura a Iberian por la comisión TOTAL del mes (deduccion_total = 10% del GWP). La plantilla
+    'Plantilla Factura Comisiones.dotx' lleva ya fijos el destinatario (Iberian) y el CIF; aquí solo
+    se rellenan: NumeroRecibo, FechaRecibo, FechaEmision, Mes (concepto), DeduccionTotal y, si hay
+    cuenta, el bloque bancario (Banco/Oficina/BIC/Cuenta)."""
+    import io
+    import os
+    import tempfile
+    import zipfile
+
+    import docx
+    from .consultoria import MESES_ES, _nombre_corto, _num_es, _set_token  # lazy: evita ciclos
+
+    plantilla = settings.comisiones_plantilla
+    if not os.path.isfile(plantilla):
+        raise HTTPException(status_code=502, detail=f"No se encuentra la plantilla de comisiones: {plantilla}")
+
+    fecha = r.fecha_efecto_recibo or (_dia1(r.periodo) if r.periodo else dt.date.today())
+    if isinstance(fecha, str):
+        fecha = dt.date.fromisoformat(fecha[:10])
+    base = Decimal(r.deduccion_total or 0)   # comisión total del mes (10% del GWP)
+    mes_largo = f"{MESES_ES[fecha.month].lower()} de {fecha.year}"
+    fecha_larga = f"{fecha.day} de {MESES_ES[fecha.month].lower()} de {fecha.year}"
+
+    # La plantilla es .dotx → se convierte a .docx (cambiando el content-type) en un temporal.
+    tmp = os.path.join(tempfile.gettempdir(), "_comisiones_plantilla.docx")
+    with zipfile.ZipFile(plantilla) as zin, zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as zo:
+        for it in zin.infolist():
+            data = zin.read(it.filename)
+            if it.filename == "[Content_Types].xml":
+                data = data.replace(b"wordprocessingml.template.main+xml", b"wordprocessingml.document.main+xml")
+            zo.writestr(it, data)
+
+    d = docx.Document(tmp)
+    for p in d.paragraphs:
+        _set_token(p, "NumeroRecibo", r.numero or "")
+        _set_token(p, "FechaRecibo", fecha.strftime("%d.%m.%Y"))
+        _set_token(p, "FechaEmision", fecha_larga)
+
+    # Tabla de importes: concepto ('…al mes de <Mes>') y el total a liquidar.
+    ti = d.tables[0]
+    _set_token(ti.rows[0].cells[0].paragraphs[0], "Mes", mes_largo)
+    _set_token(ti.rows[1].cells[2].paragraphs[0], "DeduccionTotal", f"{_num_es(base)} €")
+
+    # Bloque bancario (si hay cuenta activa de gastos). IBAN en bloques de 4; oficina = posiciones 9-12.
+    cta = db.scalar(
+        select(CuentaBancaria).where(CuentaBancaria.activa.is_(True), CuentaBancaria.categoria == "Gastos")
+        .order_by(CuentaBancaria.id)
+    )
+    if cta is not None:
+        iban = (cta.iban or "").replace(" ", "")
+        iban_fmt = " ".join(iban[i:i + 4] for i in range(0, len(iban), 4))
+        oficina = iban[8:12] if len(iban) >= 12 else ""
+        for p in d.paragraphs:
+            _set_token(p, "Banco", cta.banco or "")
+            _set_token(p, "Oficina", oficina)
+            _set_token(p, "BIC", cta.swift_bic or "")
+            _set_token(p, "Cuenta", iban_fmt)
+
+    buf = io.BytesIO()
+    d.save(buf)
+    corto = _nombre_corto(r.asegurado)
+    return buf.getvalue(), f"{r.numero or 'Comisiones'} {corto} {MESES_ES[fecha.month]}.docx"
 
 
 # ── Schemas ──
