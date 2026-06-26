@@ -171,6 +171,8 @@ export default function LpanPage() {
             storageKey={STORAGE_KEY}
             defaultSort={{ key: "periodo", dir: -1 }}
             onFiltrar={setVisibles}
+            filtroCascada
+            filtroDesc
           />
           {/* Descarga a Excel: fila inferior, alineada a la izquierda bajo el listado */}
           <div style={{ marginTop: 10 }}>

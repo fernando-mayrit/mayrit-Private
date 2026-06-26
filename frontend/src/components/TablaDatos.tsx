@@ -31,6 +31,12 @@ function num(v: unknown): number {
   const n = Number(v);
   return isNaN(n) ? 0 : n;
 }
+// Milisegundos de un valor de fecha (para ordenar cronológicamente las opciones del filtro).
+function aMs(v: unknown): number {
+  if (v == null || v === "") return -Infinity;
+  const t = new Date(v as string | number | Date).getTime();
+  return isNaN(t) ? -Infinity : t;
+}
 
 export default function TablaDatos<T extends { id: number }>({
   filas,
@@ -44,6 +50,8 @@ export default function TablaDatos<T extends { id: number }>({
   defaultSort,
   resetSignal,
   onFiltrar,
+  filtroCascada = false,
+  filtroDesc = false,
 }: {
   filas: T[];
   columnas: Col<T>[];
@@ -56,6 +64,8 @@ export default function TablaDatos<T extends { id: number }>({
   defaultSort?: { key: string; dir: 1 | -1 }; // orden inicial si no hay uno guardado
   resetSignal?: number;   // al cambiar, limpia los filtros por columna
   onFiltrar?: (filas: T[]) => void; // filas realmente visibles (tras filtros por columna), para totales/export del padre
+  filtroCascada?: boolean; // opciones de cada filtro EN CASCADA (solo las compatibles con los demás filtros)
+  filtroDesc?: boolean;    // ordena las opciones del filtro de más reciente/mayor a más antiguo/menor
 }) {
   const COLS_KEY = `${storageKey}.cols`;
   const SORT_KEY = `${storageKey}.sort`;
@@ -155,9 +165,30 @@ export default function TablaDatos<T extends { id: number }>({
     });
   }
   function valoresDistintos(col: Col<T>): string[] {
-    const s = new Set<string>();
-    filas.forEach((r) => s.add(fmtValor(r, col) || VACIO));
-    return [...s].sort((a, b) => a.localeCompare(b, "es", { numeric: true }));
+    // En cascada: las opciones salen solo de las filas que cumplen los OTROS filtros activos
+    // (no el de esta misma columna), como en Excel.
+    const base = filtroCascada
+      ? filas.filter((r) =>
+          Object.entries(filtros).every(([k, set]) =>
+            k === col.key ? true : set.has(fmtValor(r, columnas.find((c) => c.key === k)!) || VACIO)
+          )
+        )
+      : filas;
+    const rep = new Map<string, unknown>();   // texto formateado -> valor crudo (para ordenar)
+    base.forEach((r) => {
+      const f = fmtValor(r, col) || VACIO;
+      if (!rep.has(f)) rep.set(f, valorRaw(r, col));
+    });
+    const numCol = col.tipo === "num" || col.tipo === "pct" || col.tipo === "int";
+    const vals = [...rep.keys()].filter((v) => v !== VACIO);
+    vals.sort((a, b) => {
+      if (col.tipo === "date") return aMs(rep.get(a)) - aMs(rep.get(b));
+      if (numCol) return num(rep.get(a)) - num(rep.get(b));
+      return a.localeCompare(b, "es", { numeric: true });
+    });
+    if (filtroDesc) vals.reverse();
+    // (vacías) siempre al final, en cualquier sentido de orden.
+    return rep.has(VACIO) ? [...vals, VACIO] : vals;
   }
   function abrirFiltro(col: Col<T>, e: React.MouseEvent) {
     e.stopPropagation();
