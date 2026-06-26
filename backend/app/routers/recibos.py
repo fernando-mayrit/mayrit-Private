@@ -675,6 +675,9 @@ def editar(recibo_id: int, payload: sch.ReciboUpdate, db: Session = Depends(get_
     for k, v in payload.model_dump(exclude_unset=True).items():
         setattr(r, k, v)
     _recompute(r)
+    # Una edición directa puede cambiar el cobro/traspaso/liquidación/pago: re-sincroniza sus
+    # transferencias (solo recibos no-binder; los de binder van por el Premium).
+    transferencias_auto.sync_recibo_todas(db, r)
     db.commit()
     db.refresh(r)
     return _read(db, r)
@@ -817,6 +820,8 @@ def borrar(recibo_id: int, db: Session = Depends(get_db)):
     if r is None:
         raise HTTPException(status_code=404, detail=f"Recibo {recibo_id} no encontrado")
     _exigir_no_contabilizado(r, "borrar")
+    # Borra los movimientos automáticos de este recibo (si no, quedarían huérfanos por el SET NULL).
+    transferencias_auto.borrar_recibo(db, recibo_id)
     # Desenlaza las líneas antes de borrar (el FK es SET NULL, pero limpiamos también el texto).
     db.execute(
         update(BdxLinea).where(BdxLinea.recibo_id == recibo_id).values(recibo_id=None, recibo=None)

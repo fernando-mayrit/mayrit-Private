@@ -115,6 +115,26 @@ def sync_recibo_accion(db: Session, r: Recibo, accion: str) -> None:
                     cuenta_origen_id=r.cuenta_pago_id)
 
 
+def sync_recibo_todas(db: Session, r: Recibo) -> None:
+    """Re-sincroniza TODOS los movimientos automáticos de un recibo NO-binder según su estado
+    actual. Para usar tras una edición directa del recibo (modal de Recibos), donde cualquiera de
+    las fases —cobro, traspaso, liquidación, pago— puede haber cambiado. Idempotente.
+    Los recibos de binder NO entran aquí: su dinero se registra a nivel de Premium (sync_binder)."""
+    if r.binder_id is not None:
+        return
+    for accion in ("cobrar", "traspasar", "liquidar", "pagar"):
+        sync_recibo_accion(db, r, accion)
+
+
+def borrar_recibo(db: Session, recibo_id: int) -> None:
+    """Borra los movimientos AUTOMÁTICOS de un recibo (al eliminarlo). Los manuales (ajustes dados
+    de alta a mano) no se tocan; su enlace al recibo se pierde por el FK (SET NULL)."""
+    db.execute(delete(Transferencia).where(
+        Transferencia.recibo_id == recibo_id,
+        Transferencia.manual.is_(False),
+    ))
+
+
 # ── Binders: el cobro/traspaso/liquidación llega por Premium (por binder + periodo) ──
 def _periodo_date(periodo: str) -> dt.date | None:
     """'YYYY-MM' → primer día del mes (como en TLiquidaciones)."""
