@@ -443,9 +443,16 @@ export default function RecibosPage() {
                 <span className="switch-label" style={{ fontSize: 11 }}>{vistaEstados ? "Ver Cantidades" : "Ver estado por colores"}</span>
               </button>
             </div>
-            {/* Excel: debajo del buscador, a la izquierda del cuadro contador */}
-            <button className="btn-secondary btn-sm" title="Exportar el listado a Excel" onClick={abrirExport}>
-              ⬇️ Excel
+            {/* Descarga a Excel: debajo del buscador, a la izquierda del cuadro contador */}
+            <button className="btn-excel" title="Descargar el listado a Excel" onClick={abrirExport}>
+              <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
+                <rect x="2" y="2" width="20" height="20" rx="3" fill="#fff" />
+                <g stroke="#217346" strokeWidth="2.4" strokeLinecap="round">
+                  <line x1="8" y1="8" x2="16" y2="16" />
+                  <line x1="16" y1="8" x2="8" y2="16" />
+                </g>
+              </svg>
+              Descarga
             </button>
           </div>
         </div>
