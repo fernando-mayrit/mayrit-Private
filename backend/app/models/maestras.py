@@ -15,6 +15,7 @@ import datetime as dt
 from decimal import Decimal
 
 from sqlalchemy import JSON, Boolean, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint, func, text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..db import Base
@@ -503,6 +504,10 @@ class BdxLinea(Base):
         ForeignKey("recibos.id", ondelete="SET NULL"), index=True
     )
     notas: Mapped[str | None] = mapped_column(Text)
+    # Fila original ÍNTEGRA del bordereau de origen (todas sus columnas con su nombre tal cual), para
+    # bordereaux con encabezados no estándar (p. ej. caución Hamilton/CGICE): garantiza que no se
+    # pierde ningún dato aunque no exista una columna específica donde mapearlo.
+    extra: Mapped[dict | None] = mapped_column(JSONB)
 
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[dt.datetime] = mapped_column(
