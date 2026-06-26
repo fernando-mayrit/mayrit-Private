@@ -762,3 +762,67 @@ Importados los binders de **reaseguro de caución** del programa **"Iberian-Cauc
 
 ### PENDIENTE
 - El **Premium** de ambos binders de caución.
+
+---
+
+## Sesión 26/06/2026 (tarde, equipo "ferna") — Recibos: fechas, tipos, Word; Binder notif.; backup NAS
+
+### Recibos — ficha (`ReciboModal.tsx`)
+- **Fechas en las 3 cajas:** Cobro → `prima_fecha_cobro`, Liquidación → `liquidar_fecha_liquidacion`,
+  Comisión retenida → `comision_fecha_traspaso`. Ya estaban en el form/payload; solo faltaba pintarlas.
+- **Recibos de Comisiones** (`tipo_poliza="Comisiones"`, Iberian): no hay prima ni liquidación. La caja
+  "Cobro de la comisión" muestra lo que nos pagan = **`deduccion_total`** (con Cobrada/Pendiente/Fecha),
+  y "Liquidación a la Cía" + Traspaso salen como **"No aplica"** (caja atenuada). Backend: la acción
+  *Cobrar* de un recibo de Comisiones registra `prima_cobrada = deduccion_total` (la prima es 0).
+- **Recibos de Consultoría:** Liquidación, Traspaso y Pago de comisión cedida → **"No aplica"**.
+
+### Recibos — listado (`RecibosPage.tsx`)
+- Pastillas por tipo: helper `tipoEs` + `baseCobro` (en Comisiones el "Cobro" se mide sobre
+  `deduccion_total`, no `prima_adeudada`=0, que falseaba un "Cobrado" verde). `noAplica` por fase:
+  Liquidación (Comisiones+Consultoría), Traspaso (Comisiones+Consultoría), Pago Comi. (binders+Consultoría).
+- Los **botones de gestión** (Liquidar/Traspasar/Pagar) se ocultan según esa misma lógica `noAplica`.
+- **Orden por defecto = fecha de efecto descendente** (antes YOA desc); YOA como desempate.
+
+### Transferencias — cierre del ciclo completo (`transferencias_auto.py`, `recibos.py`)
+Toda operación sobre recibos genera/actualiza su transferencia. Ya estaban cubiertas la gestión por
+acción (listado) y el Premium del binder; faltaban dos del listado:
+- **Editar recibo** (PUT `/recibos/{id}`): re-sincroniza las 4 fases (`sync_recibo_todas`), solo
+  recibos no-binder (los de binder van por Premium/`sync_binder`).
+- **Borrar recibo**: borra sus movimientos automáticos (`borrar_recibo`); los manuales no se tocan.
+
+### Binder — fecha de notificación de límite editable al entrar (`BindersPage.tsx`)
+Si un límite de primas está en 🔴 (excedido sin notificar), al abrir la ficha aparece un **aviso
+editable FUERA del fieldset de solo-estado** con la fecha de notificación → no hace falta pulsar
+"Corregir". Al Guardar, si esa fecha cambió, el guardado parcial cede al **completo** (el backend
+reconstruye los límites solo si recibe `secciones`).
+
+### Recibos — botón "Word" en la ficha (factura por tipo de recibo)
+- **Idea:** una plantilla Word por tipo de recibo. Empezado por **Consultoría** (= su factura).
+- Las plantillas ya existen en `…\Documentacion\Plantillas\` (`Plantilla Factura.dotx` para
+  Consultoría; también `Plantilla Factura Comisiones.dotx`, `…Nota de Debito Binder/OM.dotx`,
+  `…Recibo Cliente OM.dotx` para los siguientes).
+- Backend: `GET /recibos/{id}/word` despacha por `tipo_poliza` y **descarga** el .docx (stream).
+  `consultoria.py`: `_construir_factura_doc` parametrizado + **`factura_docx_para_recibo`** que genera
+  desde el **PROPIO recibo** (cliente=asegurado, base=`comision_retenida`, IVA=`impuestos_recibo`,
+  nº de pago, moneda…), usando contrato/productor solo para enriquecer CIF/cuenta → **funciona también
+  con los 46/81 recibos históricos sin `consultoria_id`**. Probado con el recibo 2025-0199.
+- Frontend: `recibosApi.word()` (blob + nombre del servidor); botón "📄 Word" en `ReciboModal`
+  (solo Consultoría por ahora). **PENDIENTE:** mapear los demás tipos (Comisiones, OM, Binder) a su
+  plantilla + tokens.
+
+### Backup en NAS (Capa 2) — avance de planificación (`ops/backup/`)
+- **NAS confirmado: Synology DS420+ (Intel x86) · DSM 7.3.2-86009** → soporta Container Manager
+  (Docker) y Snapshot Replication (snapshots WORM). Todo compatible.
+- `PGSSLMODE=require` añadido al script (Azure exige TLS) — commit `269602b`.
+- **IP de la oficina = DINÁMICA** (el proveedor no da IP fija). Solución elegida: **firewall
+  auto-actualizable** — el script del NAS detecta su IP pública, crea/actualiza la regla del firewall
+  de Azure vía **Azure CLI con un service principal de permisos mínimos** (solo reglas de ese servidor),
+  hace el dump y borra la regla. **PENDIENTE:** crear ese SP limitado + bloque `az` en `backup_mayrit.sh`,
+  y los pasos 1-5 en el Synology (usuario solo-lectura → firewall → Container Manager → tarea → snapshots).
+- **NOTA importante:** el intento de "Synology Cloud Sync → Azure Blob" NO procede: no existe ninguna
+  cuenta de Azure Blob Storage (en Azure solo hay PostgreSQL+App Service); el backup de DATOS sale de la
+  BD con `pg_dump`, no de GitHub (GitHub solo guarda el CÓDIGO).
+
+### Operativa de esta sesión
+- Servidores locales arrancados **ocultos** (`pythonw` backend + `node vite` sin ventana); logs en
+  `logs/` (ya en `.gitignore`).
