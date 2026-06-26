@@ -157,6 +157,10 @@ class Programa(Base):
     # Impuestos liquidados localmente por la agencia (p. ej. agencias italianas): sus impuestos NO
     # se liquidan a través de Mayrit → se EXCLUYEN del importe 'A Liquidar' de sus binders.
     impuestos_locales: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False, nullable=False)
+    # Programa de REASEGURO (p. ej. caución Iberian/Hamilton): la economía del recibo es distinta — el
+    # Cobro = Net Premium to pay to Reinsurance Broker (net_premium_to_broker) y 'A Liquidar' = Final
+    # Net Premium to UW (final_net_premium_uw); hay una capa extra de comisión del reasegurado.
+    reaseguro: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False, nullable=False)
 
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[dt.datetime] = mapped_column(

@@ -303,8 +303,17 @@ def _campos_emision(db: Session, binder: Binder, periodo: str, lineas, fecha: dt
     # Impuestos liquidados localmente (p. ej. agencias italianas): se excluyen del cobro y de
     # 'A Liquidar' (no se liquidan a través nuestro); prima_bruta/impuestos sí se reflejan.
     excl_imp = _impuestos_locales(db, binder.id)
-    adeudada = _q2(prima_bruta - cedida - (impuestos if excl_imp else D0))   # pagador = Agencia
-    liquidar = _q2(adeudada - retenida)
+    if binder.programa and binder.programa.reaseguro:
+        # Reaseguro (p. ej. caución Iberian/Hamilton): hay una capa extra (comisión del reasegurado),
+        # así que el Cobro y la liquidación salen directos de las columnas del bordereau:
+        #   Cobro      = Net Premium to pay to Reinsurance Broker by Reinsured (net_premium_to_broker)
+        #   A Liquidar = Final Net Premium to UW/Hamilton (final_net_premium_uw)
+        # La comisión retenida de Mayrit (brokerage) = Cobro − Liquidar.
+        adeudada = _q2(S("net_premium_to_broker"))
+        liquidar = _q2(S("final_net_premium_uw"))
+    else:
+        adeudada = _q2(prima_bruta - cedida - (impuestos if excl_imp else D0))   # pagador = Agencia
+        liquidar = _q2(adeudada - retenida)
 
     def pct(x):
         return _q4(x / prima_neta * 100) if prima_neta else None
