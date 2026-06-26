@@ -61,20 +61,26 @@ export default function ComisionesPage() {
   // Cedida esperada (85%): por la comisión tecleada (si se ajusta) o la del mes.
   const cedidaEsperada = useMemo(() => (defi ? num(defi) * 0.85 : num(ratDe?.cedida ?? 0)), [defi, ratDe]);
   const sumaReparto = useMemo(() => num(p1) + num(p2), [p1, p2]);
-  // Al teclear una sociedad, la otra se autocompleta con la diferencia hasta la cedida (editable).
+  // Al teclear una sociedad con importe (>0), la otra se autocompleta con la diferencia hasta la
+  // cedida (editable). Si tecleas 0 o lo dejas vacío, la otra se iguala (a 0 o vacío) para poder
+  // dejar AMBAS a 0 cuando aún no se conoce el reparto.
   const resto = (v: string) => { const r = cedidaEsperada - num(v); return r > 0 ? r.toFixed(2) : "0"; };
-  const setIberian = (v: string) => { setP1(v); setP2(resto(v)); };
-  const setHauora = (v: string) => { setP2(v); setP1(resto(v)); };
+  const setIberian = (v: string) => { setP1(v); setP2(num(v) > 0 ? resto(v) : v); };
+  const setHauora = (v: string) => { setP2(v); setP1(num(v) > 0 ? resto(v) : v); };
 
   async function repartir() {
     if (!ratDe) return;
     // El recibo se puede generar AUNQUE no tengamos todavía el desglose Iberian/Hauora (a veces lo
     // envían más tarde): en ese caso queda «Pendiente Reparto» y salta un aviso verde.
+    // Si ambas están a 0 (o vacías), no hay reparto conocido todavía → se envía null/null para que
+    // quede «Pendiente Reparto» (no «Ratificado» con reparto 0). Basta con que UNA tenga importe
+    // (>0) para considerarlo reparto y enviar las dos (la otra puede ser 0, p. ej. todo a Iberian).
+    const hayReparto = num(p1) > 0 || num(p2) > 0;
     setSaving(true); setError(null);
     try {
       await comisionesApi.reparto(ratDe.periodo, {
-        pago1_importe: p1 ? num(p1) : null,
-        pago2_importe: p2 ? num(p2) : null,
+        pago1_importe: hayReparto ? num(p1) : null,
+        pago2_importe: hayReparto ? num(p2) : null,
         comision_definitiva: defi ? num(defi) : null,
       });
       setRatDe(null);
@@ -158,8 +164,8 @@ export default function ComisionesPage() {
           <p className="hint" style={{ marginBottom: 8 }}>
             Reparte el <b>8,5% cedido</b> (85% de la comisión) entre las dos sociedades, según lo que indique Iberian.
             {!ratDe.recibo_numero && <> Al guardar se <b>genera el recibo</b> de este mes.</>}
-            {" "}Si aún no tienes el desglose de Iberian, <b>déjalo en blanco</b>: el recibo se genera igual y el mes
-            queda <b>«Pendiente Reparto»</b> (con un aviso verde) hasta que lo completes.
+            {" "}Si aún no tienes el desglose de Iberian, <b>déjalo en blanco o ambas a 0</b>: el recibo se genera
+            igual y el mes queda <b>«Pendiente Reparto»</b> (con un aviso verde) hasta que lo completes.
           </p>
           <div className="field">
             <label>Comisión del mes</label>
@@ -174,7 +180,7 @@ export default function ComisionesPage() {
             <label>Hauora Brokerage, S.L. <span className="hint">(desaparecerá)</span></label>
             <NumberInput value={p2} onChange={setHauora} decimals={2} suffix="€" />
           </div>
-          {(p1 || p2) && (
+          {(num(p1) > 0 || num(p2) > 0) && (
             <div className={`hint${Math.abs(sumaReparto - cedidaEsperada) > 0.01 ? " error" : ""}`}>
               Suma del reparto: {eur(sumaReparto)} {Math.abs(sumaReparto - cedidaEsperada) > 0.01
                 ? `(no cuadra con el 85% = ${eur(cedidaEsperada)})` : "✓"}
