@@ -157,6 +157,7 @@ export default function RecibosPage() {
   const [expCols, setExpCols] = useState<Set<string>>(new Set());
   const [expSaving, setExpSaving] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [generandoWord, setGenerandoWord] = useState(false);
   const [confBorrar, setConfBorrar] = useState(false);
   const [resetSignal, setResetSignal] = useState(0);
 
@@ -223,6 +224,25 @@ export default function RecibosPage() {
       await cargar();
     } catch (e) {
       setError((e as Error).message);
+    }
+  }
+  // Genera y descarga el Word del recibo (plantilla por tipo; de momento solo Consultoría).
+  async function descargarWord() {
+    if (!sel) return;
+    setGenerandoWord(true);
+    setError(null);
+    try {
+      const { blob, filename } = await recibosApi.word(sel.id);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setGenerandoWord(false);
     }
   }
   // Pide confirmación antes de una acción íntegra (evita clics accidentales).
@@ -498,6 +518,8 @@ export default function RecibosPage() {
           onClose={() => setSel(null)}
           onDelete={() => setConfBorrar(true)}
           onDescontabilizar={descontabilizar}
+          onWord={sel.tipo_poliza === "Consultoría" ? descargarWord : undefined}
+          generandoWord={generandoWord}
         />
       )}
       {exportando && (

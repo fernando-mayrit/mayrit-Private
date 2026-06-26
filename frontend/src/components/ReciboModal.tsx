@@ -65,6 +65,8 @@ export default function ReciboModal({
   onClose,
   onDelete,
   onDescontabilizar,
+  onWord,
+  generandoWord = false,
 }: {
   titulo: ReactNode;
   saveLabel: string;
@@ -78,6 +80,8 @@ export default function ReciboModal({
   onClose: () => void;
   onDelete?: () => void;
   onDescontabilizar?: () => void; // reabrir un recibo contabilizado (la remesa a contabilidad va aparte)
+  onWord?: () => void;            // generar/descargar el Word del recibo (plantilla por tipo)
+  generandoWord?: boolean;
 }) {
   const [f, setF] = useState<Form>(() => aForm(recibo as Partial<Recibo>));
   const [inicial] = useState<Form>(() => aForm(recibo as Partial<Recibo>));
@@ -206,6 +210,17 @@ export default function ReciboModal({
               <span className="pill pill-cobrado pill-estado-lg">Emitido</span>
               <button className="btn-sm btn-corregir" onClick={pedirCorregir}>✏️ Corregir</button>
             </>
+          )}
+          {onWord && (
+            <button
+              className="btn-secondary btn-sm"
+              style={{ marginLeft: "auto" }}
+              onClick={onWord}
+              disabled={generandoWord}
+              title="Generar el documento Word de este recibo (factura de Consultoría)"
+            >
+              {generandoWord ? "Generando…" : "📄 Word"}
+            </button>
           )}
         </div>
       )}

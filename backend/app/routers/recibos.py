@@ -14,6 +14,7 @@ from decimal import Decimal, ROUND_HALF_UP
 
 import openpyxl
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile
+from fastapi.responses import StreamingResponse
 from openpyxl.styles import Font, PatternFill
 from openpyxl.utils import get_column_letter
 from pydantic import BaseModel
@@ -681,6 +682,31 @@ def editar(recibo_id: int, payload: sch.ReciboUpdate, db: Session = Depends(get_
     db.commit()
     db.refresh(r)
     return _read(db, r)
+
+
+# ─────────────────── Documento Word del recibo (una plantilla por tipo) ───────────────────
+@router.get("/recibos/{recibo_id}/word")
+def recibo_word(recibo_id: int, db: Session = Depends(get_db)):
+    """Genera el Word del recibo según su tipo (una plantilla por tipo) y lo devuelve para descargar.
+    De momento solo Consultoría (su factura de honorarios, plantilla 'Plantilla Factura.dotx')."""
+    r = db.get(Recibo, recibo_id)
+    if r is None:
+        raise HTTPException(status_code=404, detail=f"Recibo {recibo_id} no encontrado")
+    tipo = r.tipo_poliza or ""
+    if tipo == "Consultoría":
+        from .consultoria import factura_docx_para_recibo   # lazy: evita import circular
+        data, nombre = factura_docx_para_recibo(db, r)
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Aún no hay plantilla de Word para recibos de tipo «{tipo or '—'}». De momento solo Consultoría.",
+        )
+    from urllib.parse import quote
+    return StreamingResponse(
+        io.BytesIO(data),
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(nombre)}"},
+    )
 
 
 @router.post("/recibos/{recibo_id}/contabilizar", response_model=sch.ReciboRead)

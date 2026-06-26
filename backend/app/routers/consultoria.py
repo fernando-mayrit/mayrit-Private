@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import calendar
 import datetime as dt
+import io
 import os
 import tempfile
 import zipfile
@@ -301,10 +302,11 @@ def _set_token(p, token: str, valor: str, ultimo: bool = False) -> bool:
     return True
 
 
-def _generar_factura_docx(c: ConsultoriaContrato, r: Recibo, fecha_fact: dt.date,
-                          pago_n: int, pago_t: int, cta: CuentaBancaria | None) -> str:
-    """Rellena la plantilla de factura para el recibo `r` y la guarda en
-    <facturas_dir>\\<año>\\Facturas Emitidas\\<Cliente>\\<numero> <Cliente> <Mes>.docx."""
+def _construir_factura_doc(*, numero_recibo: str, cliente: str, cif: str, fecha_fact: dt.date,
+                           frecuencia: str, pago_n, pago_t, moneda: str, base: Decimal,
+                           impuestos_porc, iva: Decimal, cta: CuentaBancaria | None):
+    """Rellena la plantilla de factura con valores YA resueltos y devuelve el documento (sin
+    guardarlo). Lo usan la generación que archiva en disco y la descarga desde la ficha del recibo."""
     import docx  # carga perezosa
 
     plantilla = settings.factura_plantilla
@@ -320,25 +322,21 @@ def _generar_factura_docx(c: ConsultoriaContrato, r: Recibo, fecha_fact: dt.date
                 data = data.replace(b"wordprocessingml.template.main+xml", b"wordprocessingml.document.main+xml")
             zo.writestr(it, data)
 
-    prod = c.productor
-    base = Decimal(c.importe or 0)
-    iva = _iva(c, base)
-    moneda = c.moneda or "EUR"
     concepto = f"Servicios Profesionales de seguros {MESES_ES[fecha_fact.month].lower()} {fecha_fact.year}"
 
     d = docx.Document(tmp)
     for p in d.paragraphs:
         t = p.text.strip()
         if "NumeroRecibo" in t:
-            _set_token(p, "NumeroRecibo", r.numero or "")
+            _set_token(p, "NumeroRecibo", numero_recibo)
         elif t.startswith("Cliente"):
-            _set_token(p, "Cliente", prod.nombre if prod else "", ultimo=True)
+            _set_token(p, "Cliente", cliente, ultimo=True)
         elif t.startswith("CIFCliente"):
-            _set_token(p, "CIFCliente", (prod.cif if prod else "") or "")
+            _set_token(p, "CIFCliente", cif)
         elif t.startswith("Fecha"):
             _set_token(p, "FechaFactura", fecha_fact.strftime("%d.%m.%Y"))
         elif "Pagos" in t:                              # 'Número de Pagos: <frecuencia>'
-            _set_token(p, "Pago", c.frecuencia or "")
+            _set_token(p, "Pago", frecuencia)
         elif t.startswith("Pago"):                      # 'Pago: <n> de <total>'
             _set_token(p, "Recibo", str(pago_n))
             _set_token(p, "RecibosTotales", str(pago_t))
@@ -350,7 +348,7 @@ def _generar_factura_docx(c: ConsultoriaContrato, r: Recibo, fecha_fact: dt.date
     # Tabla de importes.
     ti = d.tables[0]
     _set_token(ti.rows[0].cells[2].paragraphs[0], "Importe", _num_es(base))
-    _set_token(ti.rows[1].cells[1].paragraphs[0], "ImpuestosPorc", f"{_num_es(c.impuestos_porc or 0)}%")
+    _set_token(ti.rows[1].cells[1].paragraphs[0], "ImpuestosPorc", f"{_num_es(Decimal(impuestos_porc or 0))}%")
     _set_token(ti.rows[1].cells[2].paragraphs[0], "ImpuestosRecibo", _num_es(iva))
     _set_token(ti.rows[2].cells[2].paragraphs[0], "ImporteTotal", _num_es(base + iva))
 
@@ -367,12 +365,91 @@ def _generar_factura_docx(c: ConsultoriaContrato, r: Recibo, fecha_fact: dt.date
                 _set_token(p, "BIC", (cta.swift_bic or ""))
                 _set_token(p, "Cuenta", iban_fmt)
 
-    corto = _nombre_corto(prod.nombre if prod else None)
+    return d
+
+
+def _generar_factura_docx(c: ConsultoriaContrato, r: Recibo, fecha_fact: dt.date,
+                          pago_n: int, pago_t: int, cta: CuentaBancaria | None) -> str:
+    """Genera la factura desde el CONTRATO y la ARCHIVA en
+    <facturas_dir>\\<año>\\Facturas Emitidas\\<Cliente>\\<numero> <Cliente> <Mes>.docx."""
+    prod = c.productor
+    base = Decimal(c.importe or 0)
+    cliente = prod.nombre if prod else ""
+    d = _construir_factura_doc(
+        numero_recibo=r.numero or "", cliente=cliente, cif=(prod.cif if prod else "") or "",
+        fecha_fact=fecha_fact, frecuencia=c.frecuencia or "", pago_n=pago_n, pago_t=pago_t,
+        moneda=c.moneda or "EUR", base=base, impuestos_porc=c.impuestos_porc or 0,
+        iva=_iva(c, base), cta=cta,
+    )
+    corto = _nombre_corto(cliente)
     carpeta = os.path.join(settings.facturas_dir, str(fecha_fact.year), "Facturas Emitidas", corto)
     os.makedirs(carpeta, exist_ok=True)
     destino = os.path.join(carpeta, f"{r.numero} {corto} {MESES_ES[fecha_fact.month]}.docx")
     d.save(destino)
     return destino
+
+
+def _a_fecha(v) -> dt.date | None:
+    """Acepta date o texto ISO ('YYYY-MM-DD'); devuelve date o None."""
+    if isinstance(v, dt.date):
+        return v
+    if isinstance(v, str) and v.strip():
+        try:
+            return dt.date.fromisoformat(v[:10])
+        except ValueError:
+            return None
+    return None
+
+
+def factura_docx_para_recibo(db: Session, r: Recibo) -> tuple[bytes, str]:
+    """Genera el Word de la factura de Consultoría de un recibo, para DESCARGAR desde su ficha (no se
+    archiva). Toma los datos del PROPIO recibo (cliente=asegurado, base=comisión retenida, IVA=
+    impuestos del recibo, etc.); usa el contrato/productor solo para enriquecer (CIF, cuenta)."""
+    c = db.get(ConsultoriaContrato, r.consultoria_id) if r.consultoria_id else None
+    prod = c.productor if c is not None else None
+    if prod is None and r.asegurado:
+        prod = db.scalar(select(Productor).where(Productor.nombre == r.asegurado))
+
+    if c is not None:
+        fechas = _fechas_cobro(c)
+        fecha = next((f for f in fechas if f.strftime("%Y-%m") == r.periodo), None) \
+            or _a_fecha(r.fecha_efecto_recibo) or dt.date.today()
+        fecha_fact = _fecha_facturacion(c, fecha)
+        pago_n = next((i + 1 for i, f in enumerate(fechas) if f.strftime("%Y-%m") == r.periodo), 1)
+        pago_t = len(fechas) or 1
+        frecuencia = c.frecuencia or (r.pago or "")
+        base = Decimal(c.importe or 0)
+        iva = _iva(c, base)
+        impuestos_porc = c.impuestos_porc or 0
+        cta = c.cuenta_bancaria
+    else:
+        # Recibo histórico sin contrato: todo sale del propio recibo.
+        fecha_fact = _a_fecha(r.fecha_efecto_recibo) \
+            or (_a_fecha(f"{r.periodo}-01") if r.periodo else None) or dt.date.today()
+        pago_n = r.recibo_num or 1
+        pago_t = r.recibos_totales or 1
+        frecuencia = r.pago or ""
+        base = Decimal(r.comision_retenida or 0)
+        iva = Decimal(r.impuestos_recibo or 0)
+        impuestos_porc = r.impuestos_porc or 0
+        cta = None
+
+    if cta is None:
+        cta = db.scalar(
+            select(CuentaBancaria).where(CuentaBancaria.activa.is_(True), CuentaBancaria.categoria == "Gastos")
+            .order_by(CuentaBancaria.id)
+        )
+    cliente = (prod.nombre if prod else None) or r.asegurado or ""
+    d = _construir_factura_doc(
+        numero_recibo=r.numero or "", cliente=cliente, cif=(prod.cif if prod else "") or "",
+        fecha_fact=fecha_fact, frecuencia=frecuencia, pago_n=pago_n, pago_t=pago_t,
+        moneda=r.moneda or (c.moneda if c else None) or "EUR",
+        base=base, impuestos_porc=impuestos_porc, iva=iva, cta=cta,
+    )
+    buf = io.BytesIO()
+    d.save(buf)
+    corto = _nombre_corto(cliente)
+    return buf.getvalue(), f"{r.numero or 'Factura'} {corto} {MESES_ES[fecha_fact.month]}.docx"
 
 
 @router.post("/consultoria/{contrato_id}/cobros/generar-factura", status_code=201)

@@ -728,6 +728,20 @@ export const recibosApi = {
       method: "POST",
       body: JSON.stringify({ accion, deshacer: false, ...opts }),
     }),
+  // Documento Word del recibo (una plantilla por tipo; de momento solo Consultoría). Descarga el
+  // .docx y devuelve también el nombre de archivo que propone el servidor.
+  word: async (id: number): Promise<{ blob: Blob; filename: string }> => {
+    const res = await fetch(`${BASE}/recibos/${id}/word`);
+    if (!res.ok) {
+      let msg = `Error al generar el Word (${res.status})`;
+      try { const j = await res.json(); if (j?.detail) msg = j.detail; } catch { /* sin cuerpo JSON */ }
+      throw new Error(msg);
+    }
+    const cd = res.headers.get("Content-Disposition") || "";
+    const m = /filename\*=UTF-8''([^;]+)/i.exec(cd);
+    const filename = m ? decodeURIComponent(m[1]) : `recibo_${id}.docx`;
+    return { blob: await res.blob(), filename };
+  },
   // ── Premium: grupos, cobro y macheo desde Excel ──
   listarPremium: (binderId: number) => request<PremiumGrupo[]>(`/binders/${binderId}/premium`),
   cobrarPremium: (binderId: number, periodo: string, fecha: string) =>
