@@ -19,6 +19,7 @@ source "$CONF"
 : "${PGHOST:?define PGHOST}" "${PGDATABASE:?define PGDATABASE}" "${PGUSER:?define PGUSER}"
 : "${PGPASSWORD:?define PGPASSWORD}" "${BACKUP_DIR:?define BACKUP_DIR}"
 PGPORT="${PGPORT:-5432}"
+PGSSLMODE="${PGSSLMODE:-require}"        # Azure Flexible Server exige TLS; 'require' lo garantiza
 RETEN_DIAS="${RETEN_DIAS:-30}"          # borra dumps locales con más de N días (el NAS guarda el resto)
 PG_IMAGE="${PG_IMAGE:-postgres:16}"      # client pg_dump >= versión del servidor
 
@@ -31,7 +32,7 @@ log() { echo "[$(date '+%F %T')] $*" | tee -a "$LOG"; }
 
 log "Inicio backup -> $OUT"
 # pg_dump dentro de un contenedor efímero (no hay que instalar Postgres en el NAS). Azure exige SSL.
-if docker run --rm -e PGPASSWORD="$PGPASSWORD" "$PG_IMAGE" \
+if docker run --rm -e PGPASSWORD="$PGPASSWORD" -e PGSSLMODE="$PGSSLMODE" "$PG_IMAGE" \
       pg_dump -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$PGDATABASE" \
       --no-owner --no-privileges -Fc > "$OUT.tmp" 2>>"$LOG"; then
     if [ -s "$OUT.tmp" ]; then
