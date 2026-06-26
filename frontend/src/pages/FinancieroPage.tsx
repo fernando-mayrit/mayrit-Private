@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
-import { recibosApi } from "../api";
+import { recibosApi, lpanApi, type LpanGlobal } from "../api";
 import type { Recibo } from "../types";
 import PageHeader from "../components/PageHeader";
-import { fmtMiles } from "../format";
+import { fmtMiles, fmtFechaES } from "../format";
 
 const num = (v: unknown) => Number(v) || 0;
 const eur = (v: number) => (Math.abs(v) < 0.005 ? "" : fmtMiles(v));
@@ -78,15 +78,81 @@ function PivotCard({ titulo, recibos, valor }: { titulo: string; recibos: Recibo
   );
 }
 
+// Cuadro de LPAN procesados: SDD en columnas (orden cronológico), nº póliza o UMR en filas,
+// Neto a UW (net_premium) sumado en cada celda. Solo LPAN que tienen fecha SDD.
+function LpanProcesadosCard({ lpans }: { lpans: LpanGlobal[] }) {
+  const mapa = new Map<string, Map<string, number>>();   // ref -> (sdd -> neto)
+  const sdds = new Map<string, number>();                // etiqueta SDD -> ms (para ordenar)
+  for (const l of lpans) {
+    if (!l.sdd) continue;
+    const ref = l.poliza_numero ?? l.binder_umr ?? "—";
+    const label = fmtFechaES(l.sdd);
+    const ms = new Date(l.sdd).getTime();
+    sdds.set(label, isNaN(ms) ? 0 : ms);
+    const m = mapa.get(ref) ?? new Map<string, number>();
+    m.set(label, (m.get(label) ?? 0) + num(l.net_premium));
+    mapa.set(ref, m);
+  }
+  const cols = [...sdds.entries()].sort((a, b) => a[1] - b[1]).map(([label]) => label);
+  const filas = [...mapa.entries()]
+    .map(([ref, m]) => ({ ref, m }))
+    .sort((a, b) => a.ref.localeCompare(b.ref, "es", { numeric: true }));
+  const totalCol = (c: string) => filas.reduce((a, f) => a + (f.m.get(c) ?? 0), 0);
+  const totalGen = filas.reduce((a, f) => a + cols.reduce((s, c) => s + (f.m.get(c) ?? 0), 0), 0);
+
+  return (
+    <div className="fin-card" style={{ gridColumn: "1 / -1" }}>
+      <h3>LPAN Procesados <span className="hint" style={{ fontWeight: 400 }}>(Neto a UW por SDD)</span></h3>
+      {filas.length === 0 ? (
+        <div className="hint">Sin LPAN procesados con SDD.</div>
+      ) : (
+        <div className="fin-scroll">
+          <table className="compacto">
+            <thead>
+              <tr>
+                <th>Póliza / UMR</th>
+                {cols.map((c) => <th key={c} className="num">{c}</th>)}
+                <th className="num">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filas.map((f) => {
+                const tot = cols.reduce((s, c) => s + (f.m.get(c) ?? 0), 0);
+                return (
+                  <tr key={f.ref}>
+                    <td>{f.ref}</td>
+                    {cols.map((c) => <td key={c} className="num">{eur(f.m.get(c) ?? 0)}</td>)}
+                    <td className="num"><b>{eur(tot)}</b></td>
+                  </tr>
+                );
+              })}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td><b>Total</b></td>
+                {cols.map((c) => <td key={c} className="num"><b>{eur(totalCol(c))}</b></td>)}
+                <td className="num"><b>{eur(totalGen)}</b></td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function FinancieroPage() {
   const [recibos, setRecibos] = useState<Recibo[]>([]);
+  const [lpans, setLpans] = useState<LpanGlobal[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
       try {
-        setRecibos(await recibosApi.listar());
+        const [rec, lps] = await Promise.all([recibosApi.listar(), lpanApi.listarTodos()]);
+        setRecibos(rec);
+        setLpans(lps);
       } catch (e) {
         setError((e as Error).message);
       } finally {
@@ -106,10 +172,7 @@ export default function FinancieroPage() {
           {METRICAS.map((m) => (
             <PivotCard key={m.titulo} titulo={m.titulo} recibos={recibos} valor={m.valor} />
           ))}
-          <div className="fin-card">
-            <h3>LPAN Procesados</h3>
-            <div className="hint">Pendiente de migrar el módulo LPAN.</div>
-          </div>
+          <LpanProcesadosCard lpans={lpans} />
         </div>
       )}
     </div>
