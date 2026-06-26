@@ -74,3 +74,6 @@ yarn-error.log*
 Thumbs.db
 desktop.ini
 .DS_Store
+
+# Logs de los servidores en local
+logs/
