@@ -932,7 +932,10 @@ export default function BindersPage() {
       .filter((b) => !fCover || coverDe(b) === fCover)
       .filter((b) => !fEstado || b.estado === fEstado)
       .slice()
-      .sort((a, b) => (Number(b.yoa) || 0) - (Number(a.yoa) || 0));
+      // Orden por defecto: fecha de efecto descendente (más reciente primero); YOA como desempate.
+      .sort((a, b) =>
+        (b.fecha_efecto ?? "").localeCompare(a.fecha_efecto ?? "") ||
+        (Number(b.yoa) || 0) - (Number(a.yoa) || 0));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items, q, fYoa, fCover, fEstado]);
 
