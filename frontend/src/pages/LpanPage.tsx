@@ -154,8 +154,15 @@ export default function LpanPage() {
                   {tipos.map((t) => <option key={t} value={t}>{t}</option>)}
                 </select>
               </div>
-              <button className="btn-secondary btn-sm" style={{ marginTop: 8 }} title="Exportar el listado a Excel" onClick={abrirExport}>
-                ⬇️ Excel
+              <button className="btn-excel" style={{ marginTop: 8 }} title="Descargar el listado a Excel" onClick={abrirExport}>
+                <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
+                  <rect x="2" y="2" width="20" height="20" rx="3.5" fill="#217346" />
+                  <g stroke="#fff" strokeWidth="2.4" strokeLinecap="round">
+                    <line x1="8.5" y1="8.5" x2="15.5" y2="15.5" />
+                    <line x1="15.5" y1="8.5" x2="8.5" y2="15.5" />
+                  </g>
+                </svg>
+                Descarga
               </button>
             </div>
             <div className="bdx-totales">
