@@ -243,6 +243,7 @@ export default function ReciboModal({
               <Money k="prima_cobrada" label="Prima Cobrada" />
               <RO label="Pendiente de Cobro" v={primaPdteCobro} />
             </div>
+            <Fecha k="prima_fecha_cobro" label="Fecha de Cobro" />
           </div>
 
           <div className="recibo-box">
@@ -256,6 +257,7 @@ export default function ReciboModal({
               <Money k="liquidar_liquidado" label="Liquidado" />
               <RO label="Pdte. Liquidación" v={liqPdteLiquidacion} />
             </div>
+            <Fecha k="liquidar_fecha_liquidacion" label="Fecha de Liquidación" />
           </div>
 
           <div className="recibo-box">
@@ -269,6 +271,7 @@ export default function ReciboModal({
               <Money k="comision_retenida_traspasada" label="Traspasada" />
               <RO label="Pdte. Traspaso" v={comPdteTraspaso} />
             </div>
+            <Fecha k="comision_fecha_traspaso" label="Fecha de Traspaso" />
           </div>
 
           {!esBinder && (
