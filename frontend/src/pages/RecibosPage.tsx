@@ -28,8 +28,8 @@ const PEND: Record<string, PendDef> = {
   comision_pendiente_cobro: { total: (r) => baseCobro(r), hecho: (r) => r.prima_cobrada, verde: "Cobrado" },
   // Liquidación a la compañía: no aplica a Comisiones ni a Consultoría (no hay prima que liquidar).
   pdte_liquidar: { total: (r) => r.liquidar_cobrado, hecho: (r) => r.liquidar_liquidado, verde: "Liquidado", noAplica: (r) => tipoEs(r, "Comisiones") || tipoEs(r, "Consultoría") },
-  // Traspaso de comisión a gastos: no aplica a Consultoría (honorarios, sin comisión que traspasar).
-  pdte_traspaso: { total: (r) => r.comision_retenida_cobrada, hecho: (r) => r.comision_retenida_traspasada, verde: "Traspasado", noAplica: (r) => tipoEs(r, "Consultoría") },
+  // Traspaso de comisión a gastos: no aplica a Comisiones ni a Consultoría.
+  pdte_traspaso: { total: (r) => r.comision_retenida_cobrada, hecho: (r) => r.comision_retenida_traspasada, verde: "Traspasado", noAplica: (r) => tipoEs(r, "Comisiones") || tipoEs(r, "Consultoría") },
   // Pago de comisión cedida: no aplica a binders ni a Consultoría.
   pendiente_pago: { total: (r) => r.comision_cedida_a_pagar, hecho: (r) => r.comision_cedida_pagada, verde: "Pagado", noAplica: (r) => r.binder_id != null || tipoEs(r, "Consultoría") },
 };
@@ -469,13 +469,15 @@ export default function RecibosPage() {
                 {emoji}
               </button>
             );
+            // Las fases que no aplican a este tipo de recibo (Comisiones/Consultoría) no muestran botón.
+            const aplica = (k: string) => !PEND[k].noAplica?.(r);
             return (
               <div className="recibo-row-acc">
                 {chip(cobrado, "💰", "cobrar", "Cobrar")}
                 {/* Liquidar/Traspasar/Pagar SOLO tienen sentido (y aparecen) una vez cobrada la prima. */}
-                {cobrado && chip(liquidado, "🏦", "liquidar", "Liquidar a compañía")}
-                {cobrado && chip(traspasado, "🔁", "traspasar", "Traspasar comisión a gastos")}
-                {cobrado && tieneCedida && chip(pagado, "💸", "pagar", "Pagar comisión al corredor")}
+                {cobrado && aplica("pdte_liquidar") && chip(liquidado, "🏦", "liquidar", "Liquidar a compañía")}
+                {cobrado && aplica("pdte_traspaso") && chip(traspasado, "🔁", "traspasar", "Traspasar comisión a gastos")}
+                {cobrado && tieneCedida && aplica("pendiente_pago") && chip(pagado, "💸", "pagar", "Pagar comisión al corredor")}
                 <button className="btn-link" onClick={() => setSel(r)}>Editar</button>
               </div>
             );

@@ -303,7 +303,7 @@ export default function ReciboModal({
               <Money k="comision_retenida_cobrada" label="Cobrada" />
               <RO label="Pdte. Cobro" v={comPdteCobro} />
             </div>
-            {esConsultoria ? (
+            {esComisiones || esConsultoria ? (
               <div className="recibo-na-row">
                 <span>Traspaso</span>
                 <span className="pill pill-anulado">No aplica</span>
