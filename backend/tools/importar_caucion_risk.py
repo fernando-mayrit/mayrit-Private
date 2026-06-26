@@ -224,7 +224,7 @@ def main():
         for bdx in bdx_a_crear:
             db.add(bdx)
         db.commit()
-        print(f"\n✅ COMMIT: {len(bdx_a_crear)} BDX (cabeceras) y {total_lineas} líneas escritas.")
+        print(f"\nCOMMIT OK: {len(bdx_a_crear)} BDX (cabeceras) y {total_lineas} lineas escritas.")
     else:
         print("\n(DRY-RUN: no se ha escrito nada. Añade --commit para grabar.)")
     db.close()
