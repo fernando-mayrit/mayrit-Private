@@ -170,7 +170,8 @@ def main():
     print(f"\n{'Hoja':<16}{'filas':>7}{'GWP 100%':>16}{'GWP our line':>16}{'Com.CH':>14}{'Neto a UW':>14}  dup?")
     print("-" * 95)
 
-    bdx_a_crear = []
+    todas_lineas = []   # TODAS las líneas van a UN solo BDX por binder (el mes lo da reporting_period_start)
+    all_starts, all_ends = [], []
     for ws in wb.worksheets:
         rows = list(ws.iter_rows(values_only=True))
         if not rows:
@@ -197,12 +198,8 @@ def main():
         if not lineas:
             print(f"{ws.title:<16}{0:>7}{'—':>16}{'—':>16}{'—':>14}{'—':>14}  (vacía)")
             continue
-        bdx = Bdx(binder_id=binder.id, tipo="Risk",
-                  reporting_period_start=min(starts) if starts else None,
-                  reporting_period_end=max(ends) if ends else None,
-                  estado="Importado", notas=f"Importado de Excel caución — hoja '{ws.title}'")
-        bdx.lineas = lineas
-        bdx_a_crear.append(bdx)
+        todas_lineas.extend(lineas)
+        all_starts.extend(starts); all_ends.extend(ends)
         total_lineas += len(lineas)
         sum_gwp100 += s_gwp100; sum_gwp_our += s_our; sum_com += s_com; sum_neto += s_neto
         print(f"{ws.title:<16}{len(lineas):>7}{float(s_gwp100):>16,.2f}{float(s_our):>16,.2f}"
@@ -212,19 +209,19 @@ def main():
     print(f"{'TOTAL':<16}{total_lineas:>7}{float(sum_gwp100):>16,.2f}{float(sum_gwp_our):>16,.2f}"
           f"{float(sum_com):>14,.2f}{float(sum_neto):>14,.2f}")
 
-    # Comprobación de integridad: nº de claves en `extra` vs columnas no vacías (muestra)
-    faltan = 0
-    for bdx in bdx_a_crear:
-        for ln in bdx.lineas:
-            if not ln.extra:
-                faltan += 1
+    faltan = sum(1 for ln in todas_lineas if not ln.extra)
     print(f"\nLíneas sin `extra`: {faltan}  (debe ser 0)")
 
     if args.commit:
-        for bdx in bdx_a_crear:
-            db.add(bdx)
+        # UN solo BDX por binder (se reutiliza el existente si lo hay, como el importador estándar).
+        bdx = existentes or Bdx(binder_id=binder.id, tipo="Risk", estado="Abierto",
+                                notas="Importado de Excel caución")
+        bdx.lineas = (bdx.lineas if existentes else []) + todas_lineas
+        bdx.reporting_period_start = min(all_starts) if all_starts else None
+        bdx.reporting_period_end = max(all_ends) if all_ends else None
+        db.add(bdx)
         db.commit()
-        print(f"\nCOMMIT OK: {len(bdx_a_crear)} BDX (cabeceras) y {total_lineas} lineas escritas.")
+        print(f"\nCOMMIT OK: 1 BDX (cabecera) y {total_lineas} lineas escritas en el binder.")
     else:
         print("\n(DRY-RUN: no se ha escrito nada. Añade --commit para grabar.)")
     db.close()
