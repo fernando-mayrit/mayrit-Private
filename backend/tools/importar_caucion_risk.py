@@ -61,6 +61,7 @@ MAP: dict[str, tuple[str, str]] = {
     "total taxes and levies": ("total_taxes_levies", "num"),
     "fees": ("fees", "num"),
     "net premium to lloyd's broker in original currency": ("net_premium_to_broker", "num"),
+    "net premium to pay to reinsurance broker by reinsured": ("net_premium_to_broker", "num"),
     "brokerage %": ("brokerage_pct", "pct"),
     "brokerage amount (original currency)": ("brokerage_amount", "num"),
     "brokerage amount": ("brokerage_amount", "num"),
