@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { lpanApi, exportarXlsx, type LpanGlobal } from "../api";
 import PageHeader from "../components/PageHeader";
 import FormPanel from "../components/FormPanel";
 import TablaDatos, { type Col } from "../components/TablaDatos";
 import { fmtMiles, fmtFechaES } from "../format";
 
-const STORAGE_KEY = "mayrit.lpans.global.tabla.v1";
+const STORAGE_KEY = "mayrit.lpans.global.tabla.v2";
 const n = (v: unknown) => Number(v) || 0;
 
 const COLS: Col<LpanGlobal>[] = [
@@ -33,6 +33,7 @@ const COLS: Col<LpanGlobal>[] = [
 const DEFAULT_KEYS = [
   "tipo", "periodo", "binder_umr", "poliza_numero", "section", "risk_code",
   "signing_number", "work_package", "gross_premium", "tax", "net_premium", "fecha", "estado",
+  "liberado", "pagado",
 ];
 
 export default function LpanPage() {
@@ -70,6 +71,49 @@ export default function LpanPage() {
       .filter((l) => !fPrograma || l.programa === fPrograma)
       .filter((l) => !fTipo || l.tipo === fTipo),
     [items, fPrograma, fTipo],
+  );
+
+  // Edición en línea de Liberado/Pagado: guarda en el backend (mismo registro que la pestaña del
+  // binder, así lo editado en uno aparece en el otro al recargar) y actualiza la fila localmente.
+  const editarFecha = useCallback(async (l: LpanGlobal, campo: "liberado" | "pagado", valor: string) => {
+    const nuevo = valor || null;
+    setItems((arr) => arr.map((x) => (x.id === l.id ? { ...x, [campo]: nuevo } : x)));
+    try {
+      await lpanApi.actualizarLpan(l.id, { [campo]: nuevo });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudo guardar la fecha.");
+      try { setItems(await lpanApi.listarTodos()); } catch { /* */ }
+    }
+  }, []);
+
+  // Liberado editable solo si el LPAN está «Completed»; Pagado solo si ya hay fecha de Liberado.
+  const cols = useMemo<Col<LpanGlobal>[]>(
+    () => COLS.map((c) => {
+      if (c.key !== "liberado" && c.key !== "pagado") return c;
+      const campo = c.key as "liberado" | "pagado";
+      return {
+        ...c,
+        render: (l: LpanGlobal) => {
+          const editable = campo === "liberado" ? l.estado === "Completed" : !!l.liberado;
+          const valor = (l[campo] ?? "").slice(0, 10);
+          if (!editable) {
+            return (
+              <span title={campo === "liberado" ? "Editable cuando el LPAN está Completed" : "Editable cuando hay fecha de Liberado"}>
+                {valor ? fmtFechaES(valor) : "—"}
+              </span>
+            );
+          }
+          return (
+            <input
+              type="date" className="inp-fecha" value={valor}
+              onClick={(e) => e.stopPropagation()}
+              onChange={(e) => editarFecha(l, campo, e.target.value)}
+            />
+          );
+        },
+      };
+    }),
+    [editarFecha],
   );
 
   // Filas que la tabla muestra de verdad (tras sus filtros por columna). Hasta que la tabla
@@ -166,7 +210,7 @@ export default function LpanPage() {
           </div>
           <TablaDatos
             filas={filtrados}
-            columnas={COLS}
+            columnas={cols}
             defaultKeys={DEFAULT_KEYS}
             storageKey={STORAGE_KEY}
             defaultSort={{ key: "periodo", dir: -1 }}

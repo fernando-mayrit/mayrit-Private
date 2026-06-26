@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { lpanApi, type RcEnSeccion } from "../api";
-import { fmtMiles, fmtFechaES } from "../format";
+import { fmtMiles } from "../format";
 
 const WP_STATUS = ["Work in Progress", "Queried", "Completed", "Rejected"];
 
@@ -28,6 +28,8 @@ export default function LpanRow({
   const [fproc, setFproc] = useState((lp?.fecha ?? "").slice(0, 10));
   const [sdd, setSdd] = useState((lp?.sdd ?? "").slice(0, 10));
   const [estado, setEstado] = useState(lp?.estado ?? "Work in Progress");
+  const [liberado, setLiberado] = useState((lp?.liberado ?? "").slice(0, 10));
+  const [pagado, setPagado] = useState((lp?.pagado ?? "").slice(0, 10));
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -35,13 +37,17 @@ export default function LpanRow({
     setFproc((lp?.fecha ?? "").slice(0, 10));
     setSdd((lp?.sdd ?? "").slice(0, 10));
     setEstado(lp?.estado ?? "Work in Progress");
-  }, [lp?.work_package, lp?.fecha, lp?.sdd, lp?.estado]);
+    setLiberado((lp?.liberado ?? "").slice(0, 10));
+    setPagado((lp?.pagado ?? "").slice(0, 10));
+  }, [lp?.work_package, lp?.fecha, lp?.sdd, lp?.estado, lp?.liberado, lp?.pagado]);
 
   const dirty = !!lp && (
     wp !== (lp.work_package ?? "") ||
     fproc !== (lp.fecha ?? "").slice(0, 10) ||
     sdd !== (lp.sdd ?? "").slice(0, 10) ||
-    estado !== (lp.estado ?? "")
+    estado !== (lp.estado ?? "") ||
+    liberado !== (lp.liberado ?? "").slice(0, 10) ||
+    pagado !== (lp.pagado ?? "").slice(0, 10)
   );
 
   const brokeragePct = Number(r.gross_premium)
@@ -73,6 +79,8 @@ export default function LpanRow({
         fecha: fproc || null,
         sdd: sdd || null,
         estado: estado.trim() || null,
+        liberado: liberado || null,
+        pagado: pagado || null,
       });
       await onChanged();
     } finally {
@@ -152,8 +160,14 @@ export default function LpanRow({
               {statusOpts.map((s) => <option key={s} value={s}>{s}</option>)}
             </select>
           </td>
-          <td>{lp.liberado ? fmtFechaES(lp.liberado) : "—"}</td>
-          <td>{lp.pagado ? fmtFechaES(lp.pagado) : "—"}</td>
+          {/* Liberado: editable solo cuando el LPAN está Completed. */}
+          <td><input type="date" className="inp-fecha" value={liberado}
+            disabled={!bloqueado} title={!bloqueado ? "Editable cuando el LPAN está Completed" : undefined}
+            onChange={(e) => setLiberado(e.target.value)} /></td>
+          {/* Pagado: editable solo cuando ya hay fecha de Liberado. */}
+          <td><input type="date" className="inp-fecha" value={pagado}
+            disabled={!liberado} title={!liberado ? "Editable cuando hay fecha de Liberado" : undefined}
+            onChange={(e) => setPagado(e.target.value)} /></td>
           <td style={{ whiteSpace: "nowrap" }}>
             <button className="btn-primary btn-sm" disabled={saving || busy || !dirty} onClick={guardar}>Guardar</button>{" "}
             <button className="btn-link" disabled={busy || saving}
