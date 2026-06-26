@@ -10,6 +10,9 @@ import { fmtMiles, fmtFechaES, estadoCobro } from "../format";
 
 const eur = (v: unknown) => `${fmtMiles(v)} €`;
 const num = (v: unknown) => Number(v) || 0;
+const tipoEs = (r: Recibo, t: string) => (r.tipo_poliza ?? "") === t;
+// Lo que se cobra de un recibo: en Comisiones es la comisión (deduccion_total), en el resto la prima.
+const baseCobro = (r: Recibo) => (tipoEs(r, "Comisiones") ? r.deduccion_total : r.prima_adeudada);
 const cuentasApi = crud<CuentaBancaria, unknown>("/cuentas-bancarias");
 const hoyISO = () => new Date().toISOString().slice(0, 10);
 
@@ -21,10 +24,14 @@ const refDe = (r: Recibo) => r.numero_poliza ?? r.binder_umr ?? null;
 // (p. ej. pago de comisión cedida en recibos de binder) → pastilla gris "No Aplica".
 type PendDef = { total: (r: Recibo) => unknown; hecho: (r: Recibo) => unknown; verde: string; noAplica?: (r: Recibo) => boolean };
 const PEND: Record<string, PendDef> = {
-  comision_pendiente_cobro: { total: (r) => r.prima_adeudada, hecho: (r) => r.prima_cobrada, verde: "Cobrado" },
-  pdte_liquidar: { total: (r) => r.liquidar_cobrado, hecho: (r) => r.liquidar_liquidado, verde: "Liquidado" },
-  pdte_traspaso: { total: (r) => r.comision_retenida_cobrada, hecho: (r) => r.comision_retenida_traspasada, verde: "Traspasado" },
-  pendiente_pago: { total: (r) => r.comision_cedida_a_pagar, hecho: (r) => r.comision_cedida_pagada, verde: "Pagado", noAplica: (r) => r.binder_id != null },
+  // Cobro: en Comisiones se mide sobre la comisión (deduccion_total), no sobre la prima (=0).
+  comision_pendiente_cobro: { total: (r) => baseCobro(r), hecho: (r) => r.prima_cobrada, verde: "Cobrado" },
+  // Liquidación a la compañía: no aplica a Comisiones ni a Consultoría (no hay prima que liquidar).
+  pdte_liquidar: { total: (r) => r.liquidar_cobrado, hecho: (r) => r.liquidar_liquidado, verde: "Liquidado", noAplica: (r) => tipoEs(r, "Comisiones") || tipoEs(r, "Consultoría") },
+  // Traspaso de comisión a gastos: no aplica a Consultoría (honorarios, sin comisión que traspasar).
+  pdte_traspaso: { total: (r) => r.comision_retenida_cobrada, hecho: (r) => r.comision_retenida_traspasada, verde: "Traspasado", noAplica: (r) => tipoEs(r, "Consultoría") },
+  // Pago de comisión cedida: no aplica a binders ni a Consultoría.
+  pendiente_pago: { total: (r) => r.comision_cedida_a_pagar, hecho: (r) => r.comision_cedida_pagada, verde: "Pagado", noAplica: (r) => r.binder_id != null || tipoEs(r, "Consultoría") },
 };
 const etiquetaEstado = (p: PendDef, r: Recibo) => {
   // La fase no aplica a este recibo (p. ej. pago de comisión en recibos de binder) → gris "No Aplica".
@@ -38,7 +45,7 @@ const etiquetaEstado = (p: PendDef, r: Recibo) => {
   // Base 0: "nada que hacer" en esta fase → verde SOLO si la prima ya está cobrada (las fases
   // dependen del cobro). "Cobrada" se mide por IMPORTE (estadoCobro), no por la fecha.
   if (Math.abs(total) <= 0.005) {
-    const cobrado = estadoCobro(r.prima_adeudada, r.prima_cobrada, r.estado).clase === "cobrado";
+    const cobrado = estadoCobro(baseCobro(r), r.prima_cobrada, r.estado).clase === "cobrado";
     return cobrado
       ? { descuadre: false, clase: "cobrado", label: p.verde }
       : { descuadre: false, clase: "anulado", label: "—" };
@@ -68,10 +75,11 @@ const CATALOGO: Col<Recibo>[] = [
   { key: "yoa", label: "YOA", tipo: "int" },
   {
     key: "estado_cobro", label: "Cobro", tipo: "text",
-    // "Cobro" = cobro de la PRIMA al cliente (prima_adeudada → prima_cobrada), no de la comisión.
-    calc: (r) => estadoCobro(r.prima_adeudada, r.prima_cobrada, r.estado).label,
+    // "Cobro" = cobro de lo que paga el cliente: la prima (prima_adeudada) o, en Comisiones, la
+    // comisión (deduccion_total) → prima_cobrada.
+    calc: (r) => estadoCobro(baseCobro(r), r.prima_cobrada, r.estado).label,
     render: (r) => {
-      const ec = estadoCobro(r.prima_adeudada, r.prima_cobrada, r.estado);
+      const ec = estadoCobro(baseCobro(r), r.prima_cobrada, r.estado);
       return <span className={`pill pill-${ec.clase}`}>{ec.label}</span>;
     },
   },

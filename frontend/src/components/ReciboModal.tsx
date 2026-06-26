@@ -122,6 +122,18 @@ export default function ReciboModal({
   const esComisiones = (recibo as Partial<Recibo>).tipo_poliza === "Comisiones";
   const comisionCobrarPdte = n(f.deduccion_total) - n(f.prima_cobrada);
 
+  // Recibo de Consultoría (honorarios/fees): se cobra el honorario y nada más. No hay liquidación a
+  // compañía, ni traspaso de comisión, ni pago de comisión cedida → esas cajas no aplican.
+  const esConsultoria = (recibo as Partial<Recibo>).tipo_poliza === "Consultoría";
+
+  // Caja atenuada "No aplica" para una fase que no corresponde a este tipo de recibo.
+  const CajaNA = ({ titulo }: { titulo: string }) => (
+    <div className="recibo-box recibo-box-na">
+      <h4>{titulo}</h4>
+      <span className="pill pill-anulado">No aplica</span>
+    </div>
+  );
+
   // Campos reutilizables (en emisión, soloLectura → todos deshabilitados)
   const Money = ({ k, label, full }: { k: string; label: string; full?: boolean }) => (
     <div className="field">
@@ -266,11 +278,8 @@ export default function ReciboModal({
             )}
           </div>
 
-          {esComisiones ? (
-            <div className="recibo-box recibo-box-na">
-              <h4>Liquidación a la Cía</h4>
-              <span className="pill pill-anulado">No aplica</span>
-            </div>
+          {esComisiones || esConsultoria ? (
+            <CajaNA titulo="Liquidación a la Cía" />
           ) : (
             <div className="recibo-box">
               <h4>Liquidación a la Cía</h4>
@@ -294,14 +303,25 @@ export default function ReciboModal({
               <Money k="comision_retenida_cobrada" label="Cobrada" />
               <RO label="Pdte. Cobro" v={comPdteCobro} />
             </div>
-            <div className="campos-grid" style={{ gridTemplateColumns: "1fr 1fr" }}>
-              <Money k="comision_retenida_traspasada" label="Traspasada" />
-              <RO label="Pdte. Traspaso" v={comPdteTraspaso} />
-            </div>
-            <Fecha k="comision_fecha_traspaso" label="Fecha de Traspaso" />
+            {esConsultoria ? (
+              <div className="recibo-na-row">
+                <span>Traspaso</span>
+                <span className="pill pill-anulado">No aplica</span>
+              </div>
+            ) : (
+              <>
+                <div className="campos-grid" style={{ gridTemplateColumns: "1fr 1fr" }}>
+                  <Money k="comision_retenida_traspasada" label="Traspasada" />
+                  <RO label="Pdte. Traspaso" v={comPdteTraspaso} />
+                </div>
+                <Fecha k="comision_fecha_traspaso" label="Fecha de Traspaso" />
+              </>
+            )}
           </div>
 
-          {!esBinder && (
+          {esConsultoria ? (
+            <CajaNA titulo="Pago comisión cedida" />
+          ) : !esBinder && (
             <div className="recibo-box">
               <h4>Comisión cedida (corredor)</h4>
               {f.pagador && (

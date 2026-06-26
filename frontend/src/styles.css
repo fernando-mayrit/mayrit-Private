@@ -646,6 +646,8 @@ td.num, th.num { text-align: right; }
 /* Caja que no aplica a este tipo de recibo (p. ej. Liquidación en recibos de Comisiones). */
 .recibo-box-na { background: var(--gris-claro); opacity: .85; }
 .recibo-box-na h4 { color: var(--gris-medio); }
+/* Fila "fase no aplica" dentro de una caja (p. ej. Traspaso en recibos de Consultoría). */
+.recibo-na-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 6px 0 2px; color: var(--gris-medio); font-size: 12px; }
 /* Campos compactos: los importes/fechas no necesitan ocupar todo el ancho de la columna */
 .recibo-modal .field input,
 .recibo-modal .field .num-input { max-width: 200px; }
