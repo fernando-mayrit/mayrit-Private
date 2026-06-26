@@ -200,6 +200,12 @@ h1, h2, h3 { font-family: var(--fuente-titulo); font-weight: 600; color: var(--g
   background: #fdf0e9; border: 1px solid var(--naranja); color: var(--gris);
   border-radius: 8px; padding: 10px 12px; font-size: 13px; margin-bottom: 14px;
 }
+/* Aviso editable de notificación de límite de primas excedido (en la ficha del binder, al entrar). */
+.aviso-notif-limite {
+  background: #fff5f4; border: 1px solid var(--rojo); border-radius: 8px;
+  padding: 10px 12px; margin-bottom: 14px;
+}
+.aviso-notif-limite-tit { color: var(--rojo); font-weight: 600; font-size: 13px; margin-bottom: 8px; }
 
 button {
   font-size: 14px; padding: 8px 14px; border-radius: 8px;

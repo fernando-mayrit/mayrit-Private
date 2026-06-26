@@ -631,9 +631,14 @@ export default function BindersPage() {
 
   async function guardar() {
     if (!form) return;
+    // ¿Se ha registrado/cambiado alguna fecha de notificación de límite respecto a lo abierto?
+    // En ese caso, aunque estemos en solo-estado, hay que guardar de verdad (el backend reconstruye
+    // los límites solo si recibe `secciones`), así que se usa el guardado completo de más abajo.
+    const notifCambiada = !!inicial && form.limites.some((g, i) =>
+      (g.fecha_notificacion || "") !== (inicial.limites[i]?.fecha_notificacion || ""));
     // Vista de solo lectura: solo se cambia el Estado → guardado PARCIAL (sin revalidar ni
     // reescribir términos). El backend actualiza solo el campo enviado (exclude_unset).
-    if (soloEstado && form.id) {
+    if (soloEstado && form.id && !notifCambiada) {
       setSaving(true);
       setError(null);
       try {
@@ -1192,6 +1197,45 @@ export default function BindersPage() {
                 {(form.estado ?? "").startsWith("Cerrado") &&
                   " En un binder cerrado no se pueden emitir suplementos ni corregir."}
               </div>
+              {/* Si algún límite de primas está excedido (rojo), la fecha de notificación es editable
+                  AQUÍ mismo al entrar (fuera del fieldset bloqueado): no hace falta pulsar «Corregir». */}
+              {(() => {
+                const pend = form.limites
+                  .map((g, i) => ({ g, i }))
+                  .filter((x) => x.g.estado === "rojo");
+                if (pend.length === 0) return null;
+                const etiqueta = (i: number) =>
+                  form.limite_ambito === "binder" ? "Límite del binder"
+                  : form.limite_ambito === "seccion" ? `Sección ${i + 1}`
+                  : `Grupo de límite ${i + 1}`;
+                return (
+                  <div className="aviso-notif-limite">
+                    <div className="aviso-notif-limite-tit">
+                      ⚠ Límite de primas excedido — registra la fecha de notificación al mercado
+                    </div>
+                    {pend.map(({ g, i }) => (
+                      <div className={`field${g.fecha_notificacion ? "" : " notif-pend"}`} key={i}>
+                        <label>
+                          {etiqueta(i)} · Notificado (fecha)
+                          {g.consumo_pct != null && <span className="notif-pct"> · {fmtMiles(g.consumo_pct)} %</span>}
+                          {g.fecha_notificacion
+                            ? <span className="notif-ok-badge">✅ notificado</span>
+                            : <span className="notif-pend-badge">⚠ a notificar</span>}
+                        </label>
+                        <input
+                          type="date"
+                          className="inp-fecha"
+                          value={g.fecha_notificacion ?? ""}
+                          onChange={(e) => setGrupoCampo(i, "fecha_notificacion", e.target.value)}
+                        />
+                      </div>
+                    ))}
+                    <div className="hint" style={{ marginTop: 4 }}>
+                      Al Guardar se registra la notificación (no crea suplemento).
+                    </div>
+                  </div>
+                );
+              })()}
             </>
           )}
 
