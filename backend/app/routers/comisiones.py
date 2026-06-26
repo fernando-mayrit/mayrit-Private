@@ -37,6 +37,12 @@ def _programa_iberian(db: Session) -> Programa | None:
     return db.scalar(select(Programa).where(Programa.nombre.ilike(f"%{PROGRAMA_IBERIAN}%")))
 
 
+def _nombre_productor(prog: Programa) -> str:
+    """Nombre del Productor del programa (lo que va en 'Asegurado' del recibo de comisiones).
+    Si el programa no tuviera productor asociado, se cae al nombre del programa."""
+    return prog.productor.nombre if prog.productor else prog.nombre
+
+
 def _base_por_mes(db: Session, prog: Programa) -> dict[str, Decimal]:
     """Σ GWP (our line) del Premium (incluido), por mes (YYYY-MM), de los binders del programa."""
     bids = [b.id for b in db.scalars(select(Binder).where(Binder.programa_id == prog.id)).all()]
@@ -206,7 +212,7 @@ def preparar_iberian(periodo: str, db: Session = Depends(get_db)):
     )
     r = Recibo(
         periodo=periodo, anio=fecha.year, estado="Emitido", numero=_siguiente_numero(db, fecha.year),
-        tipo_poliza="Comisiones", asegurado=prog.nombre, corredor="Iberian", ramo="Comisiones", moneda="EUR",
+        tipo_poliza="Comisiones", asegurado=_nombre_productor(prog), corredor="Iberian", ramo="Comisiones", moneda="EUR",
         referencia=REF_MODULO,
         fecha_efecto=fecha, fecha_vencimiento=fecha, fecha_contable=fecha,
         fecha_efecto_recibo=fecha, fecha_vcto_recibo=fecha,
@@ -255,7 +261,7 @@ def reparto(periodo: str, payload: RepartoIn, db: Session = Depends(get_db)):
         if not h:   # mes nuevo: se genera el recibo del módulo al guardar el reparto
             r = Recibo(
                 periodo=periodo, anio=fecha.year, estado="Emitido", numero=_siguiente_numero(db, fecha.year),
-                tipo_poliza="Comisiones", asegurado=prog.nombre, corredor="Iberian", ramo="Comisiones", moneda="EUR",
+                tipo_poliza="Comisiones", asegurado=_nombre_productor(prog), corredor="Iberian", ramo="Comisiones", moneda="EUR",
                 referencia=REF_MODULO, fecha_efecto=fecha, fecha_vencimiento=fecha, fecha_contable=fecha,
                 fecha_efecto_recibo=fecha, fecha_vcto_recibo=fecha,
                 prima_bruta_recibo=D0, prima_neta_recibo=D0, prima_adeudada=D0,
