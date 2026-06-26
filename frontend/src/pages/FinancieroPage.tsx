@@ -102,7 +102,7 @@ function LpanProcesadosCard({ lpans }: { lpans: LpanGlobal[] }) {
   const totalGen = filas.reduce((a, f) => a + cols.reduce((s, c) => s + (f.m.get(c) ?? 0), 0), 0);
 
   return (
-    <div className="fin-card" style={{ gridColumn: "1 / -1" }}>
+    <div className="fin-card">
       <h3>LPAN Procesados <span className="hint" style={{ fontWeight: 400 }}>(Neto a UW por SDD · liberados sin pagar)</span></h3>
       {filas.length === 0 ? (
         <div className="hint">Sin LPAN liberados pendientes de pago.</div>
