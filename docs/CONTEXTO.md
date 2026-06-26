@@ -722,3 +722,43 @@ binder NO casa con el nombre de la lista; -25 vacío/no existe). Mejoras al impo
 ### PENDIENTES nuevos
 - **Excel "BDX a procesar"**: definir cómo se construye (ahora es placeholder con líneas de Premium).
 - Migración Alembic de esta sesión: `a7c9e1f3b5d2_facturas_avisos`.
+
+---
+
+## Sesión 26/06/2026 — Caución Iberian/Hamilton (reaseguro): BDX, recibos y macheo
+
+Importados los binders de **reaseguro de caución** del programa **"Iberian-Caución"** (id 13):
+**B1634SB0125IBE** (id 62, YOA 2025) y **B1634SB0226IBE** (id 63, YOA 2026). Participación 30%.
+
+### BDX no estándar → importador propio + columna `extra`
+- Sus Risk BDX vienen en Excel con **encabezados NO estándar** (campos de caución: bondNumber,
+  registrationName, sector, beneficiaryName, maxTotalLiability…) y **una hoja por mes**. Se mapea por
+  **NOMBRE de columna** (no posición), con `backend/tools/importar_caucion_risk.py` (dry-run + `--commit`).
+- Nueva columna **`bdx_lineas.extra` (JSONB)** (migración `b1c3d5e7f9a2`): guarda la **fila original
+  íntegra** de cada línea → cero pérdida de datos aunque no exista columna estándar donde mapear.
+- Importadas: B0125IBE **392 líneas**, B0226IBE **338 líneas**. Marzo-2026 de B0125IBE vacío.
+- **1 BDX por binder** (la app asume eso; el mes lo da `reporting_period_start`). El importador creaba
+  uno por hoja → la pestaña solo mostraba 1 mes; corregido + `tools/consolidar_bdx.py`.
+- **"Prima a Mayrit"** (`net_premium_to_broker`) = col **"Net Premium to pay to Reinsurance Broker by
+  Reinsured"** (se mapeó tarde; backfill `tools/backfill_prima_mayrit_caucion.py`).
+
+### Economía de RECIBO en reaseguro (importante)
+- En reaseguro hay una **capa extra** (comisión del reasegurado), así que el recibo NO se calcula como
+  un binder normal. Flag **`Programa.reaseguro`** (migración `c2d4e6f8a1b3`; activado en Iberian-Caución).
+- En `recibos._campos_emision`, si el binder es de reaseguro:
+  - **Cobro** (`prima_adeudada`) = Σ `net_premium_to_broker` (Net Premium to pay to Reinsurance Broker).
+  - **A Liquidar** (`liquidar`) = Σ `final_net_premium_uw` (Final Net Premium to UW/Hamilton).
+  - **Comisión Mayrit** = Σ brokerage = Cobro − Liquidar.
+  - NO usar la fórmula GWP−comisión cedida (inflaba el cobro y dejaba "A liquidar" = col45).
+
+### Recibos macheados (cada línea → su recibo del binder+mes)
+- `tools/enlazar_lineas_recibos.py`: 392/392 y 338/338 líneas enlazadas.
+- Recibos preexistentes (B0125IBE 2025-06..12, B0226IBE 2026-03) ya tenían la economía correcta.
+- Generados los meses que faltaban y **regenerados** los de B0226IBE que estaban inflados (incluían
+  importes del B0125IBE de cuando los datos estaban juntos). Todos los meses cuadran Cobro=col45 y
+  Liquidar=col48.
+- Renumeración para no dejar huecos: los recibos nuevos 2026 quedan **0104–0108** (B0125IBE
+  ene/feb/abr/may = 0104–0107; B0226IBE may = 0108); B0226IBE conserva 0027/0045/0063/0078.
+
+### PENDIENTE
+- El **Premium** de ambos binders de caución.
