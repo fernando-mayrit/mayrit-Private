@@ -94,14 +94,17 @@ export default function LpanPage() {
       return {
         ...c,
         render: (l: LpanGlobal) => {
-          const editable = campo === "liberado" ? l.estado === "Completed" : !!l.liberado;
+          // Editable solo si está vacío (los ya cumplimentados quedan bloqueados):
+          // Liberado si el LPAN está Completed; Pagado si ya hay fecha de Liberado.
+          const editable = campo === "liberado"
+            ? l.estado === "Completed" && !l.liberado
+            : !!l.liberado && !l.pagado;
           const valor = (l[campo] ?? "").slice(0, 10);
           if (!editable) {
-            return (
-              <span title={campo === "liberado" ? "Editable cuando el LPAN está Completed" : "Editable cuando hay fecha de Liberado"}>
-                {valor ? fmtFechaES(valor) : "—"}
-              </span>
-            );
+            const motivo = valor
+              ? "Ya cumplimentado"
+              : campo === "liberado" ? "Editable cuando el LPAN está Completed" : "Editable cuando hay fecha de Liberado";
+            return <span title={motivo}>{valor ? fmtFechaES(valor) : "—"}</span>;
           }
           return (
             <input

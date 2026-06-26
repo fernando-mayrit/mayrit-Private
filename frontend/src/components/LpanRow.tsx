@@ -160,13 +160,15 @@ export default function LpanRow({
               {statusOpts.map((s) => <option key={s} value={s}>{s}</option>)}
             </select>
           </td>
-          {/* Liberado: editable solo cuando el LPAN está Completed. */}
+          {/* Liberado: editable solo si el LPAN está Completed y AÚN no se ha cumplimentado. */}
           <td><input type="date" className="inp-fecha" value={liberado}
-            disabled={!bloqueado} title={!bloqueado ? "Editable cuando el LPAN está Completed" : undefined}
+            disabled={!bloqueado || !!lp.liberado}
+            title={lp.liberado ? "Ya cumplimentado" : !bloqueado ? "Editable cuando el LPAN está Completed" : undefined}
             onChange={(e) => setLiberado(e.target.value)} /></td>
-          {/* Pagado: editable solo cuando ya hay fecha de Liberado. */}
+          {/* Pagado: editable solo si ya hay fecha de Liberado y AÚN no se ha cumplimentado. */}
           <td><input type="date" className="inp-fecha" value={pagado}
-            disabled={!liberado} title={!liberado ? "Editable cuando hay fecha de Liberado" : undefined}
+            disabled={!lp.liberado || !!lp.pagado}
+            title={lp.pagado ? "Ya cumplimentado" : !lp.liberado ? "Editable cuando hay fecha de Liberado" : undefined}
             onChange={(e) => setPagado(e.target.value)} /></td>
           <td style={{ whiteSpace: "nowrap" }}>
             <button className="btn-primary btn-sm" disabled={saving || busy || !dirty} onClick={guardar}>Guardar</button>{" "}
