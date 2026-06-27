@@ -126,8 +126,9 @@ const FINANCIERO: { id: Page; label: string }[] = [
   { id: "transferencias", label: "Transferencias" },
 ];
 
-// Menú lateral: Contabilidad (pendiente de configurar).
-const CONTABILIDAD: { id: Page; label: string }[] = [
+// Menú lateral: Contabilidad (solo Fernando y Lola).
+type ItemMenu = { id: Page; label: string; soloUsuarios?: string[] };
+const CONTABILIDAD: ItemMenu[] = [
   { id: "contabilidad", label: "Contabilidad" },
 ];
 
@@ -139,18 +140,29 @@ const CONFIG: { id: Page; label: string }[] = [
 ];
 
 // Grupos del menú lateral (desplegables/acordeón). El de Configuración va aparte, abajo del todo.
-type Grupo = { titulo: string; items: { id: Page; label: string }[]; sm?: boolean };
+type Grupo = { titulo: string; items: ItemMenu[]; sm?: boolean; soloUsuarios?: string[] };
 const GRUPOS: Grupo[] = [
   { titulo: "Negocio", items: NEGOCIO },
   { titulo: "Siniestros", items: [...SINIESTROS, ...TRIANGULACION, ...UCR] },
   { titulo: "Facturación", items: FACTURACION },
   { titulo: "Financiero", items: FINANCIERO },
-  { titulo: "Contabilidad", items: CONTABILIDAD },
+  { titulo: "Contabilidad", items: CONTABILIDAD, soloUsuarios: ["Fernando", "Lola"] },
   { titulo: "Tareas", items: TAREAS },
 ];
+// Páginas restringidas a ciertos usuarios (no aparecen en el menú ni se renderizan a los demás).
+// Permitidos = restricción del grupo ∩ restricción del ítem (lo que no tiene restricción, lo ven todos).
+const PAGINAS_RESTRINGIDAS: Record<string, string[]> = {};
+for (const g of GRUPOS) {
+  for (const it of g.items) {
+    const gr = g.soloUsuarios, ir = it.soloUsuarios;
+    if (!gr && !ir) continue;
+    PAGINAS_RESTRINGIDAS[it.id] = gr && ir ? gr.filter((u) => ir.includes(u)) : (ir ?? gr ?? []);
+  }
+}
 function NavGroup({
   grupo,
   page,
+  usuario,
   colapsable = false,
   abierto = true,
   onToggle,
@@ -158,12 +170,15 @@ function NavGroup({
 }: {
   grupo: Grupo;
   page: Page;
+  usuario?: string | null;
   colapsable?: boolean;
   abierto?: boolean;
   onToggle?: () => void;
   onIr: (p: Page) => void;
 }) {
   const mostrar = !colapsable || abierto;
+  // Ítems visibles para este usuario (algunos ítems están restringidos, p. ej. Presupuesto → Fernando).
+  const items = grupo.items.filter((it) => !it.soloUsuarios || it.soloUsuarios.includes(usuario ?? ""));
   return (
     <div className={"nav-group" + (colapsable && !abierto ? " nav-group-cerrado" : "")}>
       {colapsable ? (
@@ -175,7 +190,7 @@ function NavGroup({
         <div className="nav-group-title">{grupo.titulo}</div>
       )}
       {mostrar &&
-        grupo.items.map((it) => (
+        items.map((it) => (
           <button
             key={it.id}
             className={
@@ -197,6 +212,11 @@ export default function App() {
   function ir(p: Page) {
     setPage(p);
   }
+  // ¿El usuario actual puede ver esta página? (páginas restringidas a ciertos usuarios)
+  const puedeVer = (p: string) => {
+    const permitidos = PAGINAS_RESTRINGIDAS[p];
+    return !permitidos || permitidos.includes(usuario ?? "");
+  };
 
   // Identificación de usuario (sin contraseña): autologin por equipo + selector.
   const [usuarios, setUsuarios] = useState<Usuario[]>([]);
@@ -262,6 +282,12 @@ export default function App() {
   useEffect(() => {
     cargarAvisos();
   }, [page]);
+
+  // Si el usuario actual no puede ver la página activa (módulo restringido), vuelve a Inicio.
+  useEffect(() => {
+    if (!puedeVer(page)) setPage("inicio");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, usuario]);
 
   // Cerrar el desplegable de Configuración al hacer clic fuera de él.
   useEffect(() => {
@@ -406,8 +432,8 @@ export default function App() {
       <div className="body">
         <aside className="sidebar">
           <nav className="sidebar-nav">
-            {GRUPOS.map((g) => (
-              <NavGroup key={g.titulo} grupo={g} page={page} onIr={ir} />
+            {GRUPOS.filter((g) => !g.soloUsuarios || g.soloUsuarios.includes(usuario ?? "")).map((g) => (
+              <NavGroup key={g.titulo} grupo={g} page={page} usuario={usuario} onIr={ir} />
             ))}
           </nav>
         </aside>
@@ -428,7 +454,7 @@ export default function App() {
           {page === "cierre" && <CierreContablePage />}
           {page === "financiero" && <FinancieroPage />}
           {page === "transferencias" && <TransferenciasPage />}
-          {page === "contabilidad" && <ContabilidadPage />}
+          {page === "contabilidad" && puedeVer("contabilidad") && <ContabilidadPage />}
           {page === "polizas" && <PolizasPage />}
           {page === "consultoria" && <ConsultoriaPage />}
           {page === "comisiones" && <ComisionesPage />}

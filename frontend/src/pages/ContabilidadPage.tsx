@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { contabilidadApi, type MovimientoBancario, type MovimientosListados, type OpcionesConta, type ContaFiltros, type ContaCategoria } from "../api";
 import { fmtMiles } from "../format";
 import PageHeader from "../components/PageHeader";
@@ -11,6 +11,12 @@ import AltaMovimiento from "../components/AltaMovimiento";
 const eur = (v: number | string | null | undefined) => `${fmtMiles(v)} €`;
 const n = (v: number | string | null | undefined) => Number(v ?? 0);
 const FONDOS = "Movimiento Fondos";
+// Orden fijo de las pestañas de cuenta (las no listadas van al final, alfabéticas).
+const ORDEN_CUENTAS = [
+  "Sabadell General", "Sabadell Clientes", "Bankinter Clientes",
+  "Mediolanum Clientes", "Mediolanum General",
+  "Revolut General EUR", "Revolut General USD", "Revolut General GBP",
+];
 
 const COLS: Col<MovimientoBancario>[] = [
   { key: "identificador", label: "Id", tipo: "text", width: 80 },
@@ -25,10 +31,11 @@ const COLS: Col<MovimientoBancario>[] = [
   { key: "gasto", label: "Gasto", tipo: "num", render: (m) => n(m.gasto) ? <span style={{ color: "#b00" }}>{fmtMiles(m.gasto)}</span> : "—" },
   { key: "ingreso", label: "Ingreso", tipo: "num", render: (m) => n(m.ingreso) ? <span style={{ color: "#0a0" }}>{fmtMiles(m.ingreso)}</span> : "—" },
   { key: "saldo", label: "Saldo", tipo: "num" },
+  { key: "factura", label: "Justificante", tipo: "bool" },
   { key: "descripcion", label: "Descripción", tipo: "text", width: 260 },
   { key: "codigo", label: "Código", tipo: "text" },
 ];
-const DEFAULT_KEYS = ["identificador", "fecha", "devengo", "tipo", "grupo", "concepto", "gasto", "ingreso", "saldo", "descripcion"];
+const DEFAULT_KEYS = ["identificador", "fecha", "devengo", "tipo", "grupo", "concepto", "gasto", "ingreso", "saldo", "factura", "descripcion"];
 
 export default function ContabilidadPage() {
   const [data, setData] = useState<MovimientosListados | null>(null);
@@ -39,14 +46,19 @@ export default function ContabilidadPage() {
   const [cuenta, setCuenta] = useState<string>("");   // cuenta activa (SIEMPRE una)
   const [cats, setCats] = useState<ContaCategoria[]>([]);
   const [alta, setAlta] = useState(false);
-  const [anio, setAnio] = useState<number | "">("");
+  const [editando, setEditando] = useState<MovimientoBancario | null>(null);
+  const [anio, setAnio] = useState<number | "">(new Date().getFullYear());   // por defecto, año en curso
   const [grupo, setGrupo] = useState("");
   const [tipo, setTipo] = useState("");
   const [concepto, setConcepto] = useState("");
   const [q, setQ] = useState("");
 
   // Cuentas de banco (sin 'Movimiento Fondos', que va aparte).
-  const cuentas = useMemo(() => (opciones?.cuentas ?? []).filter((c) => c !== FONDOS), [opciones]);
+  const cuentas = useMemo(() => {
+    const lista = (opciones?.cuentas ?? []).filter((c) => c !== FONDOS);
+    const idx = (c: string) => { const i = ORDEN_CUENTAS.indexOf(c); return i === -1 ? 999 : i; };
+    return [...lista].sort((a, b) => idx(a) - idx(b) || a.localeCompare(b));
+  }, [opciones]);
   const hayFondos = useMemo(() => (opciones?.cuentas ?? []).includes(FONDOS), [opciones]);
 
   // Al cargar las opciones, selecciona la primera cuenta (nunca arranca "sin cuenta" / mezclando).
@@ -75,8 +87,26 @@ export default function ContabilidadPage() {
   // Al cambiar de cuenta, limpia los filtros secundarios (cada cuenta es un mundo).
   function elegirCuenta(c: string) {
     setCuenta(c);
-    setAnio(""); setGrupo(""); setTipo(""); setConcepto(""); setQ("");
+    setAnio(new Date().getFullYear()); setGrupo(""); setTipo(""); setConcepto(""); setQ("");
   }
+
+  // Justificante editable desde el listado (clic en la casilla). Optimista + revierte si falla.
+  const toggleJustif = useCallback(async (m: MovimientoBancario) => {
+    const nuevo = !m.factura;
+    setData((d) => d ? { ...d, items: d.items.map((x) => x.id === m.id ? { ...x, factura: nuevo } : x) } : d);
+    try {
+      await contabilidadApi.actualizar(m.id, { factura: nuevo });
+    } catch (e) {
+      setError((e as Error).message);
+      setData((d) => d ? { ...d, items: d.items.map((x) => x.id === m.id ? { ...x, factura: !nuevo } : x) } : d);
+    }
+  }, []);
+  const columnas = useMemo<Col<MovimientoBancario>[]>(() => COLS.map((c) => c.key === "factura"
+    ? { ...c, render: (m: MovimientoBancario) => (
+        <input type="checkbox" checked={!!m.factura} style={{ cursor: "pointer" }}
+          onClick={(e) => e.stopPropagation()} onChange={() => toggleJustif(m)} />
+      ) }
+    : c), [toggleJustif]);
 
   return (
     <div className="container lista-page">
@@ -120,17 +150,10 @@ export default function ContabilidadPage() {
           </div>
           <div className="bdx-totales">
             <div className="tot-col">
-              <div className="tot-row tot-cab"><span>{cuenta}</span><b /></div>
-              <div className="tot-row"><span>Gastos</span><b>{eur(data.total_gasto)}</b></div>
+              <div className="tot-row tot-cab"><span>{cuenta}{anio ? ` ${anio}` : ""}</span><b /></div>
               <div className="tot-row"><span>Ingresos</span><b>{eur(data.total_ingreso)}</b></div>
+              <div className="tot-row"><span>Gastos</span><b>{eur(data.total_gasto)}</b></div>
               <div className="tot-row tot-pdte"><span>Neto</span><b>{eur(data.neto)}</b></div>
-            </div>
-            <div className="tot-col">
-              <div className="tot-row" style={{ visibility: "hidden" }}><span>·</span><b /></div>
-              <div className="tot-row"><span>Movimientos</span><b>{fmtMiles(data.n_total, 0)}</b></div>
-              {data.saldo_cuenta != null && (
-                <div className="tot-row tot-pdte"><span>Saldo</span><b>{eur(data.saldo_cuenta)}</b></div>
-              )}
             </div>
           </div>
         </div>
@@ -143,22 +166,25 @@ export default function ContabilidadPage() {
       ) : (
         <TablaDatos
           filas={data?.items ?? []}
-          columnas={COLS}
+          columnas={columnas}
           defaultKeys={DEFAULT_KEYS}
-          storageKey="mayrit.contabilidad.tabla.v1"
+          storageKey="mayrit.contabilidad.tabla.v2"
           defaultSort={{ key: "fecha", dir: -1 }}
+          rowClass={(m) => (m.factura ? undefined : "fila-sin-justificante")}
+          rowAction={(m) => <button className="btn-link" onClick={() => setEditando(m)}>Editar</button>}
         />
       )}
       {data && data.n_total > data.items.length && (
         <p className="hint" style={{ marginTop: 6 }}>Mostrando los {data.items.length} más recientes de {data.n_total} de {cuenta}. Afina con los filtros para ver el resto.</p>
       )}
 
-      {alta && cuenta && (
+      {(alta || editando) && (
         <AltaMovimiento
-          cuenta={cuenta}
+          cuenta={editando?.cuenta ?? cuenta}
           cats={cats}
-          onClose={() => setAlta(false)}
-          onSaved={() => { setAlta(false); cargar(); contabilidadApi.opciones().then(setOpciones).catch(() => {}); }}
+          movimiento={editando}
+          onClose={() => { setAlta(false); setEditando(null); }}
+          onSaved={() => { setAlta(false); setEditando(null); cargar(); contabilidadApi.opciones().then(setOpciones).catch(() => {}); }}
         />
       )}
     </div>

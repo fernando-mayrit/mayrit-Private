@@ -8,7 +8,7 @@ from __future__ import annotations
 import datetime as dt
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
@@ -235,6 +235,48 @@ def crear(payload: MovimientoCrear, db: Session = Depends(get_db)):
         sp_lista=None, sp_old_id=None,
     )
     db.add(m)
+    db.commit()
+    db.refresh(m)
+    return _read(m)
+
+
+class MovimientoUpdate(BaseModel):
+    fecha: dt.date | None = None
+    devengo: dt.date | None = None
+    tipo: str | None = None
+    grupo: str | None = None
+    concepto: str | None = None
+    importe: Decimal | None = None         # magnitud (va a gasto o ingreso según el tipo)
+    saldo: Decimal | None = None
+    descripcion: str | None = None
+    factura: bool | None = None            # 'Justificante'
+    tarjeta: bool | None = None
+    movimiento_bancario: bool | None = None
+
+
+@router.put("/{mid}", response_model=MovimientoRead)
+def actualizar(mid: int, payload: MovimientoUpdate, db: Session = Depends(get_db)):
+    """Edición de un movimiento. Solo aplica los campos enviados (toggle del justificante, o edición
+    completa desde el modal)."""
+    m = db.get(MovimientoBancario, mid)
+    if m is None:
+        raise HTTPException(status_code=404, detail=f"Movimiento {mid} no encontrado")
+    datos = payload.model_dump(exclude_unset=True)
+    for k in ("grupo", "concepto", "saldo", "descripcion", "factura", "tarjeta", "movimiento_bancario"):
+        if k in datos:
+            setattr(m, k, datos[k])
+    if datos.get("fecha"):
+        m.fecha = datos["fecha"]
+        m.anio = datos["fecha"].year
+    if "devengo" in datos:
+        m.devengo = datos["devengo"]
+    # tipo/importe → recalcular gasto/ingreso
+    if "tipo" in datos or "importe" in datos:
+        tipo = datos.get("tipo") or m.tipo
+        imp = Decimal(datos["importe"]) if datos.get("importe") is not None else Decimal(m.gasto or 0) + Decimal(m.ingreso or 0)
+        m.tipo = tipo
+        m.gasto = imp if tipo == "Gasto" else Decimal(0)
+        m.ingreso = Decimal(0) if tipo == "Gasto" else imp
     db.commit()
     db.refresh(m)
     return _read(m)

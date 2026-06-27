@@ -94,6 +94,10 @@ h1, h2, h3 { font-family: var(--fuente-titulo); font-weight: 600; color: var(--g
 .conta-cta-fondos.active { background: var(--gris); border-color: var(--gris); }
 /* Alta de movimiento: importe de gasto en rojo (como en el Access). */
 .importe-gasto input, .importe-gasto .inp-num { color: #b00; font-weight: 600; }
+/* Contabilidad: movimiento SIN justificante → fila en gris OSCURO (que destaque). */
+tr.fila-sin-justificante td { color: #3a3f44; background: #b9c0c7; }
+tr.fila-sin-justificante:hover td { background: #aeb6be; }
+tr.fila-sin-justificante td span { color: inherit !important; }
 /* Configuración: desplegable en la cabecera (arriba a la derecha). */
 .header-config { position: relative; margin-left: 14px; }
 .header-config-btn { display: flex; align-items: center; gap: 5px; background: none; border: 1px solid transparent; border-radius: 8px; padding: 6px 10px; font-size: 13.5px; font-weight: 600; color: var(--gris); cursor: pointer; }
@@ -314,14 +318,14 @@ fieldset[disabled] { opacity: .85; }
 .panel h2 { margin-top: 0; }
 .field { margin-bottom: 14px; display: flex; flex-direction: column; gap: 4px; }
 .field label { font-size: 13px; color: var(--gris); font-weight: 500; }
-.field input[type="text"], .field input[type="date"], .field input[type="number"], .field textarea, .field select {
+.field input[type="text"], .field input[type="date"], .field input[type="month"], .field input[type="number"], .field textarea, .field select {
   padding: 8px 10px; border: 1px solid var(--borde); border-radius: 8px; font-size: 14px; font-family: inherit; background: #fff;
 }
 .field input:focus, .field textarea:focus, .field select:focus { outline: none; border-color: var(--naranja); box-shadow: 0 0 0 3px rgba(224, 122, 90, 0.25); }
 .field input[readonly], .field input:disabled, .field textarea:disabled { background: var(--gris-claro); color: var(--gris-medio); cursor: default; opacity: 1; }
 .field select:disabled { background: var(--gris-claro); color: var(--gris-medio); cursor: default; opacity: 1; }
-/* Regla global: las fechas van centradas en su caja en toda la app */
-input[type="date"] { text-align: center; }
+/* Regla global: las fechas (y meses) van centradas en su caja en toda la app */
+input[type="date"], input[type="month"] { text-align: center; }
 
 /* Vigencia del binder: fechas apiladas (efecto sobre vencimiento) y YOA a la derecha, centrado entre ellas */
 .vigencia { display: flex; gap: 18px; align-items: center; }
