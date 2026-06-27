@@ -1115,3 +1115,62 @@ class Transferencia(Base):
     updated_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     recibo: Mapped["Recibo | None"] = relationship()
+
+
+class ContaCategoria(Base):
+    """Catálogo de Contabilidad: clasifica cada Concepto de banco en Grupo/Tipo y su Cuenta Contable
+    (código del PGC). Calca la lista SharePoint `Contabilidad - Categorias`."""
+
+    __tablename__ = "conta_categorias"
+    __table_args__ = (UniqueConstraint("concepto", name="uq_conta_categoria_concepto"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    sp_old_id: Mapped[int | None] = mapped_column(Integer, index=True)
+    concepto: Mapped[str] = mapped_column(String(160), index=True)
+    grupo: Mapped[str | None] = mapped_column(String(80))
+    tipo: Mapped[str | None] = mapped_column(String(20))             # Gasto | Ingreso
+    cuenta_contable: Mapped[str | None] = mapped_column(String(20))  # código PGC (p. ej. 62110001)
+
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class MovimientoBancario(Base):
+    """Movimiento de banco (extracto categorizado) — núcleo del módulo Contabilidad. Calca las listas
+    SharePoint `Contabilidad - <cuenta>`: una fila por apunte, con importe en Gasto o Ingreso según el
+    sentido, su saldo, y la clasificación (Concepto · Grupo · Tipo). La cuenta enlaza por nombre con
+    `CuentaBancaria`. `transferencia_id` (Fase 2) lo concilia con el movimiento del ledger de
+    Transferencias cuando el apunte es de seguros (prima cobrada, liquidación, …)."""
+
+    __tablename__ = "movimientos_bancarios"
+    __table_args__ = (UniqueConstraint("sp_lista", "sp_old_id", name="uq_movbanc_lista_spid"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    sp_old_id: Mapped[int | None] = mapped_column(Integer, index=True)   # Id del elemento EN SU lista
+    sp_lista: Mapped[str | None] = mapped_column(String(60), index=True)  # lista de origen (idempotencia)
+
+    cuenta: Mapped[str] = mapped_column(String(60), index=True)           # nombre de la cuenta bancaria
+    iden: Mapped[int | None] = mapped_column(Integer)                     # correlativo por cuenta (nº del alta)
+    identificador: Mapped[str | None] = mapped_column(String(40))         # Id visible: '{iden}.{mes}' (p. ej. 246.06)
+    fecha: Mapped[dt.date | None] = mapped_column(Date, index=True)
+    anio: Mapped[int | None] = mapped_column(Integer, index=True)
+
+    concepto: Mapped[str | None] = mapped_column(String(160), index=True)
+    grupo: Mapped[str | None] = mapped_column(String(80), index=True)
+    tipo: Mapped[str | None] = mapped_column(String(20), index=True)      # Gasto | Ingreso
+
+    gasto: Mapped[Decimal] = mapped_column(Numeric(18, 2), server_default=text("0"), default=0)
+    ingreso: Mapped[Decimal] = mapped_column(Numeric(18, 2), server_default=text("0"), default=0)
+    saldo: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+
+    descripcion: Mapped[str | None] = mapped_column(Text)
+    devengo: Mapped[dt.date | None] = mapped_column(Date)
+    movimiento_bancario: Mapped[bool] = mapped_column(Boolean, server_default=text("true"), default=True)
+    tarjeta: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
+    factura: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)  # 'Justificante'
+    codigo: Mapped[str | None] = mapped_column(Text)   # Id + cuenta contable + concepto concatenados (largo)
+
+    # Conciliación (Fase 2): movimiento del ledger de Transferencias que cuadra con este apunte.
+    transferencia_id: Mapped[int | None] = mapped_column(ForeignKey("transferencias.id", ondelete="SET NULL"), index=True)
+
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

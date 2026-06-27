@@ -14,6 +14,7 @@ import ComisionesPage from "./pages/ComisionesPage";
 import TareasPage from "./pages/TareasPage";
 import LpanPage from "./pages/LpanPage";
 import CierreContablePage from "./pages/CierreContablePage";
+import ContabilidadPage from "./pages/ContabilidadPage";
 import FinancieroPage from "./pages/FinancieroPage";
 import TransferenciasPage from "./pages/TransferenciasPage";
 import RamosPage from "./pages/RamosPage";
@@ -427,7 +428,7 @@ export default function App() {
           {page === "cierre" && <CierreContablePage />}
           {page === "financiero" && <FinancieroPage />}
           {page === "transferencias" && <TransferenciasPage />}
-          {page === "contabilidad" && <EnConstruccion titulo="Contabilidad" />}
+          {page === "contabilidad" && <ContabilidadPage />}
           {page === "polizas" && <PolizasPage />}
           {page === "consultoria" && <ConsultoriaPage />}
           {page === "comisiones" && <ComisionesPage />}

@@ -440,6 +440,79 @@ export const transferenciasApi = {
   borrar: (id: number) => request(`/transferencias/${id}`, { method: "DELETE" }),
 };
 
+// ── Contabilidad (libro de banco categorizado) ──
+export interface MovimientoBancario {
+  id: number;
+  cuenta: string;
+  iden?: number | null;
+  identificador?: string | null;
+  fecha?: string | null;
+  devengo?: string | null;
+  anio?: number | null;
+  concepto?: string | null;
+  grupo?: string | null;
+  tipo?: string | null;              // Gasto | Ingreso
+  gasto: number | string;
+  ingreso: number | string;
+  saldo?: number | string | null;
+  descripcion?: string | null;
+  codigo?: string | null;
+  movimiento_bancario?: boolean;
+  tarjeta: boolean;
+  factura: boolean;
+  conciliado: boolean;
+}
+export interface ContaCategoria { concepto: string; grupo: string | null; tipo: string | null; cuenta_contable: string | null }
+export interface BaseAlta { ultimo_saldo: number | string | null; next_iden: number }
+export interface MovimientoCrear {
+  cuenta: string; fecha: string; devengo?: string | null; tipo: string;
+  grupo?: string | null; concepto?: string | null; importe: number;
+  saldo?: number | null; descripcion?: string | null;
+  movimiento_bancario?: boolean; factura?: boolean; tarjeta?: boolean;
+}
+export interface MovimientosListados {
+  items: MovimientoBancario[];
+  total_gasto: number | string;
+  total_ingreso: number | string;
+  neto: number | string;
+  saldo_cuenta: number | string | null;
+  n_total: number;
+}
+export interface OpcionesConta {
+  cuentas: string[];
+  grupos: string[];
+  tipos: string[];
+  conceptos: string[];
+  anios: number[];
+}
+export interface ContaFiltros {
+  cuenta?: string | null;
+  anio?: number | null;
+  grupo?: string | null;
+  tipo?: string | null;
+  concepto?: string | null;
+  q?: string | null;
+  limit?: number;
+}
+export const contabilidadApi = {
+  listar: (f: ContaFiltros = {}) => {
+    const qs = new URLSearchParams();
+    if (f.cuenta) qs.set("cuenta", f.cuenta);
+    if (f.anio) qs.set("anio", String(f.anio));
+    if (f.grupo) qs.set("grupo", f.grupo);
+    if (f.tipo) qs.set("tipo", f.tipo);
+    if (f.concepto) qs.set("concepto", f.concepto);
+    if (f.q) qs.set("q", f.q);
+    if (f.limit) qs.set("limit", String(f.limit));
+    const s = qs.toString();
+    return request<MovimientosListados>(`/contabilidad${s ? `?${s}` : ""}`);
+  },
+  opciones: () => request<OpcionesConta>("/contabilidad/opciones"),
+  categorias: () => request<ContaCategoria[]>("/contabilidad/categorias"),
+  base: (cuenta: string, anio: number) => request<BaseAlta>(`/contabilidad/base?cuenta=${encodeURIComponent(cuenta)}&anio=${anio}`),
+  crear: (d: MovimientoCrear) => request<MovimientoBancario>("/contabilidad", { method: "POST", body: JSON.stringify(d) }),
+};
+
 // ── Tareas recurrentes manuales por binder ──
 export interface Tarea {
   id: number;

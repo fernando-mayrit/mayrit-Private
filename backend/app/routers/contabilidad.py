@@ -1,0 +1,240 @@
+"""
+Módulo de Contabilidad — libro de banco categorizado (espejo de las listas SharePoint
+`Contabilidad - <cuenta>`). Cada movimiento: fecha, cuenta, concepto/grupo/tipo (clasificación),
+gasto/ingreso, saldo. La conciliación con el ledger de Transferencias es la Fase 2.
+"""
+from __future__ import annotations
+
+import datetime as dt
+from decimal import Decimal
+
+from fastapi import APIRouter, Depends
+from pydantic import BaseModel
+from sqlalchemy import func, or_, select
+from sqlalchemy.orm import Session
+
+from ..db import get_db
+from ..models.maestras import ContaCategoria, CuentaBancaria, MovimientoBancario
+
+router = APIRouter(prefix="/contabilidad", tags=["Contabilidad"])
+
+
+# ── Schemas ──
+class MovimientoRead(BaseModel):
+    id: int
+    cuenta: str
+    iden: int | None
+    identificador: str | None
+    fecha: dt.date | None
+    devengo: dt.date | None
+    anio: int | None
+    concepto: str | None
+    grupo: str | None
+    tipo: str | None
+    gasto: Decimal
+    ingreso: Decimal
+    saldo: Decimal | None
+    descripcion: str | None
+    codigo: str | None
+    movimiento_bancario: bool = True
+    tarjeta: bool
+    factura: bool
+    conciliado: bool = False
+
+    class Config:
+        from_attributes = True
+
+
+class MovimientosListados(BaseModel):
+    items: list[MovimientoRead]
+    total_gasto: Decimal
+    total_ingreso: Decimal
+    neto: Decimal               # ingreso − gasto
+    saldo_cuenta: Decimal | None  # saldo del último movimiento (solo si se filtra por UNA cuenta)
+    n_total: int
+
+
+class OpcionesConta(BaseModel):
+    cuentas: list[str]
+    grupos: list[str]
+    tipos: list[str]
+    conceptos: list[str]
+    anios: list[int]
+
+
+class CategoriaRead(BaseModel):
+    concepto: str
+    grupo: str | None
+    tipo: str | None
+    cuenta_contable: str | None
+
+    class Config:
+        from_attributes = True
+
+
+# ── Listado con filtros + totales ──
+@router.get("", response_model=MovimientosListados)
+def listar(
+    db: Session = Depends(get_db),
+    cuenta: str | None = None,
+    anio: int | None = None,
+    grupo: str | None = None,
+    tipo: str | None = None,
+    concepto: str | None = None,
+    q: str | None = None,
+    limit: int = 500,
+):
+    filtros = []
+    if cuenta:
+        filtros.append(MovimientoBancario.cuenta == cuenta)
+    if anio:
+        filtros.append(MovimientoBancario.anio == anio)
+    if grupo:
+        filtros.append(MovimientoBancario.grupo == grupo)
+    if tipo:
+        filtros.append(MovimientoBancario.tipo == tipo)
+    if concepto:
+        filtros.append(MovimientoBancario.concepto == concepto)
+    if q:
+        like = f"%{q.strip()}%"
+        filtros.append(or_(
+            MovimientoBancario.descripcion.ilike(like),
+            MovimientoBancario.concepto.ilike(like),
+            MovimientoBancario.codigo.ilike(like),
+        ))
+
+    base = select(MovimientoBancario).where(*filtros)
+
+    tg, ti, n = db.execute(
+        select(func.coalesce(func.sum(MovimientoBancario.gasto), 0),
+               func.coalesce(func.sum(MovimientoBancario.ingreso), 0),
+               func.count()).where(*filtros)
+    ).one()
+
+    # Saldo de la cuenta = saldo del movimiento más reciente, solo si se filtró por una sola cuenta.
+    saldo_cuenta = None
+    if cuenta:
+        saldo_cuenta = db.scalar(
+            select(MovimientoBancario.saldo).where(MovimientoBancario.cuenta == cuenta, MovimientoBancario.saldo.is_not(None))
+            .order_by(MovimientoBancario.fecha.desc().nullslast(), MovimientoBancario.id.desc()).limit(1)
+        )
+
+    items = db.scalars(
+        base.order_by(MovimientoBancario.fecha.desc().nullslast(), MovimientoBancario.id.desc()).limit(limit)
+    ).all()
+
+    return MovimientosListados(
+        items=[_read(m) for m in items],
+        total_gasto=Decimal(tg), total_ingreso=Decimal(ti), neto=Decimal(ti) - Decimal(tg),
+        saldo_cuenta=saldo_cuenta, n_total=n,
+    )
+
+
+def _read(m: MovimientoBancario) -> MovimientoRead:
+    out = MovimientoRead.model_validate(m)
+    out.conciliado = m.transferencia_id is not None
+    return out
+
+
+@router.get("/opciones", response_model=OpcionesConta)
+def opciones(db: Session = Depends(get_db)):
+    def distintos(col):
+        return [v for (v,) in db.execute(select(col).where(col.is_not(None)).distinct().order_by(col)).all() if v]
+    anios = [a for (a,) in db.execute(
+        select(MovimientoBancario.anio).where(MovimientoBancario.anio.is_not(None)).distinct().order_by(MovimientoBancario.anio.desc())
+    ).all()]
+    # Las cuentas DESACTIVADAS en Configuración (cuentas_bancarias.activa=False) no muestran pestaña.
+    inactivas = {n for (n,) in db.execute(
+        select(CuentaBancaria.nombre).where(CuentaBancaria.activa.is_(False))
+    ).all()}
+    cuentas = [c for c in distintos(MovimientoBancario.cuenta) if c not in inactivas]
+    return OpcionesConta(
+        cuentas=cuentas,
+        grupos=distintos(MovimientoBancario.grupo),
+        tipos=distintos(MovimientoBancario.tipo),
+        conceptos=distintos(MovimientoBancario.concepto),
+        anios=anios,
+    )
+
+
+@router.get("/categorias", response_model=list[CategoriaRead])
+def categorias(db: Session = Depends(get_db)):
+    return db.scalars(select(ContaCategoria).order_by(ContaCategoria.grupo, ContaCategoria.concepto)).all()
+
+
+# ── Alta de movimiento (al estilo Access) ──
+class BaseAlta(BaseModel):
+    ultimo_saldo: Decimal | None   # saldo del último movimiento de la cuenta
+    next_iden: int                 # siguiente Iden correlativo de la cuenta para ese año
+
+
+@router.get("/base", response_model=BaseAlta)
+def base_alta(cuenta: str, anio: int, db: Session = Depends(get_db)):
+    """Datos para el alta de un movimiento de `cuenta`: saldo de partida y siguiente Iden del año."""
+    ultimo = db.scalar(
+        select(MovimientoBancario.saldo).where(MovimientoBancario.cuenta == cuenta, MovimientoBancario.saldo.is_not(None))
+        .order_by(MovimientoBancario.fecha.desc().nullslast(), MovimientoBancario.id.desc()).limit(1)
+    )
+    maxiden = db.scalar(
+        select(func.max(MovimientoBancario.iden)).where(MovimientoBancario.cuenta == cuenta, MovimientoBancario.anio == anio)
+    )
+    return BaseAlta(ultimo_saldo=ultimo, next_iden=(maxiden or 0) + 1)
+
+
+class MovimientoCrear(BaseModel):
+    cuenta: str
+    fecha: dt.date
+    devengo: dt.date | None = None
+    tipo: str                       # Gasto | Ingreso
+    grupo: str | None = None
+    concepto: str | None = None
+    importe: Decimal
+    saldo: Decimal | None = None    # si no viene, se calcula (saldo anterior ± importe)
+    descripcion: str | None = None
+    movimiento_bancario: bool = True
+    factura: bool = False           # 'Justificante'
+    tarjeta: bool = False
+
+
+@router.post("", response_model=MovimientoRead, status_code=201)
+def crear(payload: MovimientoCrear, db: Session = Depends(get_db)):
+    dev = payload.devengo or payload.fecha
+    es_gasto = payload.tipo == "Gasto"
+    importe = Decimal(payload.importe or 0)
+    gasto = importe if es_gasto else Decimal(0)
+    ingreso = Decimal(0) if es_gasto else importe
+
+    # Iden correlativo por cuenta y AÑO; Id visible = '{iden}.{mes}' (mes del devengo).
+    anio = payload.fecha.year
+    maxiden = db.scalar(
+        select(func.max(MovimientoBancario.iden)).where(MovimientoBancario.cuenta == payload.cuenta, MovimientoBancario.anio == anio)
+    )
+    iden = (maxiden or 0) + 1
+    identificador = f"{iden}.{dev.month:02d}"
+
+    # Saldo = el dado, o el del último movimiento ± importe.
+    if payload.saldo is not None:
+        saldo = Decimal(payload.saldo)
+    else:
+        ult = db.scalar(
+            select(MovimientoBancario.saldo).where(MovimientoBancario.cuenta == payload.cuenta, MovimientoBancario.saldo.is_not(None))
+            .order_by(MovimientoBancario.fecha.desc().nullslast(), MovimientoBancario.id.desc()).limit(1)
+        )
+        saldo = Decimal(ult or 0) + ingreso - gasto
+
+    pgc = db.scalar(select(ContaCategoria.cuenta_contable).where(ContaCategoria.concepto == payload.concepto)) if payload.concepto else None
+    codigo = f"{identificador}. {pgc or ''}. {payload.concepto or ''}".strip()
+
+    m = MovimientoBancario(
+        cuenta=payload.cuenta, iden=iden, identificador=identificador,
+        fecha=payload.fecha, anio=anio, devengo=dev,
+        concepto=payload.concepto, grupo=payload.grupo, tipo=payload.tipo,
+        gasto=gasto, ingreso=ingreso, saldo=saldo,
+        descripcion=payload.descripcion, codigo=codigo,
+        movimiento_bancario=payload.movimiento_bancario, factura=payload.factura, tarjeta=payload.tarjeta,
+        sp_lista=None, sp_old_id=None,
+    )
+    db.add(m)
+    db.commit()
+    db.refresh(m)
+    return _read(m)

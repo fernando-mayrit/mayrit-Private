@@ -85,6 +85,15 @@ h1, h2, h3 { font-family: var(--fuente-titulo); font-weight: 600; color: var(--g
 .aviso-item.nivel-borde-bajo  { border-left-color: #3bab57; }
 /* Puntos del semáforo un poco más grandes y nítidos en la lista. */
 .avisos-lista .nivel-dot { width: 13px; height: 13px; box-shadow: 0 0 0 1px rgba(0,0,0,.08) inset; }
+/* Contabilidad: selector de cuenta (siempre una activa). 'Movimiento Fondos' separado a la derecha. */
+.conta-ctas { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 6px 0 4px; padding-bottom: 8px; border-bottom: 2px solid var(--borde); }
+.conta-cta { background: #fff; color: var(--gris); border: 1px solid var(--borde); border-radius: 8px; padding: 7px 12px; font-size: 13px; font-weight: 600; cursor: pointer; }
+.conta-cta:hover { border-color: var(--naranja); color: var(--naranja-osc); }
+.conta-cta.active { background: var(--naranja); color: #fff; border-color: var(--naranja); }
+.conta-cta-fondos { margin-left: auto; }
+.conta-cta-fondos.active { background: var(--gris); border-color: var(--gris); }
+/* Alta de movimiento: importe de gasto en rojo (como en el Access). */
+.importe-gasto input, .importe-gasto .inp-num { color: #b00; font-weight: 600; }
 /* Configuración: desplegable en la cabecera (arriba a la derecha). */
 .header-config { position: relative; margin-left: 14px; }
 .header-config-btn { display: flex; align-items: center; gap: 5px; background: none; border: 1px solid transparent; border-radius: 8px; padding: 6px 10px; font-size: 13.5px; font-weight: 600; color: var(--gris); cursor: pointer; }
