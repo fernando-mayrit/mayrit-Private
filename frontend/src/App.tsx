@@ -262,9 +262,10 @@ export default function App() {
     setEligiendo(false);
   }
 
-  // Avisos / tareas pendientes (campana + panel de Inicio). Se recargan al navegar.
+  // Avisos / tareas pendientes (dos campanas: 'Alertas' = temas gordos, 'Avisos' = rutina/día).
+  // La categoría de cada tipo es configurable (se mueve de una campana a otra desde el ⚙️).
   const [avisos, setAvisos] = useState<Aviso[]>([]);
-  const [verAvisos, setVerAvisos] = useState(false);
+  const [panelAviso, setPanelAviso] = useState<null | "alerta" | "dia">(null);
   const [verConfig, setVerConfig] = useState(false);
   const [configNiveles, setConfigNiveles] = useState(false);
   const [niveles, setNiveles] = useState<AvisoNivel[]>([]);
@@ -278,6 +279,10 @@ export default function App() {
   async function cambiarNivel(tipo: string, nivel: string) {
     setNiveles((ns) => ns.map((n) => (n.tipo === tipo ? { ...n, nivel } : n)));
     try { await avisosApi.fijarNivel(tipo, nivel); cargarAvisos(); } catch { /* noop */ }
+  }
+  async function cambiarCategoria(tipo: string, categoria: string) {
+    setNiveles((ns) => ns.map((n) => (n.tipo === tipo ? { ...n, categoria } : n)));
+    try { await avisosApi.fijarCategoria(tipo, categoria); cargarAvisos(); } catch { /* noop */ }
   }
   useEffect(() => {
     cargarAvisos();
@@ -313,6 +318,53 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Avisos partidos en dos cubos por categoría, y helpers de render compartidos por los 3 modos.
+  const avAlerta = avisos.filter((a) => a.categoria === "alerta");
+  const avDia = avisos.filter((a) => a.categoria !== "alerta");
+  const hayAlto = (xs: Aviso[]) => xs.some((a) => a.nivel === "alto");
+  const abrirPanel = (p: "alerta" | "dia") => { cargarAvisos(); setPanelAviso((x) => (x === p ? null : p)); };
+  const renderLista = (xs: Aviso[]) =>
+    xs.length === 0 ? (
+      <div className="avisos-vacio">Sin avisos 🎉</div>
+    ) : (
+      <div className="avisos-lista">
+        {xs.map((a, i) => (
+          <button key={i} className={`aviso-item nivel-borde-${a.nivel}`}
+            onClick={() => { if (a.pagina) ir(a.pagina as Page); setPanelAviso(null); }}>
+            <span className="aviso-titulo"><span className={`nivel-dot nivel-${a.nivel}`} /> {a.titulo}</span>
+            <span className="aviso-detalle">{a.detalle}</span>
+          </button>
+        ))}
+      </div>
+    );
+  const renderConfig = () => (
+    <div className="aviso-niveles">
+      <p className="hint" style={{ padding: "8px 14px 4px" }}>Importancia (semáforo) y campana de cada aviso:</p>
+      {niveles.map((n) => (
+        <div key={n.tipo} className="aviso-nivel-fila">
+          <span className="aviso-nivel-et">{n.etiqueta}</span>
+          <span className="aviso-nivel-sel">
+            {(["alto", "medio", "bajo"] as const).map((lv) => (
+              <button key={lv} className={`nivel-dot nivel-${lv} ${n.nivel === lv ? "nivel-on" : ""}`}
+                title={`Importancia: ${lv}`} onClick={() => cambiarNivel(n.tipo, lv)} />
+            ))}
+            <button className={`aviso-cat-toggle aviso-cat-${n.categoria}`}
+              title="Cambiar de campana (Alertas ↔ Avisos)"
+              onClick={() => cambiarCategoria(n.tipo, n.categoria === "dia" ? "alerta" : "dia")}>
+              {n.categoria === "dia" ? "📋 Avisos" : "🔔 Alertas"}
+            </button>
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+  const popHead = (titulo: string, n: number) => (
+    <div className="avisos-pop-head">
+      <span>{titulo} ({n})</span>
+      <button className="btn-link aviso-config-btn" onClick={() => (configNiveles ? setConfigNiveles(false) : abrirConfigNiveles())}>⚙️ Configurar</button>
+    </div>
+  );
+
   return (
     <div className="app">
       <header className="app-header">
@@ -338,62 +390,26 @@ export default function App() {
           ))}
         </nav>
         <div className="header-avisos">
-          <button
-            className={`campana${avisos.some((a) => a.nivel === "alto") ? " campana-alerta" : ""}`}
-            title="Avisos / tareas pendientes"
-            onClick={() => { if (!verAvisos) cargarAvisos(); setVerAvisos((v) => !v); }}
-          >
-            🔔{avisos.length > 0 && (
-              <span className={`campana-badge${avisos.some((a) => a.nivel === "alto") ? " campana-badge-alto" : ""}`}>
-                {avisos.length}
-              </span>
+          {/* 🔔 Alertas (temas gordos, se balancea si hay nivel alto) + 📋 Avisos (rutina/día) */}
+          <button className={`campana${hayAlto(avAlerta) ? " campana-alerta" : ""}`}
+            title="Alertas (temas importantes)" onClick={() => abrirPanel("alerta")}>
+            🔔{avAlerta.length > 0 && (
+              <span className={`campana-badge${hayAlto(avAlerta) ? " campana-badge-alto" : ""}`}>{avAlerta.length}</span>
             )}
           </button>
-          {verAvisos && (
+          <button className="campana campana-dia" title="Avisos (del día)" onClick={() => abrirPanel("dia")}>
+            📋{avDia.length > 0 && <span className="campana-badge campana-badge-dia">{avDia.length}</span>}
+          </button>
+          {panelAviso === "alerta" && (
             <div className="avisos-pop">
-              <div className="avisos-pop-head">
-                Tareas pendientes ({avisos.length})
-                <button className="btn-link aviso-config-btn" onClick={() => (configNiveles ? setConfigNiveles(false) : abrirConfigNiveles())}>
-                  ⚙️ Importancia
-                </button>
-              </div>
-              {configNiveles ? (
-                <div className="aviso-niveles">
-                  <p className="hint" style={{ padding: "8px 14px 4px" }}>Nivel (semáforo) por tipo de aviso:</p>
-                  {niveles.map((n) => (
-                    <div key={n.tipo} className="aviso-nivel-fila">
-                      <span className="aviso-nivel-et">{n.etiqueta}</span>
-                      <span className="aviso-nivel-sel">
-                        {(["alto", "medio", "bajo"] as const).map((lv) => (
-                          <button
-                            key={lv}
-                            className={`nivel-dot nivel-${lv} ${n.nivel === lv ? "nivel-on" : ""}`}
-                            title={lv}
-                            onClick={() => cambiarNivel(n.tipo, lv)}
-                          />
-                        ))}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              ) : avisos.length === 0 ? (
-                <div className="avisos-vacio">Sin avisos 🎉</div>
-              ) : (
-                <div className="avisos-lista">
-                  {avisos.map((a, i) => (
-                    <button
-                      key={i}
-                      className={`aviso-item nivel-borde-${a.nivel}`}
-                      onClick={() => { if (a.pagina) ir(a.pagina as Page); setVerAvisos(false); }}
-                    >
-                      <span className="aviso-titulo">
-                        <span className={`nivel-dot nivel-${a.nivel}`} /> {a.titulo}
-                      </span>
-                      <span className="aviso-detalle">{a.detalle}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
+              {popHead("Alertas", avAlerta.length)}
+              {configNiveles ? renderConfig() : renderLista(avAlerta)}
+            </div>
+          )}
+          {panelAviso === "dia" && (
+            <div className="avisos-pop avisos-pop-dia">
+              {popHead("Avisos", avDia.length)}
+              {configNiveles ? renderConfig() : renderLista(avDia)}
             </div>
           )}
         </div>
@@ -439,7 +455,7 @@ export default function App() {
         </aside>
 
         <main className="content">
-          {page === "inicio" && <Inicio usuario={usuario} onIr={(p) => ir(p as Page)} nAvisos={avisos.length} onVerAvisos={() => setVerAvisos(true)} />}
+          {page === "inicio" && <Inicio usuario={usuario} onIr={(p) => ir(p as Page)} alertas={avAlerta} nAvisosDia={avDia.length} />}
           {page === "productores" && <ProductoresPage />}
           {page === "mercados" && <MercadosPage />}
           {page === "tomadores" && <TomadoresPage />}

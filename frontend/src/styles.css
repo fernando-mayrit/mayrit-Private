@@ -60,6 +60,14 @@ h1, h2, h3 { font-family: var(--fuente-titulo); font-weight: 600; color: var(--g
 .avisos-pop { position: absolute; right: 0; top: 36px; width: 360px; max-height: 60vh; overflow-y: auto; background: #fff; border: 1px solid var(--borde); border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,.15); z-index: 50; }
 .avisos-pop-head { padding: 10px 14px; font-weight: 700; border-bottom: 1px solid var(--borde); color: var(--gris); display: flex; align-items: center; justify-content: space-between; }
 .aviso-config-btn { font-size: 12px; font-weight: 600; }
+/* Segunda campana de avisos: "Avisos" del día (cubo tranquilo, azul) */
+.campana-dia { font-size: 18px; }
+.campana-badge-dia { background: #3b6fe2; }
+.avisos-pop-dia { border-top: 3px solid #3b6fe2; }
+/* Conmutador de campana (Alertas ↔ Avisos) en la configuración */
+.aviso-cat-toggle { font-size: 10.5px; font-weight: 700; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--borde); cursor: pointer; margin-left: 6px; white-space: nowrap; }
+.aviso-cat-toggle.aviso-cat-alerta { background: #fde2e2; color: #9c0006; border-color: #f3b6b6; }
+.aviso-cat-toggle.aviso-cat-dia { background: #e2ebfd; color: #1f4e9c; border-color: #b6c9f3; }
 /* Semáforo de importancia */
 .nivel-dot { display: inline-block; width: 11px; height: 11px; border-radius: 50%; vertical-align: middle; border: none; padding: 0; }
 .nivel-alto { background: #e23b3b; }
@@ -110,8 +118,11 @@ tr.fila-sin-justificante td span { color: inherit !important; }
 .config-item.active { background: #fff1ea; color: var(--naranja-osc); font-weight: 600; }
 .header-user { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--gris); margin-left: 14px; }
 /* Chip sutil de avisos en Inicio (no invasivo): una línea clicable que abre la campana */
-.inicio-avisos-chip { margin-top: 14px; background: #fff7f3; color: var(--naranja-osc); border: 1px solid #f3d4c6; border-radius: 999px; padding: 6px 14px; font-size: 13px; cursor: pointer; }
-.inicio-avisos-chip:hover { background: #f8e2d8; }
+.inicio-avisos-chip { display: inline-block; margin-top: 14px; background: #fff7f3; color: var(--naranja-osc); border: 1px solid #f3d4c6; border-radius: 999px; padding: 6px 14px; font-size: 13px; font-weight: 600; }
+/* Lista de Alertas en la portada (debajo del saludo) */
+.inicio-alertas { max-width: 640px; margin: 18px auto 0; }
+.inicio-alertas-cab { font-size: 13px; font-weight: 800; letter-spacing: .02em; color: var(--gris); margin: 0 0 6px 2px; }
+.inicio-alertas .avisos-lista { border: 1px solid var(--borde); border-radius: 10px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,.05); }
 /* Tareas: desplegable inline de ocurrencias colgando de la fila de la tarea. */
 .fila-abierta > td { background: #fff7f3; }
 .fila-oc > td { padding: 0; background: #faf7f5; border-bottom: 2px solid var(--borde); }

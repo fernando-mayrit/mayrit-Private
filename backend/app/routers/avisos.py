@@ -32,16 +32,18 @@ PRODUCTORES_SIN_RECIBO = {"insurart"}
 # el nivel por tipo (tabla aviso_niveles). Orden del semáforo: alto > medio > bajo.
 NIVELES = ("alto", "medio", "bajo")
 _ORDEN_NIVEL = {"alto": 0, "medio": 1, "bajo": 2}
+# Cada tipo tiene además una 'categoria': 'alerta' (temas gordos: dinero/incumplimiento) o
+# 'dia' (rutina operativa del día, sobre todo tareas). Define en qué cubo cae el aviso.
 TIPOS_AVISO: dict[str, dict] = {
-    "factura_consultoria": {"etiqueta": "Factura de consultoría por emitir", "defecto": "alto"},
-    "binder_sin_renovar":  {"etiqueta": "Binder por vencer sin renovar", "defecto": "alto"},
-    "limite_sin_notificar": {"etiqueta": "Límite de primas excedido sin notificar", "defecto": "alto"},
-    "risk_sin_recibo":     {"etiqueta": "Recibo pendiente de generar", "defecto": "medio"},
-    "poliza_sin_renovar":  {"etiqueta": "Póliza por vencer sin renovar", "defecto": "medio"},
-    "tarea_pendiente":     {"etiqueta": "Tarea de binder pendiente", "defecto": "medio"},
-    "lpan_mes_incompleto": {"etiqueta": "Mes con LPAN a medias", "defecto": "alto"},
-    "lpan_sin_procesar":   {"etiqueta": "LPAN sin WP/Procesado", "defecto": "bajo"},
-    "comision_sin_reparto": {"etiqueta": "Comisión pendiente de reparto", "defecto": "bajo"},
+    "factura_consultoria": {"etiqueta": "Factura de consultoría por emitir", "defecto": "alto", "categoria": "alerta"},
+    "binder_sin_renovar":  {"etiqueta": "Binder por vencer sin renovar", "defecto": "alto", "categoria": "alerta"},
+    "limite_sin_notificar": {"etiqueta": "Límite de primas excedido sin notificar", "defecto": "alto", "categoria": "alerta"},
+    "risk_sin_recibo":     {"etiqueta": "Recibo pendiente de generar", "defecto": "medio", "categoria": "alerta"},
+    "poliza_sin_renovar":  {"etiqueta": "Póliza por vencer sin renovar", "defecto": "medio", "categoria": "alerta"},
+    "lpan_mes_incompleto": {"etiqueta": "Mes con LPAN a medias", "defecto": "alto", "categoria": "alerta"},
+    "tarea_pendiente":     {"etiqueta": "Tarea de binder pendiente", "defecto": "medio", "categoria": "dia"},
+    "lpan_sin_procesar":   {"etiqueta": "LPAN sin WP/Procesado", "defecto": "bajo", "categoria": "dia"},
+    "comision_sin_reparto": {"etiqueta": "Comisión pendiente de reparto", "defecto": "bajo", "categoria": "dia"},
 }
 
 
@@ -49,6 +51,7 @@ class Aviso(BaseModel):
     tipo: str                       # 'premium_sin_recibo', …
     severidad: str = "warning"      # info | warning | danger
     nivel: str = "medio"            # alto | medio | bajo (semáforo). Se rellena al listar.
+    categoria: str = "alerta"       # alerta (gordos) | dia (rutina). Se rellena al listar.
     titulo: str
     detalle: str
     binder_id: int | None = None
@@ -354,9 +357,12 @@ def _limite_sin_notificar(db: Session) -> list[Aviso]:
 
 def _aplicar_niveles(db: Session, avisos: list[Aviso]) -> list[Aviso]:
     """Rellena el nivel (semáforo) de cada aviso: override del usuario por tipo, o el de defecto."""
-    overrides = {a.tipo: a.nivel for a in db.scalars(select(AvisoNivel)).all()}
+    filas = {f.tipo: f for f in db.scalars(select(AvisoNivel)).all()}
     for a in avisos:
-        a.nivel = overrides.get(a.tipo) or TIPOS_AVISO.get(a.tipo, {}).get("defecto", "medio")
+        info = TIPOS_AVISO.get(a.tipo, {})
+        f = filas.get(a.tipo)
+        a.nivel = (f.nivel if f else None) or info.get("defecto", "medio")
+        a.categoria = (f.categoria if f and f.categoria else None) or info.get("categoria", "alerta")
     avisos.sort(key=lambda a: (_ORDEN_NIVEL.get(a.nivel, 1), a.tipo, a.umr or ""))
     return avisos
 
@@ -425,18 +431,32 @@ class NivelTipo(BaseModel):
     tipo: str
     etiqueta: str
     nivel: str
+    categoria: str = "alerta"
 
 
 class NivelUpdate(BaseModel):
     nivel: str   # alto | medio | bajo
 
 
+class CategoriaUpdate(BaseModel):
+    categoria: str   # alerta | dia
+
+
+def _cat_efectiva(tipo: str, fila: AvisoNivel | None) -> str:
+    return (fila.categoria if fila and fila.categoria else None) or TIPOS_AVISO[tipo].get("categoria", "alerta")
+
+
 @router.get("/avisos/niveles", response_model=list[NivelTipo])
 def listar_niveles(db: Session = Depends(get_db)):
     """Catálogo de tipos de aviso con su nivel actual (override del usuario o el de defecto)."""
-    overrides = {a.tipo: a.nivel for a in db.scalars(select(AvisoNivel)).all()}
+    filas = {f.tipo: f for f in db.scalars(select(AvisoNivel)).all()}
     return [
-        NivelTipo(tipo=t, etiqueta=info["etiqueta"], nivel=overrides.get(t) or info["defecto"])
+        NivelTipo(
+            tipo=t, etiqueta=info["etiqueta"],
+            nivel=(filas[t].nivel if t in filas else None) or info["defecto"],
+            categoria=(filas[t].categoria if t in filas and filas[t].categoria else None)
+                      or info.get("categoria", "alerta"),
+        )
         for t, info in TIPOS_AVISO.items()
     ]
 
@@ -454,4 +474,23 @@ def fijar_nivel(tipo: str, payload: NivelUpdate, db: Session = Depends(get_db)):
     else:
         fila.nivel = payload.nivel
     db.commit()
-    return NivelTipo(tipo=tipo, etiqueta=TIPOS_AVISO[tipo]["etiqueta"], nivel=payload.nivel)
+    return NivelTipo(tipo=tipo, etiqueta=TIPOS_AVISO[tipo]["etiqueta"], nivel=payload.nivel,
+                     categoria=_cat_efectiva(tipo, fila))
+
+
+@router.put("/avisos/niveles/{tipo}/categoria", response_model=NivelTipo)
+def fijar_categoria(tipo: str, payload: CategoriaUpdate, db: Session = Depends(get_db)):
+    """Mueve un tipo de aviso entre cubos: 'alerta' (campana Alertas) o 'dia' (campana Avisos)."""
+    if tipo not in TIPOS_AVISO:
+        raise HTTPException(status_code=404, detail=f"Tipo de aviso desconocido: {tipo}")
+    if payload.categoria not in ("alerta", "dia"):
+        raise HTTPException(status_code=422, detail=f"Categoría inválida: {payload.categoria}")
+    fila = db.get(AvisoNivel, tipo)
+    if fila is None:
+        fila = AvisoNivel(tipo=tipo, nivel=TIPOS_AVISO[tipo]["defecto"], categoria=payload.categoria)
+        db.add(fila)
+    else:
+        fila.categoria = payload.categoria
+    db.commit()
+    return NivelTipo(tipo=tipo, etiqueta=TIPOS_AVISO[tipo]["etiqueta"], nivel=fila.nivel,
+                     categoria=payload.categoria)

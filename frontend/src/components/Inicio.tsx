@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import type { Aviso } from "../api";
 
 // Accesos rápidos de la portada (id de página + etiqueta + emoji).
 const ACCESOS: { id: string; label: string; emoji: string }[] = [
@@ -36,13 +37,13 @@ function saludoDelDia(): { saludo: string; emoji: string } {
 export default function Inicio({
   usuario,
   onIr,
-  nAvisos = 0,
-  onVerAvisos,
+  alertas = [],
+  nAvisosDia = 0,
 }: {
   usuario: string | null;
   onIr: (page: string) => void;
-  nAvisos?: number;
-  onVerAvisos?: () => void;
+  alertas?: Aviso[];        // lista de Alertas (se muestra debajo del saludo)
+  nAvisosDia?: number;      // nº de Avisos del día (solo el contador)
 }) {
   const { saludo, emoji } = useMemo(saludoDelDia, []);
   const frase = useMemo(() => FRASES[Math.floor(Math.random() * FRASES.length)], []);
@@ -58,6 +59,13 @@ export default function Inicio({
   );
   const nombre = (usuario ?? "").split(/\s+/)[0]; // solo el nombre de pila
 
+  // Mensaje del estilo "Tienes 2 Alertas y 9 Avisos pendientes" (solo las partes con cuenta > 0).
+  const nAlertas = alertas.length;
+  const partes: string[] = [];
+  if (nAlertas) partes.push(`${nAlertas} ${nAlertas === 1 ? "Alerta" : "Alertas"}`);
+  if (nAvisosDia) partes.push(`${nAvisosDia} ${nAvisosDia === 1 ? "Aviso" : "Avisos"}`);
+  const mensajePendientes = partes.length ? `Tienes ${partes.join(" y ")} pendientes` : null;
+
   return (
     <div className="inicio">
       <div className="inicio-hero">
@@ -72,10 +80,8 @@ export default function Inicio({
         <p className="inicio-bienvenida">
           Bienvenid@ a <b>Mayrit</b>. Que tengas un gran día. 🍀
         </p>
-        {nAvisos > 0 && (
-          <button className="inicio-avisos-chip" onClick={onVerAvisos}>
-            🔔 Tienes {nAvisos} {nAvisos === 1 ? "tarea pendiente" : "tareas pendientes"}
-          </button>
+        {mensajePendientes && (
+          <div className="inicio-avisos-chip">🔔 {mensajePendientes}</div>
         )}
       </div>
 
@@ -87,6 +93,26 @@ export default function Inicio({
           </button>
         ))}
       </div>
+
+      {nAlertas > 0 && (
+        <div className="inicio-alertas">
+          <div className="inicio-alertas-cab">🔔 Alertas ({nAlertas})</div>
+          <div className="avisos-lista">
+            {alertas.map((a, i) => (
+              <button
+                key={i}
+                className={`aviso-item nivel-borde-${a.nivel}`}
+                onClick={() => { if (a.pagina) onIr(a.pagina); }}
+              >
+                <span className="aviso-titulo">
+                  <span className={`nivel-dot nivel-${a.nivel}`} /> {a.titulo}
+                </span>
+                <span className="aviso-detalle">{a.detalle}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

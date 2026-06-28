@@ -729,14 +729,16 @@ class ConsultoriaContrato(Base):
 
 
 class AvisoNivel(Base):
-    """Override de importancia (semáforo) por TIPO de aviso. Los avisos se calculan al vuelo;
-    aquí solo se guarda, por tipo, el nivel elegido por el usuario (alto/medio/bajo). Si un tipo
-    no tiene fila, se usa su nivel por defecto definido en el router de avisos."""
+    """Override de importancia (semáforo) y de cubo por TIPO de aviso. Los avisos se calculan al
+    vuelo; aquí solo se guarda, por tipo, el nivel (alto/medio/bajo) y la categoría (alerta/dia)
+    elegidos por el usuario. Si un tipo no tiene fila o el campo es NULL, se usa el valor por
+    defecto definido en el router de avisos."""
 
     __tablename__ = "aviso_niveles"
 
     tipo: Mapped[str] = mapped_column(String(60), primary_key=True)
-    nivel: Mapped[str] = mapped_column(String(10))   # alto | medio | bajo
+    nivel: Mapped[str] = mapped_column(String(10))            # alto | medio | bajo
+    categoria: Mapped[str | None] = mapped_column(String(10), nullable=True)   # alerta | dia (override)
 
 
 class Recibo(Base):

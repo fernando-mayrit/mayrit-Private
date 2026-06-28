@@ -945,6 +945,7 @@ export interface Aviso {
   tipo: string;
   severidad: string;
   nivel: string;            // alto | medio | bajo (semáforo)
+  categoria: string;        // alerta (gordos) | dia (rutina/tareas)
   titulo: string;
   detalle: string;
   binder_id: number | null;
@@ -959,10 +960,13 @@ export interface AvisoNivel {
   tipo: string;
   etiqueta: string;
   nivel: string;
+  categoria: string;        // alerta | dia
 }
 export const avisosApi = {
   listar: () => request<Aviso[]>(`/avisos`),
   niveles: () => request<AvisoNivel[]>(`/avisos/niveles`),
   fijarNivel: (tipo: string, nivel: string) =>
     request<AvisoNivel>(`/avisos/niveles/${tipo}`, { method: "PUT", body: JSON.stringify({ nivel }) }),
+  fijarCategoria: (tipo: string, categoria: string) =>
+    request<AvisoNivel>(`/avisos/niveles/${tipo}/categoria`, { method: "PUT", body: JSON.stringify({ categoria }) }),
 };
