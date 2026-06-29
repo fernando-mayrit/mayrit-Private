@@ -40,6 +40,8 @@ export default function AltaMovimiento({ cuenta, cats, movimiento, onClose, onSa
   const [recibosIds, setRecibosIds] = useState<number[]>(movimiento?.recibos_ids ?? []);
   const [candidatos, setCandidatos] = useState<ReciboJustif[]>([]);
   const [busqRec, setBusqRec] = useState("");
+  const [fechaFiltro, setFechaFiltro] = useState(movimiento?.fecha?.slice(0, 10) ?? "");
+  const [impById, setImpById] = useState<Map<number, number>>(new Map());  // importe por recibo (acumula entre cargas)
   const [genJustif, setGenJustif] = useState(false);
 
   // ¿Hay cambios sin guardar? Compara los campos editables con su estado al abrir; así el aviso de
@@ -56,21 +58,30 @@ export default function AltaMovimiento({ cuenta, cats, movimiento, onClose, onSa
 
   // Justificante: la "clase" (qué importe del recibo se usa) se deduce del concepto del apunte.
   const claseJustif = /liquid/i.test(concepto) ? "liquidacion" : /traspas/i.test(concepto) ? "traspaso" : /cobro/i.test(concepto) ? "cobro" : null;
+  // Carga los candidatos de la clase, FILTRADOS por la fecha de pago/cobro y ocultando los ya
+  // justificados en otro apunte. Acumula sus importes en `impById` para la suma en vivo.
   useEffect(() => {
     if (!claseJustif) { setCandidatos([]); return; }
     let vivo = true;
-    contabilidadApi.recibosJustificante(claseJustif).then((r) => { if (vivo) setCandidatos(r); }).catch(() => {});
+    contabilidadApi.recibosJustificante(claseJustif, { fecha: fechaFiltro || undefined, excluirMid: movimiento?.id })
+      .then((r) => {
+        if (!vivo) return;
+        setCandidatos(r);
+        setImpById((prev) => { const m = new Map(prev); r.forEach((c) => m.set(c.id, num(c.importe))); return m; });
+      })
+      .catch(() => {});
     return () => { vivo = false; };
-  }, [claseJustif]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [claseJustif, fechaFiltro]);
   const candFiltrados = useMemo(() => {
     const t = busqRec.trim().toLowerCase();
     return !t ? candidatos : candidatos.filter((c) => `${c.numero ?? ""} ${c.referencia ?? ""} ${c.cliente ?? ""}`.toLowerCase().includes(t));
   }, [candidatos, busqRec]);
-  const sumaSel = useMemo(() => {
-    const by = new Map(candidatos.map((c) => [c.id, num(c.importe)]));
-    return recibosIds.reduce((a, id) => a + (by.get(id) ?? 0), 0);
-  }, [recibosIds, candidatos]);
+  const sumaSel = useMemo(() => recibosIds.reduce((a, id) => a + (impById.get(id) ?? 0), 0), [recibosIds, impById]);
+  const restante = num(importe) - sumaSel;
   const toggleRecibo = (id: number) => setRecibosIds((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
+  const marcarFiltrados = () => setRecibosIds((s) => [...new Set([...s, ...candFiltrados.map((c) => c.id)])]);
+  const quitarFiltrados = () => { const ids = new Set(candFiltrados.map((c) => c.id)); setRecibosIds((s) => s.filter((x) => !ids.has(x))); };
 
   async function generarJustificante() {
     if (!movimiento) return;
@@ -246,12 +257,20 @@ export default function AltaMovimiento({ cuenta, cats, movimiento, onClose, onSa
           <div className="justif-head">
             <b>Justificante</b>
             <span className="hint">recibos que componen este {claseJustif === "liquidacion" ? "pago" : claseJustif === "traspaso" ? "traspaso" : "cobro"}</span>
-            <span className="justif-suma">
-              Seleccionado: <b>{fmtMiles(sumaSel)} €</b>{" "}
-              {Math.abs(sumaSel - num(importe)) < 0.01 ? "✓" : <span className="error">(importe: {fmtMiles(num(importe))} €)</span>}
+            <span className={"justif-restante" + (Math.abs(restante) < 0.01 && recibosIds.length > 0 ? " ok" : "")}>
+              {Math.abs(restante) < 0.01 && recibosIds.length > 0
+                ? <>✓ Cuadra · {fmtMiles(sumaSel)} €</>
+                : <>Restante para cuadrar: <b>{fmtMiles(restante)} €</b> <span className="hint">(sel. {fmtMiles(sumaSel)} de {fmtMiles(num(importe))} €)</span></>}
             </span>
           </div>
-          <input type="text" placeholder="Buscar recibo / UMR / cliente…" value={busqRec} onChange={(e) => setBusqRec(e.target.value)} />
+          <div className="justif-filtros">
+            <label className="hint">Fecha pago/cobro
+              <input type="date" className="inp-fecha" value={fechaFiltro} onChange={(e) => setFechaFiltro(e.target.value)} />
+            </label>
+            <input type="text" placeholder="Buscar recibo / UMR / cliente…" value={busqRec} onChange={(e) => setBusqRec(e.target.value)} style={{ flex: 1, minWidth: 140 }} />
+            <button type="button" className="btn-link btn-sm" onClick={marcarFiltrados} disabled={candFiltrados.length === 0}>Marcar todos</button>
+            <button type="button" className="btn-link btn-sm" onClick={quitarFiltrados} disabled={candFiltrados.length === 0}>Quitar</button>
+          </div>
           <div className="justif-lista">
             {candFiltrados.map((c) => (
               <label key={c.id} className="justif-row">
@@ -263,8 +282,9 @@ export default function AltaMovimiento({ cuenta, cats, movimiento, onClose, onSa
                 <span className="jr-cli">{c.cliente}</span>
               </label>
             ))}
-            {candFiltrados.length === 0 && <div className="hint" style={{ padding: 8 }}>No hay recibos para esta clase.</div>}
+            {candFiltrados.length === 0 && <div className="hint" style={{ padding: 8 }}>No hay recibos sin justificar para esa fecha/búsqueda.</div>}
           </div>
+          <div className="hint" style={{ marginBottom: 6 }}>{recibosIds.length} recibo(s) seleccionado(s). Cambia la fecha si faltan; los ya justificados en otro apunte no aparecen.</div>
           {edicion && (
             <button className="btn-secondary btn-sm" onClick={generarJustificante} disabled={genJustif || recibosIds.length === 0}>
               {genJustif ? "Generando…" : "📄 Generar justificante (PDF)"}

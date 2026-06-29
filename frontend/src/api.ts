@@ -519,9 +519,15 @@ export const contabilidadApi = {
   crear: (d: MovimientoCrear) => request<MovimientoBancario>("/contabilidad", { method: "POST", body: JSON.stringify(d) }),
   actualizar: (id: number, d: Partial<{ fecha: string; devengo: string | null; tipo: string; grupo: string | null; concepto: string | null; importe: number; saldo: number | null; descripcion: string | null; factura: boolean; tarjeta: boolean; movimiento_bancario: boolean; recibos_ids: number[] | null }>) =>
     request<MovimientoBancario>(`/contabilidad/${id}`, { method: "PUT", body: JSON.stringify(d) }),
-  // Recibos candidatos para el justificante (clase: cobro | liquidacion | traspaso).
-  recibosJustificante: (clase: string, q?: string) =>
-    request<ReciboJustif[]>(`/contabilidad/recibos-justificante?clase=${clase}${q ? `&q=${encodeURIComponent(q)}` : ""}`),
+  // Recibos candidatos para el justificante (clase: cobro | liquidacion | traspaso), filtrados por
+  // fecha de pago/cobro y ocultando los ya justificados en otro apunte (excluirMid = apunte actual).
+  recibosJustificante: (clase: string, opts: { fecha?: string; q?: string; excluirMid?: number } = {}) => {
+    const qs = new URLSearchParams({ clase });
+    if (opts.fecha) qs.set("fecha", opts.fecha);
+    if (opts.q) qs.set("q", opts.q);
+    if (opts.excluirMid != null) qs.set("excluir_mid", String(opts.excluirMid));
+    return request<ReciboJustif[]>(`/contabilidad/recibos-justificante?${qs.toString()}`);
+  },
   // Descarga el PDF del justificante de un apunte (con los recibos ya asociados).
   justificantePdf: async (mid: number): Promise<{ blob: Blob; filename: string }> => {
     const res = await fetch(`${BASE}/contabilidad/${mid}/justificante.pdf`);

@@ -334,30 +334,48 @@ def _recibo_row(r: Recibo, umr: str | None, clase: str) -> ReciboJustif:
     )
 
 
+def _recibos_ya_justificados(db: Session, excluir_mid: int | None) -> set[int]:
+    """Recibos ya asignados al justificante de ALGÚN movimiento (para no ofrecerlos otra vez).
+    Excluye el movimiento `excluir_mid` (el que se está editando)."""
+    usados: set[int] = set()
+    for (lst, mid_) in db.execute(
+        select(MovimientoBancario.recibos_ids, MovimientoBancario.id).where(MovimientoBancario.recibos_ids.is_not(None))
+    ).all():
+        if excluir_mid is not None and mid_ == excluir_mid:
+            continue
+        usados.update(lst or [])
+    return usados
+
+
 @router.get("/recibos-justificante", response_model=list[ReciboJustif])
 def recibos_justificante(
-    clase: str = "cobro", q: str | None = None, anio: int | None = None,
-    limit: int = 800, db: Session = Depends(get_db),
+    clase: str = "cobro", q: str | None = None, fecha: dt.date | None = None,
+    excluir_mid: int | None = None, limit: int = 800, db: Session = Depends(get_db),
 ):
-    """Recibos candidatos para componer un apunte: con su importe (según la clase del apunte:
-    cobro/liquidacion/traspaso), fecha de la gestión, UMR/nº póliza (Referencia) y cliente."""
+    """Recibos candidatos para componer un apunte, con su importe (según la clase: cobro/liquidacion/
+    traspaso), fecha de la gestión, UMR/nº póliza y cliente. Filtra por la FECHA de pago/cobro (la del
+    movimiento) y OCULTA los recibos ya justificados en otro apunte (así la lista cuadra fácil)."""
     clase = clase if clase in _CAMPOS else "cobro"
     campo_imp, campo_fecha = _CAMPOS[clase]
     col_imp = getattr(Recibo, campo_imp)
+    col_fecha = getattr(Recibo, campo_fecha)
     stmt = (
         select(Recibo, Binder.umr)
         .join(Binder, Binder.id == Recibo.binder_id, isouter=True)
         .where(col_imp.is_not(None), col_imp != 0)
     )
-    if anio:
-        stmt = stmt.where(Recibo.anio == anio)
+    if fecha:
+        stmt = stmt.where(col_fecha == fecha)
     if q:
         like = f"%{q.strip()}%"
         stmt = stmt.where(or_(
             Recibo.numero.ilike(like), Recibo.asegurado.ilike(like),
             Binder.umr.ilike(like), Recibo.numero_poliza.ilike(like),
         ))
-    stmt = stmt.order_by(getattr(Recibo, campo_fecha).desc().nullslast(), Recibo.numero).limit(limit)
+    usados = _recibos_ya_justificados(db, excluir_mid)
+    if usados:
+        stmt = stmt.where(Recibo.id.not_in(usados))
+    stmt = stmt.order_by(col_fecha.desc().nullslast(), Recibo.numero).limit(limit)
     return [_recibo_row(r, umr, clase) for (r, umr) in db.execute(stmt).all()]
 
 

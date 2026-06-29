@@ -699,6 +699,12 @@ td.num, th.num { text-align: right; }
 .justif-sec { margin-top: 14px; border-top: 1px solid var(--borde); padding-top: 10px; }
 .justif-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
 .justif-suma { margin-left: auto; font-size: 12px; color: var(--gris-medio); }
+.justif-restante { margin-left: auto; font-size: 13px; color: var(--rojo); }
+.justif-restante.ok { color: #1a7f37; font-weight: 700; }
+.justif-restante b { font-variant-numeric: tabular-nums; }
+.justif-filtros { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 6px 0; }
+.justif-filtros label { display: inline-flex; align-items: center; gap: 6px; }
+.justif-filtros .inp-fecha { width: 150px; }
 .justif-lista { max-height: 230px; overflow-y: auto; border: 1px solid var(--borde); border-radius: 8px; margin: 8px 0; }
 .justif-row { display: grid; grid-template-columns: 22px 84px 78px 92px 130px 1fr; gap: 8px; align-items: center; padding: 4px 8px; font-size: 12px; border-bottom: 1px solid #f1f1f1; cursor: pointer; }
 .justif-row:last-child { border-bottom: none; }
