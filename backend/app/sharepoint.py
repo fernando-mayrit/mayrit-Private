@@ -25,26 +25,26 @@ MAPEO: dict[str, str] = {
     "section_no": "Section No",
     "class_of_business": "Class of Business",
     "risk_code": "Risk Code",
-    "type_of_insurance": ["Type of Insurance (Direct or Reinsurance)", "Type"],
-    "certificate_ref": "Certificate Ref",
+    "type_of_insurance": ["Type of Insurance (Direct or Reinsurance)", "Type of Insurance (Direct or Type or Reinsurance)", "Type"],
+    "certificate_ref": ["Certificate Ref", "Certificate Number (Policy Number)"],
     # Asegurado
     "insured_name": ["Insured Full Name, Last Name or Company Name", "Assured"],
     "insured_id": "ID Insured/Policyholder",
     "insured_address": "Insured Address",
-    "insured_province": "Insured Country Sub-division: State, Province, Territory, Canton",
-    "insured_postcode": "Insured Postcode, Zip Code or Similar",
-    "insured_country": "Insured Country (see code list)",
+    "insured_province": ["Insured Country Sub-division: State, Province, Territory, Canton", "Insured Country Sub-division: Province"],
+    "insured_postcode": ["Insured Postcode, Zip Code or Similar", "Insured Postcode"],
+    "insured_country": ["Insured Country (see code list)", "Insured Country"],
     # Riesgo
-    "risk_inception_date": ["Risk Inception Date", "Inception"],
-    "risk_expiry_date": ["Risk Expiry Date", "Expiry"],
+    "risk_inception_date": ["Risk Inception Date", "Inception", "Policy Start Date"],
+    "risk_expiry_date": ["Risk Expiry Date", "Expiry", "Policy End Date"],
     "location_risk_province": "Location of Risk - Country Sub-division: State, Province, Territ",
     "location_risk_country": "Location of risk - Country (Location ID)",
-    "risk_transaction_type": ["Risk Transaction Type"],
-    "transaction_type": ["Transaction Type", "Transaction Type (Original, additional, return premium)"],
-    "effective_date_transaction": "Effective Date of Transaction",
-    "expiry_date_transaction": "Expiry Date of Transaction",
+    "risk_transaction_type": ["Risk Transaction Type", "Transaction Type (New Business, Endorsement, Renewal, Cancellation)"],
+    "transaction_type": ["Transaction Type", "Transaction Type (Original, additional, return premium)", "Transaction Type - (Original, additional, return premium)"],
+    "effective_date_transaction": ["Effective Date of Transaction", "Transaction Effective Date"],
+    "expiry_date_transaction": ["Expiry Date of Transaction", "Transaction Expiry Date"],
     # Prima
-    "original_currency": "Original Currency Premium",  # en el origen esta columna trae la MONEDA (EUR)
+    "original_currency": ["Original Currency Premium", "Original Currency"],  # en el origen esta columna trae la MONEDA (EUR)
     # Algunas plantillas no traen "Gross Written Premium" (100%); en su lugar usan
     # "Gross Premium paid this time" (cuando la línea suscrita es el 100%, coincide con Our Line).
     "gross_written_premium": ["Gross Written Premium", "Gross Premium paid this time"],
@@ -53,25 +53,25 @@ MAPEO: dict[str, str] = {
     "fees": ["Fees"],
     # La plantilla varía por binder: en unas listas es "Commission %/Amount" y en otras
     # "Commission Coverholder %/Amount". Se prueban los alias en orden.
-    "commission_coverholder_pct": ["Commission Coverholder %", "Commission %", "CH Commission"],
-    "commission_coverholder_amount": ["Commission Coverholder Amount", "Commission Amount", "Commission Coverholder"],
+    "commission_coverholder_pct": ["Commission Coverholder %", "Commission %", "CH Commission", "Commission Rate Myrtea %", "Commission Rate Coverholder %"],
+    "commission_coverholder_amount": ["Commission Coverholder Amount", "Commission Amount", "Commission Coverholder", "Commission Myrtea Amount"],
     "total_taxes_levies": "Total Taxes and Levies",
-    "total_gwp_including_tax": "Gross Premium including tax (Our Line)",
-    "net_premium_to_broker": "Net Premium to Lloyd´s Broker in original currency",
+    "total_gwp_including_tax": ["Gross Premium including tax (Our Line)", "Total GWP including tax"],
+    "net_premium_to_broker": ["Net Premium to Lloyd´s Broker in original currency", "Net Premium to Pay in original currency"],
     # Suma asegurada / deducible
-    "sum_insured_total": "Sum Insured Currency (see code list)",  # en el origen esta columna trae el IMPORTE (100 %)
+    "sum_insured_total": ["Sum Insured Currency (see code list)", "Sum Insured Currency"],  # en el origen esta columna trae el IMPORTE (100 %)
     "sum_insured_our_line": ["Sum insured Our Line", "Sum insured Amount"],
     "deductible_amount": "Deductible Amount",
     "deductible_basis": "Deductible Basis (eec)",
     # Impuestos 1–4
-    "tax1_jurisdiction": "Tax 1 - Jurisdiction: Country, Province",
+    "tax1_jurisdiction": ["Tax 1 - Jurisdiction: Country, Province", "Tax 1 - Jurisdiction"],
     "tax1_type": "Tax 1 - Tax Type",
     "tax1_taxable_premium": "Tax 1 - Amount of Taxable Premium",
     "tax1_pct": "Tax 1 - %",
     "tax1_amount": "Tax 1 - Amount",
     "tax1_administered_by": "Tax 1 - Administered By",
     "tax1_payable_by": "Tax 1 - Payable By",
-    "tax2_jurisdiction": "Tax 2 - Jurisdiction: Country, Province",
+    "tax2_jurisdiction": ["Tax 2 - Jurisdiction: Country, Province", "Tax 2 - Jurisdiction"],
     "tax2_type": "Tax 2 - Tax Type",
     "tax2_taxable_premium": "Tax 2 - Amount of Taxable Premium",
     "tax2_pct": "Tax 2 - %",
@@ -102,6 +102,13 @@ MAPEO: dict[str, str] = {
     "brokerage_pct": ["Brokerage % of gross premium", "BRK"],
     "brokerage_amount": ["Brokerage Amount (Original Currency)", "BRK CCY"],
     "final_net_premium_uw": "Final Net Premium to UW (Original Currency)",
+    # Identificación adicional por línea (plantillas tipo Axeria/Myrtea)
+    "coverholder_name": "Coverholder Name",
+    "broker_name": "Broker Name",
+    "broker_id": "Broker ID",
+    "yoa": "YOA",
+    "umr": ["Unique Market Reference (UMR)", "UMR"],
+    "invoice_number": ["Invoice number", "Invoice Number"],
     # Premium (subconjunto)
     "incluido_en_premium": "Incluido en Premium",
     "premium_bdx": "Premium Bdx",

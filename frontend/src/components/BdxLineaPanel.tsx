@@ -72,6 +72,12 @@ const CAMPOS: Campo[] = [
   { key: "brokerage_pct", label: "Brokerage %", tipo: "num" },
   { key: "brokerage_amount", label: "Brokerage (importe)", tipo: "num" },
   { key: "final_net_premium_uw", label: "Final Net Premium to UW", tipo: "num" },
+  { key: "coverholder_name", label: "Coverholder", tipo: "text" },
+  { key: "broker_name", label: "Broker", tipo: "text" },
+  { key: "broker_id", label: "Broker ID", tipo: "text" },
+  { key: "yoa", label: "YOA", tipo: "int" },
+  { key: "umr", label: "UMR", tipo: "text" },
+  { key: "invoice_number", label: "Nº factura", tipo: "text" },
   { key: "prima_cobrada", label: "Cobrado (sí/no)", tipo: "bool" },
   { key: "ingresado", label: "Cobrado (importe)", tipo: "num" },
   { key: "premium_payment_date", label: "Fecha de cobro", tipo: "date" },
@@ -106,10 +112,12 @@ const DEFAULT_LAYOUT: LGrupo[] = [
   g("imp3", "Impuesto 3", 2, ["tax3_jurisdiction", "tax3_type", "tax3_taxable_premium", "tax3_pct", "tax3_amount", "tax3_administered_by", "tax3_payable_by"]),
   g("imp4", "Impuesto 4", 2, ["tax4_jurisdiction", "tax4_type", "tax4_taxable_premium", "tax4_pct", "tax4_amount", "tax4_administered_by", "tax4_payable_by"]),
   g("plazos", "Plazos / Lloyd's / brokerage", 2, ["instalment_number", "number_of_instalments", "referred_to_london", "pct_for_lloyds", "policy_issuance_date", "policy_number_reinsured", "brokerage_pct", "brokerage_amount", "final_net_premium_uw"]),
+  g("identadd", "Identificación adicional", 2, ["coverholder_name", "broker_name", "broker_id", "yoa", "umr", "invoice_number"]),
   g("control", "Control interno (cobro / pago)", 2, ["prima_cobrada", "ingresado", "premium_payment_date", "traspaso", "traspasado", "fecha_traspaso", "liquidado", "liquidado_uw", "fecha_liquidacion", "recibo", "notas"]),
 ];
 
-const LAYOUT_KEY = "mayrit.bdxlinea.layout.v1";
+// v2: añade el grupo "Identificación adicional" (coverholder/broker/yoa/umr/factura) al layout por defecto.
+const LAYOUT_KEY = "mayrit.bdxlinea.layout.v2";
 
 function cargarLayout(): LGrupo[] {
   try {
@@ -422,6 +430,24 @@ export default function BdxLineaPanel({ bdxId, linea, onSaved, onClose, onDelete
           </div>
         </div>
       ))}
+
+      {!diseno && linea?.extra && Object.keys(linea.extra).length > 0 && (
+        <div className="bdx-grupo">
+          <div className="grupo-cab">
+            <h3 style={{ margin: 0 }}>
+              Extra <span className="hint" style={{ fontWeight: 400 }}>· del bordereau, sin campo propio (solo lectura)</span>
+            </h3>
+          </div>
+          <div className="campos-grid" style={{ gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}>
+            {Object.entries(linea.extra).map(([k, v]) => (
+              <div className="field" key={k}>
+                <label>{k}</label>
+                <input type="text" value={v == null ? "" : String(v)} readOnly />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {diseno && (
         <div

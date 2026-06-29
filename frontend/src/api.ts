@@ -758,9 +758,11 @@ export interface RiskExcelPreview {
   periodos: string[];
   total_gwp_our_line: number;
   total_gwp_100: number;
+  total_prima_traspasar: number;
+  total_liquidar: number;
   mapeadas: Record<string, string>;
   sin_mapear: string[];
-  muestra: { certificado: string | null; asegurado: string | null; section_no: number | null; risk_code: string | null; reporting: string | null; gwp_our_line: number | null; comision_pct: number }[];
+  muestra: { certificado: string | null; asegurado: string | null; section_no: number | null; risk_code: string | null; reporting: string | null; gwp_our_line: number | null; comision_pct: number; prima_traspasar: number | null; liquidar: number | null }[];
 }
 export interface RiskExcelImportResult {
   bdx_id: number;

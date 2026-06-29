@@ -428,8 +428,17 @@ export interface BdxLinea {
   fecha_liquidacion?: string | null;
   recibo?: string | null;
   notas?: string | null;
+  // Identificación adicional (algunas plantillas la traen por línea)
+  coverholder_name?: string | null;
+  broker_name?: string | null;
+  broker_id?: string | null;
+  yoa?: number | null;
+  umr?: string | null;
+  invoice_number?: string | null;
+  // Columnas del bordereau sin campo propio (solo lectura)
+  extra?: Record<string, unknown> | null;
 }
-export type BdxLineaWrite = Omit<BdxLinea, "id" | "bdx_id" | "sp_old_id">;
+export type BdxLineaWrite = Omit<BdxLinea, "id" | "bdx_id" | "sp_old_id" | "extra">;
 
 export interface Tomador {
   id: number;

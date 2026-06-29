@@ -636,6 +636,13 @@ class BdxLineaBase(BaseModel):
     brokerage_pct: Decimal | None = None
     brokerage_amount: Decimal | None = None
     final_net_premium_uw: Decimal | None = None
+    # Identificación adicional (algunas plantillas la traen por línea)
+    coverholder_name: str | None = None
+    broker_name: str | None = None
+    broker_id: str | None = None
+    yoa: int | None = None
+    umr: str | None = None
+    invoice_number: str | None = None
     # Premium (subconjunto): la fila entra en el Premium Bdx y con qué fecha
     incluido_en_premium: bool = False
     premium_bdx: dt.date | None = None
@@ -670,6 +677,7 @@ class BdxLineaRead(BdxLineaBase):
     id: int
     bdx_id: int
     sp_old_id: int | None = None
+    extra: dict | None = None   # columnas del bordereau sin campo propio (solo lectura)
 
 
 class BdxBase(BaseModel):

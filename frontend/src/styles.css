@@ -60,6 +60,10 @@ h1, h2, h3 { font-family: var(--fuente-titulo); font-weight: 600; color: var(--g
 .avisos-pop { position: absolute; right: 0; top: 36px; width: 360px; max-height: 60vh; overflow-y: auto; background: #fff; border: 1px solid var(--borde); border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,.15); z-index: 50; }
 .avisos-pop-head { padding: 10px 14px; font-weight: 700; border-bottom: 1px solid var(--borde); color: var(--gris); display: flex; align-items: center; justify-content: space-between; }
 .aviso-config-btn { font-size: 12px; font-weight: 600; }
+/* Fila de totales del modal de subir Risk (pegada abajo del scroll) */
+.tabla-risk-preview tfoot .fila-total-risk td { position: sticky; bottom: 0; z-index: 2; background: #eef2f7; border-top: 2px solid #cbd5e1; }
+/* Cabecera también fija al hacer scroll, para no perder de vista las columnas */
+.tabla-risk-preview thead th { position: sticky; top: 0; z-index: 2; background: #f8fafc; }
 /* Segunda campana de avisos: "Avisos" del día (cubo tranquilo, azul) */
 .campana-dia { font-size: 18px; }
 .campana-badge-dia { background: #3b6fe2; }

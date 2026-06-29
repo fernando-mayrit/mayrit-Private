@@ -84,7 +84,7 @@ export default function RiskExcelImport({
             </div>
             <div className="field">
               <label>Periodos detectados</label>
-              <input value={prev.periodos.map(mesAnyo).join(", ") || "—"} readOnly />
+              <input type="text" value={prev.periodos.map(mesAnyo).join(", ") || "—"} readOnly />
             </div>
           </div>
 
@@ -108,6 +108,8 @@ export default function RiskExcelImport({
             <tbody>
               <tr><td>Líneas a añadir</td><td className="num"><b>{prev.n_lineas}</b></td></tr>
               <tr><td>Σ GWP (our line)</td><td className="num">{fmtMiles(prev.total_gwp_our_line)} €</td></tr>
+              <tr><td>Σ Prima a Traspasar (comisión)</td><td className="num">{fmtMiles(prev.total_prima_traspasar)} €</td></tr>
+              <tr><td>Σ a Liquidar (neto al UW)</td><td className="num">{fmtMiles(prev.total_liquidar)} €</td></tr>
               <tr>
                 <td>Reparto por sección</td>
                 <td className="num">
@@ -121,10 +123,14 @@ export default function RiskExcelImport({
             </tbody>
           </table>
 
-          <div className="tabla-scroll" style={{ maxHeight: "38vh" }}>
-            <table className="compacto">
+          <div className="tabla-scroll" style={{ maxHeight: "38vh", overflowY: "auto" }}>
+            <table className="compacto tabla-risk-preview">
               <thead>
-                <tr><th>Certificado</th><th>Asegurado</th><th>Secc.</th><th>RC</th><th>Reporting</th><th className="num">GWP our</th><th className="num">Com. %</th></tr>
+                <tr>
+                  <th>Certificado</th><th>Asegurado</th><th>Secc.</th><th>RC</th><th>Reporting</th>
+                  <th className="num">GWP our</th><th className="num">Com. %</th>
+                  <th className="num">Prima a Traspasar</th><th className="num">a Liquidar</th>
+                </tr>
               </thead>
               <tbody>
                 {prev.muestra.map((m, i) => (
@@ -136,9 +142,20 @@ export default function RiskExcelImport({
                     <td>{m.reporting ?? "—"}</td>
                     <td className="num">{m.gwp_our_line != null ? fmtMiles(m.gwp_our_line) : "—"}</td>
                     <td className="num">{m.comision_pct.toFixed(2)}%</td>
+                    <td className="num">{m.prima_traspasar != null ? fmtMiles(m.prima_traspasar) : "—"}</td>
+                    <td className="num">{m.liquidar != null ? fmtMiles(m.liquidar) : "—"}</td>
                   </tr>
                 ))}
               </tbody>
+              <tfoot>
+                <tr className="fila-total-risk">
+                  <td colSpan={5}><b>TOTAL ({prev.n_lineas} líneas)</b></td>
+                  <td className="num"><b>{fmtMiles(prev.total_gwp_our_line)}</b></td>
+                  <td />
+                  <td className="num"><b>{fmtMiles(prev.total_prima_traspasar)}</b></td>
+                  <td className="num"><b>{fmtMiles(prev.total_liquidar)}</b></td>
+                </tr>
+              </tfoot>
             </table>
           </div>
           {prev.sin_mapear.length > 0 && (

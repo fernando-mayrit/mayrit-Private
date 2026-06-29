@@ -489,6 +489,14 @@ class BdxLinea(Base):
     brokerage_amount: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
     final_net_premium_uw: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
 
+    # ── Identificación adicional (algunas plantillas la traen por línea, p. ej. Axeria/Myrtea) ──
+    coverholder_name: Mapped[str | None] = mapped_column(String(200))
+    broker_name: Mapped[str | None] = mapped_column(String(200))
+    broker_id: Mapped[str | None] = mapped_column(String(60))
+    yoa: Mapped[int | None] = mapped_column(Integer)
+    umr: Mapped[str | None] = mapped_column(String(60))
+    invoice_number: Mapped[str | None] = mapped_column(String(120))
+
     # ── Premium (subconjunto): la fila entra en el Premium Bdx y con qué fecha ──
     incluido_en_premium: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
     premium_bdx: Mapped[dt.date | None] = mapped_column(Date)
