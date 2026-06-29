@@ -164,10 +164,10 @@ export default function AltaMovimiento({ cuenta, cats, movimiento, onClose, onSa
           </div>
         )}
 
-        {/* Cuenta Contable + "." + Concepto */}
+        {/* Nº de movimiento (Id) + Cuenta Contable + Concepto → "245.06. 62900001. Consumos Oficina" */}
         {cuentaContableConcepto && (
           <div className="field" style={{ gridColumn: "1 / -1" }}><label>Cuenta contable</label>
-            <div className="ci-val" style={{ fontWeight: 600 }}>{cuentaContableConcepto}</div>
+            <div className="ci-val" style={{ fontWeight: 600 }}>{idPreview}. {cuentaContable}. {concepto}</div>
           </div>
         )}
 
