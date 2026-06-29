@@ -362,18 +362,36 @@ def _recibos_de(db: Session, trs: list[Transferencia]) -> dict[int, str | None]:
         {i: n for (i, n) in db.execute(select(Recibo.id, Recibo.numero).where(Recibo.id.in_(rids))).all()} if rids else {}
     )
 
-    # deducción por líneas del premium: (binder_id, 'YYYY-MM' del premium_bdx) → conjunto de recibos
     bids = {bid_de(t) for t in trs}
     bids.discard(None)
-    lineas_rec: dict[tuple[int, str], set[str]] = defaultdict(set)
+
+    # deducción A: por (binder, 'YYYY-MM' del premium_bdx de las líneas) ↔ periodo de la transferencia
+    por_premio: dict[tuple[int, str], set[str]] = defaultdict(set)
+    # deducción B (más fiable para movimientos sueltos): por la FECHA de pago/liquidación/traspaso de
+    # las líneas ↔ fecha de la transferencia, según el subtipo. Campo de fecha por subtipo:
+    campo_fecha = {
+        "Cobro": BdxLinea.premium_payment_date,
+        "Liquidación": BdxLinea.fecha_liquidacion, "Liquidacion": BdxLinea.fecha_liquidacion,
+        "Traspaso": BdxLinea.fecha_traspaso,
+    }
+    por_fecha: dict[tuple[str, int, dt.date], set[str]] = defaultdict(set)
     if bids:
         for (b, pbdx, num) in db.execute(
             select(Bdx.binder_id, BdxLinea.premium_bdx, Recibo.numero)
-            .join(Bdx, Bdx.id == BdxLinea.bdx_id)
-            .join(Recibo, Recibo.id == BdxLinea.recibo_id)
+            .join(Bdx, Bdx.id == BdxLinea.bdx_id).join(Recibo, Recibo.id == BdxLinea.recibo_id)
             .where(Bdx.binder_id.in_(bids), BdxLinea.premium_bdx.is_not(None), Recibo.numero.is_not(None))
         ).all():
-            lineas_rec[(b, pbdx.strftime("%Y-%m"))].add(num)
+            por_premio[(b, pbdx.strftime("%Y-%m"))].add(num)
+        for sub, col in (("Cobro", BdxLinea.premium_payment_date), ("Liquidación", BdxLinea.fecha_liquidacion), ("Traspaso", BdxLinea.fecha_traspaso)):
+            for (b, f, num) in db.execute(
+                select(Bdx.binder_id, col, Recibo.numero)
+                .join(Bdx, Bdx.id == BdxLinea.bdx_id).join(Recibo, Recibo.id == BdxLinea.recibo_id)
+                .where(Bdx.binder_id.in_(bids), col.is_not(None), Recibo.numero.is_not(None))
+            ).all():
+                por_fecha[(sub, b, f)].add(num)
+
+    def _sub(t):  # normaliza el subtipo de la transferencia a la clave de fecha
+        return "Liquidación" if (t.subtipo or "").startswith("Liquidaci") else t.subtipo
 
     out: dict[int, str | None] = {}
     for t in trs:
@@ -384,8 +402,12 @@ def _recibos_de(db: Session, trs: list[Transferencia]) -> dict[int, str | None]:
             out[t.id] = rec_por_id[t.recibo_id]
             continue
         b = bid_de(t)
-        nums = sorted(lineas_rec.get((b, t.periodo.strftime("%Y-%m")), set())) if (b and t.periodo) else []
-        out[t.id] = ", ".join(nums) if nums else None
+        nums: set[str] = set()
+        if b and t.periodo:
+            nums |= por_premio.get((b, t.periodo.strftime("%Y-%m")), set())
+        if b and t.fecha:
+            nums |= por_fecha.get((_sub(t), b, t.fecha), set())
+        out[t.id] = ", ".join(sorted(nums)) if nums else None
     return out
 
 
@@ -417,10 +439,12 @@ def transferencias_justificante(
     """Transferencias candidatas (del subtipo de la clase) para componer un apunte, filtradas por la
     FECHA del movimiento y ocultando las ya usadas en otro apunte. Se autoseleccionan en el front y su
     suma debe cuadrar con el importe del apunte."""
+    # Sin fecha NO se devuelve nada: el justificante siempre se cuadra por la fecha del apunte; así se
+    # evita autoseleccionar TODAS las transferencias por error.
+    if fecha is None:
+        return []
     subtipos = _CLASE_SUBTIPOS.get(clase, _CLASE_SUBTIPOS["cobro"])
-    stmt = select(Transferencia).where(Transferencia.subtipo.in_(subtipos))
-    if fecha:
-        stmt = stmt.where(Transferencia.fecha == fecha)
+    stmt = select(Transferencia).where(Transferencia.subtipo.in_(subtipos), Transferencia.fecha == fecha)
     usados = _transferencias_ya_justificadas(db, excluir_mid)
     if usados:
         stmt = stmt.where(Transferencia.id.not_in(usados))
