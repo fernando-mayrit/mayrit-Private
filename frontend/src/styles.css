@@ -474,7 +474,7 @@ td.num, th.num { text-align: right; }
 /* Transferencias: el TOTAL de cada columna se ancla abajo, así el de Siniestros (con menos filas)
    queda a la misma altura que el de Primas. */
 .tr-totales .tot-col { display: flex; flex-direction: column; }
-.tr-totales .tot-pdte { margin-top: auto; }
+.tr-totales .tot-row.tot-pdte { margin-top: auto; }
 .tot-row.tot-cab { border-bottom: 1px solid var(--borde); margin-bottom: 3px; padding-bottom: 3px; }
 .tot-row.tot-cab span { color: var(--naranja-osc); font-weight: 700; text-decoration: underline; }
 .tot-row.tot-pdte { border-top: 1px solid var(--borde); margin-top: 2px; padding-top: 4px; }
