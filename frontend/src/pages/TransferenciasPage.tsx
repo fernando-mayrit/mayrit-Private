@@ -277,25 +277,25 @@ export default function TransferenciasPage() {
           <div className="field-row" style={{ display: "flex", gap: 10 }}>
             <div className="field" style={{ flex: 1 }}>
               <label>Nº Póliza / UMR</label>
-              <input value={form.numero_poliza ?? ""} onChange={(e) => set("numero_poliza", e.target.value || null)} />
+              <input type="text" value={form.numero_poliza ?? ""} onChange={(e) => set("numero_poliza", e.target.value || null)} />
             </div>
             <div className="field" style={{ flex: 1 }}>
               <label>Recibo <span className="hint">(nº, opcional)</span></label>
-              <input value={form.recibo_num ?? ""} onChange={(e) => set("recibo_num", e.target.value || null)} placeholder="2025-0001" />
+              <input type="text" value={form.recibo_num ?? ""} onChange={(e) => set("recibo_num", e.target.value || null)} placeholder="2025-0001" />
             </div>
             <div className="field" style={{ flex: 1 }}>
               <label>Mercado</label>
-              <input value={form.mercado ?? ""} onChange={(e) => set("mercado", e.target.value || null)} />
+              <input type="text" value={form.mercado ?? ""} onChange={(e) => set("mercado", e.target.value || null)} />
             </div>
           </div>
           <div className="field-row" style={{ display: "flex", gap: 10 }}>
             <div className="field" style={{ flex: 1 }}>
               <label>Cuenta origen</label>
-              <input list="ctas-tr" value={form.cuenta_origen ?? ""} onChange={(e) => set("cuenta_origen", e.target.value || null)} />
+              <input type="text" list="ctas-tr" value={form.cuenta_origen ?? ""} onChange={(e) => set("cuenta_origen", e.target.value || null)} />
             </div>
             <div className="field" style={{ flex: 1 }}>
               <label>Cuenta destino</label>
-              <input list="ctas-tr" value={form.cuenta_destino ?? ""} onChange={(e) => set("cuenta_destino", e.target.value || null)} />
+              <input type="text" list="ctas-tr" value={form.cuenta_destino ?? ""} onChange={(e) => set("cuenta_destino", e.target.value || null)} />
             </div>
             <datalist id="ctas-tr">{cuentas.map((c) => <option key={c} value={c} />)}</datalist>
           </div>
