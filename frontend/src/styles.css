@@ -691,6 +691,13 @@ td.num, th.num { text-align: right; }
 }
 /* Los checkboxes NO deben estirarse (si no, cada uno cae en su propia línea). */
 .alta-mov input[type="checkbox"] { width: auto; }
+/* Modal de Transferencias: rejilla fluida con cajas cómodas (no minúsculas) que se ajustan al ancho. */
+.tr-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px 16px; }
+.tr-form > .field { min-width: 0; margin-bottom: 0; }
+.tr-form .field input, .tr-form .field select, .tr-form .field textarea, .tr-form .num-input {
+  width: 100%; min-width: 0; box-sizing: border-box;
+}
+.tr-form-full { grid-column: 1 / -1; }
 .alta-mov .dev-row { display: flex; gap: 8px; min-width: 0; }
 .alta-mov .dev-row select:first-child { flex: 1; }
 .alta-mov .dev-row select:last-child { flex: 0 0 92px; }

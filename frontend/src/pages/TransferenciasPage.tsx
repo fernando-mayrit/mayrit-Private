@@ -93,8 +93,20 @@ export default function TransferenciasPage() {
   useEffect(() => { cargar(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [filtros]);
   useEffect(() => { transferenciasApi.opciones().then(setOpciones).catch(() => {}); }, []);
 
+  // Detección de cambios: el aviso de cerrar solo salta si se ha tocado algo. Se compara el form
+  // actual con el snapshot capturado al abrir (alta o edición).
+  const [inicialJson, setInicialJson] = useState("");
+  const snapForm = (f: FormState) => JSON.stringify({
+    origen: f.origen ?? "", tipo: f.tipo ?? "", subtipo: f.subtipo ?? "", fecha: f.fecha ?? "",
+    periodo: f.periodo ?? "", importe: f.importe != null ? num(f.importe) : "", numero_poliza: f.numero_poliza ?? "",
+    recibo_num: f.recibo_num ?? "", mercado: f.mercado ?? "", cuenta_origen: f.cuenta_origen ?? "",
+    cuenta_destino: f.cuenta_destino ?? "", notas: f.notas ?? "",
+  });
+  function abrir(f: FormState) { setForm(f); setInicialJson(snapForm(f)); }
+  const dirty = !!form && snapForm(form) !== inicialJson;
+
   function nuevo() {
-    setForm({ origen: "Binder", tipo: "Siniestros", subtipo: "Cobro", fecha: null, importe: undefined, manual: true });
+    abrir({ origen: "Binder", tipo: "Siniestros", subtipo: "Cobro", fecha: null, importe: undefined, manual: true });
   }
   function set<K extends keyof Transferencia>(k: K, v: Transferencia[K]) {
     setForm((f) => (f ? { ...f, [k]: v } : f));
@@ -216,7 +228,7 @@ export default function TransferenciasPage() {
           defaultSort={{ key: "fecha", dir: -1 }}
           rowAction={(t) =>
             t.manual
-              ? <button className="btn-link btn-sm" onClick={() => setForm(t)}>Editar</button>
+              ? <button className="btn-link btn-sm" onClick={() => abrir(t)}>Editar</button>
               : <span className="hint" title="Generado por el recibo">auto</span>
           }
         />
@@ -228,68 +240,63 @@ export default function TransferenciasPage() {
       {form && (
         <FormPanel
           title={`${form.id ? "Editar movimiento" : "Nuevo movimiento"}${form.tipo ? ` — ${form.tipo}` : ""}`}
-          dirty saving={saving} saveLabel={form.id ? "Guardar" : "Crear movimiento"}
+          dirty={dirty} saving={saving} saveLabel={form.id ? "Guardar" : "Crear movimiento"}
           onSave={guardar} onClose={() => setForm(null)}
           onDelete={form.id ? () => pedirBorrar(form as Transferencia) : undefined}
+          wide
         >
-          <div className="field-row" style={{ display: "flex", gap: 10 }}>
-            <div className="field" style={{ flex: 1 }}>
+          <div className="tr-form">
+            <div className="field">
               <label>Origen</label>
               <select value={form.origen ?? "Binder"} onChange={(e) => set("origen", e.target.value)}>
                 {ORIGENES.map((o) => <option key={o} value={o}>{o}</option>)}
               </select>
             </div>
-            <div className="field" style={{ flex: 1 }}>
+            <div className="field">
               <label>Tipo</label>
               <select value={form.tipo ?? "Siniestros"} onChange={(e) => set("tipo", e.target.value)}>
                 {TIPOS.map((t) => <option key={t} value={t}>{t}</option>)}
               </select>
             </div>
-            <div className="field" style={{ flex: 1 }}>
+            <div className="field">
               <label>Subtipo</label>
               <select value={form.subtipo ?? "Cobro"} onChange={(e) => set("subtipo", e.target.value)}>
                 {SUBTIPOS.map((s) => <option key={s} value={s}>{s}</option>)}
               </select>
             </div>
-          </div>
-          <div className="field-row" style={{ display: "flex", gap: 10 }}>
-            <div className="field" style={{ flex: 1 }}>
+            <div className="field">
               <label>Fecha</label>
               <input type="date" value={form.fecha ?? ""} onChange={(e) => set("fecha", e.target.value || null)} />
             </div>
-            <div className="field" style={{ flex: 1 }}>
+            <div className="field">
               <label>Importe</label>
               <NumberInput value={form.importe != null ? String(num(form.importe)) : ""} onChange={(v) => set("importe", v as unknown as number)} decimals={2} suffix="€" />
             </div>
-          </div>
-          <div className="field-row" style={{ display: "flex", gap: 10 }}>
-            <div className="field" style={{ flex: 1 }}>
+            <div className="field">
               <label>Nº Póliza / UMR</label>
               <input value={form.numero_poliza ?? ""} onChange={(e) => set("numero_poliza", e.target.value || null)} />
             </div>
-            <div className="field" style={{ flex: 1 }}>
+            <div className="field">
               <label>Recibo <span className="hint">(nº, opcional)</span></label>
               <input value={form.recibo_num ?? ""} onChange={(e) => set("recibo_num", e.target.value || null)} placeholder="2025-0001" />
             </div>
-            <div className="field" style={{ flex: 1 }}>
+            <div className="field">
               <label>Mercado</label>
               <input value={form.mercado ?? ""} onChange={(e) => set("mercado", e.target.value || null)} />
             </div>
-          </div>
-          <div className="field-row" style={{ display: "flex", gap: 10 }}>
-            <div className="field" style={{ flex: 1 }}>
+            <div className="field">
               <label>Cuenta origen</label>
               <input list="ctas-tr" value={form.cuenta_origen ?? ""} onChange={(e) => set("cuenta_origen", e.target.value || null)} />
             </div>
-            <div className="field" style={{ flex: 1 }}>
+            <div className="field">
               <label>Cuenta destino</label>
               <input list="ctas-tr" value={form.cuenta_destino ?? ""} onChange={(e) => set("cuenta_destino", e.target.value || null)} />
             </div>
             <datalist id="ctas-tr">{cuentas.map((c) => <option key={c} value={c} />)}</datalist>
-          </div>
-          <div className="field">
-            <label>Notas</label>
-            <textarea rows={2} value={form.notas ?? ""} onChange={(e) => set("notas", e.target.value || null)} />
+            <div className="field tr-form-full">
+              <label>Notas</label>
+              <textarea rows={2} value={form.notas ?? ""} onChange={(e) => set("notas", e.target.value || null)} />
+            </div>
           </div>
         </FormPanel>
       )}
