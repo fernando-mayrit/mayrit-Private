@@ -117,7 +117,6 @@ const UCR: { id: Page; label: string }[] = [
 const FACTURACION: { id: Page; label: string }[] = [
   { id: "recibos", label: "Recibos" },
   { id: "lpan", label: "LPAN" },
-  { id: "cierre", label: "Cierre Contable" },
 ];
 
 // Menú lateral: Financiero / Caja (cuadros de pendientes de cobro/liquidación/traspaso/pago).
@@ -130,6 +129,7 @@ const FINANCIERO: { id: Page; label: string }[] = [
 type ItemMenu = { id: Page; label: string; soloUsuarios?: string[] };
 const CONTABILIDAD: ItemMenu[] = [
   { id: "contabilidad", label: "Contabilidad" },
+  { id: "cierre", label: "Cierre Contable" },
 ];
 
 // Menú lateral: Configuración (catálogos compartidos).
