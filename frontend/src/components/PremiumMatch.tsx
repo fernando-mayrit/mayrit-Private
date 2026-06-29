@@ -160,15 +160,12 @@ export default function PremiumMatch({
                       </tr>
                     ))}
                   </tbody>
-                  <tfoot>
-                    <tr className="match-total">
-                      <td><b>Total ({match.filas.length})</b></td>
-                      <td className="num"><b>{eur(match.filas.reduce((a, f) => a + (Number(f.importe_excel) || 0), 0))}</b></td>
-                      <td className="num"><b>{eur(match.filas.reduce((a, f) => a + (Number(f.importe_risk) || 0), 0))}</b></td>
-                      <td></td>
-                    </tr>
-                  </tfoot>
                 </table>
+              </div>
+              <div className="match-suma">
+                <span>Total {match.filas.length} líneas</span>
+                <span>Excel: <b>{eur(match.filas.reduce((a, f) => a + (Number(f.importe_excel) || 0), 0))}</b></span>
+                <span>Risk: <b>{eur(match.filas.reduce((a, f) => a + (Number(f.importe_risk) || 0), 0))}</b></span>
               </div>
             </>
           )}
