@@ -61,6 +61,13 @@ export default function ComisionesPage() {
   // Cedida esperada (85%): por la comisión tecleada (si se ajusta) o la del mes.
   const cedidaEsperada = useMemo(() => (defi ? num(defi) * 0.85 : num(ratDe?.cedida ?? 0)), [defi, ratDe]);
   const sumaReparto = useMemo(() => num(p1) + num(p2), [p1, p2]);
+  // ¿Cambios sin guardar? Compara los campos editables con su valor al abrir (defi siempre arranca
+  // vacío). Así el aviso de cerrar solo salta si se ha tocado algo.
+  const dirty = !!ratDe && (
+    defi !== "" ||
+    p1 !== (ratDe.pago1_importe != null ? String(num(ratDe.pago1_importe)) : "") ||
+    p2 !== (ratDe.pago2_importe != null ? String(num(ratDe.pago2_importe)) : "")
+  );
   // Al teclear una sociedad con importe (>0), la otra se autocompleta con la diferencia hasta la
   // cedida (editable). Si tecleas 0 o lo dejas vacío, la otra se iguala (a 0 o vacío) para poder
   // dejar AMBAS a 0 cuando aún no se conoce el reparto.
@@ -157,7 +164,7 @@ export default function ComisionesPage() {
       {ratDe && (
         <FormPanel
           title={`${ratDe.liq_id ? "Editar reparto" : !ratDe.recibo_numero ? "Preparar recibo" : "Reparto cedida"} — ${mesLargo(ratDe.periodo)}`}
-          dirty saving={saving} saveLabel={!ratDe.recibo_numero ? "Generar recibo" : "Guardar reparto"}
+          dirty={dirty} saving={saving} saveLabel={!ratDe.recibo_numero ? "Generar recibo" : "Guardar reparto"}
           onSave={repartir} onClose={() => setRatDe(null)}
           onDelete={ratDe.liq_id ? () => pedirBorrar(ratDe) : undefined}
         >
