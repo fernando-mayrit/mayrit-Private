@@ -1348,7 +1348,20 @@ async def match_excel(binder_id: int, file: UploadFile = File(...), hoja: str = 
         "importe_distinto": sum(1 for f in filas if f.estado == "importe_distinto"),
         "no_encontrada": sum(1 for f in filas if f.estado == "no_encontrada"),
     }
-    return {"periodo": periodo, "filas": filas, "matched_ids": matched_ids, "resumen": resumen}
+    # Sumatorio del Premium (líneas macheadas): A Cobrar / A Traspasar / A Liquidar, con la economía
+    # del binder (reaseguro incluido), igual que en la emisión.
+    excl = _impuestos_locales(db, binder_id)
+    rea = _es_reaseguro(db, binder_id)
+    byid = {l.id: l for l in risk}
+    t_cobrar = t_tras = t_liq = D0
+    for lid in matched_ids:
+        l = byid.get(lid)
+        if l is None:
+            continue
+        a, r, q = _comp_linea(l, excl, rea)
+        t_cobrar += a; t_tras += r; t_liq += q
+    premium = {"cobrar": _q2(t_cobrar), "traspasar": _q2(t_tras), "liquidar": _q2(t_liq)}
+    return {"periodo": periodo, "filas": filas, "matched_ids": matched_ids, "resumen": resumen, "premium": premium}
 
 
 # ──────────────────────── Exportación genérica a Excel (.xlsx) ────────────────────────

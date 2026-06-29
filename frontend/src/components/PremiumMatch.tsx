@@ -145,11 +145,6 @@ export default function PremiumMatch({
                 <b>{match.resumen.no_encontrada}</b> no encontradas (de {match.resumen.total}).
                 Al aplicar se incluyen en el Premium <b>{match.periodo}</b> las <b>{match.matched_ids.length}</b> OK.
               </div>
-              <div className="match-suma">
-                <span>Total {match.filas.length} líneas</span>
-                <span>Excel: <b>{eur(match.filas.reduce((a, f) => a + (Number(f.importe_excel) || 0), 0))}</b></span>
-                <span>Risk: <b>{eur(match.filas.reduce((a, f) => a + (Number(f.importe_risk) || 0), 0))}</b></span>
-              </div>
               <div className="tabla-scroll" style={{ maxHeight: "42vh" }}>
                 <table className="compacto">
                   <thead>
@@ -165,7 +160,22 @@ export default function PremiumMatch({
                       </tr>
                     ))}
                   </tbody>
+                  <tfoot>
+                    <tr className="match-total">
+                      <td><b>Total ({match.filas.length})</b></td>
+                      <td className="num"><b>{eur(match.filas.reduce((a, f) => a + (Number(f.importe_excel) || 0), 0))}</b></td>
+                      <td className="num"><b>{eur(match.filas.reduce((a, f) => a + (Number(f.importe_risk) || 0), 0))}</b></td>
+                      <td></td>
+                    </tr>
+                  </tfoot>
                 </table>
+              </div>
+              {/* Sumatorio del Premium que se está subiendo (líneas macheadas), con la economía del binder. */}
+              <div className="match-premium">
+                <span>Premium {match.periodo} ({match.matched_ids.length} líneas)</span>
+                <span>A Cobrar <b>{eur(match.premium.cobrar)}</b></span>
+                <span>A Traspasar <b>{eur(match.premium.traspasar)}</b></span>
+                <span>A Liquidar <b>{eur(match.premium.liquidar)}</b></span>
               </div>
             </>
           )}

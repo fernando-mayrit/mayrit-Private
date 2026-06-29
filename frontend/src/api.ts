@@ -902,6 +902,7 @@ export interface MatchResult {
   filas: MatchRow[];
   matched_ids: number[];
   resumen: { total: number; match: number; importe_distinto: number; no_encontrada: number };
+  premium: { cobrar: number | string; traspasar: number | string; liquidar: number | string };
 }
 
 // Pólizas (Open Market). Límite alto para traerlas todas (son ~115).
