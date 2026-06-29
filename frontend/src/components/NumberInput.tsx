@@ -23,9 +23,15 @@ type Props = {
   disabled?: boolean;
 };
 
-// Edición (estilo es-ES: coma decimal, sin miles) → canónica (punto decimal, sin miles).
+// Edición (es-ES) → canónica (punto decimal, sin miles). El PUNTO del teclado numérico se trata
+// como coma decimal: el ÚLTIMO separador (coma o punto) es el decimal; los demás, agrupación.
 function toCanonical(editing: string): string {
-  return editing.replace(/\s/g, "").replace(/\./g, "").replace(",", ".");
+  let s = editing.replace(/\s/g, "").replace(/\./g, ",");   // el punto cuenta como coma
+  const neg = s.startsWith("-");
+  s = s.replace(/-/g, "");
+  const partes = s.split(",");
+  const out = partes.length > 1 ? partes.slice(0, -1).join("") + "." + partes[partes.length - 1] : partes[0];
+  return (neg ? "-" : "") + out;
 }
 // Canónica → edición (lo que se muestra al enfocar para teclear).
 function toEditing(canonical: string): string {
@@ -67,7 +73,8 @@ export default function NumberInput({
           setFocused(true);
         }}
         onChange={(e) => {
-          const raw = e.target.value.replace(/[^0-9.,-]/g, "");
+          // El punto (incluido el del teclado numérico) se muestra y trata como coma decimal.
+          const raw = e.target.value.replace(/[^0-9.,-]/g, "").replace(/\./g, ",");
           setBuf(raw);
           onChange(toCanonical(raw));
         }}
