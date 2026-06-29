@@ -145,6 +145,11 @@ export default function PremiumMatch({
                 <b>{match.resumen.no_encontrada}</b> no encontradas (de {match.resumen.total}).
                 Al aplicar se incluyen en el Premium <b>{match.periodo}</b> las <b>{match.matched_ids.length}</b> OK.
               </div>
+              <div className="match-suma">
+                <span>Total {match.filas.length} líneas</span>
+                <span>Excel: <b>{eur(match.filas.reduce((a, f) => a + (Number(f.importe_excel) || 0), 0))}</b></span>
+                <span>Risk: <b>{eur(match.filas.reduce((a, f) => a + (Number(f.importe_risk) || 0), 0))}</b></span>
+              </div>
               <div className="tabla-scroll" style={{ maxHeight: "42vh" }}>
                 <table className="compacto">
                   <thead>
@@ -161,11 +166,6 @@ export default function PremiumMatch({
                     ))}
                   </tbody>
                 </table>
-              </div>
-              <div className="match-suma">
-                <span>Total {match.filas.length} líneas</span>
-                <span>Excel: <b>{eur(match.filas.reduce((a, f) => a + (Number(f.importe_excel) || 0), 0))}</b></span>
-                <span>Risk: <b>{eur(match.filas.reduce((a, f) => a + (Number(f.importe_risk) || 0), 0))}</b></span>
               </div>
             </>
           )}
