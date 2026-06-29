@@ -146,7 +146,13 @@ export default function TransferenciasPage() {
     });
   }
 
-  const cuentas = opciones?.cuentas ?? [];
+  const cuentasActivas = opciones?.cuentas_activas ?? [];
+  // Opciones del desplegable de una cuenta: las activas + la ya guardada (por si está desactivada).
+  const ctaOpciones = (actual: string | null | undefined) => {
+    const base = [...cuentasActivas];
+    if (actual && !base.includes(actual)) base.unshift(actual);
+    return base;
+  };
 
   return (
     <div className="container lista-page">
@@ -286,10 +292,10 @@ export default function TransferenciasPage() {
               <input type="text" value={form.recibo_num ?? ""} onChange={(e) => set("recibo_num", e.target.value || null)} placeholder="2025-0001" />
             </div>
           </div>
-          {/* Mercado: se autocompleta según el UMR (editable por si acaso) */}
+          {/* Mercado: automático según el UMR → no editable */}
           <div className="field">
             <label>Mercado <span className="hint">(automático según el UMR)</span></label>
-            <input type="text" value={form.mercado ?? ""} onChange={(e) => set("mercado", e.target.value || null)} />
+            <input type="text" value={form.mercado ?? ""} disabled />
           </div>
           {/* Fecha + Importe */}
           <div className="field-row" style={{ display: "flex", gap: 10 }}>
@@ -302,17 +308,22 @@ export default function TransferenciasPage() {
               <NumberInput value={form.importe != null ? String(num(form.importe)) : ""} onChange={(v) => set("importe", v as unknown as number)} decimals={2} suffix="€" />
             </div>
           </div>
-          {/* Cuentas */}
+          {/* Cuentas: desplegables de las cuentas bancarias activas */}
           <div className="field-row" style={{ display: "flex", gap: 10 }}>
             <div className="field" style={{ flex: 1 }}>
               <label>Cuenta origen</label>
-              <input type="text" list="ctas-tr" value={form.cuenta_origen ?? ""} onChange={(e) => set("cuenta_origen", e.target.value || null)} />
+              <select value={form.cuenta_origen ?? ""} onChange={(e) => set("cuenta_origen", e.target.value || null)}>
+                <option value="">— Ninguna —</option>
+                {ctaOpciones(form.cuenta_origen).map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
             </div>
             <div className="field" style={{ flex: 1 }}>
               <label>Cuenta destino</label>
-              <input type="text" list="ctas-tr" value={form.cuenta_destino ?? ""} onChange={(e) => set("cuenta_destino", e.target.value || null)} />
+              <select value={form.cuenta_destino ?? ""} onChange={(e) => set("cuenta_destino", e.target.value || null)}>
+                <option value="">— Ninguna —</option>
+                {ctaOpciones(form.cuenta_destino).map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
             </div>
-            <datalist id="ctas-tr">{cuentas.map((c) => <option key={c} value={c} />)}</datalist>
           </div>
           <div className="field">
             <label>Notas</label>

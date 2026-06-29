@@ -409,6 +409,7 @@ export interface TransferenciasOpciones {
   subtipos: string[];
   anios: number[];
   cuentas: string[];
+  cuentas_activas: string[];              // cuentas bancarias activas (desplegables del alta)
   umr_mercado: Record<string, string>;   // UMR / nº póliza → mercado(s), para autocompletar
 }
 export interface TransferenciaFiltros {

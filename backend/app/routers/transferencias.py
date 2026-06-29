@@ -22,7 +22,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from ..db import get_db
-from ..models.maestras import Binder, BinderSeccion, Poliza, Recibo, SeccionMercado, Transferencia
+from ..models.maestras import Binder, BinderSeccion, CuentaBancaria, Poliza, Recibo, SeccionMercado, Transferencia
 
 router = APIRouter(prefix="/transferencias", tags=["Transferencias"])
 
@@ -116,7 +116,8 @@ class Opciones(BaseModel):
     tipos: list[str]
     subtipos: list[str]
     anios: list[int]
-    cuentas: list[str]
+    cuentas: list[str]            # cuentas que ya aparecen en movimientos (para el filtro)
+    cuentas_activas: list[str]    # cuentas bancarias activas (para los desplegables del alta)
     umr_mercado: dict[str, str]   # UMR de binder / nº de póliza → mercado(s), para autocompletar
 
 
@@ -225,12 +226,19 @@ def opciones(db: Session = Depends(get_db)):
     ).all():
         if np and merc and np not in umr_mercado:
             umr_mercado[np] = merc
+    cuentas_activas = [
+        n for (n,) in db.execute(
+            select(CuentaBancaria.nombre).where(CuentaBancaria.activa.is_(True), CuentaBancaria.nombre.isnot(None))
+            .order_by(CuentaBancaria.nombre)
+        ).all() if n
+    ]
     return Opciones(
         origenes=distintos(Transferencia.origen),
         tipos=distintos(Transferencia.tipo),
         subtipos=distintos(Transferencia.subtipo),
         anios=anios,
         cuentas=sorted(cuentas),
+        cuentas_activas=cuentas_activas,
         umr_mercado=umr_mercado,
     )
 
