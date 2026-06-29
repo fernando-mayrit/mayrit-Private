@@ -17,6 +17,14 @@ export function fmtFechaES(v: unknown): string {
   return d && m && y ? `${d}/${m}/${y}` : String(v);
 }
 
+// Periodo 'aaaa-mm' → "Mes Año" (formato único de la app: "Marzo 2026").
+const MESES_ES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+export function mesAnyo(periodo: unknown): string {
+  if (!periodo) return "";
+  const [y, mo] = String(periodo).slice(0, 7).split("-");
+  return mo && y ? `${MESES_ES[Number(mo) - 1] ?? mo} ${y}` : String(periodo);
+}
+
 // Estado de COBRO derivado de un recibo. El cobro llega con los Premium BDX (rara vez
 // coinciden con el Risk BDX) → puede quedar parcialmente cobrado.
 export type EstadoCobro = { label: string; clase: string };

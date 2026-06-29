@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { bdxApi, type RiskExcelPreview, type RiskExcelImportResult } from "../api";
-import { fmtMiles } from "../format";
+import { fmtMiles, mesAnyo } from "../format";
 import FormPanel from "./FormPanel";
 
 // Subir un Risk BDX desde un Excel del navegador: elegir hoja → preview (no escribe, mapea contra el
@@ -61,7 +61,7 @@ export default function RiskExcelImport({
             <tbody>
               <tr><td>Líneas añadidas</td><td className="num"><b>{res.insertadas}</b></td></tr>
               {res.omitidas_periodo > 0 && (
-                <tr><td>Omitidas (mes ya cargado: {res.periodos_omitidos.join(", ")})</td><td className="num">{res.omitidas_periodo}</td></tr>
+                <tr><td>Omitidas (mes ya cargado: {res.periodos_omitidos.map(mesAnyo).join(", ")})</td><td className="num">{res.omitidas_periodo}</td></tr>
               )}
               <tr><td>Sección asignada por risk code</td><td className="num">{res.auto_seccion}</td></tr>
               {res.sin_seccion > 0 && (
@@ -84,18 +84,18 @@ export default function RiskExcelImport({
             </div>
             <div className="field">
               <label>Periodos detectados</label>
-              <input value={prev.periodos.join(", ") || "—"} readOnly />
+              <input value={prev.periodos.map(mesAnyo).join(", ") || "—"} readOnly />
             </div>
           </div>
 
           {todoCargado ? (
             <div className="hint" style={{ marginBottom: 10, color: "#b45309" }}>
               ⚠️ {prev.periodos_ya_cargados.length === 1 ? "Este mes ya está" : "Estos meses ya están"} cargado(s)
-              en el Risk ({prev.periodos_ya_cargados.join(", ")}). Al importar no se añadirá nada (no se recarga).
+              en el Risk ({prev.periodos_ya_cargados.map(mesAnyo).join(", ")}). Al importar no se añadirá nada (no se recarga).
             </div>
           ) : prev.periodos_ya_cargados.length > 0 ? (
             <div className="hint" style={{ marginBottom: 10, color: "#b45309" }}>
-              ⚠️ Ya cargado(s): {prev.periodos_ya_cargados.join(", ")} — esos meses se omitirán; el resto se añade.
+              ⚠️ Ya cargado(s): {prev.periodos_ya_cargados.map(mesAnyo).join(", ")} — esos meses se omitirán; el resto se añade.
             </div>
           ) : (
             <div className="hint" style={{ marginBottom: 10 }}>
@@ -117,7 +117,7 @@ export default function RiskExcelImport({
                   {prev.sin_seccion > 0 && <span style={{ color: "#b45309" }}> · ⚠️ sin sección: {prev.sin_seccion}</span>}
                 </td>
               </tr>
-              <tr><td>Columnas sin mapear</td><td className="num">{prev.sin_mapear.length}</td></tr>
+              <tr><td>Columnas no reconocidas (se guardan en «Extra»)</td><td className="num">{prev.sin_mapear.length}</td></tr>
             </tbody>
           </table>
 
@@ -143,7 +143,9 @@ export default function RiskExcelImport({
           </div>
           {prev.sin_mapear.length > 0 && (
             <div className="hint" style={{ marginTop: 8 }}>
-              Sin mapear: {prev.sin_mapear.slice(0, 12).join(", ")}{prev.sin_mapear.length > 12 ? "…" : ""}
+              <b>No reconocidas</b> (se guardan íntegras en «Extra», no se pierde nada): {prev.sin_mapear.join(", ")}.
+              <br />Si alguna de estas es el <b>Certificado</b>, la <b>comisión</b> u otro dato clave para el cálculo,
+              dímelo y la mapeo a su campo.
             </div>
           )}
         </>

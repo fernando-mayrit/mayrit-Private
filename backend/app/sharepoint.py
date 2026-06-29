@@ -49,7 +49,7 @@ MAPEO: dict[str, str] = {
     # "Gross Premium paid this time" (cuando la línea suscrita es el 100%, coincide con Our Line).
     "gross_written_premium": ["Gross Written Premium", "Gross Premium paid this time"],
     "written_line_pct": "Written Line (%)",
-    "total_gwp_our_line": "Total Gross Written Premium (Our line)",
+    "total_gwp_our_line": ["Total Gross Written Premium (Our line)", "Annual Premium Total GWP"],
     "fees": ["Fees"],
     # La plantilla varía por binder: en unas listas es "Commission %/Amount" y en otras
     # "Commission Coverholder %/Amount". Se prueban los alias en orden.

@@ -251,6 +251,13 @@ def parse_risk_excel(content: bytes, hoja: str | None = None) -> tuple[list[dict
         fila = {campo: (r[idx] if idx < len(r) else None) for campo, idx in colmap.items()}
         if not any(fila.get(k) not in (None, "") for k in _CLAVES_FILA):
             continue
+        # Captura COMPLETA de la fila: TODAS las celdas con cabecera (no solo las reconocidas), para
+        # no perder nada. Las no mapeadas se guardarán tal cual en `extra`.
+        fila["_raw"] = {
+            headers[i]: r[i]
+            for i in range(len(headers))
+            if headers[i] and i < len(r) and r[i] not in (None, "")
+        }
         filas.append(fila)
     usados = set(colmap.values())
     meta = {
@@ -292,6 +299,24 @@ def _seccion_de(datos: dict, rc2sec: dict[str, int], rc_amb: set[str]) -> int | 
 def _coerce_fila(cols: dict, fila: dict) -> dict:
     return {campo: _coerce(campo, fila.get(campo), cols[campo])
             for campo in sharepoint.MAPEO if campo in cols and campo != "sp_old_id"}
+
+
+def _json_safe(v):
+    """Convierte un valor de celda a algo serializable en JSONB (para `extra`)."""
+    if isinstance(v, (dt.date, dt.datetime)):
+        return v.isoformat()
+    if isinstance(v, Decimal):
+        return float(v)
+    return v
+
+
+def _extra_no_mapeadas(fila: dict, meta_mapeadas: dict) -> dict | None:
+    """De la captura completa de la fila (`_raw`), las columnas que NO han ido a un campo estructurado.
+    Así toda la información del Excel queda guardada (las reconocidas en sus campos, el resto en `extra`)."""
+    raw = fila.get("_raw") or {}
+    cabeceras_mapeadas = set(meta_mapeadas.values())
+    extra = {h: _json_safe(v) for h, v in raw.items() if h not in cabeceras_mapeadas}
+    return extra or None
 
 
 def preview_risk_excel(db: Session, binder: Binder, content: bytes, hoja: str | None = None) -> dict:
@@ -346,7 +371,8 @@ def importar_risk_excel(db: Session, binder: Binder, content: bytes, hoja: str |
     duplicados legítimos de pagos fraccionados). Asigna la sección por risk code cuando falta. La única
     protección es a nivel de mes: si un Reporting ya estaba cargado en el Risk, ese mes se omite entero
     para no recargarlo por error."""
-    filas, _ = parse_risk_excel(content, hoja)
+    filas, meta = parse_risk_excel(content, hoja)
+    mapeadas = meta.get("mapeadas", {})
     cols = {c.name: c.type for c in BdxLinea.__table__.columns}
     bdx = db.scalars(select(Bdx).where(Bdx.binder_id == binder.id, Bdx.tipo == "Risk")).first()
     if bdx is None:
@@ -382,6 +408,7 @@ def importar_risk_excel(db: Session, binder: Binder, content: bytes, hoja: str |
         linea = BdxLinea(bdx_id=bdx.id)
         for k, v in datos.items():
             setattr(linea, k, v)
+        linea.extra = _extra_no_mapeadas(fila, mapeadas)  # todo lo no estructurado, sin perder nada
         db.add(linea)
         insertadas += 1
 
