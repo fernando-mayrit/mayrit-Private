@@ -6,15 +6,18 @@ gasto/ingreso, saldo. La conciliación con el ledger de Transferencias es la Fas
 from __future__ import annotations
 
 import datetime as dt
+import io
 from decimal import Decimal
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from ..db import get_db
-from ..models.maestras import ContaCategoria, CuentaBancaria, MovimientoBancario
+from ..models.maestras import Binder, ContaCategoria, CuentaBancaria, MovimientoBancario, Recibo
 
 router = APIRouter(prefix="/contabilidad", tags=["Contabilidad"])
 
@@ -40,6 +43,7 @@ class MovimientoRead(BaseModel):
     tarjeta: bool
     factura: bool
     conciliado: bool = False
+    recibos_ids: list[int] | None = None
 
     class Config:
         from_attributes = True
@@ -194,6 +198,7 @@ class MovimientoCrear(BaseModel):
     movimiento_bancario: bool = True
     factura: bool = False           # 'Justificante'
     tarjeta: bool = False
+    recibos_ids: list[int] | None = None
 
 
 @router.post("", response_model=MovimientoRead, status_code=201)
@@ -232,6 +237,7 @@ def crear(payload: MovimientoCrear, db: Session = Depends(get_db)):
         gasto=gasto, ingreso=ingreso, saldo=saldo,
         descripcion=payload.descripcion, codigo=codigo,
         movimiento_bancario=payload.movimiento_bancario, factura=payload.factura, tarjeta=payload.tarjeta,
+        recibos_ids=payload.recibos_ids,
         sp_lista=None, sp_old_id=None,
     )
     db.add(m)
@@ -252,6 +258,7 @@ class MovimientoUpdate(BaseModel):
     factura: bool | None = None            # 'Justificante'
     tarjeta: bool | None = None
     movimiento_bancario: bool | None = None
+    recibos_ids: list[int] | None = None   # recibos que componen el apunte (para el justificante)
 
 
 @router.put("/{mid}", response_model=MovimientoRead)
@@ -262,7 +269,7 @@ def actualizar(mid: int, payload: MovimientoUpdate, db: Session = Depends(get_db
     if m is None:
         raise HTTPException(status_code=404, detail=f"Movimiento {mid} no encontrado")
     datos = payload.model_dump(exclude_unset=True)
-    for k in ("grupo", "concepto", "saldo", "descripcion", "factura", "tarjeta", "movimiento_bancario"):
+    for k in ("grupo", "concepto", "saldo", "descripcion", "factura", "tarjeta", "movimiento_bancario", "recibos_ids"):
         if k in datos:
             setattr(m, k, datos[k])
     if datos.get("fecha"):
@@ -280,3 +287,153 @@ def actualizar(mid: int, payload: MovimientoUpdate, db: Session = Depends(get_db
     db.commit()
     db.refresh(m)
     return _read(m)
+
+
+# ─────────────────── Justificante de movimiento (recibos que lo componen) ───────────────────
+def _num_es(x) -> str:
+    """123456.7 -> '123.456,70' (formato es-ES)."""
+    s = f"{Decimal(x or 0):,.2f}"
+    return s.replace(",", "·").replace(".", ",").replace("·", ".")
+
+
+# Según el tipo de apunte, qué importe y qué fecha del recibo se usan en el justificante.
+_CAMPOS = {
+    "cobro": ("prima_cobrada", "prima_fecha_cobro"),
+    "liquidacion": ("liquidar_liquidado", "liquidar_fecha_liquidacion"),
+    "traspaso": ("comision_retenida_traspasada", "comision_fecha_traspaso"),
+}
+_IMP_LABEL = {"cobro": "Cobrado", "liquidacion": "Liquidado al UW", "traspaso": "Traspasado"}
+
+
+def _clase_de_concepto(concepto: str | None) -> str:
+    c = (concepto or "").lower()
+    if "liquid" in c:
+        return "liquidacion"
+    if "traspas" in c:
+        return "traspaso"
+    return "cobro"
+
+
+class ReciboJustif(BaseModel):
+    id: int
+    numero: str | None
+    importe: Decimal
+    fecha: dt.date | None
+    referencia: str | None
+    cliente: str | None
+
+
+def _recibo_row(r: Recibo, umr: str | None, clase: str) -> ReciboJustif:
+    campo_imp, campo_fecha = _CAMPOS[clase]
+    return ReciboJustif(
+        id=r.id, numero=r.numero,
+        importe=Decimal(getattr(r, campo_imp) or 0),
+        fecha=getattr(r, campo_fecha),
+        referencia=umr or r.numero_poliza,
+        cliente=r.asegurado,
+    )
+
+
+@router.get("/recibos-justificante", response_model=list[ReciboJustif])
+def recibos_justificante(
+    clase: str = "cobro", q: str | None = None, anio: int | None = None,
+    limit: int = 800, db: Session = Depends(get_db),
+):
+    """Recibos candidatos para componer un apunte: con su importe (según la clase del apunte:
+    cobro/liquidacion/traspaso), fecha de la gestión, UMR/nº póliza (Referencia) y cliente."""
+    clase = clase if clase in _CAMPOS else "cobro"
+    campo_imp, campo_fecha = _CAMPOS[clase]
+    col_imp = getattr(Recibo, campo_imp)
+    stmt = (
+        select(Recibo, Binder.umr)
+        .join(Binder, Binder.id == Recibo.binder_id, isouter=True)
+        .where(col_imp.is_not(None), col_imp != 0)
+    )
+    if anio:
+        stmt = stmt.where(Recibo.anio == anio)
+    if q:
+        like = f"%{q.strip()}%"
+        stmt = stmt.where(or_(
+            Recibo.numero.ilike(like), Recibo.asegurado.ilike(like),
+            Binder.umr.ilike(like), Recibo.numero_poliza.ilike(like),
+        ))
+    stmt = stmt.order_by(getattr(Recibo, campo_fecha).desc().nullslast(), Recibo.numero).limit(limit)
+    return [_recibo_row(r, umr, clase) for (r, umr) in db.execute(stmt).all()]
+
+
+def _build_justificante_pdf(m: MovimientoBancario, filas: list[ReciboJustif], clase: str) -> bytes:
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.styles import getSampleStyleSheet
+    from reportlab.lib.units import mm
+    from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=16 * mm, rightMargin=16 * mm,
+                            topMargin=16 * mm, bottomMargin=16 * mm, title=m.identificador or "Justificante")
+    styles = getSampleStyleSheet()
+    elems = []
+    naranja = colors.HexColor("#da5833")
+    elems.append(Paragraph(f"<b>Concepto</b>&nbsp;&nbsp; {m.concepto or ''}", styles["Normal"]))
+    elems.append(Paragraph(f"<b>Fecha</b>&nbsp;&nbsp; {m.fecha.strftime('%d/%m/%Y') if m.fecha else ''}", styles["Normal"]))
+    elems.append(Paragraph(f"<b>Movimiento</b>&nbsp;&nbsp; {m.identificador or ''} &nbsp;·&nbsp; {m.cuenta}", styles["Normal"]))
+    elems.append(Spacer(1, 8))
+
+    imp_label = _IMP_LABEL.get(clase, "Importe")
+    cab = ["Recibo", "Fecha", imp_label, "Referencia", "Cliente"]
+    data = [cab]
+    total = Decimal(0)
+    cli = styles["Normal"].clone("cli"); cli.fontSize = 8
+    for f in filas:
+        total += f.importe
+        data.append([
+            f.numero or "", f.fecha.strftime("%d/%m/%Y") if f.fecha else "",
+            _num_es(f.importe), f.referencia or "", Paragraph(f.cliente or "", cli),
+        ])
+    data.append(["", "Total", _num_es(total), "", ""])
+
+    t = Table(data, colWidths=[24 * mm, 22 * mm, 28 * mm, 34 * mm, 70 * mm], repeatRows=1)
+    t.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), naranja),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 8),
+        ("ALIGN", (2, 0), (2, -1), "RIGHT"),
+        ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#cccccc")),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -2), [colors.white, colors.HexColor("#f6f6f6")]),
+        ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#fff1ea")),
+        ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+    ]))
+    elems.append(t)
+    doc.build(elems)
+    return buf.getvalue()
+
+
+@router.get("/{mid}/justificante.pdf")
+def justificante_pdf(mid: int, db: Session = Depends(get_db)):
+    """Genera el PDF del justificante del apunte con los recibos que lo componen (recibos_ids)."""
+    m = db.get(MovimientoBancario, mid)
+    if m is None:
+        raise HTTPException(status_code=404, detail=f"Movimiento {mid} no encontrado")
+    ids = m.recibos_ids or []
+    clase = _clase_de_concepto(m.concepto)
+    filas: list[ReciboJustif] = []
+    if ids:
+        res = db.execute(
+            select(Recibo, Binder.umr).join(Binder, Binder.id == Recibo.binder_id, isouter=True)
+            .where(Recibo.id.in_(ids))
+        ).all()
+        byid = {r.id: (r, umr) for (r, umr) in res}
+        for i in ids:                       # conserva el orden de selección
+            if i in byid:
+                r, umr = byid[i]
+                filas.append(_recibo_row(r, umr, clase))
+    if not filas:
+        raise HTTPException(status_code=409, detail="Este apunte no tiene recibos asociados para el justificante.")
+    pdf = _build_justificante_pdf(m, filas, clase)
+    nombre = f"{m.identificador or m.id}. {m.concepto or 'Justificante'}.pdf"
+    return StreamingResponse(
+        io.BytesIO(pdf), media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(nombre)}"},
+    )

@@ -463,14 +463,18 @@ export interface MovimientoBancario {
   tarjeta: boolean;
   factura: boolean;
   conciliado: boolean;
+  recibos_ids?: number[] | null;
 }
 export interface ContaCategoria { concepto: string; grupo: string | null; tipo: string | null; cuenta_contable: string | null }
+// Recibo candidato para componer el justificante de un apunte (importe según la clase del apunte).
+export interface ReciboJustif { id: number; numero: string | null; importe: number | string; fecha: string | null; referencia: string | null; cliente: string | null }
 export interface BaseAlta { ultimo_saldo: number | string | null; next_iden: number }
 export interface MovimientoCrear {
   cuenta: string; fecha: string; devengo?: string | null; tipo: string;
   grupo?: string | null; concepto?: string | null; importe: number;
   saldo?: number | null; descripcion?: string | null;
   movimiento_bancario?: boolean; factura?: boolean; tarjeta?: boolean;
+  recibos_ids?: number[] | null;
 }
 export interface MovimientosListados {
   items: MovimientoBancario[];
@@ -513,8 +517,23 @@ export const contabilidadApi = {
   categorias: () => request<ContaCategoria[]>("/contabilidad/categorias"),
   base: (cuenta: string, anio: number) => request<BaseAlta>(`/contabilidad/base?cuenta=${encodeURIComponent(cuenta)}&anio=${anio}`),
   crear: (d: MovimientoCrear) => request<MovimientoBancario>("/contabilidad", { method: "POST", body: JSON.stringify(d) }),
-  actualizar: (id: number, d: Partial<{ fecha: string; devengo: string | null; tipo: string; grupo: string | null; concepto: string | null; importe: number; saldo: number | null; descripcion: string | null; factura: boolean; tarjeta: boolean; movimiento_bancario: boolean }>) =>
+  actualizar: (id: number, d: Partial<{ fecha: string; devengo: string | null; tipo: string; grupo: string | null; concepto: string | null; importe: number; saldo: number | null; descripcion: string | null; factura: boolean; tarjeta: boolean; movimiento_bancario: boolean; recibos_ids: number[] | null }>) =>
     request<MovimientoBancario>(`/contabilidad/${id}`, { method: "PUT", body: JSON.stringify(d) }),
+  // Recibos candidatos para el justificante (clase: cobro | liquidacion | traspaso).
+  recibosJustificante: (clase: string, q?: string) =>
+    request<ReciboJustif[]>(`/contabilidad/recibos-justificante?clase=${clase}${q ? `&q=${encodeURIComponent(q)}` : ""}`),
+  // Descarga el PDF del justificante de un apunte (con los recibos ya asociados).
+  justificantePdf: async (mid: number): Promise<{ blob: Blob; filename: string }> => {
+    const res = await fetch(`${BASE}/contabilidad/${mid}/justificante.pdf`);
+    if (!res.ok) {
+      let msg = `Error al generar el justificante (${res.status})`;
+      try { const j = await res.json(); if (j?.detail) msg = j.detail; } catch { /* sin cuerpo */ }
+      throw new Error(msg);
+    }
+    const cd = res.headers.get("Content-Disposition") || "";
+    const m = /filename\*=UTF-8''([^;]+)/i.exec(cd);
+    return { blob: await res.blob(), filename: m ? decodeURIComponent(m[1]) : `justificante_${mid}.pdf` };
+  },
 };
 
 // ── Tareas recurrentes manuales por binder ──

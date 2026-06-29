@@ -695,6 +695,17 @@ td.num, th.num { text-align: right; }
 }
 /* Los checkboxes NO deben estirarse (si no, cada uno cae en su propia línea). */
 .alta-mov input[type="checkbox"] { width: auto; }
+/* Sección "Justificante" del modal de Contabilidad: selector de recibos que componen el apunte. */
+.justif-sec { margin-top: 14px; border-top: 1px solid var(--borde); padding-top: 10px; }
+.justif-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
+.justif-suma { margin-left: auto; font-size: 12px; color: var(--gris-medio); }
+.justif-lista { max-height: 230px; overflow-y: auto; border: 1px solid var(--borde); border-radius: 8px; margin: 8px 0; }
+.justif-row { display: grid; grid-template-columns: 22px 84px 78px 92px 130px 1fr; gap: 8px; align-items: center; padding: 4px 8px; font-size: 12px; border-bottom: 1px solid #f1f1f1; cursor: pointer; }
+.justif-row:last-child { border-bottom: none; }
+.justif-row:hover { background: #fff7f3; }
+.justif-row .jr-imp { text-align: right; font-variant-numeric: tabular-nums; }
+.justif-row .jr-cli { color: var(--gris-medio); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.justif-row input[type="checkbox"] { width: auto; }
 .alta-mov .dev-row { display: flex; gap: 8px; min-width: 0; }
 .alta-mov .dev-row select:first-child { flex: 1; }
 .alta-mov .dev-row select:last-child { flex: 0 0 92px; }

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { contabilidadApi, type ContaCategoria, type BaseAlta, type MovimientoBancario } from "../api";
-import { fmtMiles } from "../format";
+import { contabilidadApi, type ContaCategoria, type BaseAlta, type MovimientoBancario, type ReciboJustif } from "../api";
+import { fmtMiles, fmtFechaES } from "../format";
 import FormPanel from "./FormPanel";
 import NumberInput from "./NumberInput";
 
@@ -36,9 +36,15 @@ export default function AltaMovimiento({ cuenta, cats, movimiento, onClose, onSa
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Justificante: recibos que componen este apunte (para el PDF).
+  const [recibosIds, setRecibosIds] = useState<number[]>(movimiento?.recibos_ids ?? []);
+  const [candidatos, setCandidatos] = useState<ReciboJustif[]>([]);
+  const [busqRec, setBusqRec] = useState("");
+  const [genJustif, setGenJustif] = useState(false);
+
   // ¿Hay cambios sin guardar? Compara los campos editables con su estado al abrir; así el aviso de
   // "Cambios sin guardar" solo salta si de verdad se tocó algo (antes `dirty` iba fijo a true).
-  const snapshot = JSON.stringify({ fecha, devengo, tipo, grupo, concepto, importe, saldo, descripcion, movBanc, factura, tarjeta });
+  const snapshot = JSON.stringify({ fecha, devengo, tipo, grupo, concepto, importe, saldo, descripcion, movBanc, factura, tarjeta, recibosIds });
   const [inicialSnap] = useState(snapshot);
   const dirty = snapshot !== inicialSnap;
 
@@ -47,6 +53,37 @@ export default function AltaMovimiento({ cuenta, cats, movimiento, onClose, onSa
   const cuentaContable = useMemo(() => cats.find((c) => c.concepto === concepto)?.cuenta_contable ?? null, [cats, concepto]);
   // Identificación contable pedida: Cuenta Contable + "." + Concepto (p. ej. "62300.Asesoría").
   const cuentaContableConcepto = cuentaContable && concepto ? `${cuentaContable}.${concepto}` : null;
+
+  // Justificante: la "clase" (qué importe del recibo se usa) se deduce del concepto del apunte.
+  const claseJustif = /liquid/i.test(concepto) ? "liquidacion" : /traspas/i.test(concepto) ? "traspaso" : /cobro/i.test(concepto) ? "cobro" : null;
+  useEffect(() => {
+    if (!claseJustif) { setCandidatos([]); return; }
+    let vivo = true;
+    contabilidadApi.recibosJustificante(claseJustif).then((r) => { if (vivo) setCandidatos(r); }).catch(() => {});
+    return () => { vivo = false; };
+  }, [claseJustif]);
+  const candFiltrados = useMemo(() => {
+    const t = busqRec.trim().toLowerCase();
+    return !t ? candidatos : candidatos.filter((c) => `${c.numero ?? ""} ${c.referencia ?? ""} ${c.cliente ?? ""}`.toLowerCase().includes(t));
+  }, [candidatos, busqRec]);
+  const sumaSel = useMemo(() => {
+    const by = new Map(candidatos.map((c) => [c.id, num(c.importe)]));
+    return recibosIds.reduce((a, id) => a + (by.get(id) ?? 0), 0);
+  }, [recibosIds, candidatos]);
+  const toggleRecibo = (id: number) => setRecibosIds((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
+
+  async function generarJustificante() {
+    if (!movimiento) return;
+    setGenJustif(true); setError(null);
+    try {
+      await contabilidadApi.actualizar(movimiento.id, { recibos_ids: recibosIds });  // persistir selección
+      const { blob, filename } = await contabilidadApi.justificantePdf(movimiento.id);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a"); a.href = url; a.download = filename; a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) { setError((e as Error).message); }
+    finally { setGenJustif(false); }
+  }
 
   // El devengo sigue a la fecha (mismo mes y año) mientras no lo cambies a mano; y se trae el saldo
   // de partida + siguiente Id de la cuenta (solo relevante en alta).
@@ -84,6 +121,7 @@ export default function AltaMovimiento({ cuenta, cats, movimiento, onClose, onSa
         fecha, devengo: devengo ? `${devengo}-01` : null, tipo, grupo: grupo || null, concepto,
         importe: num(importe), saldo: saldo !== "" ? num(saldo) : null, descripcion: descripcion || null,
         movimiento_bancario: movBanc, factura, tarjeta,
+        recibos_ids: claseJustif ? recibosIds : null,
       };
       if (edicion && movimiento) await contabilidadApi.actualizar(movimiento.id, datos);
       else await contabilidadApi.crear({ cuenta, ...datos });
@@ -201,6 +239,39 @@ export default function AltaMovimiento({ cuenta, cats, movimiento, onClose, onSa
           </>
         )}
       </div>
+
+      {/* Justificante: recibos que componen este apunte (solo apuntes de seguros: cobro/liquidación/traspaso). */}
+      {claseJustif && verResto && (
+        <div className="justif-sec">
+          <div className="justif-head">
+            <b>Justificante</b>
+            <span className="hint">recibos que componen este {claseJustif === "liquidacion" ? "pago" : claseJustif === "traspaso" ? "traspaso" : "cobro"}</span>
+            <span className="justif-suma">
+              Seleccionado: <b>{fmtMiles(sumaSel)} €</b>{" "}
+              {Math.abs(sumaSel - num(importe)) < 0.01 ? "✓" : <span className="error">(importe: {fmtMiles(num(importe))} €)</span>}
+            </span>
+          </div>
+          <input type="text" placeholder="Buscar recibo / UMR / cliente…" value={busqRec} onChange={(e) => setBusqRec(e.target.value)} />
+          <div className="justif-lista">
+            {candFiltrados.map((c) => (
+              <label key={c.id} className="justif-row">
+                <input type="checkbox" checked={recibosIds.includes(c.id)} onChange={() => toggleRecibo(c.id)} />
+                <span className="jr-num">{c.numero}</span>
+                <span className="jr-fec">{c.fecha ? fmtFechaES(c.fecha) : ""}</span>
+                <span className="jr-imp">{fmtMiles(c.importe)} €</span>
+                <span className="jr-ref">{c.referencia}</span>
+                <span className="jr-cli">{c.cliente}</span>
+              </label>
+            ))}
+            {candFiltrados.length === 0 && <div className="hint" style={{ padding: 8 }}>No hay recibos para esta clase.</div>}
+          </div>
+          {edicion && (
+            <button className="btn-secondary btn-sm" onClick={generarJustificante} disabled={genJustif || recibosIds.length === 0}>
+              {genJustif ? "Generando…" : "📄 Generar justificante (PDF)"}
+            </button>
+          )}
+        </div>
+      )}
     </FormPanel>
   );
 }

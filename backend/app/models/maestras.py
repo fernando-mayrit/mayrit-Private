@@ -1173,6 +1173,9 @@ class MovimientoBancario(Base):
 
     # Conciliación (Fase 2): movimiento del ledger de Transferencias que cuadra con este apunte.
     transferencia_id: Mapped[int | None] = mapped_column(ForeignKey("transferencias.id", ondelete="SET NULL"), index=True)
+    # Justificante: recibos que componen este apunte bancario (lista de recibo.id). Con ellos se
+    # genera el PDF del justificante (Recibo · fecha · importe · UMR · Cliente).
+    recibos_ids: Mapped[list[int] | None] = mapped_column(JSONB)
 
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

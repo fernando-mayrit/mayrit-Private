@@ -15,3 +15,5 @@ openpyxl
 python-multipart
 # Generación de documentos Word (FDO/LPAN a partir de la plantilla)
 python-docx
+# Generación de PDF (justificantes de movimientos contables)
+reportlab
