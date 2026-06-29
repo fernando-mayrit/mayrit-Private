@@ -243,60 +243,65 @@ export default function TransferenciasPage() {
           dirty={dirty} saving={saving} saveLabel={form.id ? "Guardar" : "Crear movimiento"}
           onSave={guardar} onClose={() => setForm(null)}
           onDelete={form.id ? () => pedirBorrar(form as Transferencia) : undefined}
-          wide
         >
-          <div className="tr-form">
-            <div className="field">
+          <div className="field-row" style={{ display: "flex", gap: 10 }}>
+            <div className="field" style={{ flex: 1 }}>
               <label>Origen</label>
               <select value={form.origen ?? "Binder"} onChange={(e) => set("origen", e.target.value)}>
                 {ORIGENES.map((o) => <option key={o} value={o}>{o}</option>)}
               </select>
             </div>
-            <div className="field">
+            <div className="field" style={{ flex: 1 }}>
               <label>Tipo</label>
               <select value={form.tipo ?? "Siniestros"} onChange={(e) => set("tipo", e.target.value)}>
                 {TIPOS.map((t) => <option key={t} value={t}>{t}</option>)}
               </select>
             </div>
-            <div className="field">
+            <div className="field" style={{ flex: 1 }}>
               <label>Subtipo</label>
               <select value={form.subtipo ?? "Cobro"} onChange={(e) => set("subtipo", e.target.value)}>
                 {SUBTIPOS.map((s) => <option key={s} value={s}>{s}</option>)}
               </select>
             </div>
-            <div className="field">
+          </div>
+          <div className="field-row" style={{ display: "flex", gap: 10 }}>
+            <div className="field" style={{ flex: 1 }}>
               <label>Fecha</label>
               <input type="date" value={form.fecha ?? ""} onChange={(e) => set("fecha", e.target.value || null)} />
             </div>
-            <div className="field">
+            <div className="field" style={{ flex: 1 }}>
               <label>Importe</label>
               <NumberInput value={form.importe != null ? String(num(form.importe)) : ""} onChange={(v) => set("importe", v as unknown as number)} decimals={2} suffix="€" />
             </div>
-            <div className="field">
+          </div>
+          <div className="field-row" style={{ display: "flex", gap: 10 }}>
+            <div className="field" style={{ flex: 1 }}>
               <label>Nº Póliza / UMR</label>
               <input value={form.numero_poliza ?? ""} onChange={(e) => set("numero_poliza", e.target.value || null)} />
             </div>
-            <div className="field">
+            <div className="field" style={{ flex: 1 }}>
               <label>Recibo <span className="hint">(nº, opcional)</span></label>
               <input value={form.recibo_num ?? ""} onChange={(e) => set("recibo_num", e.target.value || null)} placeholder="2025-0001" />
             </div>
-            <div className="field">
+            <div className="field" style={{ flex: 1 }}>
               <label>Mercado</label>
               <input value={form.mercado ?? ""} onChange={(e) => set("mercado", e.target.value || null)} />
             </div>
-            <div className="field">
+          </div>
+          <div className="field-row" style={{ display: "flex", gap: 10 }}>
+            <div className="field" style={{ flex: 1 }}>
               <label>Cuenta origen</label>
               <input list="ctas-tr" value={form.cuenta_origen ?? ""} onChange={(e) => set("cuenta_origen", e.target.value || null)} />
             </div>
-            <div className="field">
+            <div className="field" style={{ flex: 1 }}>
               <label>Cuenta destino</label>
               <input list="ctas-tr" value={form.cuenta_destino ?? ""} onChange={(e) => set("cuenta_destino", e.target.value || null)} />
             </div>
             <datalist id="ctas-tr">{cuentas.map((c) => <option key={c} value={c} />)}</datalist>
-            <div className="field tr-form-full">
-              <label>Notas</label>
-              <textarea rows={2} value={form.notas ?? ""} onChange={(e) => set("notas", e.target.value || null)} />
-            </div>
+          </div>
+          <div className="field">
+            <label>Notas</label>
+            <textarea rows={2} value={form.notas ?? ""} onChange={(e) => set("notas", e.target.value || null)} />
           </div>
         </FormPanel>
       )}
