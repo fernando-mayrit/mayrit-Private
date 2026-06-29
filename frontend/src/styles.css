@@ -682,6 +682,8 @@ td.num, th.num { text-align: right; }
 .recibo-box { border: 1px solid var(--borde); border-radius: 10px; padding: 8px 14px 12px; }
 .recibo-box h4 { margin: 4px 0 8px; color: var(--naranja-osc); font-size: 13px; letter-spacing: .04em; text-transform: uppercase; border-bottom: 1px solid var(--borde); padding-bottom: 6px; }
 .recibo-box .field { margin-bottom: 6px; }
+/* Modal de alta/edición de movimiento de Contabilidad: rejilla a 2 columnas (pares en la misma fila). */
+.alta-mov { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 14px; align-items: start; }
 /* Caja que no aplica a este tipo de recibo (p. ej. Liquidación en recibos de Comisiones). */
 .recibo-box-na { background: var(--gris-claro); opacity: .85; }
 .recibo-box-na h4 { color: var(--gris-medio); }

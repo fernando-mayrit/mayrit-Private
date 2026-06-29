@@ -28,7 +28,6 @@ export default function AltaMovimiento({ cuenta, cats, movimiento, onClose, onSa
   const [concepto, setConcepto] = useState(movimiento?.concepto ?? "");
   const [importe, setImporte] = useState(movimiento ? String(num(num(movimiento.gasto) ? movimiento.gasto : movimiento.ingreso)) : "");
   const [saldo, setSaldo] = useState(movimiento?.saldo != null ? String(num(movimiento.saldo)) : "");
-  const [saldoTocado, setSaldoTocado] = useState(edicion);
   const [descripcion, setDescripcion] = useState(movimiento?.descripcion ?? "");
   const [movBanc, setMovBanc] = useState(movimiento?.movimiento_bancario ?? true);
   const [factura, setFactura] = useState(movimiento?.factura ?? false);
@@ -46,6 +45,8 @@ export default function AltaMovimiento({ cuenta, cats, movimiento, onClose, onSa
   const grupos = useMemo(() => [...new Set(cats.filter((c) => c.tipo === tipo).map((c) => c.grupo).filter(Boolean) as string[])].sort((a, b) => a.localeCompare(b)), [cats, tipo]);
   const conceptos = useMemo(() => cats.filter((c) => c.tipo === tipo && c.grupo === grupo).map((c) => c.concepto).sort((a, b) => a.localeCompare(b)), [cats, tipo, grupo]);
   const cuentaContable = useMemo(() => cats.find((c) => c.concepto === concepto)?.cuenta_contable ?? null, [cats, concepto]);
+  // Identificación contable pedida: Cuenta Contable + "." + Concepto (p. ej. "62300.Asesoría").
+  const cuentaContableConcepto = cuentaContable && concepto ? `${cuentaContable}.${concepto}` : null;
 
   // El devengo sigue a la fecha (mismo mes y año) mientras no lo cambies a mano; y se trae el saldo
   // de partida + siguiente Id de la cuenta (solo relevante en alta).
@@ -56,12 +57,13 @@ export default function AltaMovimiento({ cuenta, cats, movimiento, onClose, onSa
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fecha]);
 
-  // Saldo automático = saldo anterior ± importe (solo en ALTA, mientras no lo toques).
+  // Saldo automático = saldo anterior ± importe (solo en ALTA). El saldo NO es editable a mano: es un
+  // cálculo, así que siempre se rellena solo.
   const saldoAuto = useMemo(() => {
     if (!base) return 0;
     return tipo === "Ingreso" ? num(base.ultimo_saldo) + num(importe) : num(base.ultimo_saldo) - num(importe);
   }, [base, importe, tipo]);
-  useEffect(() => { if (!edicion && !saldoTocado) setSaldo(saldoAuto ? saldoAuto.toFixed(2) : ""); }, [saldoAuto, saldoTocado, edicion]);
+  useEffect(() => { if (!edicion) setSaldo(saldoAuto ? saldoAuto.toFixed(2) : ""); }, [saldoAuto, edicion]);
 
   const idPreview = edicion ? (movimiento?.identificador ?? "—") : (base && devengo ? `${base.next_iden}.${devengo.slice(5, 7)}` : "—");
 
@@ -75,7 +77,7 @@ export default function AltaMovimiento({ cuenta, cats, movimiento, onClose, onSa
   const dis = bloqueado;
 
   async function guardar() {
-    if (!fecha || !tipo || !concepto || num(importe) <= 0) return setError("Completa fecha, tipo, concepto e importe.");
+    if (!fecha || !tipo || !grupo || !concepto || num(importe) <= 0) return setError("Completa fecha, tipo, grupo, concepto e importe.");
     setSaving(true); setError(null);
     try {
       const datos = {
@@ -113,8 +115,9 @@ export default function AltaMovimiento({ cuenta, cats, movimiento, onClose, onSa
       )}
 
       <div className="alta-mov">
-        <div className="field"><label>Cuenta</label><input type="text" value={cuenta} disabled /></div>
+        <div className="field" style={{ gridColumn: "1 / -1" }}><label>Cuenta</label><input type="text" value={cuenta} disabled /></div>
 
+        {/* Fecha y Devengo (mes + año) en la misma línea */}
         <div className="field"><label>Fecha <span className="required">*</span></label>
           <input type="date" className="inp-fecha" value={fecha} disabled={dis} onChange={(e) => setFecha(e.target.value)} autoFocus={!edicion} />
         </div>
@@ -132,6 +135,7 @@ export default function AltaMovimiento({ cuenta, cats, movimiento, onClose, onSa
           </div>
         )}
 
+        {/* Tipo y Grupo (ambos obligatorios) en la misma línea */}
         {verTipo && (
           <div className="field"><label>Tipo <span className="required">*</span></label>
             <select value={tipo} disabled={dis} onChange={(e) => { setTipo(e.target.value); setGrupo(""); setConcepto(""); }}>
@@ -143,7 +147,7 @@ export default function AltaMovimiento({ cuenta, cats, movimiento, onClose, onSa
         )}
 
         {verGrupo && (
-          <div className="field"><label>Grupo</label>
+          <div className="field"><label>Grupo <span className="required">*</span></label>
             <select value={grupo} disabled={dis} onChange={(e) => { setGrupo(e.target.value); setConcepto(""); }}>
               <option value="">— Elige —</option>
               {grupos.map((g) => <option key={g} value={g}>{g}</option>)}
@@ -152,26 +156,35 @@ export default function AltaMovimiento({ cuenta, cats, movimiento, onClose, onSa
         )}
 
         {verConcepto && (
-          <div className="field"><label>Concepto <span className="required">*</span></label>
+          <div className="field" style={{ gridColumn: "1 / -1" }}><label>Concepto <span className="required">*</span></label>
             <select value={concepto} disabled={dis} onChange={(e) => setConcepto(e.target.value)}>
               <option value="">— Elige —</option>
               {conceptos.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
-            {cuentaContable && <span className="hint">Cuenta contable: <b>{cuentaContable}</b></span>}
           </div>
         )}
 
-        {verImporte && (
-          <div className="field"><label>Importe <span className="required">*</span></label>
-            <NumberInput value={importe} onChange={setImporte} decimals={2} suffix="€" disabled={dis} className={tipo === "Gasto" ? "importe-gasto" : undefined} />
+        {/* Cuenta Contable + "." + Concepto */}
+        {cuentaContableConcepto && (
+          <div className="field" style={{ gridColumn: "1 / -1" }}><label>Cuenta contable</label>
+            <div className="ci-val" style={{ fontWeight: 600 }}>{cuentaContableConcepto}</div>
           </div>
+        )}
+
+        {/* Importe y Saldo en la misma línea; el Saldo es un cálculo (no editable) */}
+        {verImporte && (
+          <>
+            <div className="field"><label>Importe <span className="required">*</span></label>
+              <NumberInput value={importe} onChange={setImporte} decimals={2} suffix="€" disabled={dis} className={tipo === "Gasto" ? "importe-gasto" : undefined} />
+            </div>
+            <div className="field"><label>Saldo <span className="hint">(cálculo)</span></label>
+              <NumberInput value={saldo} onChange={() => {}} decimals={2} suffix="€" disabled />
+            </div>
+          </>
         )}
 
         {verResto && (
           <>
-            <div className="field"><label>Saldo {!edicion && <span className="hint">(auto, editable)</span>}</label>
-              <NumberInput value={saldo} onChange={(v) => { setSaldo(v); setSaldoTocado(true); }} decimals={2} suffix="€" disabled={dis} />
-            </div>
             <div className="field"><label>Id</label>
               <div className="ci-val" style={{ fontWeight: 600 }}>{idPreview}</div>
             </div>
