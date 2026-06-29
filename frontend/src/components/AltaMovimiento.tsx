@@ -188,7 +188,7 @@ export default function AltaMovimiento({ cuenta, cats, movimiento, onClose, onSa
             <div className="field full-w" style={{ gridColumn: "1 / -1" }}><label>Descripción</label>
               <textarea rows={2} value={descripcion} disabled={dis} onChange={(e) => setDescripcion(e.target.value)} />
             </div>
-            <div className="field full-w" style={{ gridColumn: "1 / -1", display: "flex", gap: 18, flexWrap: "wrap" }}>
+            <div className="field full-w" style={{ gridColumn: "1 / -1", flexDirection: "row", alignItems: "center", justifyContent: "flex-start", gap: 18, flexWrap: "wrap" }}>
               <label className="check-inline"><input type="checkbox" checked={movBanc} disabled={dis} onChange={(e) => setMovBanc(e.target.checked)} /> Movimiento Bancario</label>
               <label className="check-inline"><input type="checkbox" checked={factura} disabled={dis} onChange={(e) => setFactura(e.target.checked)} /> Justificante</label>
               <label className="check-inline"><input type="checkbox" checked={tarjeta} disabled={dis} onChange={(e) => setTarjeta(e.target.checked)} /> Tarjeta</label>
