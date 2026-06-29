@@ -99,7 +99,7 @@ export default function AltaMovimiento({ cuenta, cats, movimiento, onClose, onSa
 
   return (
     <FormPanel
-      title={edicion ? <>Movimiento · <span style={{ color: "var(--naranja-osc)" }}>{movimiento?.identificador ?? movimiento?.id}</span> — {cuenta}</> : `Alta de movimiento — ${cuenta}`}
+      title={edicion ? <>Movimiento · <span style={{ color: "var(--naranja-osc)" }}>{movimiento?.identificador ?? movimiento?.id}</span></> : "Alta de movimiento"}
       dirty={dirty} saving={saving} saveLabel={edicion ? "Guardar" : "Crear movimiento"} error={error}
       onSave={guardar} onClose={onClose} readOnly={bloqueado}
     >
@@ -124,11 +124,11 @@ export default function AltaMovimiento({ cuenta, cats, movimiento, onClose, onSa
 
         {verDevengo && (
           <div className="field"><label>Devengo</label>
-            <div style={{ display: "flex", gap: 8 }}>
+            <div className="dev-row">
               <select value={dm || ""} disabled={dis} onChange={(e) => { setDevengoTocado(true); setDevengo(`${dy || yBase}-${e.target.value}`); }} title="Mes">
                 {MESES.map((nom, i) => <option key={i} value={String(i + 1).padStart(2, "0")}>{nom}</option>)}
               </select>
-              <select value={dy || ""} disabled={dis} onChange={(e) => { setDevengoTocado(true); setDevengo(`${e.target.value}-${dm || "01"}`); }} title="Año" style={{ maxWidth: 100 }}>
+              <select value={dy || ""} disabled={dis} onChange={(e) => { setDevengoTocado(true); setDevengo(`${e.target.value}-${dm || "01"}`); }} title="Año">
                 {anios.map((a) => <option key={a} value={a}>{a}</option>)}
               </select>
             </div>
@@ -185,9 +185,6 @@ export default function AltaMovimiento({ cuenta, cats, movimiento, onClose, onSa
 
         {verResto && (
           <>
-            <div className="field"><label>Id</label>
-              <div className="ci-val" style={{ fontWeight: 600 }}>{idPreview}</div>
-            </div>
             <div className="field full-w" style={{ gridColumn: "1 / -1" }}><label>Descripción</label>
               <textarea rows={2} value={descripcion} disabled={dis} onChange={(e) => setDescripcion(e.target.value)} />
             </div>
