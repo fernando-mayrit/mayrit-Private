@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { contabilidadApi, type ContaCategoria, type BaseAlta, type MovimientoBancario, type TransferJustif } from "../api";
+import { contabilidadApi, type ContaCategoria, type BaseAlta, type MovimientoBancario, type ReciboJustif } from "../api";
 import { fmtMiles, fmtFechaES } from "../format";
 import FormPanel from "./FormPanel";
 import NumberInput from "./NumberInput";
@@ -38,7 +38,7 @@ export default function AltaMovimiento({ cuenta, cats, movimiento, onClose, onSa
 
   // Justificante: TRANSFERENCIAS (del ledger) que componen este apunte (para el PDF).
   const [transfIds, setTransfIds] = useState<number[]>(movimiento?.transferencia_ids ?? []);
-  const [candidatos, setCandidatos] = useState<TransferJustif[]>([]);
+  const [candidatos, setCandidatos] = useState<ReciboJustif[]>([]);   // una fila por recibo
   // Filtro por la fecha del apunte (no editable en la UI; el cuadre es automático por esa fecha).
   const [fechaFiltro] = useState(movimiento?.fecha?.slice(0, 10) ?? "");
   const [impById, setImpById] = useState<Map<number, number>>(new Map());  // importe por transferencia (acumula)
@@ -58,27 +58,30 @@ export default function AltaMovimiento({ cuenta, cats, movimiento, onClose, onSa
 
   // Justificante: la "clase" (qué importe del recibo se usa) se deduce del concepto del apunte.
   const claseJustif = /liquid/i.test(concepto) ? "liquidacion" : /traspas/i.test(concepto) ? "traspaso" : /cobro/i.test(concepto) ? "cobro" : null;
+  // El "ámbito" acota el tipo de transferencia (un «Cobro Primas» no mezcla Siniestros).
+  const ambitoJustif = /primas/i.test(concepto) ? "Primas" : /siniestros/i.test(concepto) ? "Siniestros" : /comisiones/i.test(concepto) ? "Comisiones" : /honorarios/i.test(concepto) ? "Honorarios" : undefined;
   // Carga las transferencias de la clase, filtradas por la FECHA del movimiento, ocultando las ya
   // usadas en otro apunte. CUADRE AUTOMÁTICO: si aún no hay selección, se marcan todas (su suma debe
   // cuadrar con el importe del apunte). Acumula importes en `impById` para la suma en vivo.
   useEffect(() => {
     if (!claseJustif) { setCandidatos([]); return; }
     let vivo = true;
-    contabilidadApi.transferenciasJustificante(claseJustif, { fecha: fechaFiltro || undefined, excluirMid: movimiento?.id })
+    contabilidadApi.transferenciasJustificante(claseJustif, { fecha: fechaFiltro || undefined, ambito: ambitoJustif, excluirMid: movimiento?.id })
       .then((r) => {
         if (!vivo) return;
         setCandidatos(r);
-        setImpById((prev) => { const m = new Map(prev); r.forEach((c) => m.set(c.id, num(c.importe))); return m; });
-        setTransfIds((prev) => (prev.length ? prev : r.map((c) => c.id)));   // autoselección si está vacío
+        // El cuadre es POR TRANSFERENCIA (importe real movido), aunque se muestre desglosado por recibo.
+        setImpById((prev) => { const m = new Map(prev); r.forEach((c) => m.set(c.transferencia_id, num(c.importe_transferencia))); return m; });
+        setTransfIds((prev) => (prev.length ? prev : [...new Set(r.map((c) => c.transferencia_id))]));   // autoselección
       })
       .catch(() => {});
     return () => { vivo = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [claseJustif, fechaFiltro]);
+  }, [claseJustif, ambitoJustif, fechaFiltro]);
   const sumaSel = useMemo(() => transfIds.reduce((a, id) => a + (impById.get(id) ?? 0), 0), [transfIds, impById]);
   const restante = num(importe) - sumaSel;
   const toggleTransf = (id: number) => setTransfIds((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
-  const marcarTodos = () => setTransfIds(candidatos.map((c) => c.id));
+  const marcarTodos = () => setTransfIds([...new Set(candidatos.map((c) => c.transferencia_id))]);
   const quitarTodos = () => setTransfIds([]);
 
   async function generarJustificante() {
@@ -267,10 +270,18 @@ export default function AltaMovimiento({ cuenta, cats, movimiento, onClose, onSa
             <button type="button" className="btn-link btn-sm" onClick={quitarTodos} disabled={transfIds.length === 0}>Quitar</button>
           </div>
           <div className="justif-lista">
-            {candidatos.map((c) => (
-              <label key={c.id} className="justif-row">
-                <input type="checkbox" checked={transfIds.includes(c.id)} onChange={() => toggleTransf(c.id)} />
-                <span className="jr-num">{c.recibo}</span>
+            <div className="justif-row justif-cab">
+              <span />
+              <span>Recibo</span>
+              <span>Fecha</span>
+              <span className="jr-imp">Importe</span>
+              <span>Referencia</span>
+              <span>Cliente</span>
+            </div>
+            {candidatos.map((c, i) => (
+              <label key={i} className={"justif-row" + (i > 0 && candidatos[i - 1].transferencia_id === c.transferencia_id ? " jr-cont" : "")}>
+                <input type="checkbox" checked={transfIds.includes(c.transferencia_id)} onChange={() => toggleTransf(c.transferencia_id)} />
+                <span className="jr-num">{c.recibo ?? "—"}</span>
                 <span className="jr-fec">{c.fecha ? fmtFechaES(c.fecha) : ""}</span>
                 <span className="jr-imp">{fmtMiles(c.importe)} €</span>
                 <span className="jr-ref">{c.referencia}</span>

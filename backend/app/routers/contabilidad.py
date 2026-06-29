@@ -329,6 +329,20 @@ class TransferJustif(BaseModel):
     mercado: str | None
 
 
+class ReciboJustif(BaseModel):
+    """Una fila POR RECIBO del justificante. Varias filas pueden compartir `transferencia_id`
+    (un cobro que paga varios recibos); el cuadre con el apunte se hace por transferencia, por eso
+    se incluye `importe_transferencia` (el importe real movido) además del importe individual."""
+    transferencia_id: int
+    importe_transferencia: Decimal
+    fecha: dt.date | None
+    importe: Decimal           # importe individual de ESTE recibo
+    referencia: str | None
+    recibo: str | None
+    cliente: str | None
+    mercado: str | None
+
+
 def _coverholders(db: Session, umrs: set[str]) -> dict[str, str]:
     """UMR de binder → nombre del coverholder (agencia), para la columna Cliente."""
     umrs = {u for u in umrs if u}
@@ -402,11 +416,13 @@ def _recibos_de(db: Session, trs: list[Transferencia]) -> dict[int, str | None]:
             out[t.id] = rec_por_id[t.recibo_id]
             continue
         b = bid_de(t)
+        # PREFERIR periodo (A): es preciso (1 recibo por transferencia). La fecha (B) empareja TODOS
+        # los recibos cobrados ese día → solo se usa como respaldo cuando A no da nada.
         nums: set[str] = set()
         if b and t.periodo:
-            nums |= por_premio.get((b, t.periodo.strftime("%Y-%m")), set())
-        if b and t.fecha:
-            nums |= por_fecha.get((_sub(t), b, t.fecha), set())
+            nums = set(por_premio.get((b, t.periodo.strftime("%Y-%m")), set()))
+        if not nums and b and t.fecha:
+            nums = set(por_fecha.get((_sub(t), b, t.fecha), set()))
         out[t.id] = ", ".join(sorted(nums)) if nums else None
     return out
 
@@ -416,6 +432,88 @@ def _transfer_row(t: Transferencia, cliente: str | None, recibo: str | None) -> 
         id=t.id, fecha=t.fecha, importe=Decimal(t.importe or 0),
         referencia=t.numero_poliza, recibo=recibo, cliente=cliente, mercado=t.mercado,
     )
+
+
+def _desglose_recibos(db: Session, trs: list[Transferencia]) -> dict[int, list[tuple[str | None, Decimal]]]:
+    """tid → [(recibo|None, importe_individual)]: el DESGLOSE POR RECIBO de cada transferencia.
+
+    Conjunto de recibos: 1) recibo_num / recibo_id directos; si no, 2) por (binder, mes de premium_bdx)
+    == periodo de la transferencia (preciso), con respaldo por la FECHA de pago/liq./traspaso.
+    Importe por recibo (solo cuando hay varios): Σ de la columna del subtipo (ingresado / liquidado_uw
+    / traspasado) de las líneas de ese recibo en la fecha de la transferencia. Con un solo recibo se usa
+    el importe de la transferencia (evita el ruido de redondeo)."""
+    umrs = {t.numero_poliza for t in trs if t.numero_poliza and t.binder_id is None}
+    umr2bid = ({u: i for (u, i) in db.execute(select(Binder.umr, Binder.id).where(Binder.umr.in_(umrs))).all()}
+               if umrs else {})
+    bid_de = lambda t: t.binder_id or umr2bid.get(t.numero_poliza or "")
+    rids = {t.recibo_id for t in trs if t.recibo_id}
+    rec_por_id = ({i: n for (i, n) in db.execute(select(Recibo.id, Recibo.numero).where(Recibo.id.in_(rids))).all()}
+                  if rids else {})
+    bids = {bid_de(t) for t in trs}
+    bids.discard(None)
+
+    por_premio: dict[tuple[int, str], set[str]] = defaultdict(set)
+    por_fecha_set: dict[tuple[str, int, dt.date], set[str]] = defaultdict(set)
+    por_fecha_amt: dict[tuple[str, int, dt.date, str], Decimal] = {}
+    if bids:
+        for (b, pbdx, num) in db.execute(
+            select(Bdx.binder_id, BdxLinea.premium_bdx, Recibo.numero)
+            .join(Bdx, Bdx.id == BdxLinea.bdx_id).join(Recibo, Recibo.id == BdxLinea.recibo_id)
+            .where(Bdx.binder_id.in_(bids), BdxLinea.premium_bdx.is_not(None), Recibo.numero.is_not(None))
+        ).all():
+            por_premio[(b, pbdx.strftime("%Y-%m"))].add(num)
+        for sub, dcol, acol in (("Cobro", BdxLinea.premium_payment_date, BdxLinea.ingresado),
+                                ("Liquidación", BdxLinea.fecha_liquidacion, BdxLinea.liquidado_uw),
+                                ("Traspaso", BdxLinea.fecha_traspaso, BdxLinea.traspasado)):
+            for (b, f, num, amt) in db.execute(
+                select(Bdx.binder_id, dcol, Recibo.numero, func.sum(acol))
+                .join(Bdx, Bdx.id == BdxLinea.bdx_id).join(Recibo, Recibo.id == BdxLinea.recibo_id)
+                .where(Bdx.binder_id.in_(bids), dcol.is_not(None), Recibo.numero.is_not(None))
+                .group_by(Bdx.binder_id, dcol, Recibo.numero)
+            ).all():
+                por_fecha_set[(sub, b, f)].add(num)
+                por_fecha_amt[(sub, b, f, num)] = Decimal(amt or 0)
+
+    def _sub(t):
+        return "Liquidación" if (t.subtipo or "").startswith("Liquidaci") else t.subtipo
+
+    out: dict[int, list[tuple[str | None, Decimal]]] = {}
+    for t in trs:
+        imp_t = Decimal(t.importe or 0)
+        if t.recibo_num:
+            out[t.id] = [(t.recibo_num, imp_t)]
+            continue
+        if t.recibo_id and t.recibo_id in rec_por_id:
+            out[t.id] = [(rec_por_id[t.recibo_id], imp_t)]
+            continue
+        b = bid_de(t)
+        sub = _sub(t)
+        recibos: set[str] = set()
+        if b and t.periodo:
+            recibos = set(por_premio.get((b, t.periodo.strftime("%Y-%m")), set()))
+        if not recibos and b and t.fecha:
+            recibos = set(por_fecha_set.get((sub, b, t.fecha), set()))
+        if not recibos:
+            out[t.id] = [(None, imp_t)]
+        elif len(recibos) == 1:
+            out[t.id] = [(next(iter(recibos)), imp_t)]
+        else:
+            out[t.id] = [(r, por_fecha_amt.get((sub, b, t.fecha, r), Decimal(0))) for r in sorted(recibos)]
+    return out
+
+
+def _filas_recibo(trs: list[Transferencia], cov: dict[str, str],
+                  desg: dict[int, list[tuple[str | None, Decimal]]]) -> list["ReciboJustif"]:
+    """Aplana las transferencias a filas POR RECIBO (conservando el orden de `trs`)."""
+    filas: list[ReciboJustif] = []
+    for t in trs:
+        for (rec, imp) in desg.get(t.id, [(None, Decimal(t.importe or 0))]):
+            filas.append(ReciboJustif(
+                transferencia_id=t.id, importe_transferencia=Decimal(t.importe or 0),
+                fecha=t.fecha, importe=imp, referencia=t.numero_poliza, recibo=rec,
+                cliente=cov.get(t.numero_poliza or ""), mercado=t.mercado,
+            ))
+    return filas
 
 
 def _transferencias_ya_justificadas(db: Session, excluir_mid: int | None) -> set[int]:
@@ -431,31 +529,35 @@ def _transferencias_ya_justificadas(db: Session, excluir_mid: int | None) -> set
     return usados
 
 
-@router.get("/transferencias-justificante", response_model=list[TransferJustif])
+@router.get("/transferencias-justificante", response_model=list[ReciboJustif])
 def transferencias_justificante(
-    clase: str = "cobro", fecha: dt.date | None = None,
+    clase: str = "cobro", fecha: dt.date | None = None, ambito: str | None = None,
     excluir_mid: int | None = None, limit: int = 1500, db: Session = Depends(get_db),
 ):
     """Transferencias candidatas (del subtipo de la clase) para componer un apunte, filtradas por la
     FECHA del movimiento y ocultando las ya usadas en otro apunte. Se autoseleccionan en el front y su
-    suma debe cuadrar con el importe del apunte."""
+    suma debe cuadrar con el importe del apunte.
+
+    `ambito` (Primas/Siniestros/Comisiones/Honorarios, deducido del concepto del apunte) acota el
+    `tipo` de transferencia: un apunte «Cobro Primas» NO debe mezclar transferencias de Siniestros."""
     # Sin fecha NO se devuelve nada: el justificante siempre se cuadra por la fecha del apunte; así se
     # evita autoseleccionar TODAS las transferencias por error.
     if fecha is None:
         return []
     subtipos = _CLASE_SUBTIPOS.get(clase, _CLASE_SUBTIPOS["cobro"])
     stmt = select(Transferencia).where(Transferencia.subtipo.in_(subtipos), Transferencia.fecha == fecha)
+    if ambito:
+        stmt = stmt.where(Transferencia.tipo == ambito)
     usados = _transferencias_ya_justificadas(db, excluir_mid)
     if usados:
         stmt = stmt.where(Transferencia.id.not_in(usados))
     stmt = stmt.order_by(Transferencia.fecha.desc().nullslast(), Transferencia.numero_poliza).limit(limit)
     trs = list(db.scalars(stmt).all())
     cov = _coverholders(db, {t.numero_poliza for t in trs if t.numero_poliza})
-    recibos = _recibos_de(db, trs)
-    return [_transfer_row(t, cov.get(t.numero_poliza or ""), recibos.get(t.id)) for t in trs]
+    return _filas_recibo(trs, cov, _desglose_recibos(db, trs))
 
 
-def _build_justificante_pdf(m: MovimientoBancario, filas: list[TransferJustif], clase: str) -> bytes:
+def _build_justificante_pdf(m: MovimientoBancario, filas: list[ReciboJustif], clase: str) -> bytes:
     from reportlab.lib import colors
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.styles import getSampleStyleSheet
@@ -511,16 +613,13 @@ def justificante_pdf(mid: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail=f"Movimiento {mid} no encontrado")
     ids = m.transferencia_ids or []
     clase = _clase_de_concepto(m.concepto)
-    filas: list[TransferJustif] = []
+    filas: list[ReciboJustif] = []
     if ids:
         trs = list(db.scalars(select(Transferencia).where(Transferencia.id.in_(ids))).all())
         cov = _coverholders(db, {t.numero_poliza for t in trs if t.numero_poliza})
-        recibos = _recibos_de(db, trs)
         byid = {t.id: t for t in trs}
-        for i in ids:                       # conserva el orden de selección
-            if i in byid:
-                t = byid[i]
-                filas.append(_transfer_row(t, cov.get(t.numero_poliza or ""), recibos.get(t.id)))
+        trs_ord = [byid[i] for i in ids if i in byid]   # conserva el orden de selección
+        filas = _filas_recibo(trs_ord, cov, _desglose_recibos(db, trs_ord))
     if not filas:
         raise HTTPException(status_code=409, detail="Este apunte no tiene transferencias asociadas para el justificante.")
     pdf = _build_justificante_pdf(m, filas, clase)

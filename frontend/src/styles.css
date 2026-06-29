@@ -60,10 +60,11 @@ h1, h2, h3 { font-family: var(--fuente-titulo); font-weight: 600; color: var(--g
 .avisos-pop { position: absolute; right: 0; top: 36px; width: 360px; max-height: 60vh; overflow-y: auto; background: #fff; border: 1px solid var(--borde); border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,.15); z-index: 50; }
 .avisos-pop-head { padding: 10px 14px; font-weight: 700; border-bottom: 1px solid var(--borde); color: var(--gris); display: flex; align-items: center; justify-content: space-between; }
 .aviso-config-btn { font-size: 12px; font-weight: 600; }
-/* Fila de totales del modal de subir Risk (pegada abajo del scroll) */
-.tabla-risk-preview tfoot .fila-total-risk td { position: sticky; bottom: 0; z-index: 2; background: #eef2f7; border-top: 2px solid #cbd5e1; }
-/* Cabecera también fija al hacer scroll, para no perder de vista las columnas */
-.tabla-risk-preview thead th { position: sticky; top: 0; z-index: 2; background: #f8fafc; }
+/* Modal de subir Risk: cabecera y totales FIJOS al hacer scroll.
+   El sticky solo funciona con border-collapse: separate (el global usa collapse). */
+.tabla-risk-preview { border-collapse: separate; border-spacing: 0; overflow: visible; border-radius: 0; }
+.tabla-risk-preview thead th { position: sticky; top: 0; z-index: 2; background: #f8fafc; box-shadow: inset 0 -1px 0 var(--borde); }
+.tabla-risk-preview tfoot .fila-total-risk td { position: sticky; bottom: 0; z-index: 2; background: #eef2f7; box-shadow: inset 0 1px 0 #cbd5e1; }
 /* Segunda campana de avisos: "Avisos" del día (cubo tranquilo, azul) */
 .campana-dia { font-size: 18px; }
 .campana-badge-dia { background: #3b6fe2; }
@@ -718,6 +719,11 @@ td.num, th.num { text-align: right; }
 .justif-lista { max-height: 230px; overflow-y: auto; border: 1px solid var(--borde); border-radius: 8px; margin: 8px 0; }
 .justif-row { display: grid; grid-template-columns: 22px 84px 78px 92px 130px 1fr; gap: 8px; align-items: center; padding: 4px 8px; font-size: 12px; border-bottom: 1px solid #f1f1f1; cursor: pointer; }
 .justif-row:last-child { border-bottom: none; }
+.justif-row.justif-cab { font-weight: 700; color: var(--gris); background: var(--gris-claro); cursor: default; position: sticky; top: 0; z-index: 1; }
+.justif-row.justif-cab:hover { background: var(--gris-claro); }
+/* Filas-continuación: recibos del MISMO cobro (transferencia) → sangría e indicador */
+.justif-row.jr-cont { border-left: 3px solid var(--naranja); border-bottom-color: #f1f1f1; }
+.justif-row.jr-cont input[type="checkbox"] { opacity: .35; }
 .justif-row:hover { background: #fff7f3; }
 .justif-row .jr-imp { text-align: right; font-variant-numeric: tabular-nums; }
 .justif-row .jr-cli { color: var(--gris-medio); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
