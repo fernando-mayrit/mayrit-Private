@@ -695,6 +695,8 @@ td.num, th.num { text-align: right; }
 }
 /* Los checkboxes NO deben estirarse (si no, cada uno cae en su propia línea). */
 .alta-mov input[type="checkbox"] { width: auto; }
+/* Fila de total (sumatorio) del modal de macheo de Premium: resaltada y fija abajo al hacer scroll. */
+.match-total td { position: sticky; bottom: 0; background: #fff1ea; border-top: 2px solid var(--naranja); }
 /* Sección "Justificante" del modal de Contabilidad: selector de recibos que componen el apunte. */
 .justif-sec { margin-top: 14px; border-top: 1px solid var(--borde); padding-top: 10px; }
 .justif-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
