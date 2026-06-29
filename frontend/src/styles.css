@@ -468,9 +468,9 @@ td.num, th.num { text-align: right; }
 .bdx-totales { display: flex; border: 1px solid var(--borde); border-radius: 10px; overflow: hidden; background: #fff; }
 .tot-col { padding: 8px 14px; border-left: 1px solid var(--borde); min-width: 190px; }
 .tot-col:first-child { border-left: none; }
-.tot-row { display: flex; justify-content: space-between; gap: 18px; font-size: 13px; padding: 2px 0; }
+.tot-row { display: flex; justify-content: space-between; gap: 18px; font-size: 13px; padding: 2px 0; white-space: nowrap; }
 .tot-row span { color: var(--gris-medio); }
-.tot-row b { font-variant-numeric: tabular-nums; }
+.tot-row b { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .tot-row.tot-cab { border-bottom: 1px solid var(--borde); margin-bottom: 3px; padding-bottom: 3px; }
 .tot-row.tot-cab span { color: var(--naranja-osc); font-weight: 700; text-decoration: underline; }
 .tot-row.tot-pdte { border-top: 1px solid var(--borde); margin-top: 2px; padding-top: 4px; }
