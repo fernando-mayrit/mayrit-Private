@@ -19,10 +19,10 @@ from decimal import Decimal
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import func, or_, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from ..db import get_db
-from ..models.maestras import Recibo, Transferencia
+from ..models.maestras import Binder, BinderSeccion, Poliza, Recibo, SeccionMercado, Transferencia
 
 router = APIRouter(prefix="/transferencias", tags=["Transferencias"])
 
@@ -117,6 +117,7 @@ class Opciones(BaseModel):
     subtipos: list[str]
     anios: list[int]
     cuentas: list[str]
+    umr_mercado: dict[str, str]   # UMR de binder / nº de póliza → mercado(s), para autocompletar
 
 
 # ── Listado con filtros + totales ──
@@ -206,12 +207,31 @@ def opciones(db: Session = Depends(get_db)):
     anios = [a for (a,) in db.execute(
         select(Transferencia.anio).where(Transferencia.anio.isnot(None)).distinct().order_by(Transferencia.anio.desc())
     ).all()]
+    # Mapa UMR/Nº póliza → mercado(s), para autocompletar el Mercado en el alta manual.
+    umr_mercado: dict[str, str] = {}
+    binders = db.scalars(
+        select(Binder).options(
+            selectinload(Binder.secciones).selectinload(BinderSeccion.mercados).joinedload(SeccionMercado.mercado)
+        )
+    ).all()
+    for b in binders:
+        if not b.umr:
+            continue
+        nombres = sorted({m.mercado.nombre for s in b.secciones for m in s.mercados if m.mercado and m.mercado.nombre})
+        if nombres:
+            umr_mercado[b.umr] = " / ".join(nombres)
+    for (np, merc) in db.execute(
+        select(Poliza.numero_poliza, Poliza.mercado).where(Poliza.numero_poliza.isnot(None), Poliza.mercado.isnot(None))
+    ).all():
+        if np and merc and np not in umr_mercado:
+            umr_mercado[np] = merc
     return Opciones(
         origenes=distintos(Transferencia.origen),
         tipos=distintos(Transferencia.tipo),
         subtipos=distintos(Transferencia.subtipo),
         anios=anios,
         cuentas=sorted(cuentas),
+        umr_mercado=umr_mercado,
     )
 
 

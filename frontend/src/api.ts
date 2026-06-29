@@ -409,6 +409,7 @@ export interface TransferenciasOpciones {
   subtipos: string[];
   anios: number[];
   cuentas: string[];
+  umr_mercado: Record<string, string>;   // UMR / nº póliza → mercado(s), para autocompletar
 }
 export interface TransferenciaFiltros {
   anio?: number | null;

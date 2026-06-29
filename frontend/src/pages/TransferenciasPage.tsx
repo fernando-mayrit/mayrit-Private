@@ -264,6 +264,34 @@ export default function TransferenciasPage() {
               </select>
             </div>
           </div>
+          {/* Nº Póliza / UMR + Nº de recibo */}
+          <div className="field-row" style={{ display: "flex", gap: 10 }}>
+            <div className="field" style={{ flex: 1 }}>
+              <label>Nº Póliza / UMR</label>
+              <input
+                type="text"
+                list="umrs-tr"
+                value={form.numero_poliza ?? ""}
+                onChange={(e) => {
+                  const v = e.target.value || null;
+                  set("numero_poliza", v);
+                  const merc = v ? opciones?.umr_mercado?.[v] : undefined;
+                  if (merc) set("mercado", merc);   // el Mercado sale automático según el UMR
+                }}
+              />
+              <datalist id="umrs-tr">{Object.keys(opciones?.umr_mercado ?? {}).map((u) => <option key={u} value={u} />)}</datalist>
+            </div>
+            <div className="field" style={{ flex: 1 }}>
+              <label>Recibo <span className="hint">(nº, opcional)</span></label>
+              <input type="text" value={form.recibo_num ?? ""} onChange={(e) => set("recibo_num", e.target.value || null)} placeholder="2025-0001" />
+            </div>
+          </div>
+          {/* Mercado: se autocompleta según el UMR (editable por si acaso) */}
+          <div className="field">
+            <label>Mercado <span className="hint">(automático según el UMR)</span></label>
+            <input type="text" value={form.mercado ?? ""} onChange={(e) => set("mercado", e.target.value || null)} />
+          </div>
+          {/* Fecha + Importe */}
           <div className="field-row" style={{ display: "flex", gap: 10 }}>
             <div className="field" style={{ flex: 1 }}>
               <label>Fecha</label>
@@ -274,20 +302,7 @@ export default function TransferenciasPage() {
               <NumberInput value={form.importe != null ? String(num(form.importe)) : ""} onChange={(v) => set("importe", v as unknown as number)} decimals={2} suffix="€" />
             </div>
           </div>
-          <div className="field-row" style={{ display: "flex", gap: 10 }}>
-            <div className="field" style={{ flex: 1 }}>
-              <label>Nº Póliza / UMR</label>
-              <input type="text" value={form.numero_poliza ?? ""} onChange={(e) => set("numero_poliza", e.target.value || null)} />
-            </div>
-            <div className="field" style={{ flex: 1 }}>
-              <label>Recibo <span className="hint">(nº, opcional)</span></label>
-              <input type="text" value={form.recibo_num ?? ""} onChange={(e) => set("recibo_num", e.target.value || null)} placeholder="2025-0001" />
-            </div>
-            <div className="field" style={{ flex: 1 }}>
-              <label>Mercado</label>
-              <input type="text" value={form.mercado ?? ""} onChange={(e) => set("mercado", e.target.value || null)} />
-            </div>
-          </div>
+          {/* Cuentas */}
           <div className="field-row" style={{ display: "flex", gap: 10 }}>
             <div className="field" style={{ flex: 1 }}>
               <label>Cuenta origen</label>
