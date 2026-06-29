@@ -17,7 +17,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from ..db import get_db
-from ..models.maestras import Binder, ContaCategoria, CuentaBancaria, MovimientoBancario, Productor, Transferencia
+from ..models.maestras import Binder, ContaCategoria, CuentaBancaria, MovimientoBancario, Productor, Recibo, Transferencia
 
 router = APIRouter(prefix="/contabilidad", tags=["Contabilidad"])
 
@@ -338,10 +338,32 @@ def _coverholders(db: Session, umrs: set[str]) -> dict[str, str]:
     return {umr: nom for (umr, nom) in rows if umr}
 
 
-def _transfer_row(t: Transferencia, cliente: str | None) -> TransferJustif:
+def _recibos_de(db: Session, trs: list[Transferencia]) -> dict[int, str | None]:
+    """Mapea cada transferencia → nº de recibo (su binder + mes del periodo). Para el desglose."""
+    umrs = {t.numero_poliza for t in trs if t.numero_poliza and t.binder_id is None}
+    umr2bid: dict[str, int] = {}
+    if umrs:
+        umr2bid = {u: i for (u, i) in db.execute(select(Binder.umr, Binder.id).where(Binder.umr.in_(umrs))).all()}
+    bids = {t.binder_id or umr2bid.get(t.numero_poliza or "") for t in trs}
+    bids.discard(None)
+    recs: dict[tuple[int, str], str] = {}
+    if bids:
+        for (b, p, n) in db.execute(
+            select(Recibo.binder_id, Recibo.periodo, Recibo.numero)
+            .where(Recibo.binder_id.in_(bids), Recibo.periodo.is_not(None))
+        ).all():
+            recs[(b, p)] = n
+    out: dict[int, str | None] = {}
+    for t in trs:
+        bid = t.binder_id or umr2bid.get(t.numero_poliza or "")
+        out[t.id] = t.recibo_num or (recs.get((bid, t.periodo.strftime("%Y-%m"))) if bid and t.periodo else None)
+    return out
+
+
+def _transfer_row(t: Transferencia, cliente: str | None, recibo: str | None) -> TransferJustif:
     return TransferJustif(
         id=t.id, fecha=t.fecha, importe=Decimal(t.importe or 0),
-        referencia=t.numero_poliza, recibo=t.recibo_num, cliente=cliente, mercado=t.mercado,
+        referencia=t.numero_poliza, recibo=recibo, cliente=cliente, mercado=t.mercado,
     )
 
 
@@ -374,9 +396,10 @@ def transferencias_justificante(
     if usados:
         stmt = stmt.where(Transferencia.id.not_in(usados))
     stmt = stmt.order_by(Transferencia.fecha.desc().nullslast(), Transferencia.numero_poliza).limit(limit)
-    trs = db.scalars(stmt).all()
+    trs = list(db.scalars(stmt).all())
     cov = _coverholders(db, {t.numero_poliza for t in trs if t.numero_poliza})
-    return [_transfer_row(t, cov.get(t.numero_poliza or "")) for t in trs]
+    recibos = _recibos_de(db, trs)
+    return [_transfer_row(t, cov.get(t.numero_poliza or ""), recibos.get(t.id)) for t in trs]
 
 
 def _build_justificante_pdf(m: MovimientoBancario, filas: list[TransferJustif], clase: str) -> bytes:
@@ -437,13 +460,14 @@ def justificante_pdf(mid: int, db: Session = Depends(get_db)):
     clase = _clase_de_concepto(m.concepto)
     filas: list[TransferJustif] = []
     if ids:
-        trs = db.scalars(select(Transferencia).where(Transferencia.id.in_(ids))).all()
+        trs = list(db.scalars(select(Transferencia).where(Transferencia.id.in_(ids))).all())
         cov = _coverholders(db, {t.numero_poliza for t in trs if t.numero_poliza})
+        recibos = _recibos_de(db, trs)
         byid = {t.id: t for t in trs}
         for i in ids:                       # conserva el orden de selección
             if i in byid:
                 t = byid[i]
-                filas.append(_transfer_row(t, cov.get(t.numero_poliza or "")))
+                filas.append(_transfer_row(t, cov.get(t.numero_poliza or ""), recibos.get(t.id)))
     if not filas:
         raise HTTPException(status_code=409, detail="Este apunte no tiene transferencias asociadas para el justificante.")
     pdf = _build_justificante_pdf(m, filas, clase)
