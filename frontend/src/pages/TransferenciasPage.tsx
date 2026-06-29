@@ -20,7 +20,7 @@ const eur = (v: number | string | null | undefined) => `${fmtMiles(v)} €`;
 const num = (v: number | string | null | undefined) => Number(v ?? 0);
 
 // Clase de pastilla por sentido del movimiento.
-const SENT_PILL: Record<string, string> = { entrada: "pill-cobrado", salida: "pill-anulado", interno: "pill-parcial" };
+const SENT_PILL: Record<string, string> = { entrada: "pill-cobrado", salida: "pill-pendiente", interno: "pill-parcial" };
 const SUBTIPOS = ["Cobro", "Liquidación", "Traspaso"];
 const ORIGENES = ["Binder", "Póliza", "Comisiones", "Consultoría", "Slip de Reaseguro"];
 const TIPOS = ["Primas", "Siniestros", "Comisiones", "Honorarios"];
@@ -200,11 +200,23 @@ export default function TransferenciasPage() {
           <button className="btn-primary" onClick={nuevo}>＋ Nuevo movimiento</button>
         </div>
 
-        {/* Contador: solo los dos TOTAL (Primas y Siniestros), en una sola línea. */}
+        {/* Contador (mismo formato que la pestaña Siniestros) */}
         {data && (
-          <div className="bdx-totales tr-tot-linea">
-            <span className="tr-tot-item"><span>TOTAL Primas</span><b>{eur(data.primas_total)}</b></span>
-            <span className="tr-tot-item"><span>TOTAL Siniestros</span><b>{eur(data.siniestros_total)}</b></span>
+          <div className="bdx-totales">
+            <div className="tot-col">
+              <div className="tot-row tot-cab"><span>Primas</span><b /></div>
+              <div className="tot-row"><span>Cobros</span><b>{eur(data.primas_cobros)}</b></div>
+              <div className="tot-row"><span>Liquidaciones</span><b>{eur(data.primas_liquidaciones)}</b></div>
+              <div className="tot-row"><span>Liq. Comisiones</span><b>{eur(data.comisiones_liquidacion)}</b></div>
+              <div className="tot-row"><span>Traspasos Com.</span><b>{eur(data.comisiones_traspaso)}</b></div>
+              <div className="tot-row tot-pdte"><span>TOTAL</span><b>{eur(data.primas_total)}</b></div>
+            </div>
+            <div className="tot-col">
+              <div className="tot-row tot-cab"><span>Siniestros</span><b /></div>
+              <div className="tot-row"><span>Cobros</span><b>{eur(data.siniestros_cobros)}</b></div>
+              <div className="tot-row"><span>Liquidaciones</span><b>{eur(data.siniestros_liquidaciones)}</b></div>
+              <div className="tot-row tot-pdte"><span>TOTAL</span><b>{eur(data.siniestros_total)}</b></div>
+            </div>
           </div>
         )}
       </div>
