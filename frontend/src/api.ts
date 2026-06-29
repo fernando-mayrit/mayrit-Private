@@ -735,17 +735,25 @@ export const bdxApi = {
   importarSharepoint: (binderId: number) =>
     request<BdxImportResult>(`/binders/${binderId}/bdx/import`, { method: "POST" }),
   // Subir Risk BDX desde un Excel del navegador (multipart): preview (no escribe) → import.
-  riskExcelPreview: (binderId: number, file: File) => {
+  riskExcelPreview: (binderId: number, file: File, hoja?: string) => {
     const fd = new FormData(); fd.append("file", file);
+    if (hoja) fd.append("hoja", hoja);
     return requestForm<RiskExcelPreview>(`/binders/${binderId}/bdx/risk-excel-preview`, fd);
   },
-  riskExcelImport: (binderId: number, file: File) => {
+  riskExcelImport: (binderId: number, file: File, hoja?: string) => {
     const fd = new FormData(); fd.append("file", file);
+    if (hoja) fd.append("hoja", hoja);
     return requestForm<RiskExcelImportResult>(`/binders/${binderId}/bdx/risk-excel-import`, fd);
   },
 };
 
 export interface RiskExcelPreview {
+  hojas: string[];
+  hoja: string;
+  por_seccion: Record<string, number>;
+  auto_seccion: number;
+  sin_seccion: number;
+  periodos_ya_cargados: string[];
   n_lineas: number;
   periodos: string[];
   total_gwp_our_line: number;
@@ -757,8 +765,10 @@ export interface RiskExcelPreview {
 export interface RiskExcelImportResult {
   bdx_id: number;
   insertadas: number;
-  duplicadas: number;
+  omitidas_periodo: number;
+  periodos_omitidos: string[];
   auto_seccion: number;
+  sin_seccion: number;
   total_lineas: number;
   periodos: string[];
 }

@@ -5,7 +5,7 @@ Claims va en otro módulo.
 """
 import datetime as dt
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
@@ -81,14 +81,15 @@ async def _leer_xlsx(file: UploadFile) -> bytes:
 
 
 @router.post("/binders/{binder_id}/bdx/risk-excel-preview")
-async def risk_excel_preview(binder_id: int, file: UploadFile = File(...), db: Session = Depends(get_db)):
-    """Vista previa del Risk BDX subido (sin escribir): líneas, periodos, totales, mapeo y muestra."""
+async def risk_excel_preview(binder_id: int, file: UploadFile = File(...), hoja: str | None = Form(None),
+                             db: Session = Depends(get_db)):
+    """Vista previa del Risk BDX subido (sin escribir): hojas, líneas, periodos, totales, mapeo y muestra."""
     b = db.get(Binder, binder_id)
     if b is None:
         raise HTTPException(status_code=404, detail=f"Binder {binder_id} no encontrado")
     content = await _leer_xlsx(file)
     try:
-        return bdx_import.preview_risk_excel(db, b, content)
+        return bdx_import.preview_risk_excel(db, b, content, hoja)
     except HTTPException:
         raise
     except Exception as e:
@@ -96,14 +97,15 @@ async def risk_excel_preview(binder_id: int, file: UploadFile = File(...), db: S
 
 
 @router.post("/binders/{binder_id}/bdx/risk-excel-import")
-async def risk_excel_import(binder_id: int, file: UploadFile = File(...), db: Session = Depends(get_db)):
-    """Importa las líneas del Risk BDX subido al BDX del binder (dedup por clave natural)."""
+async def risk_excel_import(binder_id: int, file: UploadFile = File(...), hoja: str | None = Form(None),
+                            db: Session = Depends(get_db)):
+    """Importa (añade) las líneas del Risk BDX subido al BDX del binder; omite los meses ya cargados."""
     b = db.get(Binder, binder_id)
     if b is None:
         raise HTTPException(status_code=404, detail=f"Binder {binder_id} no encontrado")
     content = await _leer_xlsx(file)
     try:
-        return bdx_import.importar_risk_excel(db, b, content)
+        return bdx_import.importar_risk_excel(db, b, content, hoja)
     except HTTPException:
         raise
     except Exception as e:
