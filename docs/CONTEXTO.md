@@ -826,3 +826,51 @@ reconstruye los límites solo si recibe `secciones`).
 ### Operativa de esta sesión
 - Servidores locales arrancados **ocultos** (`pythonw` backend + `node vite` sin ventana); logs en
   `logs/` (ya en `.gitignore`).
+
+---
+
+## Sesión 29/06/2026 (equipo "ferna") — Justificante contable y subida de Risk BDX por Excel
+
+### Contabilidad — Justificante: que aparezcan los recibos en el modal del apunte
+- **Causa raíz del "no aparecía nada":** la autoselección había asignado por error **TODAS** las
+  transferencias de Cobro a un apunte (094.06 → 1.500; 095.06 → 215) porque el endpoint, **sin filtro
+  de fecha, devolvía hasta el límite (1.500)**. Al quedar "usadas", se excluían del resto de apuntes.
+  Limpieza de esas 2 asignaciones erróneas (puesto `transferencia_ids = NULL`).
+- **Blindaje:** `GET /contabilidad/transferencias-justificante` **sin `fecha` devuelve `[]`** (nunca
+  todas) → la autoselección no puede volver a agarrarlas en bloque. El justificante siempre se cuadra
+  por la **fecha del apunte**.
+- **Deducción del recibo más robusta** (`_recibos_de` en `contabilidad.py`): combina (binder + mes del
+  `premium_bdx` de las líneas ↔ `periodo`) con (binder + **fecha de pago/liquidación/traspaso** de las
+  líneas ↔ `fecha`, según subtipo). Cubre las transferencias automáticas y las sueltas. Quedan sin
+  recibo solo los apuntes **manuales sin líneas de premium detrás** (p. ej. una transferencia Iberian
+  suelta), donde no hay recibo que deducir. Commits `0c31222`.
+- **NOTA:** el usuario reportó que "sigue sin funcionar" en su modal; lo más probable es **caché /
+  refresco** (verificado en el endpoint en vivo: las transferencias del día salen con sus recibos).
+  **Pendiente:** confirmar con un apunte concreto (identificador + fecha) en su pantalla.
+
+### BDX Risk — subida por Excel como el Premium (elegir hoja + mapeo + sin pérdida de datos)
+Antes la subida de Risk leía **siempre la primera hoja** y hacía dedup silencioso por clave natural,
+**descartando** todas las columnas no reconocidas. Reescrito (`bdx_import.py`, `routers/bdx.py`,
+`RiskExcelImport.tsx`, `api.ts`):
+- **Preguntar la HOJA** del Excel (igual que Premium): el preview devuelve `hojas`+`hoja` y se puede
+  cambiar (recarga el preview). `parse_risk_excel(content, hoja)`.
+- **Mapeo contra el Risk existente:** reparto por **sección asignando la sección por risk code** cuando
+  falta (`_rc2sec`/`_seccion_de`), con **aviso** de las líneas que no casan ninguna sección.
+- **CERO pérdida de datos (clave, lo exigió el usuario):** se captura **TODA la fila** (todas las
+  celdas con cabecera); lo no reconocido por el MAPEO se guarda íntegro en **`bdx_lineas.extra`**
+  (JSONB), no se descarta. `_extra_no_mapeadas` + `_json_safe`. El preview lista TODAS las columnas no
+  reconocidas y las marca como "se guardan en Extra".
+- **Dedup repensado** (el usuario avisó: en un Risk hay **duplicados legítimos** por pagos fraccionados,
+  y el Reporting siempre es un mes nuevo): se quitó el dedup por línea (conservaba mal). Única
+  protección, **a nivel de mes**: si un Reporting ya estaba cargado en el Risk, ese mes se **omite
+  entero** para no recargarlo (`periodos_omitidos`).
+- **Alias añadido:** `total_gwp_our_line` ← "**Annual Premium Total GWP**" (caso MA0326).
+- **Formato Mes Año** reutilizable: `mesAnyo` en `frontend/src/format.ts` (periodos "Marzo 2026").
+- Commits `9ac1d36`, `e15d6eb`.
+
+### PENDIENTE de esta sesión
+- **MA0326:** faltan alias de columnas clave de ese fichero (sobre todo el **Certificado**, que no
+  mapea → necesario para casar luego con el Premium) y posiblemente comisión/fechas. Pedida al usuario
+  la **ruta del Excel** (o la lista de "No reconocidas") para añadir los alias exactos. Mientras, los
+  datos NO se pierden (van a `extra`).
+- Confirmar en pantalla el **Justificante** con un apunte concreto ≥10/06/2026.
