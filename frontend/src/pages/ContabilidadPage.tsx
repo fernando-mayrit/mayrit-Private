@@ -24,7 +24,7 @@ const COLS: Col<MovimientoBancario>[] = [
   { key: "devengo", label: "Devengo", tipo: "date" },
   { key: "tipo", label: "Tipo", tipo: "text",
     render: (m) => m.tipo
-      ? <span className={`pill ${m.tipo === "Ingreso" ? "pill-cobrado" : "pill-anulado"}`}>{m.tipo}</span>
+      ? <span className={`pill ${m.tipo === "Ingreso" ? "pill-cobrado" : "pill-pendiente"}`}>{m.tipo}</span>
       : <span className="hint">—</span> },
   { key: "grupo", label: "Grupo", tipo: "text", width: 150 },
   { key: "concepto", label: "Concepto", tipo: "text", width: 170 },
