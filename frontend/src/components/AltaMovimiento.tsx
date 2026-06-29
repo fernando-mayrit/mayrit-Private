@@ -251,8 +251,9 @@ export default function AltaMovimiento({ cuenta, cats, movimiento, onClose, onSa
         )}
       </div>
 
-      {/* Justificante: recibos que componen este apunte (solo apuntes de seguros: cobro/liquidación/traspaso). */}
-      {claseJustif && verResto && (
+      {/* Justificante: recibos que componen este apunte (solo al EDITAR un apunte de seguros ya
+          existente; en el alta no aplica, el movimiento aún no está guardado). */}
+      {claseJustif && verResto && edicion && (
         <div className="justif-sec">
           <div className="justif-head">
             <b>Justificante</b>
