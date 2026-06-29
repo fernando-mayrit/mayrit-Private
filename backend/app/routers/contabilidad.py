@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import datetime as dt
 import io
+from collections import defaultdict
 from decimal import Decimal
 from urllib.parse import quote
 
@@ -17,7 +18,9 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from ..db import get_db
-from ..models.maestras import Binder, ContaCategoria, CuentaBancaria, MovimientoBancario, Productor, Recibo, Transferencia
+from ..models.maestras import (
+    Bdx, BdxLinea, Binder, ContaCategoria, CuentaBancaria, MovimientoBancario, Productor, Recibo, Transferencia,
+)
 
 router = APIRouter(prefix="/contabilidad", tags=["Contabilidad"])
 
@@ -339,24 +342,50 @@ def _coverholders(db: Session, umrs: set[str]) -> dict[str, str]:
 
 
 def _recibos_de(db: Session, trs: list[Transferencia]) -> dict[int, str | None]:
-    """Mapea cada transferencia → nº de recibo (su binder + mes del periodo). Para el desglose."""
+    """Mapea cada transferencia → nº de recibo(s) para el desglose, en este orden de fiabilidad:
+      1) `recibo_num` directo de la transferencia.
+      2) `recibo_id` directo → su número.
+      3) DEDUCCIÓN por las LÍNEAS del Premium (fuente de verdad): los recibos de las líneas cuyo
+         binder + mes de `premium_bdx` coinciden con el (binder, periodo) de la transferencia. Así,
+         cualquier cobro/liquidación hecho en la app queda deducido aunque el mes de premium no
+         coincida con el de riesgo del recibo. Si hay varios recibos, se listan separados por coma."""
+    # binder de las que no traen binder_id, por su UMR
     umrs = {t.numero_poliza for t in trs if t.numero_poliza and t.binder_id is None}
-    umr2bid: dict[str, int] = {}
-    if umrs:
-        umr2bid = {u: i for (u, i) in db.execute(select(Binder.umr, Binder.id).where(Binder.umr.in_(umrs))).all()}
-    bids = {t.binder_id or umr2bid.get(t.numero_poliza or "") for t in trs}
+    umr2bid: dict[str, int] = (
+        {u: i for (u, i) in db.execute(select(Binder.umr, Binder.id).where(Binder.umr.in_(umrs))).all()} if umrs else {}
+    )
+    bid_de = lambda t: t.binder_id or umr2bid.get(t.numero_poliza or "")
+
+    # recibo por id directo
+    rids = {t.recibo_id for t in trs if t.recibo_id}
+    rec_por_id: dict[int, str] = (
+        {i: n for (i, n) in db.execute(select(Recibo.id, Recibo.numero).where(Recibo.id.in_(rids))).all()} if rids else {}
+    )
+
+    # deducción por líneas del premium: (binder_id, 'YYYY-MM' del premium_bdx) → conjunto de recibos
+    bids = {bid_de(t) for t in trs}
     bids.discard(None)
-    recs: dict[tuple[int, str], str] = {}
+    lineas_rec: dict[tuple[int, str], set[str]] = defaultdict(set)
     if bids:
-        for (b, p, n) in db.execute(
-            select(Recibo.binder_id, Recibo.periodo, Recibo.numero)
-            .where(Recibo.binder_id.in_(bids), Recibo.periodo.is_not(None))
+        for (b, pbdx, num) in db.execute(
+            select(Bdx.binder_id, BdxLinea.premium_bdx, Recibo.numero)
+            .join(Bdx, Bdx.id == BdxLinea.bdx_id)
+            .join(Recibo, Recibo.id == BdxLinea.recibo_id)
+            .where(Bdx.binder_id.in_(bids), BdxLinea.premium_bdx.is_not(None), Recibo.numero.is_not(None))
         ).all():
-            recs[(b, p)] = n
+            lineas_rec[(b, pbdx.strftime("%Y-%m"))].add(num)
+
     out: dict[int, str | None] = {}
     for t in trs:
-        bid = t.binder_id or umr2bid.get(t.numero_poliza or "")
-        out[t.id] = t.recibo_num or (recs.get((bid, t.periodo.strftime("%Y-%m"))) if bid and t.periodo else None)
+        if t.recibo_num:
+            out[t.id] = t.recibo_num
+            continue
+        if t.recibo_id and t.recibo_id in rec_por_id:
+            out[t.id] = rec_por_id[t.recibo_id]
+            continue
+        b = bid_de(t)
+        nums = sorted(lineas_rec.get((b, t.periodo.strftime("%Y-%m")), set())) if (b and t.periodo) else []
+        out[t.id] = ", ".join(nums) if nums else None
     return out
 
 
