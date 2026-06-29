@@ -111,7 +111,7 @@ export default function AltaMovimiento({ cuenta, cats, movimiento, onClose, onSa
   }, [base, importe, tipo]);
   useEffect(() => { if (!edicion) setSaldo(saldoAuto ? saldoAuto.toFixed(2) : ""); }, [saldoAuto, edicion]);
 
-  const idPreview = edicion ? (movimiento?.identificador ?? "—") : (base && devengo ? `${base.next_iden}.${devengo.slice(5, 7)}` : "—");
+  const idPreview = edicion ? (movimiento?.identificador ?? "—") : (base && devengo ? `${String(base.next_iden).padStart(3, "0")}.${devengo.slice(5, 7)}` : "—");
 
   // En edición se ven todos los campos; en alta van apareciendo en cascada.
   const verDevengo = edicion || !!fecha;

@@ -215,7 +215,7 @@ def crear(payload: MovimientoCrear, db: Session = Depends(get_db)):
         select(func.max(MovimientoBancario.iden)).where(MovimientoBancario.cuenta == payload.cuenta, MovimientoBancario.anio == anio)
     )
     iden = (maxiden or 0) + 1
-    identificador = f"{iden}.{dev.month:02d}"
+    identificador = f"{iden:03d}.{dev.month:02d}"   # Id a 3 cifras (XXX.MM), con ceros delante
 
     # Saldo = el dado, o el del último movimiento ± importe.
     if payload.saldo is not None:
