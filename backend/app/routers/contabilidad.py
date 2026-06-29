@@ -486,6 +486,12 @@ def _desglose_recibos(db: Session, trs: list[Transferencia]) -> dict[int, list[t
         if t.recibo_id and t.recibo_id in rec_por_id:
             out[t.id] = [(rec_por_id[t.recibo_id], imp_t)]
             continue
+        # El desglose por recibo SOLO aplica a Primas: Siniestros/Comisiones/Honorarios no tienen
+        # recibo de prima → una sola fila con el importe de la transferencia (si no, salen recibos
+        # de prima ajenos con importe 0 y la suma no cuadra).
+        if (t.tipo or "") != "Primas":
+            out[t.id] = [(None, imp_t)]
+            continue
         b = bid_de(t)
         sub = _sub(t)
         recibos: set[str] = set()
