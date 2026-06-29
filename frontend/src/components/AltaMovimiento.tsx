@@ -37,6 +37,12 @@ export default function AltaMovimiento({ cuenta, cats, movimiento, onClose, onSa
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // ¿Hay cambios sin guardar? Compara los campos editables con su estado al abrir; así el aviso de
+  // "Cambios sin guardar" solo salta si de verdad se tocó algo (antes `dirty` iba fijo a true).
+  const snapshot = JSON.stringify({ fecha, devengo, tipo, grupo, concepto, importe, saldo, descripcion, movBanc, factura, tarjeta });
+  const [inicialSnap] = useState(snapshot);
+  const dirty = snapshot !== inicialSnap;
+
   const grupos = useMemo(() => [...new Set(cats.filter((c) => c.tipo === tipo).map((c) => c.grupo).filter(Boolean) as string[])].sort((a, b) => a.localeCompare(b)), [cats, tipo]);
   const conceptos = useMemo(() => cats.filter((c) => c.tipo === tipo && c.grupo === grupo).map((c) => c.concepto).sort((a, b) => a.localeCompare(b)), [cats, tipo, grupo]);
   const cuentaContable = useMemo(() => cats.find((c) => c.concepto === concepto)?.cuenta_contable ?? null, [cats, concepto]);
@@ -92,7 +98,7 @@ export default function AltaMovimiento({ cuenta, cats, movimiento, onClose, onSa
   return (
     <FormPanel
       title={edicion ? <>Movimiento · <span style={{ color: "var(--naranja-osc)" }}>{movimiento?.identificador ?? movimiento?.id}</span> — {cuenta}</> : `Alta de movimiento — ${cuenta}`}
-      dirty saving={saving} saveLabel={edicion ? "Guardar" : "Crear movimiento"} error={error}
+      dirty={dirty} saving={saving} saveLabel={edicion ? "Guardar" : "Crear movimiento"} error={error}
       onSave={guardar} onClose={onClose} readOnly={bloqueado}
     >
       {edicion && (
