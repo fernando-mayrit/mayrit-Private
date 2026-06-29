@@ -200,23 +200,11 @@ export default function TransferenciasPage() {
           <button className="btn-primary" onClick={nuevo}>＋ Nuevo movimiento</button>
         </div>
 
-        {/* Contador (mismo formato que la pestaña Siniestros) */}
+        {/* Contador: solo los dos TOTAL (Primas y Siniestros), en una sola línea. */}
         {data && (
-          <div className="bdx-totales">
-            <div className="tot-col">
-              <div className="tot-row tot-cab"><span>Primas</span><b /></div>
-              <div className="tot-row"><span>Cobros</span><b>{eur(data.primas_cobros)}</b></div>
-              <div className="tot-row"><span>Liquidaciones</span><b>{eur(data.primas_liquidaciones)}</b></div>
-              <div className="tot-row"><span>Liq. Comisiones</span><b>{eur(data.comisiones_liquidacion)}</b></div>
-              <div className="tot-row"><span>Traspasos Com.</span><b>{eur(data.comisiones_traspaso)}</b></div>
-              <div className="tot-row tot-pdte"><span>TOTAL</span><b>{eur(data.primas_total)}</b></div>
-            </div>
-            <div className="tot-col">
-              <div className="tot-row tot-cab"><span>Siniestros</span><b /></div>
-              <div className="tot-row"><span>Cobros</span><b>{eur(data.siniestros_cobros)}</b></div>
-              <div className="tot-row"><span>Liquidaciones</span><b>{eur(data.siniestros_liquidaciones)}</b></div>
-              <div className="tot-row tot-pdte"><span>TOTAL</span><b>{eur(data.siniestros_total)}</b></div>
-            </div>
+          <div className="bdx-totales tr-tot-linea">
+            <span className="tr-tot-item"><span>TOTAL Primas</span><b>{eur(data.primas_total)}</b></span>
+            <span className="tr-tot-item"><span>TOTAL Siniestros</span><b>{eur(data.siniestros_total)}</b></span>
           </div>
         )}
       </div>
