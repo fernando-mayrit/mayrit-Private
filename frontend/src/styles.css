@@ -689,6 +689,8 @@ td.num, th.num { text-align: right; }
 .alta-mov .field input, .alta-mov .field select, .alta-mov .field textarea, .alta-mov .num-input {
   width: 100%; min-width: 0; box-sizing: border-box;
 }
+/* Los checkboxes NO deben estirarse (si no, cada uno cae en su propia línea). */
+.alta-mov input[type="checkbox"] { width: auto; }
 .alta-mov .dev-row { display: flex; gap: 8px; min-width: 0; }
 .alta-mov .dev-row select:first-child { flex: 1; }
 .alta-mov .dev-row select:last-child { flex: 0 0 92px; }
