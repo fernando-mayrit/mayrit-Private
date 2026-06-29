@@ -202,7 +202,7 @@ export default function TransferenciasPage() {
 
         {/* Contador (mismo formato que la pestaña Siniestros) */}
         {data && (
-          <div className="bdx-totales">
+          <div className="bdx-totales tr-totales">
             <div className="tot-col">
               <div className="tot-row tot-cab"><span>Primas</span><b /></div>
               <div className="tot-row"><span>Cobros</span><b>{eur(data.primas_cobros)}</b></div>
