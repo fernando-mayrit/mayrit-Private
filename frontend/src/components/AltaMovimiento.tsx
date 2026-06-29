@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { contabilidadApi, type ContaCategoria, type BaseAlta, type MovimientoBancario, type ReciboJustif } from "../api";
+import { contabilidadApi, type ContaCategoria, type BaseAlta, type MovimientoBancario, type TransferJustif } from "../api";
 import { fmtMiles, fmtFechaES } from "../format";
 import FormPanel from "./FormPanel";
 import NumberInput from "./NumberInput";
@@ -36,17 +36,17 @@ export default function AltaMovimiento({ cuenta, cats, movimiento, onClose, onSa
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Justificante: recibos que componen este apunte (para el PDF).
-  const [recibosIds, setRecibosIds] = useState<number[]>(movimiento?.recibos_ids ?? []);
-  const [candidatos, setCandidatos] = useState<ReciboJustif[]>([]);
+  // Justificante: TRANSFERENCIAS (del ledger) que componen este apunte (para el PDF).
+  const [transfIds, setTransfIds] = useState<number[]>(movimiento?.transferencia_ids ?? []);
+  const [candidatos, setCandidatos] = useState<TransferJustif[]>([]);
   const [busqRec, setBusqRec] = useState("");
   const [fechaFiltro, setFechaFiltro] = useState(movimiento?.fecha?.slice(0, 10) ?? "");
-  const [impById, setImpById] = useState<Map<number, number>>(new Map());  // importe por recibo (acumula entre cargas)
+  const [impById, setImpById] = useState<Map<number, number>>(new Map());  // importe por transferencia (acumula)
   const [genJustif, setGenJustif] = useState(false);
 
   // ¿Hay cambios sin guardar? Compara los campos editables con su estado al abrir; así el aviso de
   // "Cambios sin guardar" solo salta si de verdad se tocó algo (antes `dirty` iba fijo a true).
-  const snapshot = JSON.stringify({ fecha, devengo, tipo, grupo, concepto, importe, saldo, descripcion, movBanc, factura, tarjeta, recibosIds });
+  const snapshot = JSON.stringify({ fecha, devengo, tipo, grupo, concepto, importe, saldo, descripcion, movBanc, factura, tarjeta, transfIds });
   const [inicialSnap] = useState(snapshot);
   const dirty = snapshot !== inicialSnap;
 
@@ -58,16 +58,18 @@ export default function AltaMovimiento({ cuenta, cats, movimiento, onClose, onSa
 
   // Justificante: la "clase" (qué importe del recibo se usa) se deduce del concepto del apunte.
   const claseJustif = /liquid/i.test(concepto) ? "liquidacion" : /traspas/i.test(concepto) ? "traspaso" : /cobro/i.test(concepto) ? "cobro" : null;
-  // Carga los candidatos de la clase, FILTRADOS por la fecha de pago/cobro y ocultando los ya
-  // justificados en otro apunte. Acumula sus importes en `impById` para la suma en vivo.
+  // Carga las transferencias de la clase, filtradas por la FECHA del movimiento, ocultando las ya
+  // usadas en otro apunte. CUADRE AUTOMÁTICO: si aún no hay selección, se marcan todas (su suma debe
+  // cuadrar con el importe del apunte). Acumula importes en `impById` para la suma en vivo.
   useEffect(() => {
     if (!claseJustif) { setCandidatos([]); return; }
     let vivo = true;
-    contabilidadApi.recibosJustificante(claseJustif, { fecha: fechaFiltro || undefined, excluirMid: movimiento?.id })
+    contabilidadApi.transferenciasJustificante(claseJustif, { fecha: fechaFiltro || undefined, excluirMid: movimiento?.id })
       .then((r) => {
         if (!vivo) return;
         setCandidatos(r);
         setImpById((prev) => { const m = new Map(prev); r.forEach((c) => m.set(c.id, num(c.importe))); return m; });
+        setTransfIds((prev) => (prev.length ? prev : r.map((c) => c.id)));   // autoselección si está vacío
       })
       .catch(() => {});
     return () => { vivo = false; };
@@ -75,19 +77,21 @@ export default function AltaMovimiento({ cuenta, cats, movimiento, onClose, onSa
   }, [claseJustif, fechaFiltro]);
   const candFiltrados = useMemo(() => {
     const t = busqRec.trim().toLowerCase();
-    return !t ? candidatos : candidatos.filter((c) => `${c.numero ?? ""} ${c.referencia ?? ""} ${c.cliente ?? ""}`.toLowerCase().includes(t));
+    return !t ? candidatos : candidatos.filter((c) => `${c.recibo ?? ""} ${c.referencia ?? ""} ${c.cliente ?? ""} ${c.mercado ?? ""}`.toLowerCase().includes(t));
   }, [candidatos, busqRec]);
-  const sumaSel = useMemo(() => recibosIds.reduce((a, id) => a + (impById.get(id) ?? 0), 0), [recibosIds, impById]);
+  const sumaSel = useMemo(() => transfIds.reduce((a, id) => a + (impById.get(id) ?? 0), 0), [transfIds, impById]);
   const restante = num(importe) - sumaSel;
-  const toggleRecibo = (id: number) => setRecibosIds((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
-  const marcarFiltrados = () => setRecibosIds((s) => [...new Set([...s, ...candFiltrados.map((c) => c.id)])]);
-  const quitarFiltrados = () => { const ids = new Set(candFiltrados.map((c) => c.id)); setRecibosIds((s) => s.filter((x) => !ids.has(x))); };
+  const toggleTransf = (id: number) => setTransfIds((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
+  const marcarFiltrados = () => setTransfIds((s) => [...new Set([...s, ...candFiltrados.map((c) => c.id)])]);
+  const quitarFiltrados = () => { const ids = new Set(candFiltrados.map((c) => c.id)); setTransfIds((s) => s.filter((x) => !ids.has(x))); };
+  // Cambiar la fecha re-cuadra automáticamente: limpia la selección para que se autoseleccione la nueva.
+  const cambiarFecha = (f: string) => { setTransfIds([]); setFechaFiltro(f); };
 
   async function generarJustificante() {
     if (!movimiento) return;
     setGenJustif(true); setError(null);
     try {
-      await contabilidadApi.actualizar(movimiento.id, { recibos_ids: recibosIds });  // persistir selección
+      await contabilidadApi.actualizar(movimiento.id, { transferencia_ids: transfIds });  // persistir selección
       const { blob, filename } = await contabilidadApi.justificantePdf(movimiento.id);
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a"); a.href = url; a.download = filename; a.click();
@@ -132,7 +136,7 @@ export default function AltaMovimiento({ cuenta, cats, movimiento, onClose, onSa
         fecha, devengo: devengo ? `${devengo}-01` : null, tipo, grupo: grupo || null, concepto,
         importe: num(importe), saldo: saldo !== "" ? num(saldo) : null, descripcion: descripcion || null,
         movimiento_bancario: movBanc, factura, tarjeta,
-        recibos_ids: claseJustif ? recibosIds : null,
+        transferencia_ids: claseJustif ? transfIds : null,
       };
       if (edicion && movimiento) await contabilidadApi.actualizar(movimiento.id, datos);
       else await contabilidadApi.crear({ cuenta, ...datos });
@@ -257,37 +261,37 @@ export default function AltaMovimiento({ cuenta, cats, movimiento, onClose, onSa
         <div className="justif-sec">
           <div className="justif-head">
             <b>Justificante</b>
-            <span className="hint">recibos que componen este {claseJustif === "liquidacion" ? "pago" : claseJustif === "traspaso" ? "traspaso" : "cobro"}</span>
-            <span className={"justif-restante" + (Math.abs(restante) < 0.01 && recibosIds.length > 0 ? " ok" : "")}>
-              {Math.abs(restante) < 0.01 && recibosIds.length > 0
+            <span className="hint">transferencias que componen este {claseJustif === "liquidacion" ? "pago" : claseJustif === "traspaso" ? "traspaso" : "cobro"}</span>
+            <span className={"justif-restante" + (Math.abs(restante) < 0.01 && transfIds.length > 0 ? " ok" : "")}>
+              {Math.abs(restante) < 0.01 && transfIds.length > 0
                 ? <>✓ Cuadra · {fmtMiles(sumaSel)} €</>
                 : <>Restante para cuadrar: <b>{fmtMiles(restante)} €</b> <span className="hint">(sel. {fmtMiles(sumaSel)} de {fmtMiles(num(importe))} €)</span></>}
             </span>
           </div>
           <div className="justif-filtros">
             <label className="hint">Fecha pago/cobro
-              <input type="date" className="inp-fecha" value={fechaFiltro} onChange={(e) => setFechaFiltro(e.target.value)} />
+              <input type="date" className="inp-fecha" value={fechaFiltro} onChange={(e) => cambiarFecha(e.target.value)} />
             </label>
-            <input type="text" placeholder="Buscar recibo / UMR / cliente…" value={busqRec} onChange={(e) => setBusqRec(e.target.value)} style={{ flex: 1, minWidth: 140 }} />
+            <input type="text" placeholder="Buscar UMR / cliente / mercado…" value={busqRec} onChange={(e) => setBusqRec(e.target.value)} style={{ flex: 1, minWidth: 140 }} />
             <button type="button" className="btn-link btn-sm" onClick={marcarFiltrados} disabled={candFiltrados.length === 0}>Marcar todos</button>
             <button type="button" className="btn-link btn-sm" onClick={quitarFiltrados} disabled={candFiltrados.length === 0}>Quitar</button>
           </div>
           <div className="justif-lista">
             {candFiltrados.map((c) => (
               <label key={c.id} className="justif-row">
-                <input type="checkbox" checked={recibosIds.includes(c.id)} onChange={() => toggleRecibo(c.id)} />
-                <span className="jr-num">{c.numero}</span>
+                <input type="checkbox" checked={transfIds.includes(c.id)} onChange={() => toggleTransf(c.id)} />
+                <span className="jr-num">{c.recibo}</span>
                 <span className="jr-fec">{c.fecha ? fmtFechaES(c.fecha) : ""}</span>
                 <span className="jr-imp">{fmtMiles(c.importe)} €</span>
                 <span className="jr-ref">{c.referencia}</span>
-                <span className="jr-cli">{c.cliente}</span>
+                <span className="jr-cli">{c.cliente ?? c.mercado}</span>
               </label>
             ))}
-            {candFiltrados.length === 0 && <div className="hint" style={{ padding: 8 }}>No hay recibos sin justificar para esa fecha/búsqueda.</div>}
+            {candFiltrados.length === 0 && <div className="hint" style={{ padding: 8 }}>No hay transferencias sin justificar para esa fecha.</div>}
           </div>
-          <div className="hint" style={{ marginBottom: 6 }}>{recibosIds.length} recibo(s) seleccionado(s). Cambia la fecha si faltan; los ya justificados en otro apunte no aparecen.</div>
+          <div className="hint" style={{ marginBottom: 6 }}>{transfIds.length} transferencia(s) seleccionada(s). Se autoseleccionan las de la fecha del apunte; cámbiala si no cuadra. Las ya usadas en otro apunte no aparecen.</div>
           {edicion && (
-            <button className="btn-secondary btn-sm" onClick={generarJustificante} disabled={genJustif || recibosIds.length === 0}>
+            <button className="btn-secondary btn-sm" onClick={generarJustificante} disabled={genJustif || transfIds.length === 0}>
               {genJustif ? "Generando…" : "📄 Generar justificante (PDF)"}
             </button>
           )}

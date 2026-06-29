@@ -463,18 +463,18 @@ export interface MovimientoBancario {
   tarjeta: boolean;
   factura: boolean;
   conciliado: boolean;
-  recibos_ids?: number[] | null;
+  transferencia_ids?: number[] | null;
 }
 export interface ContaCategoria { concepto: string; grupo: string | null; tipo: string | null; cuenta_contable: string | null }
-// Recibo candidato para componer el justificante de un apunte (importe según la clase del apunte).
-export interface ReciboJustif { id: number; numero: string | null; importe: number | string; fecha: string | null; referencia: string | null; cliente: string | null }
+// Transferencia candidata para componer el justificante de un apunte (importe real movido).
+export interface TransferJustif { id: number; fecha: string | null; importe: number | string; referencia: string | null; recibo: string | null; cliente: string | null; mercado: string | null }
 export interface BaseAlta { ultimo_saldo: number | string | null; next_iden: number }
 export interface MovimientoCrear {
   cuenta: string; fecha: string; devengo?: string | null; tipo: string;
   grupo?: string | null; concepto?: string | null; importe: number;
   saldo?: number | null; descripcion?: string | null;
   movimiento_bancario?: boolean; factura?: boolean; tarjeta?: boolean;
-  recibos_ids?: number[] | null;
+  transferencia_ids?: number[] | null;
 }
 export interface MovimientosListados {
   items: MovimientoBancario[];
@@ -517,16 +517,15 @@ export const contabilidadApi = {
   categorias: () => request<ContaCategoria[]>("/contabilidad/categorias"),
   base: (cuenta: string, anio: number) => request<BaseAlta>(`/contabilidad/base?cuenta=${encodeURIComponent(cuenta)}&anio=${anio}`),
   crear: (d: MovimientoCrear) => request<MovimientoBancario>("/contabilidad", { method: "POST", body: JSON.stringify(d) }),
-  actualizar: (id: number, d: Partial<{ fecha: string; devengo: string | null; tipo: string; grupo: string | null; concepto: string | null; importe: number; saldo: number | null; descripcion: string | null; factura: boolean; tarjeta: boolean; movimiento_bancario: boolean; recibos_ids: number[] | null }>) =>
+  actualizar: (id: number, d: Partial<{ fecha: string; devengo: string | null; tipo: string; grupo: string | null; concepto: string | null; importe: number; saldo: number | null; descripcion: string | null; factura: boolean; tarjeta: boolean; movimiento_bancario: boolean; transferencia_ids: number[] | null }>) =>
     request<MovimientoBancario>(`/contabilidad/${id}`, { method: "PUT", body: JSON.stringify(d) }),
-  // Recibos candidatos para el justificante (clase: cobro | liquidacion | traspaso), filtrados por
-  // fecha de pago/cobro y ocultando los ya justificados en otro apunte (excluirMid = apunte actual).
-  recibosJustificante: (clase: string, opts: { fecha?: string; q?: string; excluirMid?: number } = {}) => {
+  // Transferencias candidatas para el justificante (clase: cobro | liquidacion | traspaso), filtradas
+  // por la fecha del movimiento y ocultando las ya usadas en otro apunte (excluirMid = apunte actual).
+  transferenciasJustificante: (clase: string, opts: { fecha?: string; excluirMid?: number } = {}) => {
     const qs = new URLSearchParams({ clase });
     if (opts.fecha) qs.set("fecha", opts.fecha);
-    if (opts.q) qs.set("q", opts.q);
     if (opts.excluirMid != null) qs.set("excluir_mid", String(opts.excluirMid));
-    return request<ReciboJustif[]>(`/contabilidad/recibos-justificante?${qs.toString()}`);
+    return request<TransferJustif[]>(`/contabilidad/transferencias-justificante?${qs.toString()}`);
   },
   // Descarga el PDF del justificante de un apunte (con los recibos ya asociados).
   justificantePdf: async (mid: number): Promise<{ blob: Blob; filename: string }> => {

@@ -17,7 +17,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from ..db import get_db
-from ..models.maestras import Binder, ContaCategoria, CuentaBancaria, MovimientoBancario, Recibo
+from ..models.maestras import Binder, ContaCategoria, CuentaBancaria, MovimientoBancario, Productor, Transferencia
 
 router = APIRouter(prefix="/contabilidad", tags=["Contabilidad"])
 
@@ -43,7 +43,7 @@ class MovimientoRead(BaseModel):
     tarjeta: bool
     factura: bool
     conciliado: bool = False
-    recibos_ids: list[int] | None = None
+    transferencia_ids: list[int] | None = None
 
     class Config:
         from_attributes = True
@@ -198,7 +198,7 @@ class MovimientoCrear(BaseModel):
     movimiento_bancario: bool = True
     factura: bool = False           # 'Justificante'
     tarjeta: bool = False
-    recibos_ids: list[int] | None = None
+    transferencia_ids: list[int] | None = None
 
 
 @router.post("", response_model=MovimientoRead, status_code=201)
@@ -237,7 +237,7 @@ def crear(payload: MovimientoCrear, db: Session = Depends(get_db)):
         gasto=gasto, ingreso=ingreso, saldo=saldo,
         descripcion=payload.descripcion, codigo=codigo,
         movimiento_bancario=payload.movimiento_bancario, factura=payload.factura, tarjeta=payload.tarjeta,
-        recibos_ids=payload.recibos_ids,
+        transferencia_ids=payload.transferencia_ids,
         sp_lista=None, sp_old_id=None,
     )
     db.add(m)
@@ -258,7 +258,7 @@ class MovimientoUpdate(BaseModel):
     factura: bool | None = None            # 'Justificante'
     tarjeta: bool | None = None
     movimiento_bancario: bool | None = None
-    recibos_ids: list[int] | None = None   # recibos que componen el apunte (para el justificante)
+    transferencia_ids: list[int] | None = None   # transferencias que componen el apunte (justificante)
 
 
 @router.put("/{mid}", response_model=MovimientoRead)
@@ -269,7 +269,7 @@ def actualizar(mid: int, payload: MovimientoUpdate, db: Session = Depends(get_db
     if m is None:
         raise HTTPException(status_code=404, detail=f"Movimiento {mid} no encontrado")
     datos = payload.model_dump(exclude_unset=True)
-    for k in ("grupo", "concepto", "saldo", "descripcion", "factura", "tarjeta", "movimiento_bancario", "recibos_ids"):
+    for k in ("grupo", "concepto", "saldo", "descripcion", "factura", "tarjeta", "movimiento_bancario", "transferencia_ids"):
         if k in datos:
             setattr(m, k, datos[k])
     if datos.get("fecha"):
@@ -289,18 +289,20 @@ def actualizar(mid: int, payload: MovimientoUpdate, db: Session = Depends(get_db
     return _read(m)
 
 
-# ─────────────────── Justificante de movimiento (recibos que lo componen) ───────────────────
+# ──────────── Justificante de movimiento (TRANSFERENCIAS del ledger que lo componen) ────────────
+# Cada Transferencia es el importe REAL movido (cobro/liquidación parcial), con su fecha; sumadas por
+# fecha cuadran con el importe del apunte. El cuadre es automático: se ofrecen las del mismo tipo y
+# fecha del apunte (ocultando las ya usadas en otro apunte) y se autoseleccionan.
 def _num_es(x) -> str:
-    """123456.7 -> '123.456,70' (formato es-ES)."""
     s = f"{Decimal(x or 0):,.2f}"
     return s.replace(",", "·").replace(".", ",").replace("·", ".")
 
 
-# Según el tipo de apunte, qué importe y qué fecha del recibo se usan en el justificante.
-_CAMPOS = {
-    "cobro": ("prima_cobrada", "prima_fecha_cobro"),
-    "liquidacion": ("liquidar_liquidado", "liquidar_fecha_liquidacion"),
-    "traspaso": ("comision_retenida_traspasada", "comision_fecha_traspaso"),
+# Clase del apunte (deducida del concepto) → subtipo(s) de Transferencia.
+_CLASE_SUBTIPOS = {
+    "cobro": ["Cobro"],
+    "liquidacion": ["Liquidación", "Liquidacion"],
+    "traspaso": ["Traspaso"],
 }
 _IMP_LABEL = {"cobro": "Cobrado", "liquidacion": "Liquidado al UW", "traspaso": "Traspasado"}
 
@@ -314,32 +316,41 @@ def _clase_de_concepto(concepto: str | None) -> str:
     return "cobro"
 
 
-class ReciboJustif(BaseModel):
+class TransferJustif(BaseModel):
     id: int
-    numero: str | None
-    importe: Decimal
     fecha: dt.date | None
-    referencia: str | None
-    cliente: str | None
+    importe: Decimal
+    referencia: str | None     # UMR / nº póliza
+    recibo: str | None         # nº de recibo (si la transferencia lo lleva)
+    cliente: str | None        # coverholder (agencia) deducido del UMR
+    mercado: str | None
 
 
-def _recibo_row(r: Recibo, umr: str | None, clase: str) -> ReciboJustif:
-    campo_imp, campo_fecha = _CAMPOS[clase]
-    return ReciboJustif(
-        id=r.id, numero=r.numero,
-        importe=Decimal(getattr(r, campo_imp) or 0),
-        fecha=getattr(r, campo_fecha),
-        referencia=umr or r.numero_poliza,
-        cliente=r.asegurado,
+def _coverholders(db: Session, umrs: set[str]) -> dict[str, str]:
+    """UMR de binder → nombre del coverholder (agencia), para la columna Cliente."""
+    umrs = {u for u in umrs if u}
+    if not umrs:
+        return {}
+    rows = db.execute(
+        select(Binder.umr, Productor.nombre).join(Productor, Productor.id == Binder.productor_id)
+        .where(Binder.umr.in_(umrs))
+    ).all()
+    return {umr: nom for (umr, nom) in rows if umr}
+
+
+def _transfer_row(t: Transferencia, cliente: str | None) -> TransferJustif:
+    return TransferJustif(
+        id=t.id, fecha=t.fecha, importe=Decimal(t.importe or 0),
+        referencia=t.numero_poliza, recibo=t.recibo_num, cliente=cliente, mercado=t.mercado,
     )
 
 
-def _recibos_ya_justificados(db: Session, excluir_mid: int | None) -> set[int]:
-    """Recibos ya asignados al justificante de ALGÚN movimiento (para no ofrecerlos otra vez).
-    Excluye el movimiento `excluir_mid` (el que se está editando)."""
+def _transferencias_ya_justificadas(db: Session, excluir_mid: int | None) -> set[int]:
+    """Transferencias ya asignadas al justificante de ALGÚN apunte (para no ofrecerlas otra vez)."""
     usados: set[int] = set()
     for (lst, mid_) in db.execute(
-        select(MovimientoBancario.recibos_ids, MovimientoBancario.id).where(MovimientoBancario.recibos_ids.is_not(None))
+        select(MovimientoBancario.transferencia_ids, MovimientoBancario.id)
+        .where(MovimientoBancario.transferencia_ids.is_not(None))
     ).all():
         if excluir_mid is not None and mid_ == excluir_mid:
             continue
@@ -347,39 +358,28 @@ def _recibos_ya_justificados(db: Session, excluir_mid: int | None) -> set[int]:
     return usados
 
 
-@router.get("/recibos-justificante", response_model=list[ReciboJustif])
-def recibos_justificante(
-    clase: str = "cobro", q: str | None = None, fecha: dt.date | None = None,
-    excluir_mid: int | None = None, limit: int = 800, db: Session = Depends(get_db),
+@router.get("/transferencias-justificante", response_model=list[TransferJustif])
+def transferencias_justificante(
+    clase: str = "cobro", fecha: dt.date | None = None,
+    excluir_mid: int | None = None, limit: int = 1500, db: Session = Depends(get_db),
 ):
-    """Recibos candidatos para componer un apunte, con su importe (según la clase: cobro/liquidacion/
-    traspaso), fecha de la gestión, UMR/nº póliza y cliente. Filtra por la FECHA de pago/cobro (la del
-    movimiento) y OCULTA los recibos ya justificados en otro apunte (así la lista cuadra fácil)."""
-    clase = clase if clase in _CAMPOS else "cobro"
-    campo_imp, campo_fecha = _CAMPOS[clase]
-    col_imp = getattr(Recibo, campo_imp)
-    col_fecha = getattr(Recibo, campo_fecha)
-    stmt = (
-        select(Recibo, Binder.umr)
-        .join(Binder, Binder.id == Recibo.binder_id, isouter=True)
-        .where(col_imp.is_not(None), col_imp != 0)
-    )
+    """Transferencias candidatas (del subtipo de la clase) para componer un apunte, filtradas por la
+    FECHA del movimiento y ocultando las ya usadas en otro apunte. Se autoseleccionan en el front y su
+    suma debe cuadrar con el importe del apunte."""
+    subtipos = _CLASE_SUBTIPOS.get(clase, _CLASE_SUBTIPOS["cobro"])
+    stmt = select(Transferencia).where(Transferencia.subtipo.in_(subtipos))
     if fecha:
-        stmt = stmt.where(col_fecha == fecha)
-    if q:
-        like = f"%{q.strip()}%"
-        stmt = stmt.where(or_(
-            Recibo.numero.ilike(like), Recibo.asegurado.ilike(like),
-            Binder.umr.ilike(like), Recibo.numero_poliza.ilike(like),
-        ))
-    usados = _recibos_ya_justificados(db, excluir_mid)
+        stmt = stmt.where(Transferencia.fecha == fecha)
+    usados = _transferencias_ya_justificadas(db, excluir_mid)
     if usados:
-        stmt = stmt.where(Recibo.id.not_in(usados))
-    stmt = stmt.order_by(col_fecha.desc().nullslast(), Recibo.numero).limit(limit)
-    return [_recibo_row(r, umr, clase) for (r, umr) in db.execute(stmt).all()]
+        stmt = stmt.where(Transferencia.id.not_in(usados))
+    stmt = stmt.order_by(Transferencia.fecha.desc().nullslast(), Transferencia.numero_poliza).limit(limit)
+    trs = db.scalars(stmt).all()
+    cov = _coverholders(db, {t.numero_poliza for t in trs if t.numero_poliza})
+    return [_transfer_row(t, cov.get(t.numero_poliza or "")) for t in trs]
 
 
-def _build_justificante_pdf(m: MovimientoBancario, filas: list[ReciboJustif], clase: str) -> bytes:
+def _build_justificante_pdf(m: MovimientoBancario, filas: list[TransferJustif], clase: str) -> bytes:
     from reportlab.lib import colors
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.styles import getSampleStyleSheet
@@ -398,19 +398,18 @@ def _build_justificante_pdf(m: MovimientoBancario, filas: list[ReciboJustif], cl
     elems.append(Spacer(1, 8))
 
     imp_label = _IMP_LABEL.get(clase, "Importe")
-    cab = ["Recibo", "Fecha", imp_label, "Referencia", "Cliente"]
-    data = [cab]
-    total = Decimal(0)
     cli = styles["Normal"].clone("cli"); cli.fontSize = 8
+    data = [["Recibo", "Fecha", imp_label, "Referencia", "Cliente"]]
+    total = Decimal(0)
     for f in filas:
         total += f.importe
         data.append([
-            f.numero or "", f.fecha.strftime("%d/%m/%Y") if f.fecha else "",
-            _num_es(f.importe), f.referencia or "", Paragraph(f.cliente or "", cli),
+            f.recibo or "", f.fecha.strftime("%d/%m/%Y") if f.fecha else "",
+            _num_es(f.importe), f.referencia or "", Paragraph(f.cliente or f.mercado or "", cli),
         ])
     data.append(["", "Total", _num_es(total), "", ""])
 
-    t = Table(data, colWidths=[24 * mm, 22 * mm, 28 * mm, 34 * mm, 70 * mm], repeatRows=1)
+    t = Table(data, colWidths=[24 * mm, 22 * mm, 28 * mm, 36 * mm, 68 * mm], repeatRows=1)
     t.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), naranja),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
@@ -430,25 +429,23 @@ def _build_justificante_pdf(m: MovimientoBancario, filas: list[ReciboJustif], cl
 
 @router.get("/{mid}/justificante.pdf")
 def justificante_pdf(mid: int, db: Session = Depends(get_db)):
-    """Genera el PDF del justificante del apunte con los recibos que lo componen (recibos_ids)."""
+    """PDF del justificante del apunte con las transferencias que lo componen (transferencia_ids)."""
     m = db.get(MovimientoBancario, mid)
     if m is None:
         raise HTTPException(status_code=404, detail=f"Movimiento {mid} no encontrado")
-    ids = m.recibos_ids or []
+    ids = m.transferencia_ids or []
     clase = _clase_de_concepto(m.concepto)
-    filas: list[ReciboJustif] = []
+    filas: list[TransferJustif] = []
     if ids:
-        res = db.execute(
-            select(Recibo, Binder.umr).join(Binder, Binder.id == Recibo.binder_id, isouter=True)
-            .where(Recibo.id.in_(ids))
-        ).all()
-        byid = {r.id: (r, umr) for (r, umr) in res}
+        trs = db.scalars(select(Transferencia).where(Transferencia.id.in_(ids))).all()
+        cov = _coverholders(db, {t.numero_poliza for t in trs if t.numero_poliza})
+        byid = {t.id: t for t in trs}
         for i in ids:                       # conserva el orden de selección
             if i in byid:
-                r, umr = byid[i]
-                filas.append(_recibo_row(r, umr, clase))
+                t = byid[i]
+                filas.append(_transfer_row(t, cov.get(t.numero_poliza or "")))
     if not filas:
-        raise HTTPException(status_code=409, detail="Este apunte no tiene recibos asociados para el justificante.")
+        raise HTTPException(status_code=409, detail="Este apunte no tiene transferencias asociadas para el justificante.")
     pdf = _build_justificante_pdf(m, filas, clase)
     nombre = f"{m.identificador or m.id}. {m.concepto or 'Justificante'}.pdf"
     return StreamingResponse(
