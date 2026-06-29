@@ -31,8 +31,15 @@ const cuentaTexto = (t: Transferencia) =>
     : (t.cuenta_destino ?? t.cuenta_origen ?? "");
 
 // Columnas del listado: ordenables (clic en la cabecera) y filtrables (▾), igual que en Binders/Siniestros.
+// Periodo (mes de riesgo/premium) 'YYYY-MM-DD' → 'MM/YYYY'.
+const periodoMes = (p: string | null | undefined) => {
+  if (!p) return "";
+  const [y, m] = p.slice(0, 7).split("-");
+  return m && y ? `${m}/${y}` : p;
+};
 const TR_COLS: Col<Transferencia>[] = [
   { key: "fecha", label: "Fecha", tipo: "date" },
+  { key: "periodo", label: "Periodo", tipo: "text", calc: (t) => periodoMes(t.periodo) },
   { key: "origen", label: "Origen", tipo: "text" },
   { key: "tipo", label: "Tipo", tipo: "text" },
   {
@@ -230,7 +237,7 @@ export default function TransferenciasPage() {
           filas={data?.items ?? []}
           columnas={TR_COLS}
           defaultKeys={TR_DEFAULT}
-          storageKey="mayrit.transferencias.tabla.v1"
+          storageKey="mayrit.transferencias.tabla.v2"
           defaultSort={{ key: "fecha", dir: -1 }}
           rowAction={(t) =>
             t.manual
