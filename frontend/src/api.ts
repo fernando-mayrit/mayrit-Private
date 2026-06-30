@@ -199,6 +199,19 @@ export const lpanApi = {
   borrarFdo: (fdoId: number) => request(`/fdo/${fdoId}`, { method: "DELETE" }),
   generarLpan: (binderId: number, data: { risk_code: string; section: number; periodo: string; comision_pct: number | string; tipo?: string; carpeta?: string | null }) =>
     request<LpanRegistro>(`/binders/${binderId}/lpan`, { method: "POST", body: JSON.stringify(data) }),
+  // Descarga el Word del LPAN (regenerado desde su registro). Devuelve el blob y el nombre propuesto.
+  lpanWord: async (lpanId: number): Promise<{ blob: Blob; filename: string }> => {
+    const res = await fetch(`${BASE}/lpans/${lpanId}/word`);
+    if (!res.ok) {
+      let msg = `Error al generar el Word del LPAN (${res.status})`;
+      try { const j = await res.json(); if (j?.detail) msg = j.detail; } catch { /* sin cuerpo JSON */ }
+      throw new Error(msg);
+    }
+    const cd = res.headers.get("Content-Disposition") || "";
+    const m = /filename\*=UTF-8''([^;]+)/i.exec(cd);
+    const filename = m ? decodeURIComponent(m[1]) : `LPAN_${lpanId}.docx`;
+    return { blob: await res.blob(), filename };
+  },
   marcarExencion: (binderId: number, data: { periodo: string; section: number; risk_code: string; comision_pct: number | string; motivo?: string | null }) =>
     request(`/binders/${binderId}/lpan/exencion`, { method: "POST", body: JSON.stringify(data) }),
   quitarExencion: (binderId: number, periodo: string, section: number, risk_code: string, comision_pct: number | string) =>

@@ -4,6 +4,31 @@ import { fmtMiles } from "../format";
 
 const WP_STATUS = ["Work in Progress", "Queried", "Completed", "Rejected"];
 
+// Guarda un blob dejando elegir carpeta y nombre. En Edge/Chrome usa el diálogo nativo
+// (showSaveFilePicker); en el resto, descarga normal (el navegador decide / pregunta dónde).
+async function guardarBlob(blob: Blob, filename: string) {
+  const w = window as unknown as { showSaveFilePicker?: (opts: unknown) => Promise<{ createWritable: () => Promise<{ write: (b: Blob) => Promise<void>; close: () => Promise<void> }> }> };
+  if (w.showSaveFilePicker) {
+    try {
+      const handle = await w.showSaveFilePicker({
+        suggestedName: filename,
+        types: [{ description: "Documento Word", accept: { "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [".docx"] } }],
+      });
+      const ws = await handle.createWritable();
+      await ws.write(blob);
+      await ws.close();
+      return;
+    } catch (e) {
+      if ((e as DOMException)?.name === "AbortError") return; // el usuario canceló el diálogo
+      // cualquier otro error → caemos a la descarga clásica
+    }
+  }
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
+}
+
 // Fila de un risk code dentro de un periodo del cuadro LPAN. Permite generar el LPAN (elige carpeta
 // y genera el documento) y, una vez generado, editar WP, Procesado, SDD y WP Status.
 export default function LpanRow({
@@ -53,18 +78,27 @@ export default function LpanRow({
   const brokeragePct = Number(r.gross_premium)
     ? `${fmtMiles((Number(r.brokerage) / Number(r.gross_premium)) * 100)} %` : "—";
 
-  // Generar LPAN: abre el explorador de Windows para elegir la carpeta del documento (recuerda la
-  // última por binder), genera el Word con cifras y crea el LPAN en estado «Work in Progress».
+  // Generar LPAN: crea el registro, regenera el Word y deja elegir dónde guardarlo (diálogo nativo
+  // del navegador). Funciona igual en local y en la app desplegada (no depende del escritorio).
   async function generar() {
-    const key = `mayrit.lpan.docdir.${binderId}`;
-    const prev = localStorage.getItem(key) ?? "";
     setSaving(true);
     try {
-      const { carpeta } = await lpanApi.elegirCarpeta(prev || undefined);
-      if (!carpeta) return; // cancelado
-      localStorage.setItem(key, carpeta);
-      await lpanApi.generarLpan(binderId, { risk_code: r.risk_code, section, periodo, comision_pct: r.comision_pct, carpeta });
+      const lp2 = await lpanApi.generarLpan(binderId, { risk_code: r.risk_code, section, periodo, comision_pct: r.comision_pct });
+      const { blob, filename } = await lpanApi.lpanWord(lp2.id);
+      await guardarBlob(blob, filename);
       await onChanged();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  // Re-descargar el Word de un LPAN ya generado (por si se canceló la primera vez o se quiere otra copia).
+  async function descargarWord() {
+    if (!lp) return;
+    setSaving(true);
+    try {
+      const { blob, filename } = await lpanApi.lpanWord(lp.id);
+      await guardarBlob(blob, filename);
     } finally {
       setSaving(false);
     }
@@ -120,7 +154,10 @@ export default function LpanRow({
         : <span className="pill pill-pendiente">Pendiente</span>}</td>
       <td>
         {lp ? (
-          <span className="pill pill-cobrado" title={lp.tipo}>{lp.broker_ref2 || lp.tipo}</span>
+          <span style={{ whiteSpace: "nowrap" }}>
+            <span className="pill pill-cobrado" title={lp.tipo}>{lp.broker_ref2 || lp.tipo}</span>{" "}
+            <button className="btn-link btn-sm" disabled={busy || saving} title="Descargar el Word del LPAN" onClick={descargarWord}>⬇ Word</button>
+          </span>
         ) : r.exento_lpan ? (
           <span style={{ whiteSpace: "nowrap" }}>
             <span className="pill pill-anulado" title={r.exencion_motivo || "No se liquida al mercado: no requiere LPAN"}>🚫 Exento</span>{" "}

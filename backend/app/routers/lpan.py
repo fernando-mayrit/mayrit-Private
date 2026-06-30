@@ -19,10 +19,12 @@ from __future__ import annotations
 
 import calendar
 import datetime as dt
+import io
 import os
 import tempfile
 import zipfile
 from decimal import Decimal
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
@@ -155,18 +157,16 @@ def _sdd_de(periodo: str) -> dt.date | None:
     return dt.date(y2, m2, calendar.monthrange(y2, m2)[1])
 
 
-def _generar_lpan_docx(carpeta: str, nombre: str, signing: str | None, broker_ref1: str,
-                       umr: str | None, gross, brokerage, tax, net, moneda: str) -> str:
-    """Rellena la plantilla LPAN con las cifras reales del bloque y la guarda como '<nombre>.docx'
-    en `carpeta`. Devuelve la ruta del documento. `broker_ref1` (casilla 10) = código completo del
-    agreement, con las 3 letras del coverholder al final."""
+def _construir_lpan_docx(nombre: str, signing: str | None, broker_ref1: str,
+                         umr: str | None, gross, brokerage, tax, net, moneda: str):
+    """Rellena la plantilla LPAN con las cifras reales del bloque y devuelve el objeto Document
+    (sin guardarlo). `broker_ref1` (casilla 10) = código completo del agreement, con las 3 letras
+    del coverholder al final."""
     import docx  # carga perezosa
 
     plantilla = settings.lpan_plantilla
     if not os.path.isfile(plantilla):
         raise HTTPException(status_code=502, detail=f"No se encuentra la plantilla LPAN: {plantilla}")
-    if not carpeta or not os.path.isdir(carpeta):
-        raise HTTPException(status_code=400, detail=f"La carpeta indicada no existe: {carpeta!r}")
 
     # La plantilla es .dotx; se convierte a .docx (cambiando el content-type) en un temporal.
     tmp = os.path.join(tempfile.gettempdir(), "_lpan_plantilla.docx")
@@ -203,10 +203,27 @@ def _generar_lpan_docx(carpeta: str, nombre: str, signing: str | None, broker_re
                 elif k in una_vez:
                     _set_celda(cell, una_vez[k] if k not in vistos_tok else "")
                     vistos_tok.add(k)
+    return d
 
+
+def _generar_lpan_docx(carpeta: str, nombre: str, signing: str | None, broker_ref1: str,
+                       umr: str | None, gross, brokerage, tax, net, moneda: str) -> str:
+    """Guarda el Word del LPAN como '<nombre>.docx' en `carpeta` (uso local de escritorio)."""
+    if not carpeta or not os.path.isdir(carpeta):
+        raise HTTPException(status_code=400, detail=f"La carpeta indicada no existe: {carpeta!r}")
+    d = _construir_lpan_docx(nombre, signing, broker_ref1, umr, gross, brokerage, tax, net, moneda)
     destino = os.path.join(carpeta, f"{nombre}.docx")
     d.save(destino)
     return destino
+
+
+def _lpan_docx_bytes(nombre: str, signing: str | None, broker_ref1: str,
+                     umr: str | None, gross, brokerage, tax, net, moneda: str) -> bytes:
+    """Devuelve el Word del LPAN como bytes en memoria (para descargar por el navegador)."""
+    d = _construir_lpan_docx(nombre, signing, broker_ref1, umr, gross, brokerage, tax, net, moneda)
+    buf = io.BytesIO()
+    d.save(buf)
+    return buf.getvalue()
 
 
 def _periodo_label(per: str) -> str:
@@ -668,6 +685,28 @@ def generar_lpan(binder_id: int, payload: LpanCreate, db: Session = Depends(get_
     db.commit()
     db.refresh(lp)
     return LpanRead.model_validate(lp, from_attributes=True)
+
+
+@router.get("/lpans/{lpan_id}/word")
+def descargar_lpan_word(lpan_id: int, db: Session = Depends(get_db)):
+    """Regenera el Word del LPAN desde su registro (refs, cifras, moneda; signing del FDO, UMR del
+    binder) y lo devuelve como descarga. Funciona en cualquier entorno (local y desplegado): el
+    navegador decide dónde guardarlo."""
+    lp = db.get(Lpan, lpan_id)
+    if lp is None:
+        raise HTTPException(status_code=404, detail=f"LPAN {lpan_id} no encontrado")
+    f = db.get(Fdo, lp.fdo_id) if lp.fdo_id else None
+    b = db.get(Binder, lp.binder_id) if lp.binder_id else None
+    data = _lpan_docx_bytes(
+        lp.broker_ref2 or f"LPAN_{lp.id}", f.signing_number if f else None, lp.broker_ref1 or "",
+        b.umr if b else None, lp.gross_premium, lp.brokerage, lp.tax, lp.net_premium, lp.moneda or "EUR",
+    )
+    fname = f"{lp.broker_ref2 or ('LPAN_' + str(lp.id))}.docx"
+    return StreamingResponse(
+        io.BytesIO(data),
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(fname)}"},
+    )
 
 
 @router.put("/lpan/{lpan_id}", response_model=LpanRead)
