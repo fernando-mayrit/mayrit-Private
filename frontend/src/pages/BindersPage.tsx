@@ -1080,11 +1080,11 @@ export default function BindersPage() {
                   <td className="num">{eur(b.gwp_our_line)}</td>
                   <td className="num"><NotifCelda b={b} /></td>
                   <td className="acciones">
-                    <button className="btn-link" onClick={() => setDetalle(b)}>
-                      Abrir
+                    <button className="btn-icono" title="Abrir" aria-label="Abrir" onClick={() => setDetalle(b)}>
+                      📂
                     </button>
-                    <button className="btn-link" onClick={() => abrirEdicion(b)}>
-                      Editar
+                    <button className="btn-icono" title="Editar" aria-label="Editar" onClick={() => abrirEdicion(b)}>
+                      ✏️
                     </button>
                   </td>
                 </tr>

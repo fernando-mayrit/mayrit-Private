@@ -148,8 +148,8 @@ export default function PolizasPage() {
               : undefined
           }
           rowAction={(p) => (
-            <button className="btn-link" onClick={() => setForm(p)}>
-              Editar
+            <button className="btn-icono" title="Editar" aria-label="Editar" onClick={() => setForm(p)}>
+              ✏️
             </button>
           )}
         />
