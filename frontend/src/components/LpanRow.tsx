@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { lpanApi, type RcEnSeccion } from "../api";
 import { fmtMiles } from "../format";
-import { guardarBlob } from "../download";
+import { pedirDestino, guardarEn } from "../download";
 
 const WP_STATUS = ["Work in Progress", "Queried", "Completed", "Rejected"];
 
@@ -57,12 +57,18 @@ export default function LpanRow({
   // Generar LPAN: crea el registro, regenera el Word y deja elegir dónde guardarlo (diálogo nativo
   // del navegador). Funciona igual en local y en la app desplegada (no depende del escritorio).
   async function generar() {
+    // Pedir destino DENTRO del gesto del clic (antes de las llamadas de red); si no, el selector
+    // de carpeta caduca en entornos con latencia (Azure) y caería a una descarga silenciosa.
+    const { handle, cancelado } = await pedirDestino(`LPAN S${section}-${r.risk_code} ${periodo}.docx`);
+    if (cancelado) return;
     setSaving(true);
     try {
       const lp2 = await lpanApi.generarLpan(binderId, { risk_code: r.risk_code, section, periodo, comision_pct: r.comision_pct });
       const { blob, filename } = await lpanApi.lpanWord(lp2.id);
-      await guardarBlob(blob, filename);
+      await guardarEn(handle, blob, filename);
       await onChanged();
+    } catch (e) {
+      alert((e as Error).message);
     } finally {
       setSaving(false);
     }
@@ -71,10 +77,14 @@ export default function LpanRow({
   // Re-descargar el Word de un LPAN ya generado (por si se canceló la primera vez o se quiere otra copia).
   async function descargarWord() {
     if (!lp) return;
+    const { handle, cancelado } = await pedirDestino(`${lp.broker_ref2 || `LPAN_${lp.id}`}.docx`);
+    if (cancelado) return;
     setSaving(true);
     try {
       const { blob, filename } = await lpanApi.lpanWord(lp.id);
-      await guardarBlob(blob, filename);
+      await guardarEn(handle, blob, filename);
+    } catch (e) {
+      alert((e as Error).message);
     } finally {
       setSaving(false);
     }

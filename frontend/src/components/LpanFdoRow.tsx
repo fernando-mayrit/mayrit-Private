@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { lpanApi, type RiskCodeFdo } from "../api";
-import { guardarBlob } from "../download";
+import { pedirDestino, guardarEn } from "../download";
 
 // Fila del cuadro de FDO (una por sección+risk code declarado en el binder). Permite generar el
 // FDO y editar signing number, work package, fecha de proceso y work package status.
@@ -50,12 +50,18 @@ export default function LpanFdoRow({
   // Generar FDO: crea el registro, regenera el Word y deja elegir dónde guardarlo (diálogo nativo
   // del navegador). Funciona igual en local y en la app desplegada (no depende del escritorio).
   async function generarFdo() {
+    // Pedir destino DENTRO del gesto del clic (antes de las llamadas de red); evita que el selector
+    // de carpeta caduque en entornos con latencia (Azure).
+    const { handle, cancelado } = await pedirDestino(`${rc.broker_reference || `FDO S${rc.section}-${rc.risk_code}`}.docx`);
+    if (cancelado) return;
     setSaving(true);
     try {
       const nf = await lpanApi.crearFdo(binderId, rc.section, rc.risk_code);
       const { blob, filename } = await lpanApi.fdoWord(nf.id);
-      await guardarBlob(blob, filename);
+      await guardarEn(handle, blob, filename);
       await onChanged();
+    } catch (e) {
+      alert((e as Error).message);
     } finally {
       setSaving(false);
     }
@@ -64,10 +70,14 @@ export default function LpanFdoRow({
   // Re-descargar el Word de un FDO ya generado (por si se canceló el guardado o se quiere otra copia).
   async function descargarWord() {
     if (!f) return;
+    const { handle, cancelado } = await pedirDestino(`${rc.broker_reference || `FDO_${f.id}`}.docx`);
+    if (cancelado) return;
     setSaving(true);
     try {
       const { blob, filename } = await lpanApi.fdoWord(f.id);
-      await guardarBlob(blob, filename);
+      await guardarEn(handle, blob, filename);
+    } catch (e) {
+      alert((e as Error).message);
     } finally {
       setSaving(false);
     }
