@@ -987,12 +987,6 @@ export default function BindersPage() {
       <PageHeader emoji="📑" title="Binders" />
       <div className="toolbar">
         <button className="btn-secondary" title="Limpiar todos los filtros" onClick={limpiarFiltros}>🧹</button>
-        <input
-          type="search"
-          placeholder="Buscar por UMR, Agreement o Mercado…"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-        />
         <select className="filtro" value={fYoa} onChange={(e) => setFYoa(e.target.value)} title="Filtrar por YOA">
           <option value="">YOA: todos</option>
           {yoasOpts.map((y) => (
@@ -1027,6 +1021,12 @@ export default function BindersPage() {
             </option>
           ))}
         </select>
+        <input
+          type="search"
+          placeholder="Buscar por UMR, Agreement o Mercado…"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+        />
         <div className="bind-sumatorios">
           <span className="bind-sum"><strong>{visibles.length}</strong> binders</span>
           <span className="bind-sum"><strong>{eur(totalPrimas)}</strong> primas</span>

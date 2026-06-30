@@ -128,7 +128,6 @@ export default function ContabilidadPage() {
         <div className="bdx-topbar tr-cab" style={{ alignItems: "flex-start", marginTop: 4 }}>
           <div className="tr-filtros">
             <div className="toolbar tr-filtros-row" style={{ flexWrap: "wrap", marginBottom: 8 }}>
-              <input type="search" placeholder="Buscar concepto, descripción, código…" value={q} onChange={(e) => setQ(e.target.value)} style={{ flex: "1 1 200px", minWidth: 170 }} />
               <select className="filtro" value={anio} onChange={(e) => setAnio(e.target.value ? Number(e.target.value) : "")} title="Filtrar por año">
                 <option value="">Año: todos</option>
                 {(opciones?.anios ?? []).map((a) => <option key={a} value={a}>{a}</option>)}
@@ -145,6 +144,7 @@ export default function ContabilidadPage() {
                 <option value="">Concepto: todos</option>
                 {(opciones?.conceptos ?? []).map((c) => <option key={c} value={c}>{c}</option>)}
               </select>
+              <input type="search" placeholder="Buscar concepto, descripción, código…" value={q} onChange={(e) => setQ(e.target.value)} style={{ flex: "1 1 200px", minWidth: 170 }} />
             </div>
             <button className="btn-primary btn-sm" onClick={() => setAlta(true)} disabled={!cuenta}>＋ Alta de movimiento</button>
           </div>

@@ -301,8 +301,9 @@ tr.estado-cerrado .btn-link { color: #ffd9cc; }          /* enlaces legibles sob
 .btn-gris { background: var(--gris-medio); color: #fff; border: none; }
 .btn-gris:hover:not(:disabled) { background: #565d6b; }
 /* Sumatorios del listado de binders (nº de binders y primas) */
-.bind-sumatorios { display: flex; gap: 8px; align-items: center; }
-.bind-sum { font-size: 12px; color: var(--gris); background: #f2f2f2; border-radius: 6px; padding: 3px 9px; white-space: nowrap; }
+/* Apiladas en vertical (nº binders encima de primas) y del mismo ancho (stretch) */
+.bind-sumatorios { display: flex; flex-direction: column; gap: 4px; align-items: stretch; }
+.bind-sum { font-size: 12px; color: var(--gris); background: #f2f2f2; border-radius: 6px; padding: 3px 9px; white-space: nowrap; text-align: center; }
 .bind-sum strong { color: #222; }
 /* Contenedor con scroll horizontal para tablas anchas (p. ej. binders) */
 .tabla-scroll { overflow-x: auto; }
