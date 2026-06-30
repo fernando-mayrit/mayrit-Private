@@ -197,6 +197,19 @@ export const lpanApi = {
   actualizarFdo: (fdoId: number, datos: { signing_number?: string | null; work_package?: string | null; fecha_proceso?: string | null; work_package_status?: string | null; fecha_signing?: string | null; notas?: string | null }) =>
     request<FdoRegistro>(`/fdo/${fdoId}`, { method: "PUT", body: JSON.stringify(datos) }),
   borrarFdo: (fdoId: number) => request(`/fdo/${fdoId}`, { method: "DELETE" }),
+  // Descarga el Word del FDO (regenerado desde su registro). Devuelve el blob y el nombre propuesto.
+  fdoWord: async (fdoId: number): Promise<{ blob: Blob; filename: string }> => {
+    const res = await fetch(`${BASE}/fdo/${fdoId}/word`);
+    if (!res.ok) {
+      let msg = `Error al generar el Word del FDO (${res.status})`;
+      try { const j = await res.json(); if (j?.detail) msg = j.detail; } catch { /* sin cuerpo JSON */ }
+      throw new Error(msg);
+    }
+    const cd = res.headers.get("Content-Disposition") || "";
+    const m = /filename\*=UTF-8''([^;]+)/i.exec(cd);
+    const filename = m ? decodeURIComponent(m[1]) : `FDO_${fdoId}.docx`;
+    return { blob: await res.blob(), filename };
+  },
   generarLpan: (binderId: number, data: { risk_code: string; section: number; periodo: string; comision_pct: number | string; tipo?: string; carpeta?: string | null }) =>
     request<LpanRegistro>(`/binders/${binderId}/lpan`, { method: "POST", body: JSON.stringify(data) }),
   // Descarga el Word del LPAN (regenerado desde su registro). Devuelve el blob y el nombre propuesto.

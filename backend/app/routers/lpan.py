@@ -72,17 +72,15 @@ def _set_celda(cell, valor: str) -> None:
         p.add_run(valor)
 
 
-def _generar_fdo_docx(carpeta: str, broker_ref: str, ref1: str, umr: str | None, signing: str | None) -> str:
-    """Copia la plantilla LPAN (formulario de tokens) y la rellena para un FDO, guardándola como
-    '<broker_ref>.docx' en `carpeta`. `ref1` = Broker Reference 1 (parte del UMR, campo 10);
-    `broker_ref` va en Broker Reference 2 (campo 11). Devuelve la ruta del documento."""
+def _construir_fdo_docx(broker_ref: str, ref1: str, umr: str | None, signing: str | None):
+    """Copia la plantilla LPAN (formulario de tokens) y la rellena para un FDO; devuelve el Document
+    (sin guardarlo). `ref1` = Broker Reference 1 (parte del UMR, campo 10); `broker_ref` va en Broker
+    Reference 2 (campo 11)."""
     import docx  # carga perezosa: solo al generar
 
     plantilla = settings.lpan_plantilla
     if not os.path.isfile(plantilla):
         raise HTTPException(status_code=502, detail=f"No se encuentra la plantilla LPAN: {plantilla}")
-    if not carpeta or not os.path.isdir(carpeta):
-        raise HTTPException(status_code=400, detail=f"La carpeta indicada no existe: {carpeta!r}")
 
     # La plantilla es .dotx; se convierte a .docx (cambiando el content-type) en un temporal.
     tmp = os.path.join(tempfile.gettempdir(), "_fdo_plantilla.docx")
@@ -116,10 +114,25 @@ def _generar_fdo_docx(carpeta: str, broker_ref: str, ref1: str, umr: str | None,
                 elif k in una_vez:
                     _set_celda(cell, una_vez[k] if k not in vistos_tok else "")
                     vistos_tok.add(k)
+    return d
 
+
+def _generar_fdo_docx(carpeta: str, broker_ref: str, ref1: str, umr: str | None, signing: str | None) -> str:
+    """Guarda el Word del FDO como '<broker_ref>.docx' en `carpeta` (uso local de escritorio)."""
+    if not carpeta or not os.path.isdir(carpeta):
+        raise HTTPException(status_code=400, detail=f"La carpeta indicada no existe: {carpeta!r}")
+    d = _construir_fdo_docx(broker_ref, ref1, umr, signing)
     destino = os.path.join(carpeta, f"{broker_ref}.docx")
     d.save(destino)
     return destino
+
+
+def _fdo_docx_bytes(broker_ref: str, ref1: str, umr: str | None, signing: str | None) -> bytes:
+    """Devuelve el Word del FDO como bytes en memoria (para descargar por el navegador)."""
+    d = _construir_fdo_docx(broker_ref, ref1, umr, signing)
+    buf = io.BytesIO()
+    d.save(buf)
+    return buf.getvalue()
 
 
 def _nombre_lpan(agreement: str | None, periodo: str, section: int, risk_code: str,
@@ -611,6 +624,27 @@ def crear_fdo(binder_id: int, payload: FdoCreate, db: Session = Depends(get_db))
     db.commit()
     db.refresh(f)
     return FdoRead.model_validate(f, from_attributes=True)
+
+
+@router.get("/fdo/{fdo_id}/word")
+def descargar_fdo_word(fdo_id: int, db: Session = Depends(get_db)):
+    """Regenera el Word del FDO desde su registro (broker refs recalculados del binder + sección +
+    risk code; signing del propio FDO; UMR del binder) y lo devuelve como descarga. Funciona en
+    cualquier entorno (local y desplegado)."""
+    f = db.get(Fdo, fdo_id)
+    if f is None:
+        raise HTTPException(status_code=404, detail=f"FDO {fdo_id} no encontrado")
+    b = db.get(Binder, f.binder_id) if f.binder_id else None
+    if b is None:
+        raise HTTPException(status_code=404, detail="El FDO no tiene binder asociado.")
+    broker_ref = _broker_ref(b.agreement_number, f.section, f.risk_code)
+    data = _fdo_docx_bytes(broker_ref, _umr_part(b.agreement_number), b.umr, f.signing_number)
+    fname = f"{broker_ref}.docx"
+    return StreamingResponse(
+        io.BytesIO(data),
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(fname)}"},
+    )
 
 
 @router.put("/fdo/{fdo_id}", response_model=FdoRead)

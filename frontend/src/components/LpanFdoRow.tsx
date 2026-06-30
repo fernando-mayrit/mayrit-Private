@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { lpanApi, type RiskCodeFdo } from "../api";
+import { guardarBlob } from "../download";
 
 // Fila del cuadro de FDO (una por sección+risk code declarado en el binder). Permite generar el
 // FDO y editar signing number, work package, fecha de proceso y work package status.
@@ -46,17 +47,27 @@ export default function LpanFdoRow({
     }
   }
 
-  // Generar FDO: abre el explorador de Windows para elegir la carpeta (recuerda la última por binder).
+  // Generar FDO: crea el registro, regenera el Word y deja elegir dónde guardarlo (diálogo nativo
+  // del navegador). Funciona igual en local y en la app desplegada (no depende del escritorio).
   async function generarFdo() {
-    const key = `mayrit.lpan.xis.${binderId}`;
-    const prev = localStorage.getItem(key) ?? "";
     setSaving(true);
     try {
-      const { carpeta } = await lpanApi.elegirCarpeta(prev || undefined);
-      if (!carpeta) return; // cancelado
-      localStorage.setItem(key, carpeta);
-      await lpanApi.crearFdo(binderId, rc.section, rc.risk_code, carpeta);
+      const nf = await lpanApi.crearFdo(binderId, rc.section, rc.risk_code);
+      const { blob, filename } = await lpanApi.fdoWord(nf.id);
+      await guardarBlob(blob, filename);
       await onChanged();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  // Re-descargar el Word de un FDO ya generado (por si se canceló el guardado o se quiere otra copia).
+  async function descargarWord() {
+    if (!f) return;
+    setSaving(true);
+    try {
+      const { blob, filename } = await lpanApi.fdoWord(f.id);
+      await guardarBlob(blob, filename);
     } finally {
       setSaving(false);
     }
@@ -81,7 +92,7 @@ export default function LpanFdoRow({
           <td>{wp || "—"}</td>
           <td>{fproc || "—"}</td>
           <td><span className="pill pill-cobrado">Completed 🔒</span></td>
-          <td></td>
+          <td><button className="btn-link btn-sm" disabled={saving} title="Descargar el Word del FDO" onClick={descargarWord}>⬇ Word</button></td>
         </>
       ) : (
         <>
@@ -109,7 +120,8 @@ export default function LpanFdoRow({
                 work_package_status: wpStatus.trim() || null,
               }))}>
               Guardar
-            </button>
+            </button>{" "}
+            <button className="btn-link btn-sm" disabled={saving} title="Descargar el Word del FDO" onClick={descargarWord}>⬇ Word</button>
           </td>
         </>
       )}
