@@ -138,7 +138,7 @@ const SIN_DEFAULT = [
   "total_fees", "total_indemnity", "total", "date_closed", "status",
 ];
 
-export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBack: () => void }) {
+export default function BinderDetalle({ binder }: { binder: Binder }) {
   const [tab, setTab] = useState<"resumen" | "datos" | "bloqueo" | "bdx" | "lpan" | "premium" | "calculos" | "recibos" | "siniestros" | "claimsbdx" | "triangulacion" | "tareas">("resumen");
   const [resumen, setResumen] = useState<ResumenBinder | null>(null);
 
@@ -797,9 +797,6 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
   return (
     <div className="container detalle-binder">
       <div className="detalle-top">
-        <button className="btn-link" onClick={onBack}>
-          ← Volver a Binders
-        </button>
         <h1 className="page-title" style={{ margin: "8px 0 4px" }}>
           <span className="page-title-emoji">📑</span>
           {binder.umr ?? binder.agreement_number ?? `Binder ${binder.id}`}

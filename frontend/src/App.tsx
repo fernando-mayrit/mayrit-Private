@@ -208,9 +208,13 @@ function NavGroup({
 
 export default function App() {
   const [page, setPage] = useState<Page>("inicio");
+  // Cambia en cada clic del menú; sirve de `key` del contenido para REMONTAR la página, también al
+  // re-pulsar la página activa (así "Binders" desde dentro de un binder vuelve a la lista).
+  const [navKey, setNavKey] = useState(0);
 
   function ir(p: Page) {
     setPage(p);
+    setNavKey((k) => k + 1);
   }
   // ¿El usuario actual puede ver esta página? (páginas restringidas a ciertos usuarios)
   const puedeVer = (p: string) => {
@@ -454,7 +458,7 @@ export default function App() {
           </nav>
         </aside>
 
-        <main className="content">
+        <main className="content" key={navKey}>
           {page === "inicio" && <Inicio usuario={usuario} onIr={(p) => ir(p as Page)} alertas={avAlerta} nAvisosDia={avDia.length} />}
           {page === "productores" && <ProductoresPage />}
           {page === "mercados" && <MercadosPage />}

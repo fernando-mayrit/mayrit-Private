@@ -971,15 +971,7 @@ export default function BindersPage() {
   }
 
   if (detalle) {
-    return (
-      <BinderDetalle
-        binder={detalle}
-        onBack={() => {
-          setDetalle(null);
-          cargar();
-        }}
-      />
-    );
+    return <BinderDetalle binder={detalle} />;
   }
 
   return (
