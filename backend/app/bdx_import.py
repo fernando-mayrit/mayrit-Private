@@ -212,17 +212,24 @@ def importar_filas(db: Session, binder: Binder, filas: list[dict], origen: str =
 _CLAVES_FILA = ("certificate_ref", "total_gwp_our_line", "gross_written_premium", "section_no")
 
 
+def _norm_col(h: str | None) -> str:
+    """Normaliza un encabezado para comparar: ignora paréntesis y mayúsculas/espacios. Así
+    'Sum insured (Our Line)' casa con el alias 'Sum insured Our Line' (un desajuste por paréntesis
+    no debe tirar el dato en silencio)."""
+    return sharepoint._norm((h or "").replace("(", " ").replace(")", " ")).lower()
+
+
 def _resolver_columnas(headers: list[str]) -> dict[str, int]:
     """Para cada campo del MAPEO, el índice de la columna del Excel cuyo título casa (con alias)."""
     norm = {}
     for i, h in enumerate(headers):
-        k = sharepoint._norm(h).lower()
+        k = _norm_col(h)
         if k:
             norm.setdefault(k, i)
     out: dict[str, int] = {}
     for campo, alias in sharepoint.MAPEO.items():
         for nm in (alias if isinstance(alias, list) else [alias]):
-            i = norm.get(sharepoint._norm(nm).lower())
+            i = norm.get(_norm_col(nm))
             if i is not None:
                 out[campo] = i
                 break
