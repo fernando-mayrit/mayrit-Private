@@ -845,7 +845,29 @@ Importados los binders de **reaseguro de caución** del programa **"Iberian-Cauc
 - **Cauciones IBE 62/63**: el dato NO se perdió, vive en `extra` (JSONB) con su estructura nativa de
   caución (bondNumber, Hamilton line, etc.); las columnas estándar en blanco son campos Lloyd's que no
   aplican. Volcados desde `extra` a columna: **yoa, umr, total_taxes_levies** (730 líneas).
+- **gross_written_premium** de MA0326MYR (61): vacío en 111 líneas → puesto = `total_gwp_our_line`.
+- **Localización/asegurado (detectado por el usuario en CY0825)**: los 5 campos `insured_province`,
+  `insured_postcode`, `insured_country`, `location_risk_province/country` seguían parciales (la FASE 1
+  de junio los dejó al ~57-59%; muchos binders sin cubrir). El audit de cobertura NO lo señaló porque
+  su umbral era "≥90% global a 0% en un binder" y estos están al ~58% (parciales). Backfill masivo
+  desde SharePoint (por Certificate Ref; la localización es por certificado) + IBE 62/63 desde `extra`
+  (region→provincia, zipCode→CP, país inferido ESP): **global 57-59% → 97-98%** (~18k líneas; incluye
+  PI…HEC 40/43/48/54 con ~16k líneas). Sin cubrir: LMIEITOO 45/49/57 (no tienen lista en SharePoint),
+  CY0118/MYTCCY2017 (listas viejas sin esas columnas), y `location_risk_*` de MA/HEL/PA (sus listas SP
+  no traen "Location of Risk"). Script reutilizable de la lógica en `scratchpad/.../loc_batch.py`.
 - Detalle vivo en la memoria `mayrit-perdida-datos-importador`.
+
+### LPAN — plantilla Word en el repo (Azure)
+- `lpan_plantilla` apuntaba a una ruta local de OneDrive que en Azure no existe → "No se encuentra la
+  plantilla LPAN". Ahora usa el mismo resolver que las facturas (local si existe, si no la copia del
+  repo): se incluyó `backend/app/plantillas/Plantilla LPAN.dotx` y `lpan_plantilla` pasó a propiedad
+  con `_resolver_plantilla`. OJO: si se edita la plantilla, actualizar también la copia del repo.
+
+### Navegación — quitado "Volver a Binders"
+- Se vuelve a la lista pulsando **Binders** en el menú lateral. Para que funcione estando ya dentro de
+  un binder (mismo `page`, el detalle es estado interno de `BindersPage`), `ir()` en `App.tsx` ahora
+  incrementa un `navKey` que es la `key` del `<main>` → re-pulsar un ítem del menú REMONTA la página
+  (resetea su estado). Quitada la prop `onBack` de `BinderDetalle`.
 
 ### Recibos — listado (`RecibosPage.tsx`)
 - Pastillas por tipo: helper `tipoEs` + `baseCobro` (en Comisiones el "Cobro" se mide sobre
