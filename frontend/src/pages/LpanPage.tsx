@@ -47,6 +47,12 @@ export default function LpanPage() {
   const [exportando, setExportando] = useState(false);
   const [expCols, setExpCols] = useState<Set<string>>(new Set());
   const [expSaving, setExpSaving] = useState(false);
+  const [resetSignal, setResetSignal] = useState(0);
+
+  function limpiarFiltros() {
+    setFPrograma(""); setFTipo(""); setFUmr(""); setFSdd("");
+    setResetSignal((n) => n + 1); // limpia también los filtros por columna de la tabla
+  }
 
   useEffect(() => {
     (async () => {
@@ -196,6 +202,7 @@ export default function LpanPage() {
             <div>
               <div className="hint" style={{ marginBottom: 8 }}>Todos los LPANs (de binders y pólizas).</div>
               <div className="toolbar">
+                <button className="btn-secondary" title="Limpiar todos los filtros" onClick={limpiarFiltros}>🧹</button>
                 <select className="filtro" value={fPrograma} onChange={(e) => setFPrograma(e.target.value)} title="Filtrar por Programa">
                   <option value="">Programa: todos</option>
                   {programas.map((p) => <option key={p} value={p}>{p}</option>)}
@@ -225,6 +232,7 @@ export default function LpanPage() {
             defaultKeys={DEFAULT_KEYS}
             storageKey={STORAGE_KEY}
             defaultSort={{ key: "periodo", dir: -1 }}
+            resetSignal={resetSignal}
             onFiltrar={setVisibles}
             filtroCascada
             filtroDesc

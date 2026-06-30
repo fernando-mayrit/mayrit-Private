@@ -52,6 +52,7 @@ export default function ContabilidadPage() {
   const [tipo, setTipo] = useState("");
   const [concepto, setConcepto] = useState("");
   const [q, setQ] = useState("");
+  const [resetSignal, setResetSignal] = useState(0);
 
   // Cuentas de banco (sin 'Movimiento Fondos', que va aparte).
   const cuentas = useMemo(() => {
@@ -88,6 +89,13 @@ export default function ContabilidadPage() {
   function elegirCuenta(c: string) {
     setCuenta(c);
     setAnio(new Date().getFullYear()); setGrupo(""); setTipo(""); setConcepto(""); setQ("");
+    setResetSignal((n) => n + 1);
+  }
+  // Botón 🧹: limpia todos los filtros (deja el año en curso, como el estado por defecto de la página)
+  // y también los filtros por columna de la tabla.
+  function limpiarFiltros() {
+    setAnio(new Date().getFullYear()); setGrupo(""); setTipo(""); setConcepto(""); setQ("");
+    setResetSignal((n) => n + 1);
   }
 
   // Justificante editable desde el listado (clic en la casilla). Optimista + revierte si falla.
@@ -128,6 +136,7 @@ export default function ContabilidadPage() {
         <div className="bdx-topbar tr-cab" style={{ alignItems: "flex-start", marginTop: 4 }}>
           <div className="tr-filtros">
             <div className="toolbar tr-filtros-row" style={{ flexWrap: "wrap", marginBottom: 8 }}>
+              <button className="btn-secondary" title="Limpiar todos los filtros" onClick={limpiarFiltros}>🧹</button>
               <select className="filtro" value={anio} onChange={(e) => setAnio(e.target.value ? Number(e.target.value) : "")} title="Filtrar por año">
                 <option value="">Año: todos</option>
                 {(opciones?.anios ?? []).map((a) => <option key={a} value={a}>{a}</option>)}
@@ -170,6 +179,7 @@ export default function ContabilidadPage() {
           defaultKeys={DEFAULT_KEYS}
           storageKey="mayrit.contabilidad.tabla.v2"
           defaultSort={{ key: "fecha", dir: -1 }}
+          resetSignal={resetSignal}
           rowClass={(m) => (m.factura ? undefined : "fila-sin-justificante")}
           rowAction={(m) => <button className="btn-icono" title="Editar" aria-label="Editar" onClick={() => setEditando(m)}>✏️</button>}
         />
