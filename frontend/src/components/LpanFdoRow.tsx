@@ -102,7 +102,7 @@ export default function LpanFdoRow({
           <td>{wp || "—"}</td>
           <td>{fproc || "—"}</td>
           <td><span className="pill pill-cobrado">Completed 🔒</span></td>
-          <td><button className="btn-link btn-sm" disabled={saving} title="Descargar el Word del FDO" onClick={descargarWord}>⬇ Word</button></td>
+          <td><button className="btn-icono" title="Descargar el Word del FDO" aria-label="Descargar Word" disabled={saving} onClick={descargarWord}>⬇️</button></td>
         </>
       ) : (
         <>
@@ -122,16 +122,14 @@ export default function LpanFdoRow({
             </select>
           </td>
           <td>
-            <button className="btn-primary btn-sm" disabled={saving || !dirty}
+            <button className="btn-icono" title="Guardar" aria-label="Guardar" disabled={saving || !dirty}
               onClick={() => accion(() => lpanApi.actualizarFdo(f.id, {
                 signing_number: signing.trim() || null,
                 work_package: wp.trim() || null,
                 fecha_proceso: fproc || null,
                 work_package_status: wpStatus.trim() || null,
-              }))}>
-              Guardar
-            </button>{" "}
-            <button className="btn-link btn-sm" disabled={saving} title="Descargar el Word del FDO" onClick={descargarWord}>⬇ Word</button>
+              }))}>💾</button>{" "}
+            <button className="btn-icono" title="Descargar el Word del FDO" aria-label="Descargar Word" disabled={saving} onClick={descargarWord}>⬇️</button>
           </td>
         </>
       )}

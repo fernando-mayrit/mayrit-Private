@@ -231,8 +231,20 @@ export const lpanApi = {
   actualizarLpan: (lpanId: number, datos: { work_package?: string | null; fecha?: string | null; sdd?: string | null; estado?: string | null; liberado?: string | null; pagado?: string | null }) =>
     request<LpanRegistro>(`/lpan/${lpanId}`, { method: "PUT", body: JSON.stringify(datos) }),
   borrarLpan: (lpanId: number) => request(`/lpan/${lpanId}`, { method: "DELETE" }),
-  bdxExcelUrl: (binderId: number, periodo: string) =>
-    `${BASE}/binders/${binderId}/lpan/bdx-excel?periodo=${encodeURIComponent(periodo)}`,
+  // Descarga el Excel BDX de un periodo (blob + nombre propuesto), para guardarlo eligiendo carpeta.
+  bdxExcel: async (binderId: number, periodo: string): Promise<{ blob: Blob; filename: string }> => {
+    const res = await fetch(`${BASE}/binders/${binderId}/lpan/bdx-excel?periodo=${encodeURIComponent(periodo)}`);
+    if (!res.ok) {
+      let msg = `Error al generar el Excel BDX (${res.status})`;
+      try { const j = await res.json(); if (j?.detail) msg = j.detail; } catch { /* sin cuerpo JSON */ }
+      throw new Error(msg);
+    }
+    const cd = res.headers.get("Content-Disposition") || "";
+    const mUtf = /filename\*=UTF-8''([^;]+)/i.exec(cd);
+    const mPlain = /filename="?([^";]+)"?/i.exec(cd);
+    const filename = mUtf ? decodeURIComponent(mUtf[1]) : mPlain ? mPlain[1] : `BDX ${periodo}.xlsx`;
+    return { blob: await res.blob(), filename };
+  },
 };
 
 // ── Claims BDX (bordereau de siniestros por binder) ──

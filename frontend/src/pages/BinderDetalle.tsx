@@ -9,6 +9,7 @@ import ReciboModal from "../components/ReciboModal";
 import SiniestroModal, { type PolizaBinder } from "../components/SiniestroModal";
 import LpanFdoRow from "../components/LpanFdoRow";
 import LpanRow from "../components/LpanRow";
+import { pedirDestino, guardarEn } from "../download";
 import PremiumMatch from "../components/PremiumMatch";
 import RiskExcelImport from "../components/RiskExcelImport";
 import TareasBinder from "../components/TareasBinder";
@@ -264,6 +265,22 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
       setLpanData(await lpanApi.vista(binder.id));
     } catch (e) {
       setError((e as Error).message);
+    }
+  }
+  // Descargar el Excel BDX de un periodo eligiendo carpeta (mismo flujo que LPAN/FDO, con memoria
+  // de carpeta compartida). Se pide el destino DENTRO del gesto del clic, antes de la red.
+  async function descargarBdxExcel(periodo: string) {
+    const { handle, cancelado } = await pedirDestino(`Premium Bordereaux ${binder.umr ?? binder.id} ${periodo}.xlsx`);
+    if (cancelado) return;
+    setLpanBusy(true);
+    setError(null);
+    try {
+      const { blob, filename } = await lpanApi.bdxExcel(binder.id, periodo);
+      await guardarEn(handle, blob, filename);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setLpanBusy(false);
     }
   }
   async function accionLpan(fn: () => Promise<unknown>) {
@@ -1578,10 +1595,11 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
                     {p.periodo_label}{completo ? " ✓" : ""}
                   </h4>
                   {!completo && (
-                    <a className="btn-secondary btn-sm" href={lpanApi.bdxExcelUrl(binder.id, p.periodo)}
-                       title="Descargar el BDX a procesar de este mes" download>
+                    <button className="btn-secondary btn-sm" disabled={lpanBusy}
+                       title="Descargar el BDX a procesar de este mes (elige carpeta)"
+                       onClick={() => descargarBdxExcel(p.periodo)}>
                       ⬇️ Excel BDX
-                    </a>
+                    </button>
                   )}
                 </div>
                 {abierto && p.secciones.map((s) => (

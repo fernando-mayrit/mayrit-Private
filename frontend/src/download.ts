@@ -15,11 +15,14 @@ export async function pedirDestino(suggestedName: string): Promise<{ handle: Sav
   if (!w.showSaveFilePicker) return { handle: null, cancelado: false };
   try {
     const handle = await w.showSaveFilePicker({
+      // `id` compartido: el navegador recuerda la última carpeta usada con este id y reabre ahí
+      // (así Excel BDX, LPAN y FDO te llevan a la misma carpeta donde guardaste los anteriores).
+      id: "mayrit-docs",
       suggestedName,
-      types: [{
-        description: "Documento Word",
-        accept: { "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [".docx"] },
-      }],
+      types: [
+        { description: "Documento Word", accept: { "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [".docx"] } },
+        { description: "Excel", accept: { "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [".xlsx"] } },
+      ],
     });
     return { handle, cancelado: false };
   } catch (e) {
