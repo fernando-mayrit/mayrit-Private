@@ -270,6 +270,7 @@ class RiskCodeFdo(BaseModel):
 
 class RcEnSeccion(BaseModel):
     risk_code: str
+    nombre_lpan: str                      # nombre/Broker Ref 2 que tendrá (o tiene) el LPAN de este grupo
     comision_pct: Decimal = Decimal(0)    # comisión total % del grupo (separa LPAN del mismo rc)
     signing_number: str | None = None     # del FDO del risk code (si lo tiene)
     num_lineas: int
@@ -489,8 +490,13 @@ def vista(binder_id: int, db: Session = Depends(get_db)):
                 lp = lpan_por.get((per, sec, rc, comm))
                 f = fdos.get((sec, rc))
                 ex = exenciones.get((per, sec, rc, comm))
+                # Nombre que tiene (si ya está generado) o tendrá el LPAN: si el risk code tiene varias
+                # comisiones en el mes, el nombre lleva el sufijo de comisión (igual que al generarlo).
+                varias = len({c for (p, s, r, c) in grupos if p == per and s == sec and r == rc}) > 1
+                nombre_lpan = lp.broker_ref2 if lp and lp.broker_ref2 else \
+                    _nombre_lpan(b.agreement_number, per, sec, rc, comm if varias else None)
                 rcs.append(RcEnSeccion(
-                    risk_code=rc, comision_pct=comm,
+                    risk_code=rc, nombre_lpan=nombre_lpan, comision_pct=comm,
                     signing_number=f.signing_number if f else None,
                     num_lineas=g["num"], gross_premium=g["gross"], brokerage=g["brk"],
                     tax=g["tax"], net_premium=g["net"],

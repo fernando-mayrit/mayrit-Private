@@ -137,6 +137,7 @@ export interface RiskCodeFdo {
 }
 export interface RcEnSeccion {
   risk_code: string;
+  nombre_lpan: string;   // nombre/Broker Ref 2 que tiene (o tendrá) el LPAN de este grupo
   comision_pct: number | string;
   signing_number: string | null;
   num_lineas: number;

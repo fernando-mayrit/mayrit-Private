@@ -59,7 +59,7 @@ export default function LpanRow({
   async function generar() {
     // Pedir destino DENTRO del gesto del clic (antes de las llamadas de red); si no, el selector
     // de carpeta caduca en entornos con latencia (Azure) y caería a una descarga silenciosa.
-    const { handle, cancelado } = await pedirDestino(`LPAN S${section}-${r.risk_code} ${periodo}.docx`);
+    const { handle, cancelado } = await pedirDestino(`${r.nombre_lpan}.docx`);
     if (cancelado) return;
     setSaving(true);
     try {
