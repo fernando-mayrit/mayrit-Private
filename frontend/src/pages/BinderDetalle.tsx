@@ -1415,7 +1415,7 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
               defaultKeys={SIN_DEFAULT}
               storageKey="mayrit.siniestros.tabla.v2"
               rowAction={(s) => (
-                <button className="btn-link" onClick={() => setEditSin(s)}>Editar</button>
+                <button className="btn-icono" title="Editar" aria-label="Editar" onClick={() => setEditSin(s)}>✏️</button>
               )}
             />
           )}
