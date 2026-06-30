@@ -218,9 +218,8 @@ export default function ConsultoriaPage() {
                 <td>{c.proximo_cobro ? fmtFechaES(c.proximo_cobro) : "—"}</td>
                 <td className="num">{c.n_generados}/{c.n_cobros}</td>
                 <td className="acciones" style={{ whiteSpace: "nowrap" }}>
-                  <button className="btn-link" onClick={() => abrirEdicion(c)}>Editar</button>
-                  {" · "}
-                  <button className="btn-link" onClick={() => abrirCobros(c)}>Cobros</button>
+                  <button className="btn-icono" title="Editar" aria-label="Editar" onClick={() => abrirEdicion(c)}>✏️</button>
+                  <button className="btn-icono" title="Cobros" aria-label="Cobros" onClick={() => abrirCobros(c)}>💰</button>
                 </td>
               </tr>
             ))}

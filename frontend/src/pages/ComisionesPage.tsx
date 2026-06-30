@@ -151,7 +151,7 @@ export default function ComisionesPage() {
                 {!m.recibo_numero
                   ? <button className="btn-primary btn-sm" onClick={() => abrirReparto(m)}>Preparar</button>
                   : conReparto
-                    ? <button className="btn-link btn-sm" onClick={() => abrirReparto(m)}>Editar</button>
+                    ? <button className="btn-icono" title="Editar" aria-label="Editar" onClick={() => abrirReparto(m)}>✏️</button>
                     : <button className="btn-primary btn-sm" onClick={() => abrirReparto(m)}>Reparto</button>}
               </td>
             </tr>

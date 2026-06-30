@@ -171,7 +171,7 @@ export default function ContabilidadPage() {
           storageKey="mayrit.contabilidad.tabla.v2"
           defaultSort={{ key: "fecha", dir: -1 }}
           rowClass={(m) => (m.factura ? undefined : "fila-sin-justificante")}
-          rowAction={(m) => <button className="btn-link" onClick={() => setEditando(m)}>Editar</button>}
+          rowAction={(m) => <button className="btn-icono" title="Editar" aria-label="Editar" onClick={() => setEditando(m)}>✏️</button>}
         />
       )}
       {data && data.n_total > data.items.length && (

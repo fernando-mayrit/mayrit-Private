@@ -470,7 +470,7 @@ export default function RecibosPage() {
           rowAction={(r) => {
             // Fuera del modo gestión (o en recibos de binder, que van por Premium BDX): solo Editar.
             if (!gestionMode || r.binder_id != null) {
-              return <button className="btn-link" onClick={() => setSel(r)}>Editar</button>;
+              return <button className="btn-icono" title="Editar" aria-label="Editar" onClick={() => setSel(r)}>✏️</button>;
             }
             const cobrado = !!r.prima_fecha_cobro;
             const liquidado = !!r.liquidar_fecha_liquidacion;
@@ -495,7 +495,7 @@ export default function RecibosPage() {
                 {cobrado && aplica("pdte_liquidar") && chip(liquidado, "🏦", "liquidar", "Liquidar a compañía")}
                 {cobrado && aplica("pdte_traspaso") && chip(traspasado, "🔁", "traspasar", "Traspasar comisión a gastos")}
                 {cobrado && tieneCedida && aplica("pendiente_pago") && chip(pagado, "💸", "pagar", "Pagar comisión al corredor")}
-                <button className="btn-link" onClick={() => setSel(r)}>Editar</button>
+                <button className="btn-icono" title="Editar" aria-label="Editar" onClick={() => setSel(r)}>✏️</button>
               </div>
             );
           }}

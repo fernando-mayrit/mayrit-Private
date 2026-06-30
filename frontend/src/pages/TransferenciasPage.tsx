@@ -241,7 +241,7 @@ export default function TransferenciasPage() {
           defaultSort={{ key: "fecha", dir: -1 }}
           rowAction={(t) =>
             t.manual
-              ? <button className="btn-link btn-sm" onClick={() => abrir(t)}>Editar</button>
+              ? <button className="btn-icono" title="Editar" aria-label="Editar" onClick={() => abrir(t)}>✏️</button>
               : <span className="hint" title="Generado por el recibo">auto</span>
           }
         />

@@ -483,7 +483,7 @@ export default function TareasBinder({ binderId }: { binderId?: number }) {
                 <td>{t.proxima ? fmtFechaES(t.proxima) : "—"}</td>
                 <td className="num">{t.n_hechas}/{t.n_ocurrencias}</td>
                 <td className="acciones" style={{ whiteSpace: "nowrap" }}>
-                  <button className="btn-link" onClick={() => abrirEdicion(t)}>Editar{t.n_pasos ? ` · ${t.n_pasos} pasos` : ""}</button>
+                  <button className="btn-icono" title="Editar" aria-label="Editar" onClick={() => abrirEdicion(t)}>✏️{t.n_pasos ? <span className="hint" style={{ marginLeft: 4 }}>· {t.n_pasos} pasos</span> : ""}</button>
                 </td>
               </tr>
               {abierta && (
