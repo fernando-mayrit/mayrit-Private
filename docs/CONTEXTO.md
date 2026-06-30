@@ -776,6 +776,77 @@ Importados los binders de **reaseguro de caución** del programa **"Iberian-Cauc
   *Cobrar* de un recibo de Comisiones registra `prima_cobrada = deduccion_total` (la prima es 0).
 - **Recibos de Consultoría:** Liquidación, Traspaso y Pago de comisión cedida → **"No aplica"**.
 
+---
+
+## Sesión 30/06/2026 (equipo "ferna") — LPAN/FDO a descarga de navegador, emojis de UI, y recuperación de datos perdidos en el importador
+
+### Incidencias operativas resueltas
+- **Subir Risk BDX se quedaba "Guardando…"** (`RiskExcelImport.tsx`): `importar()` no limpiaba `busy`
+  en el caso de éxito (solo en el `catch`) → botón pegado. Arreglado con `finally`.
+- **"Generar LPAN"/"Cobrar Premium" no hacían nada**: la causa real era un **pile de backends de
+  Mayrit duplicados** en el puerto 8000 (la trampa del `--reload`): los **GET caían en el proceso sano
+  y funcionaban, pero los POST se iban a un worker viejo/huérfano que no los atendía**, sin error en
+  pantalla. Síntoma engañoso. Fix: dejar **un único** `uvicorn app.main` en el 8000 y rearrancar. OJO:
+  el backend de **Alea** también es `uvicorn app.main` pero en `C:\Dev\alea\backend` y **puerto 8010**
+  (tiene supervisor que lo respawnea) — NO tocarlo.
+
+### Correcciones de datos (binder 61 = MA0326MYR / B1634MA0326MYR)
+- **Reporting date** de la línea id=40916 (cert 04CGCR2600129): `2026-04-21` → `2026-04-01` (siempre día 1).
+- **Fees**: en este binder los fees **NO se suman** a `net_premium_to_broker`/`final_net_premium_uw`.
+  Abril los sumaba (mal), mayo no. Corregidas 8 líneas de abril restando `fees` (−29.632,06 €):
+  Prima a Mayrit 771.649,28 → **742.017,22**; A liquidar 743.017,05 → **713.384,99**. Ahora cuadra
+  `Prima a Mayrit = GWP − comisión + impuestos`. **El tratamiento de fees es PROPIO DE CADA BINDER**
+  (no generalizar; ver memoria `mayrit-fees-por-binder`).
+- **gross_written_premium**: estaba vacío en las 111 líneas → puesto = `total_gwp_our_line` (binder 100%
+  participación, GWP 100% = our line).
+
+### UI — botones de acción como emojis (todos los listados)
+- `.btn-icono` (estilo) en `styles.css`. Patrón: emoji + `title` + `aria-label`.
+- **Binders**: 📂 Abrir · ✏️ Editar. **Pólizas/Recibos/Transferencias/Contabilidad/Consultoría
+  (✏️+💰 Cobros)/Comisiones/Tareas/Siniestros**: ✏️ Editar (los CTA "Generar/Preparar/Reparto" siguen texto).
+- **Pestaña BDX del binder** (`BdxTabla.tsx`): se quita el clic en toda la fila; **botón ✏️/👁 por línea**
+  a la derecha. **Modal de línea** (`BdxLineaPanel.tsx`): abre **bloqueado** con botón **✏️ Corregir**
+  (como Recibo/Movimiento/Consultoría).
+- **Binders — cajitas de contadores** apiladas (nº binders sobre primas, mismo ancho). **Orden de
+  filtros**: Binders → YOA·Coverholder·Estado·genérico; Contabilidad → Año·Tipo·Grupo·Concepto·genérico.
+- **Siniestros (binder)**: el cuadro de totales se recalcula con los **filtros de la tabla** (capta
+  `onFiltrar` de `TablaDatos` en `sinVisibles`).
+- **LPAN/FDO**: botones de acción 💾 Guardar · ⬇️ Descargar Word; primera columna sin el prefijo "com.".
+
+### LPAN/FDO — generar Word como descarga del navegador (funciona en Azure)
+- Antes: el botón abría un **selector de carpeta del backend (tkinter)** y escribía el `.docx` en disco
+  → solo en local; en Azure no hay escritorio. Migrado a **descarga por el navegador**.
+- Backend (`routers/lpan.py`): se separa la construcción del Word (`_construir_lpan_docx`/`_fdo`) del
+  guardado; nuevos `GET /lpans/{id}/word` y `GET /fdo/{id}/word` (regeneran desde el registro). Se
+  **elimina** todo el camino viejo: `/elegir-carpeta`, `_generar_*_docx`, bloques `if payload.carpeta`,
+  campo `carpeta` de los schemas y `bdxApi.bdxExcelUrl`/`lpanApi.elegirCarpeta`.
+- Frontend (`download.ts`, `LpanRow.tsx`, `LpanFdoRow.tsx`, `BinderDetalle.tsx`): util `pedirDestino`
+  (se llama **DENTRO del gesto del clic**, antes de la red, si no `showSaveFilePicker` caduca en Azure
+  por la latencia) + `guardarEn`. **Memoria de carpeta**: `id:"mayrit-docs"` compartido → el navegador
+  reabre en la última carpeta usada (LPAN, FDO y **Excel BDX**, que también pasó a descarga con selector).
+  El nombre sugerido es el del LPAN (`r.nombre_lpan`, nuevo en la vista) / FDO. Errores con `alert`.
+
+### Recuperación de datos perdidos por encabezados con paréntesis (importante)
+- **Causa**: el `MAPEO` espera `Sum insured Our Line` pero el BDX de origen trae **`Sum insured
+  (Our Line)`** (con paréntesis). `_resolver_columnas` (que casa con `sharepoint._norm`, sin quitar
+  paréntesis) **descartaba el dato en silencio**. La serie **CY** (14-19) y dos **HEL** (34, 36) tenían
+  `sum_insured_our_line` vacío (por eso el Excel BDX salía con Sum Insured en blanco).
+- **Fix importador** (`bdx_import.py`): nuevo `_norm_col` que ignora paréntesis al comparar → cualquier
+  variante con `()` casa con su alias. Desplegado.
+- **Audit de cobertura**: de 52 binders, mapa de qué campos de ORIGEN quedaron a 0% (excluyendo los que
+  gestiona la app). Patrón claro = serie CY+HEL sin suma asegurada.
+- **Backfill desde SharePoint** (conecta OK por certificado, listas `Mayrit - <UMR>`; col `Sum insured
+  (Our Line)`): **929 líneas** rellenadas casando por Certificate Ref, y las dudosas por Cert+GWP our
+  line con tolerancia de céntimos. CY+HEL al 100% salvo 5 de MA0222HEL que **en SharePoint también
+  están vacías**.
+- **DESCARTADO con el usuario** (pérdidas aceptables, no se tocan): `fees` (GL 21/22, CY0118 20),
+  `deductible` (PA 24/30), `class_of_business` (PI2825 56), `risk_code` de MA0326MYR, y **LMIEITOO
+  45/49/57**.
+- **Cauciones IBE 62/63**: el dato NO se perdió, vive en `extra` (JSONB) con su estructura nativa de
+  caución (bondNumber, Hamilton line, etc.); las columnas estándar en blanco son campos Lloyd's que no
+  aplican. Volcados desde `extra` a columna: **yoa, umr, total_taxes_levies** (730 líneas).
+- Detalle vivo en la memoria `mayrit-perdida-datos-importador`.
+
 ### Recibos — listado (`RecibosPage.tsx`)
 - Pastillas por tipo: helper `tipoEs` + `baseCobro` (en Comisiones el "Cobro" se mide sobre
   `deduccion_total`, no `prima_adeudada`=0, que falseaba un "Cobrado" verde). `noAplica` por fase:
