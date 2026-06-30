@@ -150,6 +150,9 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
 
   // ── Siniestros (Claims BDX del binder) ──
   const [siniestros, setSiniestros] = useState<Siniestro[]>([]);
+  // Filas visibles de la tabla tras los filtros por columna (para que el cuadro de totales cuadre
+  // con lo filtrado); undefined hasta que la tabla informa por primera vez.
+  const [sinVisibles, setSinVisibles] = useState<Siniestro[] | undefined>(undefined);
   const [sinCargado, setSinCargado] = useState(false);
   const [editSin, setEditSin] = useState<Siniestro | null>(null);
   const [nuevoSin, setNuevoSin] = useState(false);
@@ -208,15 +211,18 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
     );
   }, [sel]);
 
-  // Totales del cuadro de Siniestros (incurrido = pagado + reservas).
+  // Totales del cuadro de Siniestros (incurrido = pagado + reservas). Se calculan sobre las filas
+  // realmente visibles tras los filtros de la tabla (`sinVisibles`); hasta que la tabla informa por
+  // primera vez se usa la lista completa.
   const sinTot = useMemo(() => {
-    const nSin = siniestros.length;
-    const abiertos = siniestros.filter((s) => !s.date_closed).length;
-    const reclamado = siniestros.reduce((a, s) => a + n(s.amount_claimed), 0);
-    const reservaFees = siniestros.reduce((a, s) => a + n(s.reserves_fees), 0);
-    const pagosFees = siniestros.reduce((a, s) => a + n(s.paid_fees), 0);
-    const reservaIndem = siniestros.reduce((a, s) => a + n(s.reserves_indemnity), 0);
-    const pagosIndem = siniestros.reduce((a, s) => a + n(s.paid_indemnity), 0);
+    const base = sinVisibles ?? siniestros;
+    const nSin = base.length;
+    const abiertos = base.filter((s) => !s.date_closed).length;
+    const reclamado = base.reduce((a, s) => a + n(s.amount_claimed), 0);
+    const reservaFees = base.reduce((a, s) => a + n(s.reserves_fees), 0);
+    const pagosFees = base.reduce((a, s) => a + n(s.paid_fees), 0);
+    const reservaIndem = base.reduce((a, s) => a + n(s.reserves_indemnity), 0);
+    const pagosIndem = base.reduce((a, s) => a + n(s.paid_indemnity), 0);
     const totalFees = reservaFees + pagosFees;
     const totalIndem = reservaIndem + pagosIndem;
     const lin = sel?.lineas ?? [];
@@ -227,7 +233,7 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
       nSin, abiertos, reclamado, reservaFees, pagosFees, reservaIndem, pagosIndem,
       totalFees, totalIndem, total: totalFees + totalIndem, netUW: gwpOL - comCover - brokerage,
     };
-  }, [siniestros, sel]);
+  }, [siniestros, sinVisibles, sel]);
 
   async function cargarSiniestros() {
     try {
@@ -1414,6 +1420,7 @@ export default function BinderDetalle({ binder, onBack }: { binder: Binder; onBa
               columnas={SIN_COLS}
               defaultKeys={SIN_DEFAULT}
               storageKey="mayrit.siniestros.tabla.v2"
+              onFiltrar={setSinVisibles}
               rowAction={(s) => (
                 <button className="btn-icono" title="Editar" aria-label="Editar" onClick={() => setEditSin(s)}>✏️</button>
               )}
