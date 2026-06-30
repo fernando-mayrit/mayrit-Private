@@ -37,7 +37,8 @@ export default function RiskExcelImport({
     if (!prev) return;
     setBusy(true); setError(null);
     try { setRes(await bdxApi.riskExcelImport(binderId, file, prev.hoja)); }
-    catch (e) { setError((e as Error).message); setBusy(false); }
+    catch (e) { setError((e as Error).message); }
+    finally { setBusy(false); }
   }
 
   const todoCargado = !!prev && prev.periodos.length > 0 && prev.periodos_ya_cargados.length === prev.periodos.length;

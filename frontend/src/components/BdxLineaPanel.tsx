@@ -179,6 +179,11 @@ export default function BdxLineaPanel({ bdxId, linea, onSaved, onClose, onDelete
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Una línea existente abre BLOQUEADA (solo consulta); "Corregir" la habilita. Una línea nueva
+  // abre ya editable. El periodo cerrado (readOnly) es un bloqueo duro que no se puede levantar aquí.
+  const [bloqueado, setBloqueado] = useState(() => !!linea && !readOnly);
+  const ro = readOnly || bloqueado; // solo lectura efectiva (duro o blando)
+
   const [layout, setLayout] = useState<LGrupo[]>(cargarLayout);
   const [diseno, setDiseno] = useState(false);
   const [drag, setDrag] = useState<string | null>(null);
@@ -280,7 +285,7 @@ export default function BdxLineaPanel({ bdxId, linea, onSaved, onClose, onDelete
             type="checkbox"
             checked={Boolean(vals[key])}
             onChange={(e) => set(key, e.target.checked)}
-            disabled={readOnly}
+            disabled={ro}
           />
           {label}
         </label>
@@ -290,7 +295,7 @@ export default function BdxLineaPanel({ bdxId, linea, onSaved, onClose, onDelete
       return (
         <>
           <label>{label}</label>
-          <NumberInput value={String(vals[key] ?? "")} onChange={(v) => set(key, v)} disabled={readOnly} />
+          <NumberInput value={String(vals[key] ?? "")} onChange={(v) => set(key, v)} disabled={ro} />
         </>
       );
     }
@@ -298,7 +303,7 @@ export default function BdxLineaPanel({ bdxId, linea, onSaved, onClose, onDelete
       return (
         <>
           <label>{label}</label>
-          <NumberInput value={String(vals[key] ?? "")} onChange={(v) => set(key, v)} decimals={0} thousands={false} disabled={readOnly} />
+          <NumberInput value={String(vals[key] ?? "")} onChange={(v) => set(key, v)} decimals={0} thousands={false} disabled={ro} />
         </>
       );
     }
@@ -306,7 +311,7 @@ export default function BdxLineaPanel({ bdxId, linea, onSaved, onClose, onDelete
       return (
         <>
           <label>{label}</label>
-          <textarea rows={3} value={String(vals[key] ?? "")} onChange={(e) => set(key, e.target.value)} disabled={readOnly} />
+          <textarea rows={3} value={String(vals[key] ?? "")} onChange={(e) => set(key, e.target.value)} disabled={ro} />
         </>
       );
     }
@@ -318,7 +323,7 @@ export default function BdxLineaPanel({ bdxId, linea, onSaved, onClose, onDelete
           className={tipo === "date" ? "inp-fecha" : undefined}
           value={String(vals[key] ?? "")}
           onChange={(e) => set(key, e.target.value)}
-          disabled={readOnly}
+          disabled={ro}
         />
       </>
     );
@@ -332,15 +337,25 @@ export default function BdxLineaPanel({ bdxId, linea, onSaved, onClose, onDelete
       error={error}
       onSave={guardar}
       onClose={onClose}
-      onDelete={linea ? borrar : undefined}
-      readOnly={readOnly}
+      onDelete={linea && !ro ? borrar : undefined}
+      readOnly={ro}
     >
       {readOnly && (
         <div className="hint" style={{ marginBottom: 10 }}>
           🔒 Este periodo está bloqueado (BDX presentado/cerrado). Solo consulta: no se puede editar.
         </div>
       )}
-      <div className="diseno-barra" style={readOnly ? { display: "none" } : undefined}>
+      {/* Línea existente en periodo abierto: abre bloqueada; "Corregir" habilita la edición (arriba a la izquierda). */}
+      {!readOnly && linea && (
+        <div className="recibo-acciones-top">
+          {bloqueado ? (
+            <button type="button" className="btn-sm btn-corregir" onClick={() => setBloqueado(false)}>✏️ Corregir</button>
+          ) : (
+            <span className="hint">✏️ Edición habilitada</span>
+          )}
+        </div>
+      )}
+      <div className="diseno-barra" style={ro ? { display: "none" } : undefined}>
         <button type="button" className={"btn-secondary btn-sm" + (diseno ? " sel" : "")} onClick={() => setDiseno((d) => !d)}>
           {diseno ? "✓ Diseñando" : "✎ Diseñar formulario"}
         </button>

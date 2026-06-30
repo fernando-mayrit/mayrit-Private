@@ -928,6 +928,10 @@ tr.fila-inactiva td { opacity: 0.55; }
 .bdx-tabla th.col-lock, .bdx-tabla td.col-lock { width: 22px; padding-left: 2px; padding-right: 2px; }
 .bdx-tabla tr.fila-bloqueada { background: #fbeae4; }
 .bdx-tabla tr.fila-bloqueada:hover { background: #f6ddd4; }
+/* BDX: columna de acciones por línea (botón editar/ver a la derecha) */
+.bdx-tabla th.col-acciones, .bdx-tabla td.col-acciones { width: 34px; padding-left: 2px; padding-right: 2px; }
+.btn-icono { background: none; border: none; cursor: pointer; font-size: 14px; line-height: 1; padding: 2px 4px; border-radius: 4px; }
+.btn-icono:hover { background: var(--gris-claro); }
 .ayuda { width: 16px; height: 16px; border: 1px solid var(--borde); border-radius: 50%; font-size: 10px; color: var(--gris-medio); display: inline-flex; align-items: center; justify-content: center; cursor: help; }
 
 /* Diseñador del formulario de línea de BDX */

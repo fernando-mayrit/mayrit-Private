@@ -382,6 +382,7 @@ export default function BdxTabla({
                   </th>
                 );
               })}
+              {onRowClick && <th className="col-acciones" title="Acciones" />}
             </tr>
           </thead>
           <tbody>
@@ -390,8 +391,7 @@ export default function BdxTabla({
               return (
               <tr
                 key={l.id}
-                className={(onRowClick ? "fila-click" : "") + (bloq ? " fila-bloqueada" : "")}
-                onClick={() => onRowClick?.(l)}
+                className={bloq ? "fila-bloqueada" : undefined}
               >
                 {bloqueada && (
                   <td className="celda-centro col-lock" title={bloq ? "Periodo bloqueado (solo consulta)" : ""}>
@@ -406,6 +406,18 @@ export default function BdxTabla({
                     </td>
                   );
                 })}
+                {onRowClick && (
+                  <td className="celda-centro col-acciones">
+                    <button
+                      type="button"
+                      className="btn-icono"
+                      title={bloq ? "Ver línea (periodo bloqueado)" : "Editar línea"}
+                      onClick={() => onRowClick(l)}
+                    >
+                      {bloq ? "👁" : "✏️"}
+                    </button>
+                  </td>
+                )}
               </tr>
               );
             })}
