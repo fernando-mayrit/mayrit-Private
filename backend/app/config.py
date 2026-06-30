@@ -54,8 +54,9 @@ class Settings(BaseSettings):
     sp_pfx_path: str = ""
     sp_pfx_password: str = ""
 
-    # Plantilla Word (tokens) para generar los FDO/LPAN (formulario London Premium Advice Note).
-    lpan_plantilla: str = (
+    # Plantilla Word (tokens) para generar los FDO/LPAN (formulario London Premium Advice Note). La
+    # ruta LOCAL (OneDrive) se usa si existe; en Azure no existe y se cae a la copia del repo.
+    lpan_plantilla_local: str = (
         r"C:\Users\ferna\Mayrit Insurance Broker\Mayrit - Negocio - Documentos"
         r"\Documentacion\Plantillas\Plantilla LPAN.dotx"
     )
@@ -77,6 +78,10 @@ class Settings(BaseSettings):
         r"C:\Users\ferna\Mayrit Insurance Broker\Mayrit - Sociedad - Documentos"
         r"\Societario\Cuentas"
     )
+
+    @property
+    def lpan_plantilla(self) -> str:
+        return _resolver_plantilla(self.lpan_plantilla_local, "Plantilla LPAN.dotx")
 
     @property
     def factura_plantilla(self) -> str:
