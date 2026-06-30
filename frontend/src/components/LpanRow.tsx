@@ -129,7 +129,7 @@ export default function LpanRow({
 
   return (
     <tr>
-      <th>{r.risk_code}<span className="hint" style={{ display: "block", fontWeight: 400 }}>com. {Number(r.comision_pct).toFixed(2)}%</span></th>
+      <th>{r.risk_code}<span className="hint" style={{ display: "block", fontWeight: 400 }}>{Number(r.comision_pct).toFixed(2)}%</span></th>
       <td className="num">{r.num_lineas}</td>
       <td className="num">{fmtMiles(r.gross_premium)}</td>
       <td className="num">{brokeragePct}</td>
@@ -140,10 +140,7 @@ export default function LpanRow({
         : <span className="pill pill-pendiente">Pendiente</span>}</td>
       <td>
         {lp ? (
-          <span style={{ whiteSpace: "nowrap" }}>
-            <span className="pill pill-cobrado" title={lp.tipo}>{lp.broker_ref2 || lp.tipo}</span>{" "}
-            <button className="btn-link btn-sm" disabled={busy || saving} title="Descargar el Word del LPAN" onClick={descargarWord}>⬇ Word</button>
-          </span>
+          <span className="pill pill-cobrado" title={lp.tipo}>{lp.broker_ref2 || lp.tipo}</span>
         ) : r.exento_lpan ? (
           <span style={{ whiteSpace: "nowrap" }}>
             <span className="pill pill-anulado" title={r.exencion_motivo || "No se liquida al mercado: no requiere LPAN"}>🚫 Exento</span>{" "}
@@ -194,7 +191,8 @@ export default function LpanRow({
             title={lp.pagado ? "Ya cumplimentado" : !lp.liberado ? "Editable cuando hay fecha de Liberado" : undefined}
             onChange={(e) => setPagado(e.target.value)} /></td>
           <td style={{ whiteSpace: "nowrap" }}>
-            <button className="btn-primary btn-sm" disabled={saving || busy || !dirty} onClick={guardar}>Guardar</button>{" "}
+            <button className="btn-icono" title="Guardar" aria-label="Guardar" disabled={saving || busy || !dirty} onClick={guardar}>💾</button>{" "}
+            <button className="btn-icono" title="Descargar el Word del LPAN" aria-label="Descargar Word" disabled={busy || saving} onClick={descargarWord}>⬇️</button>{" "}
             <button className="btn-link" disabled={busy || saving}
               onClick={() => onBorrar({ id: lp.id, etiqueta: `${lp.broker_ref2 || lp.tipo} · Sección ${section} · ${r.risk_code} · ${periodo}` })}>Borrar</button>
           </td>
