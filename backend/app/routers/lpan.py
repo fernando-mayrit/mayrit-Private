@@ -117,16 +117,6 @@ def _construir_fdo_docx(broker_ref: str, ref1: str, umr: str | None, signing: st
     return d
 
 
-def _generar_fdo_docx(carpeta: str, broker_ref: str, ref1: str, umr: str | None, signing: str | None) -> str:
-    """Guarda el Word del FDO como '<broker_ref>.docx' en `carpeta` (uso local de escritorio)."""
-    if not carpeta or not os.path.isdir(carpeta):
-        raise HTTPException(status_code=400, detail=f"La carpeta indicada no existe: {carpeta!r}")
-    d = _construir_fdo_docx(broker_ref, ref1, umr, signing)
-    destino = os.path.join(carpeta, f"{broker_ref}.docx")
-    d.save(destino)
-    return destino
-
-
 def _fdo_docx_bytes(broker_ref: str, ref1: str, umr: str | None, signing: str | None) -> bytes:
     """Devuelve el Word del FDO como bytes en memoria (para descargar por el navegador)."""
     d = _construir_fdo_docx(broker_ref, ref1, umr, signing)
@@ -217,17 +207,6 @@ def _construir_lpan_docx(nombre: str, signing: str | None, broker_ref1: str,
                     _set_celda(cell, una_vez[k] if k not in vistos_tok else "")
                     vistos_tok.add(k)
     return d
-
-
-def _generar_lpan_docx(carpeta: str, nombre: str, signing: str | None, broker_ref1: str,
-                       umr: str | None, gross, brokerage, tax, net, moneda: str) -> str:
-    """Guarda el Word del LPAN como '<nombre>.docx' en `carpeta` (uso local de escritorio)."""
-    if not carpeta or not os.path.isdir(carpeta):
-        raise HTTPException(status_code=400, detail=f"La carpeta indicada no existe: {carpeta!r}")
-    d = _construir_lpan_docx(nombre, signing, broker_ref1, umr, gross, brokerage, tax, net, moneda)
-    destino = os.path.join(carpeta, f"{nombre}.docx")
-    d.save(destino)
-    return destino
 
 
 def _lpan_docx_bytes(nombre: str, signing: str | None, broker_ref1: str,
@@ -352,7 +331,6 @@ class LpanGlobal(BaseModel):
 class FdoCreate(BaseModel):
     section: int = 0
     risk_code: str
-    carpeta: str | None = None   # si se indica, genera el documento físico del FDO en esa carpeta
 
 
 class FdoUpdate(BaseModel):
@@ -370,7 +348,6 @@ class LpanCreate(BaseModel):
     periodo: str
     comision_pct: Decimal = Decimal(0)   # comisión total % del grupo a generar
     tipo: str = "PM"
-    carpeta: str | None = None   # si se indica, genera el documento Word del LPAN en esa carpeta
 
 
 class LpanUpdate(BaseModel):
@@ -572,39 +549,6 @@ def quitar_exencion(binder_id: int, periodo: str, section: int, risk_code: str,
     return {"ok": True, "exento": False}
 
 
-@router.get("/elegir-carpeta")
-def elegir_carpeta(inicial: str | None = None):
-    """Abre el explorador de Windows para elegir una carpeta y devuelve su ruta (solo en ejecución
-    LOCAL; en servidor no hay escritorio). El diálogo se lanza en un hilo propio con su Tk."""
-    import threading
-
-    resultado: dict[str, str] = {}
-    error: dict[str, str] = {}
-
-    def _dialogo():
-        try:
-            import tkinter as tk
-            from tkinter import filedialog
-            root = tk.Tk()
-            root.withdraw()
-            root.attributes("-topmost", True)
-            ruta = filedialog.askdirectory(
-                initialdir=inicial or os.path.expanduser("~"),
-                title="Elige la carpeta donde guardar el FDO",
-            )
-            root.destroy()
-            resultado["carpeta"] = ruta or ""
-        except Exception as e:  # noqa: BLE001
-            error["msg"] = str(e)
-
-    th = threading.Thread(target=_dialogo)
-    th.start()
-    th.join()
-    if error:
-        raise HTTPException(status_code=501, detail=f"No se pudo abrir el selector de carpeta: {error['msg']}")
-    return {"carpeta": resultado.get("carpeta") or None}
-
-
 @router.post("/binders/{binder_id}/fdo", response_model=FdoRead)
 def crear_fdo(binder_id: int, payload: FdoCreate, db: Session = Depends(get_db)):
     """Genera el FDO de un risk code (a la espera del signing number de Xchanging)."""
@@ -615,10 +559,6 @@ def crear_fdo(binder_id: int, payload: FdoCreate, db: Session = Depends(get_db))
         raise HTTPException(status_code=400, detail="Falta el risk code.")
     if db.scalar(select(Fdo).where(Fdo.binder_id == binder_id, Fdo.section == sec, Fdo.risk_code == rc)):
         raise HTTPException(status_code=409, detail=f"Ya existe un FDO para el risk code {rc} (sección {sec}).")
-    # Genera el documento físico ANTES de crear el registro (si la carpeta falla, no deja huérfano).
-    if payload.carpeta:
-        _generar_fdo_docx(payload.carpeta, _broker_ref(b.agreement_number, sec, rc),
-                          _umr_part(b.agreement_number), b.umr, None)
     f = Fdo(binder_id=binder_id, section=sec, risk_code=rc, fecha_generado=dt.date.today())
     db.add(f)
     db.commit()
@@ -679,8 +619,8 @@ def borrar_fdo(fdo_id: int, db: Session = Depends(get_db)):
 @router.post("/binders/{binder_id}/lpan", response_model=LpanRead)
 def generar_lpan(binder_id: int, payload: LpanCreate, db: Session = Depends(get_db)):
     """Genera el LPAN de (risk code, periodo): exige FDO con signing y todas las líneas cobradas.
-    Nombra el LPAN (Broker Ref 2), genera su documento Word (si se da carpeta) y lo deja en estado
-    «Work in Progress» con WP/Procesado/SDD por rellenar."""
+    Nombra el LPAN (Broker Ref 2) y lo deja en estado «Work in Progress» con WP/Procesado/SDD por
+    rellenar. El documento Word se descarga aparte con GET /lpans/{id}/word."""
     b = _binder_o_404(binder_id, db)
     rc, per = (payload.risk_code or "").strip(), (payload.periodo or "").strip()
     sec = int(payload.section or 0)
@@ -705,10 +645,6 @@ def generar_lpan(binder_id: int, payload: LpanCreate, db: Session = Depends(get_
     varias = len({c for (p, s, r, c) in grupos if p == per and s == sec and r == rc}) > 1
     nombre = _nombre_lpan(b.agreement_number, per, sec, rc, comm if varias else None)
     moneda = b.moneda or "EUR"
-    # Documento Word ANTES de crear el registro (si la carpeta falla, no deja huérfano).
-    if payload.carpeta:
-        _generar_lpan_docx(payload.carpeta, nombre, f.signing_number, (b.agreement_number or ""),
-                           b.umr, g["gross"], g["brk"], g["tax"], g["net"], moneda)
     lp = Lpan(
         fdo_id=f.id, binder_id=binder_id, risk_code=rc, section=sec, periodo=per, tipo=tipo, comision_pct=comm,
         num_lineas=g["num"], gross_premium=g["gross"], brokerage=g["brk"], tax=g["tax"], net_premium=g["net"],

@@ -5,8 +5,8 @@ import { guardarBlob } from "../download";
 
 const WP_STATUS = ["Work in Progress", "Queried", "Completed", "Rejected"];
 
-// Fila de un risk code dentro de un periodo del cuadro LPAN. Permite generar el LPAN (elige carpeta
-// y genera el documento) y, una vez generado, editar WP, Procesado, SDD y WP Status.
+// Fila de un risk code dentro de un periodo del cuadro LPAN. Permite generar el LPAN (descarga el
+// Word, eligiendo carpeta en el navegador) y, una vez generado, editar WP, Procesado, SDD y WP Status.
 export default function LpanRow({
   r,
   section,

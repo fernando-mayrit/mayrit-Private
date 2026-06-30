@@ -190,10 +190,8 @@ export interface LpanGlobal {
 export const lpanApi = {
   vista: (binderId: number) => request<VistaLpan>(`/binders/${binderId}/lpan`),
   listarTodos: () => request<LpanGlobal[]>(`/lpans`),
-  elegirCarpeta: (inicial?: string) =>
-    request<{ carpeta: string | null }>(`/elegir-carpeta${inicial ? `?inicial=${encodeURIComponent(inicial)}` : ""}`),
-  crearFdo: (binderId: number, section: number, risk_code: string, carpeta?: string) =>
-    request<FdoRegistro>(`/binders/${binderId}/fdo`, { method: "POST", body: JSON.stringify({ section, risk_code, carpeta: carpeta ?? null }) }),
+  crearFdo: (binderId: number, section: number, risk_code: string) =>
+    request<FdoRegistro>(`/binders/${binderId}/fdo`, { method: "POST", body: JSON.stringify({ section, risk_code }) }),
   actualizarFdo: (fdoId: number, datos: { signing_number?: string | null; work_package?: string | null; fecha_proceso?: string | null; work_package_status?: string | null; fecha_signing?: string | null; notas?: string | null }) =>
     request<FdoRegistro>(`/fdo/${fdoId}`, { method: "PUT", body: JSON.stringify(datos) }),
   borrarFdo: (fdoId: number) => request(`/fdo/${fdoId}`, { method: "DELETE" }),
@@ -210,7 +208,7 @@ export const lpanApi = {
     const filename = m ? decodeURIComponent(m[1]) : `FDO_${fdoId}.docx`;
     return { blob: await res.blob(), filename };
   },
-  generarLpan: (binderId: number, data: { risk_code: string; section: number; periodo: string; comision_pct: number | string; tipo?: string; carpeta?: string | null }) =>
+  generarLpan: (binderId: number, data: { risk_code: string; section: number; periodo: string; comision_pct: number | string; tipo?: string }) =>
     request<LpanRegistro>(`/binders/${binderId}/lpan`, { method: "POST", body: JSON.stringify(data) }),
   // Descarga el Word del LPAN (regenerado desde su registro). Devuelve el blob y el nombre propuesto.
   lpanWord: async (lpanId: number): Promise<{ blob: Blob; filename: string }> => {
