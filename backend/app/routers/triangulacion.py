@@ -311,13 +311,16 @@ def _factores_programa(curvas: list[list[float]]) -> tuple[list[float], int]:
 
 def _pct_desarrollado(factores: list[float], maxlen: int, edad: int) -> float:
     """% del 'ultimate' ya incurrido a la edad `edad` = 1 / (producto de factores de `edad` al final).
-    1.0 si ya se llegó al final del desarrollo."""
+    Acotado a [0, 1]: si la cola tiene factores < 1 (el incurrido baja al liberar reservas), el CDF
+    sale < 1 y 1/CDF pasaría de 100% → se limita a 100% para que el IBNR de Bornhuetter-Ferguson no
+    salga negativo (un binder sobre-desarrollado da IBNR 0, no negativo). 1.0 al final del desarrollo."""
     if edad >= maxlen - 1:
         return 1.0
     cdf = 1.0
     for k in range(max(edad, 0), maxlen - 1):
         cdf *= factores[k] if factores[k] > 0 else 1.0
-    return 1.0 / cdf if cdf > 0 else 1.0
+    pd = 1.0 / cdf if cdf > 0 else 1.0
+    return min(1.0, max(0.0, pd))
 
 
 def _programa_factores_elr(db: Session, programa_id: int) -> tuple[list[float], int, float]:
