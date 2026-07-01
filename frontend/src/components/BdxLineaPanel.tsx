@@ -340,6 +340,7 @@ export default function BdxLineaPanel({ bdxId, linea, onSaved, onClose, onDelete
       onClose={onClose}
       onDelete={linea && !ro ? borrar : undefined}
       readOnly={ro}
+      wide
     >
       {readOnly && (
         <div className="hint" style={{ marginBottom: 10 }}>
