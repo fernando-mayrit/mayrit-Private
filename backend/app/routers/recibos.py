@@ -31,6 +31,7 @@ from ..models.maestras import (
     BinderSeccion,
     CierreContable,
     CuentaBancaria,
+    Lpan,
     Mercado,
     Poliza,
     PremiumNota,
@@ -1167,7 +1168,26 @@ def traspasar_premium(binder_id: int, payload: AccionPremium, db: Session = Depe
 
 @router.post("/binders/{binder_id}/premium/liquidar")
 def liquidar_premium(binder_id: int, payload: AccionPremium, db: Session = Depends(get_db)):
-    """🏦 Liquidar: paga a la compañía/Lloyd's la parte a liquidar (adeudada − comisión retenida)."""
+    """🏦 Liquidar: paga a la compañía/Lloyd's la parte a liquidar (adeudada − comisión retenida).
+    Requiere que los LPAN de ese Premium tengan fecha de **Liberado**; al liquidar, sella su fecha
+    de pago (=liquidación) con la fecha de la liquidación."""
+    # Los LPAN asociados a este Premium (mismo binder + periodo) deben estar liberados por Xchanging
+    # antes de poder liquidar al mercado. Los no liberados bloquean la liquidación.
+    lpans = db.scalars(select(Lpan).where(Lpan.binder_id == binder_id, Lpan.periodo == payload.periodo)).all()
+    sin_liberar = [lp for lp in lpans if lp.liberado is None]
+    if sin_liberar:
+        refs = ", ".join((lp.broker_ref2 or f"LPAN {lp.id}") for lp in sin_liberar[:6])
+        mas = f" y {len(sin_liberar) - 6} más" if len(sin_liberar) > 6 else ""
+        raise HTTPException(
+            status_code=409,
+            detail=f"No se puede liquidar: {len(sin_liberar)} LPAN de este Premium sin fecha de Liberado "
+                   f"({refs}{mas}). Cumpliméntala primero.",
+        )
+    # Al liquidar el Premium, marcar como pagados (fecha de liquidación) los LPAN que aún no lo estén.
+    for lp in lpans:
+        if lp.pagado is None:
+            lp.pagado = payload.fecha
+
     excl = _impuestos_locales(db, binder_id)
     rea = _es_reaseguro(db, binder_id)
     def setter(l):

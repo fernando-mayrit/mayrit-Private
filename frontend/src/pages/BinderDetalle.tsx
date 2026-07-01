@@ -664,7 +664,7 @@ export default function BinderDetalle({ binder }: { binder: Binder }) {
     pedirAccionPremium(periodo, "liquidacion", {
       titulo: "🏦 Liquidar a la compañía",
       verbo: <>Vas a <b>liquidar a la compañía / Lloyd's</b> el importe a liquidar de</>,
-      detalle: "Marca como liquidado y actualiza Liquidado / Pdte. Liquidación en los recibos.",
+      detalle: "Requiere que los LPAN de este mes tengan fecha de Liberado. Marca como liquidado, sella la fecha de pago en esos LPAN y actualiza los recibos.",
       confirmLabel: "🏦 Sí, liquidar",
       api: recibosApi.liquidarPremium,
     });
