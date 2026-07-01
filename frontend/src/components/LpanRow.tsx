@@ -56,11 +56,24 @@ export default function LpanRow({
   const brokeragePct = Number(r.gross_premium)
     ? `${fmtMiles((Number(r.brokerage) / Number(r.gross_premium)) * 100)} %` : "—";
 
-  // Generar LPAN: crea el registro, regenera el Word y deja elegir dónde guardarlo (diálogo nativo
-  // del navegador). Funciona igual en local y en la app desplegada (no depende del escritorio).
+  // Generar LPAN. En Lloyd's: crea el registro, regenera el Word y deja elegir dónde guardarlo
+  // (diálogo nativo del navegador). En NO-Lloyd's: solo crea el registro (control de pago), sin Word
+  // físico ni selector de carpeta.
   async function generar() {
-    // Pedir destino DENTRO del gesto del clic (antes de las llamadas de red); si no, el selector
-    // de carpeta caduca en entornos con latencia (Azure) y caería a una descarga silenciosa.
+    if (!esLloyds) {
+      setSaving(true);
+      try {
+        await lpanApi.generarLpan(binderId, { risk_code: r.risk_code, section, periodo, comision_pct: r.comision_pct });
+        await onChanged();
+      } catch (e) {
+        alert((e as Error).message);
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
+    // Lloyd's: pedir destino DENTRO del gesto del clic (antes de las llamadas de red); si no, el
+    // selector de carpeta caduca en entornos con latencia (Azure) y caería a una descarga silenciosa.
     const { handle, cancelado } = await pedirDestino(`${r.nombre_lpan}.docx`);
     if (cancelado) return;
     setSaving(true);
@@ -194,7 +207,9 @@ export default function LpanRow({
             onChange={(e) => setPagado(e.target.value)} /></td>
           <td style={{ whiteSpace: "nowrap" }}>
             <button className="btn-icono" title="Guardar" aria-label="Guardar" disabled={saving || busy || !dirty} onClick={guardar}>💾</button>{" "}
-            <button className="btn-icono" title="Descargar el Word del LPAN" aria-label="Descargar Word" disabled={busy || saving} onClick={descargarWord}>⬇️</button>{" "}
+            {esLloyds && (
+              <button className="btn-icono" title="Descargar el Word del LPAN" aria-label="Descargar Word" disabled={busy || saving} onClick={descargarWord}>⬇️</button>
+            )}{" "}
             <button className="btn-link" disabled={busy || saving}
               onClick={() => onBorrar({ id: lp.id, etiqueta: `${lp.broker_ref2 || lp.tipo} · Sección ${section} · ${r.risk_code} · ${periodo}` })}>Borrar</button>
           </td>
