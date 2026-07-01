@@ -921,6 +921,14 @@ Importados los binders de **reaseguro de caución** del programa **"Iberian-Cauc
 - Cuadro **"LPAN Procesados"** (`FinancieroPage.tsx`): ahora muestra los LPAN **con fecha SDD** que
   aún no se han liquidado (antes exigía estar liberados). SDD en columnas, Neto a UW por celda.
 
+### IBNR Bornhuetter-Ferguson — arreglo del %desarrollado (`triangulacion.py`)
+- El PI1723HEC (binder 43) daba **IBNR y ultimate NEGATIVOS**: su `%desarrollado` salía **186%**
+  porque la cola del triángulo por antigüedad tiene factores de desarrollo **< 1** (el incurrido baja
+  al liberar reservas) → `1/CDF` se disparaba > 100% → `(1 − %desar)` negativo.
+- Fix: `_pct_desarrollado` ahora **acota el resultado a [0, 1]** (en BF el patrón de desarrollo es por
+  definición ∈[0,1] y el IBNR nunca es negativo). Un binder sobre-desarrollado da IBNR 0 y
+  ultimate = incurrido. Corrige cualquier programa con ese efecto de cola decreciente.
+
 ### Recibos — listado (`RecibosPage.tsx`)
 - Pastillas por tipo: helper `tipoEs` + `baseCobro` (en Comisiones el "Cobro" se mide sobre
   `deduccion_total`, no `prima_adeudada`=0, que falseaba un "Cobrado" verde). `noAplica` por fase:
