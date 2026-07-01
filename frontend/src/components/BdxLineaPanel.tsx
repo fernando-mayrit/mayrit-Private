@@ -102,23 +102,24 @@ function g(id: string, titulo: string, cols: number, keys: string[]): LGrupo {
   return { id, titulo, cols, campos: keys.map((k) => ({ key: k, label: LABEL_DE[k] })) };
 }
 const DEFAULT_LAYOUT: LGrupo[] = [
-  g("ident", "Identificación", 2, ["reporting_period_start", "reporting_period_end", "section_no", "class_of_business", "risk_code", "type_of_insurance", "certificate_ref"]),
-  g("aseg", "Asegurado", 2, ["insured_name", "insured_id", "insured_address", "insured_province", "insured_postcode", "insured_country"]),
-  g("riesgo", "Riesgo", 2, ["risk_inception_date", "risk_expiry_date", "location_risk_province", "location_risk_country", "risk_transaction_type", "transaction_type", "effective_date_transaction", "expiry_date_transaction"]),
-  g("prima", "Prima", 2, ["original_currency", "gross_written_premium", "written_line_pct", "total_gwp_our_line", "fees", "commission_coverholder_pct", "commission_coverholder_amount", "total_taxes_levies", "total_gwp_including_tax", "net_premium_to_broker"]),
+  g("ident", "Identificación", 3, ["reporting_period_start", "reporting_period_end", "section_no", "class_of_business", "risk_code", "type_of_insurance", "certificate_ref"]),
+  g("aseg", "Asegurado", 3, ["insured_name", "insured_id", "insured_address", "insured_province", "insured_postcode", "insured_country"]),
+  g("riesgo", "Riesgo", 3, ["risk_inception_date", "risk_expiry_date", "location_risk_province", "location_risk_country", "risk_transaction_type", "transaction_type", "effective_date_transaction", "expiry_date_transaction"]),
+  g("prima", "Prima", 3, ["original_currency", "gross_written_premium", "written_line_pct", "total_gwp_our_line", "fees", "commission_coverholder_pct", "commission_coverholder_amount", "total_taxes_levies", "total_gwp_including_tax", "net_premium_to_broker"]),
   g("suma", "Suma asegurada / deducible", 2, ["sum_insured_total", "sum_insured_our_line", "deductible_amount", "deductible_basis"]),
   g("premium", "Premium", 2, ["incluido_en_premium", "premium_bdx"]),
-  g("imp1", "Impuesto 1", 2, ["tax1_jurisdiction", "tax1_type", "tax1_taxable_premium", "tax1_pct", "tax1_amount", "tax1_administered_by", "tax1_payable_by"]),
-  g("imp2", "Impuesto 2", 2, ["tax2_jurisdiction", "tax2_type", "tax2_taxable_premium", "tax2_pct", "tax2_amount", "tax2_administered_by", "tax2_payable_by"]),
-  g("imp3", "Impuesto 3", 2, ["tax3_jurisdiction", "tax3_type", "tax3_taxable_premium", "tax3_pct", "tax3_amount", "tax3_administered_by", "tax3_payable_by"]),
-  g("imp4", "Impuesto 4", 2, ["tax4_jurisdiction", "tax4_type", "tax4_taxable_premium", "tax4_pct", "tax4_amount", "tax4_administered_by", "tax4_payable_by"]),
-  g("plazos", "Plazos / Lloyd's / brokerage", 2, ["instalment_number", "number_of_instalments", "referred_to_london", "pct_for_lloyds", "policy_issuance_date", "policy_number_reinsured", "brokerage_pct", "brokerage_amount", "final_net_premium_uw"]),
-  g("identadd", "Identificación adicional", 2, ["coverholder_name", "broker_name", "broker_id", "yoa", "umr", "invoice_number"]),
-  g("control", "Control interno (cobro / pago)", 2, ["prima_cobrada", "ingresado", "premium_payment_date", "traspaso", "traspasado", "fecha_traspaso", "liquidado", "liquidado_uw", "fecha_liquidacion", "recibo", "notas"]),
+  g("imp1", "Impuesto 1", 3, ["tax1_jurisdiction", "tax1_type", "tax1_taxable_premium", "tax1_pct", "tax1_amount", "tax1_administered_by", "tax1_payable_by"]),
+  g("imp2", "Impuesto 2", 3, ["tax2_jurisdiction", "tax2_type", "tax2_taxable_premium", "tax2_pct", "tax2_amount", "tax2_administered_by", "tax2_payable_by"]),
+  g("imp3", "Impuesto 3", 3, ["tax3_jurisdiction", "tax3_type", "tax3_taxable_premium", "tax3_pct", "tax3_amount", "tax3_administered_by", "tax3_payable_by"]),
+  g("imp4", "Impuesto 4", 3, ["tax4_jurisdiction", "tax4_type", "tax4_taxable_premium", "tax4_pct", "tax4_amount", "tax4_administered_by", "tax4_payable_by"]),
+  g("plazos", "Plazos / Lloyd's / brokerage", 3, ["instalment_number", "number_of_instalments", "referred_to_london", "pct_for_lloyds", "policy_issuance_date", "policy_number_reinsured", "brokerage_pct", "brokerage_amount", "final_net_premium_uw"]),
+  g("identadd", "Identificación adicional", 3, ["coverholder_name", "broker_name", "broker_id", "yoa", "umr", "invoice_number"]),
+  g("control", "Control interno (cobro / pago)", 3, ["prima_cobrada", "ingresado", "premium_payment_date", "traspaso", "traspasado", "fecha_traspaso", "liquidado", "liquidado_uw", "fecha_liquidacion", "recibo", "notas"]),
 ];
 
-// v2: añade el grupo "Identificación adicional" (coverholder/broker/yoa/umr/factura) al layout por defecto.
-const LAYOUT_KEY = "mayrit.bdxlinea.layout.v2";
+// v3: grupos grandes a 3 columnas por defecto (el modal ya es ancho) → menos scroll. Sube la versión
+// para que a todos les entre el nuevo layout (los que tuvieran uno guardado v2 lo pierden, no los datos).
+const LAYOUT_KEY = "mayrit.bdxlinea.layout.v3";
 
 function cargarLayout(): LGrupo[] {
   try {
