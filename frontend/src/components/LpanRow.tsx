@@ -13,6 +13,7 @@ export default function LpanRow({
   periodo,
   binderId,
   busy,
+  esLloyds,
   onChanged,
   onBorrar,
 }: {
@@ -21,6 +22,7 @@ export default function LpanRow({
   periodo: string;
   binderId: number;
   busy: boolean;
+  esLloyds: boolean;   // en no-Lloyd's no hay FDO/signing: el LPAN no lo exige
   onChanged: () => void | Promise<void>;
   onBorrar: (l: { id: number; etiqueta: string }) => void;
 }) {
@@ -153,8 +155,8 @@ export default function LpanRow({
         ) : (
           <span style={{ whiteSpace: "nowrap" }}>
             <button className="btn-secondary btn-sm"
-              disabled={busy || saving || !r.cobrado || !r.signing_number}
-              title={!r.signing_number ? "Falta el signing number del FDO de este risk code"
+              disabled={busy || saving || !r.cobrado || (esLloyds && !r.signing_number)}
+              title={esLloyds && !r.signing_number ? "Falta el signing number del FDO de este risk code"
                 : !r.cobrado ? "El bloque no está cobrado" : "Generar el LPAN de este bloque"}
               onClick={generar}>
               Generar LPAN

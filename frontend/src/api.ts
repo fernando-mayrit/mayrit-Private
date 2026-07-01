@@ -162,6 +162,7 @@ export interface PeriodoLpan {
   secciones: SeccionLpan[];
 }
 export interface VistaLpan {
+  es_lloyds: boolean;   // binder con mercado Lloyd's → FDO+signing obligatorio; si no, LPAN sin FDO
   fdos: RiskCodeFdo[];
   periodos: PeriodoLpan[];
 }

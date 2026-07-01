@@ -300,6 +300,7 @@ class PeriodoLpan(BaseModel):
 
 
 class VistaLpan(BaseModel):
+    es_lloyds: bool = True            # binder con mercado Lloyd's → FDO+signing obligatorio; si no, LPAN sin FDO
     fdos: list[RiskCodeFdo]           # FDO/signing por risk code (transversal a periodos/secciones)
     periodos: list[PeriodoLpan]
 
@@ -509,7 +510,7 @@ def vista(binder_id: int, db: Session = Depends(get_db)):
             secciones.append(SeccionLpan(section=sec, risk_codes=rcs))
         periodos.append(PeriodoLpan(periodo=per, periodo_label=_periodo_label(per), secciones=secciones))
 
-    return VistaLpan(fdos=fdos_out, periodos=periodos)
+    return VistaLpan(es_lloyds=_binder_es_lloyds(b), fdos=fdos_out, periodos=periodos)
 
 
 class ExencionIn(BaseModel):
@@ -622,29 +623,43 @@ def borrar_fdo(fdo_id: int, db: Session = Depends(get_db)):
     return {"ok": True}
 
 
+def _binder_es_lloyds(binder) -> bool:
+    """True si algún mercado de las secciones del binder es de tipo 'Lloyds'. En binders Lloyd's el
+    proceso FDO+LPAN es obligatorio (hay signing number); en los demás (Compañía…) NO hay FDO ni
+    signing, y el LPAN se hace solo como control de pagos."""
+    for s in binder.secciones:
+        for sm in s.mercados:
+            if sm.mercado and (sm.mercado.tipo_mercado or "").strip().lower() == "lloyds":
+                return True
+    return False
+
+
 @router.post("/binders/{binder_id}/lpan", response_model=LpanRead)
 def generar_lpan(binder_id: int, payload: LpanCreate, db: Session = Depends(get_db)):
-    """Genera el LPAN de (risk code, periodo): exige FDO con signing y todas las líneas cobradas.
-    Nombra el LPAN (Broker Ref 2) y lo deja en estado «Work in Progress» con WP/Procesado/SDD por
-    rellenar. El documento Word se descarga aparte con GET /lpans/{id}/word."""
+    """Genera el LPAN de (risk code, periodo) con todas las líneas cobradas. En binders Lloyd's exige
+    FDO con signing; en los NO-Lloyd's no hay FDO (el LPAN es solo control de pago). Nombra el LPAN
+    (Broker Ref 2) y lo deja «Work in Progress». El Word se descarga aparte con GET /lpans/{id}/word."""
     b = _binder_o_404(binder_id, db)
     rc, per = (payload.risk_code or "").strip(), (payload.periodo or "").strip()
     sec = int(payload.section or 0)
     comm = _d(payload.comision_pct).quantize(Decimal("0.01"))
     tipo = payload.tipo or "PM"
+    es_lloyds = _binder_es_lloyds(b)
     f = db.scalar(select(Fdo).where(Fdo.binder_id == binder_id, Fdo.section == sec, Fdo.risk_code == rc))
-    if f is None:
-        raise HTTPException(status_code=409, detail=f"Genera antes el FDO del risk code {rc} (sección {sec}).")
-    if not f.signing_number:
-        raise HTTPException(status_code=409, detail=f"El FDO del risk code {rc} (sección {sec}) aún no tiene signing number.")
+    if es_lloyds:
+        if f is None:
+            raise HTTPException(status_code=409, detail=f"Genera antes el FDO del risk code {rc} (sección {sec}).")
+        if not f.signing_number:
+            raise HTTPException(status_code=409, detail=f"El FDO del risk code {rc} (sección {sec}) aún no tiene signing number.")
     grupos = _grupos_premium(db, binder_id)
     g = grupos.get((per, sec, rc, comm))
     if not g or g["num"] == 0:
         raise HTTPException(status_code=404, detail=f"No hay líneas de Premium para {rc} (sección {sec}, comisión {comm}%) en {per}.")
     if g["cobr"] != g["num"]:
         raise HTTPException(status_code=409, detail=f"Hay líneas sin cobrar en {rc} {per}: no se puede generar el LPAN.")
-    if db.scalar(select(Lpan).where(Lpan.fdo_id == f.id, Lpan.periodo == per, Lpan.section == sec,
-                                    Lpan.tipo == tipo, Lpan.comision_pct == comm)):
+    # Unicidad por (binder, sección, risk code, periodo, tipo, comisión) — vale con y sin FDO.
+    if db.scalar(select(Lpan).where(Lpan.binder_id == binder_id, Lpan.section == sec, Lpan.risk_code == rc,
+                                    Lpan.periodo == per, Lpan.tipo == tipo, Lpan.comision_pct == comm)):
         raise HTTPException(status_code=409, detail=f"Ya existe un LPAN {tipo} para {rc} sección {sec} {per} (comisión {comm}%).")
 
     # Si el risk code tiene varias comisiones en ese mes, el nombre lleva el sufijo de comisión.
@@ -652,7 +667,7 @@ def generar_lpan(binder_id: int, payload: LpanCreate, db: Session = Depends(get_
     nombre = _nombre_lpan(b.agreement_number, per, sec, rc, comm if varias else None)
     moneda = b.moneda or "EUR"
     lp = Lpan(
-        fdo_id=f.id, binder_id=binder_id, risk_code=rc, section=sec, periodo=per, tipo=tipo, comision_pct=comm,
+        fdo_id=f.id if f else None, binder_id=binder_id, risk_code=rc, section=sec, periodo=per, tipo=tipo, comision_pct=comm,
         num_lineas=g["num"], gross_premium=g["gross"], brokerage=g["brk"], tax=g["tax"], net_premium=g["net"],
         broker_ref1=b.agreement_number, broker_ref2=nombre, moneda=moneda,
         work_package=None, fecha=None, sdd=_sdd_de(per), estado="Work in Progress",

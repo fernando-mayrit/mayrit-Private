@@ -1526,8 +1526,8 @@ export default function BinderDetalle({ binder }: { binder: Binder }) {
               genera el LPAN de cada bloque cobrado (importes en € · GWP our line, comisiones, IPT y neto a UW).
             </p>
 
-            {/* ── Panel FDO por sección y risk code (según lo declarado en el binder) ── */}
-            {(() => {
+            {/* ── Panel FDO por sección y risk code (solo binders Lloyd's; en Compañía no hay FDO) ── */}
+            {lpanData.es_lloyds && (() => {
               const fdosCompletos = lpanData.fdos.length > 0 && lpanData.fdos.every((rc) =>
                 rc.fdo && rc.fdo.signing_number && rc.fdo.work_package && rc.fdo.fecha_proceso && rc.fdo.work_package_status);
               const fdoOpen = fdoAbierto ?? !fdosCompletos; // al completarse todos, se repliega solo
@@ -1632,6 +1632,7 @@ export default function BinderDetalle({ binder }: { binder: Binder }) {
                             periodo={p.periodo}
                             binderId={binder.id}
                             busy={lpanBusy}
+                            esLloyds={lpanData.es_lloyds}
                             onChanged={cargarLpan}
                             onBorrar={setLpanABorrar}
                           />
