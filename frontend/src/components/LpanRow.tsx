@@ -187,7 +187,7 @@ export default function LpanRow({
             disabled={!bloqueado || !!lp.liberado}
             title={lp.liberado ? "Ya cumplimentado" : !bloqueado ? "Editable cuando el LPAN está Completed" : undefined}
             onChange={(e) => setLiberado(e.target.value)} /></td>
-          {/* Pagado: editable solo si ya hay fecha de Liberado y AÚN no se ha cumplimentado. */}
+          {/* Liquidado (campo `pagado`): editable solo si ya hay fecha de Liberado y AÚN no se ha cumplimentado. */}
           <td><input type="date" className="inp-fecha" value={pagado}
             disabled={!lp.liberado || !!lp.pagado}
             title={lp.pagado ? "Ya cumplimentado" : !lp.liberado ? "Editable cuando hay fecha de Liberado" : undefined}

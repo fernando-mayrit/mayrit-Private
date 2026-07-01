@@ -1620,7 +1620,7 @@ export default function BinderDetalle({ binder }: { binder: Binder }) {
                           <th className="num">IPT</th><th className="num">Net to UW</th>
                           <th>Cobrado</th><th>LPAN</th>
                           <th>WP</th><th>Procesado</th><th>SDD</th><th>WP Status</th>
-                          <th>Liberado</th><th>Pagado</th><th></th>
+                          <th>Liberado</th><th>Liquidado</th><th></th>
                         </tr>
                       </thead>
                       <tbody>
