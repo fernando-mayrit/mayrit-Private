@@ -639,7 +639,11 @@ export default function BinderDetalle({ binder }: { binder: Binder }) {
           await cfg.api(binder.id, periodo, fecha);
           await cargar();
         } catch (e) {
-          setError((e as Error).message);
+          const msg = (e as Error).message;
+          setError(msg);
+          // Aviso imposible de no ver: el error del banner queda arriba y puede caer fuera de vista
+          // si la pestaña Premium está scrolleada (p. ej. "no se puede liquidar: LPAN sin liberar").
+          alert(msg);
         }
       },
     });
