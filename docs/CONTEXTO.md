@@ -869,6 +869,58 @@ Importados los binders de **reaseguro de caución** del programa **"Iberian-Cauc
   incrementa un `navKey` que es la `key` del `<main>` → re-pulsar un ítem del menú REMONTA la página
   (resetea su estado). Quitada la prop `onBack` de `BinderDetalle`.
 
+---
+
+## Sesión 01/07/2026 (equipo "ferna") — Lloyd's vs Compañía en LPAN, ciclo Liberado→Liquidado, correcciones de LPAN y más recuperación de datos
+
+### Lloyd's vs Compañía (regla de negocio nueva; ver memoria `mayrit-lloyds-vs-compania`)
+- Un binder es **Lloyd's** si algún mercado de sus secciones tiene `mercados.tipo_mercado='Lloyds'`
+  (`Binder.secciones → SeccionMercado.mercado.tipo_mercado`). Los NO-Lloyd's (Compañía: LMIEITOO
+  45/49/57, MA0121HEL 34, MA0222HEL 36, MA0326MYR 61, SB0226IBE 63) **no tienen FDO ni signing
+  number**; el LPAN se hace solo como **control de pago**.
+- Backend (`routers/lpan.py`): helper `_binder_es_lloyds`. `generar_lpan` solo exige FDO+signing si
+  es Lloyd's (si no, `fdo_id=None`; unicidad por binder+sección+risk_code+periodo+tipo+comisión). La
+  vista LPAN expone `es_lloyds`.
+- Frontend: en no-Lloyd's se **oculta el panel FDO** y "Generar LPAN" no exige signing; además en
+  no-Lloyd's "Generar LPAN" **solo crea el registro** (sin Word ni selector de carpeta) y se oculta el
+  botón ⬇️ de descargar Word.
+- **Reencuadra pérdidas**: muchos campos vacíos en esos 7 binders (`pct_for_lloyds`, `risk_code`,
+  jurisdicciones fiscales, FDO/signing) NO son pérdidas, es que no aplican a Compañía.
+
+### Liquidar Premium ↔ LPAN (Liberado → Liquidado)
+- `liquidar_premium` (`routers/recibos.py`): antes de liquidar, exige que **todos los LPAN** de ese
+  (binder, periodo) tengan fecha de **Liberado**; si alguno no, 409 con la lista. Al liquidar, sella
+  su **fecha de pago** (`Lpan.pagado`, que es la "fecha de liquidación") en los que no la tuvieran.
+- El campo `pagado` del LPAN = **"fecha de liquidación"** (columna renombrada de "Pagado" a
+  "Liquidado" en la tabla LPAN; solo etiqueta).
+- El error de las acciones del Premium (cobrar/liquidar/traspasar) sale también como **alert** (el
+  banner superior se pierde si la pestaña Premium está scrolleada → parecía que "dejaba" liquidar).
+
+### Corregir LPAN desde la línea de BDX
+- Nuevo bloque **LPAN** en el modal de la línea (`LineaLpan.tsx`): carga el LPAN al que pertenece la
+  línea (`GET /bdx-lineas/{id}/lpan`; por binder+sección+risk_code+mes Premium+comisión, o el único
+  del grupo) y permite corregir Signing, WP, Procesado, SDD, WP Status, Liberado y Liquidado (afecta
+  al LPAN completo). `LpanUpdate` acepta ahora `signing_number`.
+- Pestaña LPAN (`LpanRow`): Liberado y Liquidado **editables aunque ya tengan fecha** (para corregir).
+
+### UI del modal de línea de BDX y tabla
+- Modal **ancho** (`wide`) y layout por defecto a **3 columnas** en los grupos grandes (clave
+  `mayrit.bdxlinea.layout.v3`) → menos scroll. "✎ Diseñar formulario" ahora visible también en modo
+  consulta.
+- **Clic en una fila del BDX** la deja **sombreada** (`fila-sel`, azul) sin abrir el modal (el modal
+  se abre con ✏️) → no se pierde la fila al scrollear a la derecha.
+
+### Recuperación de datos (continuación)
+- **section_no** perdido en subidas recientes por Excel (encabezado no mapeado): recuperado deduciendo
+  la sección del **risk code** con el propio mapa del binder — PI2625HEC (54) +190, PI2124DAX (51),
+  PI3126DAX (60). MA0121HEL (34) no se puede (sus líneas tienen también risk_code vacío).
+- Auditoría completa de cobertura hecha; los huecos que quedan son en su mayoría campos que no aplican
+  (Compañía) o decididos como descartables (ver `mayrit-perdida-datos-importador`).
+
+### Financiero
+- Cuadro **"LPAN Procesados"** (`FinancieroPage.tsx`): ahora muestra los LPAN **con fecha SDD** que
+  aún no se han liquidado (antes exigía estar liberados). SDD en columnas, Neto a UW por celda.
+
 ### Recibos — listado (`RecibosPage.tsx`)
 - Pastillas por tipo: helper `tipoEs` + `baseCobro` (en Comisiones el "Cobro" se mide sobre
   `deduccion_total`, no `prima_adeudada`=0, que falseaba un "Cobrado" verde). `noAplica` por fase:
