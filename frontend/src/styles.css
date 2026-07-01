@@ -929,6 +929,9 @@ tr.fila-inactiva td { opacity: 0.55; }
 .bdx-tabla th.col-lock, .bdx-tabla td.col-lock { width: 22px; padding-left: 2px; padding-right: 2px; }
 .bdx-tabla tr.fila-bloqueada { background: #fbeae4; }
 .bdx-tabla tr.fila-bloqueada:hover { background: #f6ddd4; }
+/* Fila seleccionada (clic): se queda sombreada para identificarla al scrollear la tabla a la derecha */
+.bdx-tabla tr.fila-sel > td { background: #d6e6ff; }
+.bdx-tabla tr.fila-sel:hover > td { background: #c7dcff; }
 /* BDX: columna de acciones por línea (botón editar/ver a la derecha) */
 .bdx-tabla th.col-acciones, .bdx-tabla td.col-acciones { width: 34px; padding-left: 2px; padding-right: 2px; }
 .btn-icono { background: none; border: none; cursor: pointer; font-size: 14px; line-height: 1; padding: 2px 4px; border-radius: 4px; }

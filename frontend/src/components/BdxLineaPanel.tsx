@@ -357,7 +357,7 @@ export default function BdxLineaPanel({ bdxId, linea, onSaved, onClose, onDelete
           )}
         </div>
       )}
-      <div className="diseno-barra" style={ro ? { display: "none" } : undefined}>
+      <div className="diseno-barra">
         <button type="button" className={"btn-secondary btn-sm" + (diseno ? " sel" : "")} onClick={() => setDiseno((d) => !d)}>
           {diseno ? "✓ Diseñando" : "✎ Diseñar formulario"}
         </button>

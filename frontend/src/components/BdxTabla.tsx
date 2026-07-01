@@ -144,6 +144,7 @@ export default function BdxTabla({
 }) {
   const [visibles, setVisibles] = useState<string[]>(cargarVisibles);
   const [sort, setSort] = useState<SortState>(cargarSort);
+  const [selId, setSelId] = useState<number | null>(null);   // fila sombreada (para no perderla al scrollear a la derecha)
   const [filtros, setFiltros] = useState<Record<string, Set<string>>>({});
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const [filtro, setFiltro] = useState<{ key: string; x: number; y: number } | null>(null);
@@ -391,7 +392,9 @@ export default function BdxTabla({
               return (
               <tr
                 key={l.id}
-                className={bloq ? "fila-bloqueada" : undefined}
+                className={(bloq ? "fila-bloqueada" : "") + (selId === l.id ? " fila-sel" : "")}
+                onClick={() => setSelId(l.id)}
+                style={{ cursor: "pointer" }}
               >
                 {bloqueada && (
                   <td className="celda-centro col-lock" title={bloq ? "Periodo bloqueado (solo consulta)" : ""}>
