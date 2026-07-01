@@ -84,8 +84,9 @@ function LpanProcesadosCard({ lpans }: { lpans: LpanGlobal[] }) {
   const mapa = new Map<string, Map<string, number>>();   // ref -> (sdd -> neto)
   const sdds = new Map<string, number>();                // etiqueta SDD -> ms (para ordenar)
   for (const l of lpans) {
-    // Solo LPAN liberados pero AÚN no pagados (y con SDD, que es la columna).
-    if (!l.sdd || !l.liberado || l.pagado) continue;
+    // Procesado = tiene SDD (la columna). Se muestran los que aún NO se han liquidado (pagado),
+    // estén liberados o no.
+    if (!l.sdd || l.pagado) continue;
     const ref = l.poliza_numero ?? l.binder_umr ?? "—";
     const label = fmtFechaES(l.sdd);
     const ms = new Date(l.sdd).getTime();
@@ -103,9 +104,9 @@ function LpanProcesadosCard({ lpans }: { lpans: LpanGlobal[] }) {
 
   return (
     <div className="fin-card">
-      <h3>LPAN Procesados <span className="hint" style={{ fontWeight: 400 }}>(Neto a UW por SDD · liberados sin pagar)</span></h3>
+      <h3>LPAN Procesados <span className="hint" style={{ fontWeight: 400 }}>(Neto a UW por SDD · con SDD, sin liquidar)</span></h3>
       {filas.length === 0 ? (
-        <div className="hint">Sin LPAN liberados pendientes de pago.</div>
+        <div className="hint">Sin LPAN procesados pendientes de liquidar.</div>
       ) : (
         <div className="fin-scroll">
           <table className="compacto">
