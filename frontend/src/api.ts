@@ -229,9 +229,11 @@ export const lpanApi = {
     request(`/binders/${binderId}/lpan/exencion`, { method: "POST", body: JSON.stringify(data) }),
   quitarExencion: (binderId: number, periodo: string, section: number, risk_code: string, comision_pct: number | string) =>
     request(`/binders/${binderId}/lpan/exencion?periodo=${encodeURIComponent(periodo)}&section=${section}&risk_code=${encodeURIComponent(risk_code)}&comision_pct=${comision_pct}`, { method: "DELETE" }),
-  actualizarLpan: (lpanId: number, datos: { work_package?: string | null; fecha?: string | null; sdd?: string | null; estado?: string | null; liberado?: string | null; pagado?: string | null }) =>
+  actualizarLpan: (lpanId: number, datos: { work_package?: string | null; fecha?: string | null; sdd?: string | null; estado?: string | null; liberado?: string | null; pagado?: string | null; signing_number?: string | null }) =>
     request<LpanRegistro>(`/lpan/${lpanId}`, { method: "PUT", body: JSON.stringify(datos) }),
   borrarLpan: (lpanId: number) => request(`/lpan/${lpanId}`, { method: "DELETE" }),
+  // LPAN al que pertenece una línea del Risk (o null). Para ver/corregir el LPAN desde el modal de la línea.
+  deLinea: (lineId: number) => request<LpanRegistro | null>(`/bdx-lineas/${lineId}/lpan`),
   // Descarga el Excel BDX de un periodo (blob + nombre propuesto), para guardarlo eligiendo carpeta.
   bdxExcel: async (binderId: number, periodo: string): Promise<{ blob: Blob; filename: string }> => {
     const res = await fetch(`${BASE}/binders/${binderId}/lpan/bdx-excel?periodo=${encodeURIComponent(periodo)}`);

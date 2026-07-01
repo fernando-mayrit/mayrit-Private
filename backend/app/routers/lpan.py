@@ -359,6 +359,7 @@ class LpanUpdate(BaseModel):
     estado: str | None = None
     liberado: dt.date | None = None
     pagado: dt.date | None = None
+    signing_number: str | None = None
 
 
 # ──────────────────────────── Helpers ────────────────────────────
@@ -700,10 +701,34 @@ def descargar_lpan_word(lpan_id: int, db: Session = Depends(get_db)):
     )
 
 
+@router.get("/bdx-lineas/{line_id}/lpan", response_model=LpanRead | None)
+def lpan_de_linea(line_id: int, db: Session = Depends(get_db)):
+    """LPAN al que pertenece una línea del Risk (por binder + sección + risk code + mes de Premium +
+    comisión total), o null si no lo tiene. Sirve para ver/corregir el LPAN desde el modal de la línea."""
+    l = db.get(BdxLinea, line_id)
+    if l is None:
+        raise HTTPException(status_code=404, detail=f"Línea {line_id} no encontrada")
+    bdx = db.get(Bdx, l.bdx_id)
+    if bdx is None or bdx.binder_id is None or not l.premium_bdx or not (l.risk_code or "").strip():
+        return None
+    per = l.premium_bdx.strftime("%Y-%m")
+    sec = int(l.section_no) if l.section_no is not None else 0
+    rc = (l.risk_code or "").strip()
+    lp = db.scalar(select(Lpan).where(
+        Lpan.binder_id == bdx.binder_id, Lpan.section == sec, Lpan.risk_code == rc,
+        Lpan.periodo == per, Lpan.comision_pct == _comm_pct(l)))
+    if lp is None:
+        # Si solo hay un LPAN para ese (binder, sección, risk code, mes), usarlo (sin distinguir comisión).
+        lps = db.scalars(select(Lpan).where(
+            Lpan.binder_id == bdx.binder_id, Lpan.section == sec, Lpan.risk_code == rc, Lpan.periodo == per)).all()
+        lp = lps[0] if len(lps) == 1 else None
+    return LpanRead.model_validate(lp, from_attributes=True) if lp else None
+
+
 @router.put("/lpan/{lpan_id}", response_model=LpanRead)
 def actualizar_lpan(lpan_id: int, payload: LpanUpdate, db: Session = Depends(get_db)):
     """Edita los campos de seguimiento del LPAN: Work Package, Procesado, SDD, estado (WP Status),
-    Liberado y Pagado."""
+    Liberado, Pagado y signing number."""
     lp = db.get(Lpan, lpan_id)
     if lp is None:
         raise HTTPException(status_code=404, detail=f"LPAN {lpan_id} no encontrado")

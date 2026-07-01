@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import { bdxApi } from "../api";
 import type { BdxLinea, BdxLineaWrite } from "../types";
 import FormPanel from "./FormPanel";
+import LineaLpan from "./LineaLpan";
 import NumberInput from "./NumberInput";
 
 type Tipo = "text" | "num" | "int" | "date" | "bool" | "area";
@@ -461,6 +462,16 @@ export default function BdxLineaPanel({ bdxId, linea, onSaved, onClose, onDelete
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* LPAN al que pertenece esta línea (si lo hay): permite corregir sus fechas/estado desde aquí. */}
+      {!diseno && linea && (
+        <div className="bdx-grupo">
+          <div className="grupo-cab">
+            <h3 style={{ margin: 0 }}>LPAN</h3>
+          </div>
+          <LineaLpan lineId={linea.id} readOnly={ro} />
         </div>
       )}
 

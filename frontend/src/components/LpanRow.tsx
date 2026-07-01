@@ -195,15 +195,15 @@ export default function LpanRow({
               {statusOpts.map((s) => <option key={s} value={s}>{s}</option>)}
             </select>
           </td>
-          {/* Liberado: editable solo si el LPAN está Completed y AÚN no se ha cumplimentado. */}
+          {/* Liberado: editable con el LPAN Completed (aunque ya tenga fecha, para poder corregirla). */}
           <td><input type="date" className="inp-fecha" value={liberado}
-            disabled={!bloqueado || !!lp.liberado}
-            title={lp.liberado ? "Ya cumplimentado" : !bloqueado ? "Editable cuando el LPAN está Completed" : undefined}
+            disabled={!bloqueado}
+            title={!bloqueado ? "Editable cuando el LPAN está Completed" : "Fecha de liberado (corregible)"}
             onChange={(e) => setLiberado(e.target.value)} /></td>
-          {/* Liquidado (campo `pagado`): editable solo si ya hay fecha de Liberado y AÚN no se ha cumplimentado. */}
+          {/* Liquidado (campo `pagado`): editable si ya hay fecha de Liberado (aunque ya tenga fecha, para corregirla). */}
           <td><input type="date" className="inp-fecha" value={pagado}
-            disabled={!lp.liberado || !!lp.pagado}
-            title={lp.pagado ? "Ya cumplimentado" : !lp.liberado ? "Editable cuando hay fecha de Liberado" : undefined}
+            disabled={!lp.liberado}
+            title={!lp.liberado ? "Editable cuando hay fecha de Liberado" : "Fecha de liquidación (corregible)"}
             onChange={(e) => setPagado(e.target.value)} /></td>
           <td style={{ whiteSpace: "nowrap" }}>
             <button className="btn-icono" title="Guardar" aria-label="Guardar" disabled={saving || busy || !dirty} onClick={guardar}>💾</button>{" "}
