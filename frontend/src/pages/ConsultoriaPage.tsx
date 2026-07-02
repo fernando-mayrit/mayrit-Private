@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { consultoriaApi, crud, type ConsultoriaContrato, type ConsultoriaCobro } from "../api";
+import { consultoriaApi, recibosApi, crud, type ConsultoriaContrato, type ConsultoriaCobro } from "../api";
 import type { Productor, CuentaBancaria } from "../types";
 import { fmtMiles, fmtFechaES } from "../format";
+import { pedirDestino, guardarEn } from "../download";
 import PageHeader from "../components/PageHeader";
 import FormPanel from "../components/FormPanel";
 import ConfirmDialog from "../components/ConfirmDialog";
@@ -177,12 +178,21 @@ export default function ConsultoriaPage() {
     });
   }
   const [facturaMsg, setFacturaMsg] = useState<string | null>(null);
-  async function generarFactura(periodo: string) {
+  async function generarFactura(co: ConsultoriaCobro) {
     if (!cobrosDe) return;
-    setBusyCobro(periodo); setFacturaMsg(null);
+    // Se pide el destino DENTRO del gesto del clic (antes de cualquier await de red) para no perder
+    // la "activación transitoria" que exige el selector de carpeta en Azure (ver download.ts).
+    const cliente = (cobrosDe.productor_nombre || "Cliente").split(",")[0].trim();
+    const { handle, cancelado } = await pedirDestino(`Factura ${cliente} ${co.periodo}.docx`);
+    if (cancelado) return;
+    setBusyCobro(co.periodo); setFacturaMsg(null);
     try {
-      const res = await consultoriaApi.generarFactura(cobrosDe.id, periodo);
-      setFacturaMsg(`Factura ${res.numero} generada: ${res.archivo}`);
+      // Crea el recibo si falta y luego descarga el Word (funciona igual en local y en Azure; el
+      // servidor ya no escribe en disco). El selector recuerda la carpeta de Facturas Emitidas.
+      const res = await consultoriaApi.generarFactura(cobrosDe.id, co.periodo);
+      const { blob, filename } = await recibosApi.word(res.recibo_id);
+      await guardarEn(handle, blob, filename);
+      setFacturaMsg(`Factura ${res.numero} generada y descargada (${filename}). Guárdala en la carpeta de Facturas Emitidas.`);
       setCobros((await consultoriaApi.cobros(cobrosDe.id)).cobros);
       await cargar();
     } catch (e) { setError((e as Error).message); } finally { setBusyCobro(null); }
@@ -351,7 +361,8 @@ export default function ConsultoriaPage() {
         >
           <p className="hint" style={{ marginBottom: 10 }}>
             Genera el recibo de cada cobro cuando toque (tipo «Consultoría», Base + IVA). «Factura»
-            crea el recibo si falta y deja el Word listo para enviar en la carpeta de Facturas Emitidas.
+            crea el recibo si falta y descarga el Word listo para enviar (elige/guarda en la carpeta
+            de Facturas Emitidas; el navegador recuerda la última).
           </p>
           {facturaMsg && <div className="ok" style={{ marginBottom: 8, wordBreak: "break-all" }}>📄 {facturaMsg}</div>}
           <table className="compacto" style={{ width: "100%" }}>
@@ -376,7 +387,7 @@ export default function ConsultoriaPage() {
                           {busyCobro === co.periodo ? "…" : "Generar"}
                         </button>}
                     {" "}
-                    <button className="btn-link btn-sm" disabled={busyCobro === co.periodo} onClick={() => generarFactura(co.periodo)}>
+                    <button className="btn-link btn-sm" disabled={busyCobro === co.periodo} onClick={() => generarFactura(co)}>
                       📄 Factura
                     </button>
                   </td>

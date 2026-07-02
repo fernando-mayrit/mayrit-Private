@@ -368,27 +368,6 @@ def _construir_factura_doc(*, numero_recibo: str, cliente: str, cif: str, fecha_
     return d
 
 
-def _generar_factura_docx(c: ConsultoriaContrato, r: Recibo, fecha_fact: dt.date,
-                          pago_n: int, pago_t: int, cta: CuentaBancaria | None) -> str:
-    """Genera la factura desde el CONTRATO y la ARCHIVA en
-    <facturas_dir>\\<año>\\Facturas Emitidas\\<Cliente>\\<numero> <Cliente> <Mes>.docx."""
-    prod = c.productor
-    base = Decimal(c.importe or 0)
-    cliente = prod.nombre if prod else ""
-    d = _construir_factura_doc(
-        numero_recibo=r.numero or "", cliente=cliente, cif=(prod.cif if prod else "") or "",
-        fecha_fact=fecha_fact, frecuencia=c.frecuencia or "", pago_n=pago_n, pago_t=pago_t,
-        moneda=c.moneda or "EUR", base=base, impuestos_porc=c.impuestos_porc or 0,
-        iva=_iva(c, base), cta=cta,
-    )
-    corto = _nombre_corto(cliente)
-    carpeta = os.path.join(settings.facturas_dir, str(fecha_fact.year), "Facturas Emitidas", corto)
-    os.makedirs(carpeta, exist_ok=True)
-    destino = os.path.join(carpeta, f"{r.numero} {corto} {MESES_ES[fecha_fact.month]}.docx")
-    d.save(destino)
-    return destino
-
-
 def _a_fecha(v) -> dt.date | None:
     """Acepta date o texto ISO ('YYYY-MM-DD'); devuelve date o None."""
     if isinstance(v, dt.date):
@@ -454,13 +433,13 @@ def factura_docx_para_recibo(db: Session, r: Recibo) -> tuple[bytes, str]:
 
 @router.post("/consultoria/{contrato_id}/cobros/generar-factura", status_code=201)
 def generar_factura(contrato_id: int, payload: GenerarCobro, db: Session = Depends(get_db)):
-    """Genera (si falta) el recibo del cobro y produce el Word de la factura, listo para enviar.
-    Devuelve la ruta del documento."""
+    """Genera (si falta) el recibo del cobro y devuelve su id. La factura Word se descarga aparte con
+    `GET /recibos/{id}/word`: así funciona igual en local y en Azure (el navegador guarda el archivo
+    donde el usuario elija), sin escribir en el disco efímero del servidor."""
     c = db.get(ConsultoriaContrato, contrato_id)
     if c is None:
         raise HTTPException(status_code=404, detail=f"Contrato {contrato_id} no encontrado")
-    fechas = _fechas_cobro(c)
-    fecha = next((f for f in fechas if f.strftime("%Y-%m") == payload.periodo), None)
+    fecha = next((f for f in _fechas_cobro(c) if f.strftime("%Y-%m") == payload.periodo), None)
     if fecha is None:
         raise HTTPException(status_code=422, detail=f"El periodo {payload.periodo} no es un cobro de este contrato.")
 
@@ -469,17 +448,4 @@ def generar_factura(contrato_id: int, payload: GenerarCobro, db: Session = Depen
         r = _crear_recibo_cobro(db, c, fecha, payload.periodo)
         db.commit()
         db.refresh(r)
-
-    # Cuenta para el bloque bancario: la del contrato; si no, una de Gastos (honorarios) activa.
-    cta = c.cuenta_bancaria
-    if cta is None:
-        cta = db.scalar(
-            select(CuentaBancaria).where(CuentaBancaria.activa.is_(True), CuentaBancaria.categoria == "Gastos")
-            .order_by(CuentaBancaria.id)
-        )
-
-    fecha_fact = _fecha_facturacion(c, fecha)
-    pago_n = next((i + 1 for i, f in enumerate(fechas) if f.strftime("%Y-%m") == payload.periodo), 1)
-    pago_t = len(fechas)
-    ruta = _generar_factura_docx(c, r, fecha_fact, pago_n, pago_t, cta)
-    return {"recibo_id": r.id, "numero": r.numero, "periodo": r.periodo, "archivo": ruta}
+    return {"recibo_id": r.id, "numero": r.numero, "periodo": r.periodo}

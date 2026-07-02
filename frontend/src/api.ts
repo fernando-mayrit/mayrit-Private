@@ -376,7 +376,7 @@ export const consultoriaApi = {
   generarCobro: (id: number, periodo: string) =>
     request(`/consultoria/${id}/cobros/generar`, { method: "POST", body: JSON.stringify({ periodo }) }),
   generarFactura: (id: number, periodo: string) =>
-    request<{ recibo_id: number; numero: string; periodo: string; archivo: string }>(
+    request<{ recibo_id: number; numero: string; periodo: string }>(
       `/consultoria/${id}/cobros/generar-factura`, { method: "POST", body: JSON.stringify({ periodo }) }),
 };
 
