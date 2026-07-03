@@ -1027,3 +1027,43 @@ Antes la subida de Risk leía **siempre la primera hoja** y hacía dedup silenci
   la **ruta del Excel** (o la lista de "No reconocidas") para añadir los alias exactos. Mientras, los
   datos NO se pierden (van a `extra`).
 - Confirmar en pantalla el **Justificante** con un apunte concreto ≥10/06/2026.
+
+---
+
+## Sesión 03/07/2026 (equipo "ferna") — Fecha contable siempre día 1, mercado en recibos de Comisiones y de Myrtea
+
+### Fecha contable = SIEMPRE día 1 del mes (regla de negocio)
+La `fecha_contable` **imputa el recibo a un MES** (cierre contable): el día debe ser **siempre 1**. El
+mes se elige libre (el del periodo o, si está cerrado, otro abierto), pero el día no.
+- **Validador en el modelo** `Recibo` (`models/maestras.py`): `@validates("fecha_contable")` normaliza
+  a `.replace(day=1)` en TODA alta/edición (emisión de binder, póliza OM, comisiones, consultoría y la
+  edición manual). Un único punto; no hace falta migración.
+- **Editor de recibos** (`ReciboModal.tsx`): **nuevo campo "Fecha Contable"** junto a las fechas del
+  periodo del recibo; el input fuerza el día 1 al vuelo (`value.slice(0,8)+"01"`) para que se vea al
+  instante. Solo en el editor (no en el listado, por decisión del usuario).
+- **Datos corregidos:** 6 recibos con día ≠ 1 → día 1 (mismo mes); y 3 recibos de 2026 con el mes mal
+  (0100, 0101 → mayo/abril; 0109 → mayo) reubicados a su **mes de periodo** (mayo 2026 estaba abierto,
+  no había motivo para tenerlos en junio). Convención mayoritaria: `fecha_contable` mes = mes del periodo.
+
+### Mercado en los recibos de Comisiones (Iberian)
+Los recibos de comisiones de **Iberian** deben llevar `mercado`/`nombre_mercado` = **`Iberian Insurance
+Group, S.L.`** (con coma; ojo: en la maestra Mercados figura **sin** coma, `Iberian Insurance Group S.L.`,
+tipo *Agencia de Suscripción*). No se genera-ban con mercado → salían vacíos.
+- **Código** (`routers/comisiones.py`): constante `MERCADO_IBERIAN` aplicada en los dos `Recibo(...)`
+  (endpoints *preparar* y *reparto*).
+- **Datos:** backfill de **60** recibos comisiones Iberian sin mercado (incl. 2026-0103). NO se tocan los
+  de **Insurart (3)** ni **WiiRe (1)** — son de otra fuente (históricos migrados; WiiRe ya tiene el suyo).
+- **PENDIENTE:** decidir el mercado de los **3 recibos de comisiones de Insurart** (siguen sin mercado).
+
+### Mercado del binder Myrtea (id 61 = B1634MA0326MYR)
+Sus recibos deben llevar el **nombre canónico** del mercado, no el alias. Estaban descuadrados: uno con
+`Axeria` (alias) y otro con `Axeria Iard, S.L.` (nombre). Unificados a **`Axeria Iard, S.L.`** (el helper
+`_mercado_nombre` resuelve alias→nombre).
+
+### Tools nuevos (mantenimiento, DRY-RUN por defecto, respetan `Contabilizado`)
+- `tools/normalizar_fecha_contable_dia1.py` — fecha_contable → día 1.
+- `tools/unificar_mercado_recibos_binder.py --binder <UMR>` — mercado de recibos → nombre canónico.
+- `tools/backfill_mercado_comisiones_iberian.py` — mercado de comisiones Iberian.
+
+> Nota: las correcciones de datos se aplicaron **directo a producción** (no son migraciones). Los cambios
+> de código (validador + mercado Iberian) requieren **reiniciar el backend** para emisiones/ediciones nuevas.

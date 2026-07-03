@@ -30,6 +30,8 @@ router = APIRouter(tags=["Comisiones"])
 PROGRAMA_IBERIAN = "Iberian-RC Profesional"        # se busca por nombre (ilike)
 PAGO1_DEFECTO = "Iberian Insurance Broker, S.L."
 PAGO2_DEFECTO = "Hauora Brokerage, S.L."
+# Mercado (compañía) que va en los recibos de comisiones de Iberian.
+MERCADO_IBERIAN = "Iberian Insurance Group, S.L."
 # Comisión = 10% del GWP (our line) del Premium. Verificado contra los recibos históricos de comisiones
 # de Iberian: coincide al céntimo (todos los meses desde abr-2024). El Net Premium daba ~22% menos.
 TASA_COMISION = Decimal("0.10")
@@ -282,6 +284,7 @@ def preparar_iberian(periodo: str, db: Session = Depends(get_db)):
     r = Recibo(
         periodo=periodo, anio=fecha.year, yoa=fecha.year, estado="Emitido", numero=_siguiente_numero(db, fecha.year),
         tipo_poliza="Comisiones", asegurado=_nombre_productor(prog), corredor="Iberian", ramo="Comisiones", moneda="EUR",
+        mercado=MERCADO_IBERIAN, nombre_mercado=MERCADO_IBERIAN,
         referencia=REF_MODULO,
         fecha_efecto=fecha, fecha_vencimiento=fecha, fecha_contable=fecha,
         fecha_efecto_recibo=fecha, fecha_vcto_recibo=fecha,
@@ -331,6 +334,7 @@ def reparto(periodo: str, payload: RepartoIn, db: Session = Depends(get_db)):
             r = Recibo(
                 periodo=periodo, anio=fecha.year, yoa=fecha.year, estado="Emitido", numero=_siguiente_numero(db, fecha.year),
                 tipo_poliza="Comisiones", asegurado=_nombre_productor(prog), corredor="Iberian", ramo="Comisiones", moneda="EUR",
+                mercado=MERCADO_IBERIAN, nombre_mercado=MERCADO_IBERIAN,
                 referencia=REF_MODULO, fecha_efecto=fecha, fecha_vencimiento=fecha, fecha_contable=fecha,
                 fecha_efecto_recibo=fecha, fecha_vcto_recibo=fecha,
                 prima_bruta_recibo=D0, prima_neta_recibo=D0, prima_adeudada=D0,

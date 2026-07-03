@@ -253,6 +253,21 @@ export default function ReciboModal({
             <Fecha k="fecha_vcto_recibo" label="Fecha Vto. Recibo" />
           </div>
 
+          {/* Fecha contable: imputa el recibo a un MES (cierre contable). El día se fija siempre
+              al 1 (aquí y en el backend), así que solo importa mes/año. */}
+          <div className="campos-grid" style={{ gridTemplateColumns: "1fr 1fr" }}>
+            <div className="field">
+              <label>Fecha Contable <span className="hint">(mes de imputación)</span></label>
+              <input
+                type="date"
+                className="inp-fecha"
+                value={f.fecha_contable ?? ""}
+                onChange={(e) => set("fecha_contable", e.target.value ? e.target.value.slice(0, 8) + "01" : "")}
+                disabled={ro}
+              />
+            </div>
+          </div>
+
           <Linea label="Prima Neta Bordereau" kEur="prima_neta_recibo" />
           <Linea label="Impuestos" kEur="impuestos_recibo" />
           <Linea label="Prima Total Bordereau" kEur="prima_bruta_recibo" />

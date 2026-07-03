@@ -16,7 +16,7 @@ from decimal import Decimal
 
 from sqlalchemy import JSON, Boolean, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint, func, text
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
 
 from ..db import Base
 
@@ -857,6 +857,13 @@ class Recibo(Base):
     )
 
     binder: Mapped["Binder"] = relationship()
+
+    @validates("fecha_contable")
+    def _fecha_contable_siempre_dia_1(self, key, value):
+        """La fecha contable imputa el recibo a un MES (cierre contable): se normaliza SIEMPRE al
+        día 1 de ese mes. Se elige el mes libremente (el del periodo o, si está cerrado, otro
+        abierto), pero el día siempre es 1. Aplica a toda alta/edición de recibo."""
+        return value.replace(day=1) if value else value
 
 
 class CierreContable(Base):
