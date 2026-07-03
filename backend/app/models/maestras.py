@@ -856,6 +856,10 @@ class Recibo(Base):
         Integer, Computed("EXTRACT(YEAR FROM fecha_contable)::int", persisted=True))
     mes_contable: Mapped[int | None] = mapped_column(
         Integer, Computed("EXTRACT(MONTH FROM fecha_contable)::int", persisted=True))
+    # Abreviatura del mes (ene..dic): coincide con la lista personalizada de Excel → ordena solo.
+    mes_contable_nombre: Mapped[str | None] = mapped_column(String(3), Computed(
+        "(ARRAY['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'])"
+        "[EXTRACT(MONTH FROM fecha_contable)::int]", persisted=True))
 
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[dt.datetime] = mapped_column(
