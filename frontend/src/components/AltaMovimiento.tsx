@@ -122,11 +122,13 @@ export default function AltaMovimiento({ cuenta, cats, movimiento, onClose, onSa
   const verGrupo = edicion || (verTipo && !!tipo);
   const verConcepto = edicion || (verGrupo && !!grupo);
   const verImporte = edicion || (verConcepto && !!concepto);
-  const verResto = edicion || (verImporte && num(importe) > 0);
+  // Se admite importe NEGATIVO: un movimiento en negativo anula/invierte otro (un Gasto en negativo
+  // funciona como ingreso, y viceversa). Solo se bloquea el 0 (vacío o sin cantidad).
+  const verResto = edicion || (verImporte && num(importe) !== 0);
   const dis = bloqueado;
 
   async function guardar() {
-    if (!fecha || !tipo || !grupo || !concepto || num(importe) <= 0) return setError("Completa fecha, tipo, grupo, concepto e importe.");
+    if (!fecha || !tipo || !grupo || !concepto || num(importe) === 0) return setError("Completa fecha, tipo, grupo, concepto e importe.");
     setSaving(true); setError(null);
     try {
       const datos = {
