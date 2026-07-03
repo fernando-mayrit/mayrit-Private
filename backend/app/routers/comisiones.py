@@ -280,7 +280,7 @@ def preparar_iberian(periodo: str, db: Session = Depends(get_db)):
         pago1_nombre=PAGO1_DEFECTO, pago2_nombre=PAGO2_DEFECTO, estado="Preparado",
     )
     r = Recibo(
-        periodo=periodo, anio=fecha.year, estado="Emitido", numero=_siguiente_numero(db, fecha.year),
+        periodo=periodo, anio=fecha.year, yoa=fecha.year, estado="Emitido", numero=_siguiente_numero(db, fecha.year),
         tipo_poliza="Comisiones", asegurado=_nombre_productor(prog), corredor="Iberian", ramo="Comisiones", moneda="EUR",
         referencia=REF_MODULO,
         fecha_efecto=fecha, fecha_vencimiento=fecha, fecha_contable=fecha,
@@ -329,7 +329,7 @@ def reparto(periodo: str, payload: RepartoIn, db: Session = Depends(get_db)):
         )
         if not h:   # mes nuevo: se genera el recibo del módulo al guardar el reparto
             r = Recibo(
-                periodo=periodo, anio=fecha.year, estado="Emitido", numero=_siguiente_numero(db, fecha.year),
+                periodo=periodo, anio=fecha.year, yoa=fecha.year, estado="Emitido", numero=_siguiente_numero(db, fecha.year),
                 tipo_poliza="Comisiones", asegurado=_nombre_productor(prog), corredor="Iberian", ramo="Comisiones", moneda="EUR",
                 referencia=REF_MODULO, fecha_efecto=fecha, fecha_vencimiento=fecha, fecha_contable=fecha,
                 fecha_efecto_recibo=fecha, fecha_vcto_recibo=fecha,

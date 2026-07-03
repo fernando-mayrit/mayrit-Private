@@ -241,7 +241,7 @@ def _crear_recibo_cobro(db: Session, c: ConsultoriaContrato, fecha: dt.date, per
     iva = _iva(c, base)
     cuenta = c.cuenta_bancaria.nombre if c.cuenta_bancaria else None
     r = Recibo(
-        consultoria_id=c.id, periodo=periodo, anio=fecha.year, estado="Emitido",
+        consultoria_id=c.id, periodo=periodo, anio=fecha.year, yoa=fecha.year, estado="Emitido",
         numero=_siguiente_numero(db, fecha.year),
         tipo_poliza="Consultoría", asegurado=(c.productor.nombre if c.productor else None),
         corredor=((c.productor.alias or c.productor.nombre) if c.productor else None),

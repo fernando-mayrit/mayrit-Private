@@ -381,7 +381,7 @@ def preview(binder_id: int, periodo: str, db: Session = Depends(get_db)):
     if binder is None:
         raise HTTPException(status_code=404, detail=f"Binder {binder_id} no encontrado")
     lineas = _validar(db, binder, periodo)
-    fecha = dt.date.today()
+    fecha = _rango_mes(periodo)[0]   # fecha contable por defecto = primer día del mes del periodo
     campos = _campos_emision(db, binder, periodo, lineas, fecha)
     return sch.ReciboPreview(
         numero=_siguiente_numero(db, fecha.year),
@@ -400,8 +400,11 @@ def generar(binder_id: int, payload: sch.ReciboGenerar, db: Session = Depends(ge
     periodo = payload.periodo
     lineas = _validar(db, binder, periodo)
     overrides = payload.model_dump(exclude_unset=True, exclude={"periodo"})
-    fecha = overrides.get("fecha_contable") or dt.date.today()
-    _exigir_mes_abierto(db, fecha)  # no emitir en un mes contable cerrado
+    # Fecha contable por defecto = primer día del mes del periodo (se contabiliza en SU mes, no en el
+    # día en que se genera). Editable en el formulario (override); si ese mes ya estuviera cerrado,
+    # hay que fijar a mano una fecha de un mes abierto.
+    fecha = overrides.get("fecha_contable") or _rango_mes(periodo)[0]
+    _exigir_mes_abierto(db, fecha)  # no contabilizar en un mes cerrado
 
     campos = _campos_emision(db, binder, periodo, lineas, fecha)
     campos.update(overrides)  # lo editado en el formulario prevalece
@@ -590,7 +593,7 @@ def _generar_recibos(db: Session, poliza: Poliza, n: int) -> None:
             anio = fe.year
             recibo = Recibo(
                 numero=numero(anio), poliza_id=poliza.id, binder_id=None,
-                periodo=fe.strftime("%Y-%m"), anio=anio, estado="Emitido",
+                periodo=fe.strftime("%Y-%m"), anio=anio, yoa=anio, estado="Emitido",
                 numero_poliza=poliza.numero_poliza,
                 asegurado=poliza.asegurado, corredor=poliza.corredor, ramo=poliza.ramo,
                 mercado=mercado_nom, nombre_mercado=mercado_nom, produccion=poliza.produccion,
