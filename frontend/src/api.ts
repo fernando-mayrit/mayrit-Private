@@ -665,7 +665,7 @@ export const tareasApi = {
   sincronizarBinder: (binderId: number) => request<{ creadas: number; actualizadas: number }>(`/binders/${binderId}/tareas/sincronizar-auto`, { method: "POST" }),
   // Info del binder anterior del mismo programa (para ofrecer copiar su esquema de tareas).
   tareasAnterior: (binderId: number) => request<{ binder_id: number | null; binder_umr: string | null; n_tareas: number }>(`/binders/${binderId}/tareas/anterior`),
-  copiarAnterior: (binderId: number) => request<{ creadas: number; desde_binder_id: number; desde_binder_umr: string | null }>(`/binders/${binderId}/tareas/copiar-anterior`, { method: "POST" }),
+  copiarAnterior: (binderId: number) => request<{ tareas: number; pasos: number; desde_binder_id: number; desde_binder_umr: string | null }>(`/binders/${binderId}/tareas/copiar-anterior`, { method: "POST" }),
   agenda: (p?: { binderId?: number; soloPendientes?: boolean }) => {
     const q = new URLSearchParams();
     if (p?.binderId != null) q.set("binder_id", String(p.binderId));

@@ -110,17 +110,19 @@ export default function TareasBinder({ binderId }: { binderId?: number }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [binderId]);
 
-  // El botón de copiar solo aparece si hay un binder anterior con tareas y ESTE binder aún no tiene
-  // ninguna tarea manual (tras copiar, `tareas` incluye las nuevas → el botón desaparece solo).
-  const puedeCopiar = !esGlobal && (prevInfo?.n_tareas ?? 0) > 0 && !tareas.some((t) => t.origen === "manual");
+  // El botón de copiar aparece si hay un binder anterior con esquema y ESTE binder aún NO tiene
+  // esquema propio: ninguna tarea manual y ninguna automática con checklist (pasos). Tras copiar,
+  // `tareas` incluye ese esquema → el botón desaparece solo (evita duplicados).
+  const puedeCopiar = !esGlobal && (prevInfo?.n_tareas ?? 0) > 0
+    && !tareas.some((t) => t.origen === "manual" || (t.n_pasos ?? 0) > 0);
   async function copiarEsquema() {
     if (!binderId || !puedeCopiar || !prevInfo) return;
-    if (!window.confirm(`Copiar ${prevInfo.n_tareas} tarea(s) del binder anterior (${prevInfo.binder_umr ?? "—"}) a este binder?`)) return;
+    if (!window.confirm(`Copiar el esquema de tareas (con sus checklists) del binder anterior (${prevInfo.binder_umr ?? "—"}) a este binder?`)) return;
     setSaving(true); setError(null);
     try {
       const r = await tareasApi.copiarAnterior(binderId);
       await cargar();
-      alert(`Copiadas ${r.creadas} tarea(s) del binder ${r.desde_binder_umr ?? ""}.`);
+      alert(`Copiado el esquema del binder ${r.desde_binder_umr ?? ""}: ${r.tareas} tarea(s) y ${r.pasos} paso(s).`);
     } catch (e) { setError((e as Error).message); } finally { setSaving(false); }
   }
   useEffect(() => {

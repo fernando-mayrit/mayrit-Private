@@ -451,21 +451,31 @@ def _binder_anterior(db: Session, binder: Binder) -> Binder | None:
     return db.scalars(q.order_by(Binder.fecha_efecto.desc(), Binder.id.desc())).first()
 
 
-def _n_tareas_manuales(db: Session, binder_id: int) -> int:
-    return db.scalar(select(func.count()).select_from(Tarea).where(
-        Tarea.binder_id == binder_id, Tarea.origen == "manual")) or 0
+def _tareas_copiables(db: Session, binder_id: int) -> list[Tarea]:
+    """El 'esquema' copiable de un binder: las tareas MANUALES (siempre) y las AUTOMÁTICAS que tengan
+    checklist (pasos). Las auto sin pasos no aportan esquema (se regeneran vacías del BDX)."""
+    ts = db.scalars(select(Tarea).where(Tarea.binder_id == binder_id)
+                    .options(selectinload(Tarea.pasos))).all()
+    return [t for t in ts if t.origen == "manual" or len(t.pasos) > 0]
+
+
+def _copiar_pasos(origen: Tarea, destino: Tarea) -> int:
+    for p in sorted(origen.pasos, key=lambda x: (x.orden, x.id)):
+        destino.pasos.append(TareaPaso(titulo=p.titulo, orden=p.orden, regla_auto=p.regla_auto))
+    return len(origen.pasos)
 
 
 class TareaAnteriorInfo(BaseModel):
     binder_id: int | None = None
     binder_umr: str | None = None
-    n_tareas: int = 0       # nº de tareas MANUALES (copiables) del binder anterior
+    n_tareas: int = 0       # nº de tareas copiables (manuales + automáticas con checklist) del anterior
 
 
 @router.get("/binders/{binder_id}/tareas/anterior", response_model=TareaAnteriorInfo)
 def tareas_binder_anterior(binder_id: int, db: Session = Depends(get_db)):
-    """Info del binder anterior del mismo programa y cuántas tareas manuales tiene (para ofrecer copiar
-    su esquema). El frontend oculta el botón si ESTE binder ya tiene tareas manuales (evita duplicados)."""
+    """Info del binder anterior del mismo programa y cuántas tareas copiables tiene (manuales + auto con
+    checklist). El frontend oculta el botón si ESTE binder ya tiene esquema (tarea manual o auto con
+    pasos), para evitar duplicados."""
     b = db.get(Binder, binder_id)
     if b is None:
         raise HTTPException(status_code=404, detail=f"Binder {binder_id} no encontrado")
@@ -474,41 +484,61 @@ def tareas_binder_anterior(binder_id: int, db: Session = Depends(get_db)):
         return TareaAnteriorInfo()
     return TareaAnteriorInfo(
         binder_id=prev.id, binder_umr=(prev.umr or prev.agreement_number),
-        n_tareas=_n_tareas_manuales(db, prev.id))
+        n_tareas=len(_tareas_copiables(db, prev.id)))
 
 
 @router.post("/binders/{binder_id}/tareas/copiar-anterior", status_code=201)
 def copiar_tareas_anterior(binder_id: int, db: Session = Depends(get_db)):
-    """Copia el esquema de tareas MANUALES (con su checklist) del binder anterior del mismo programa.
-    No copia las automáticas (se regeneran del BDX) ni el histórico de marcado. Las fechas se anclan a
-    la vigencia del NUEVO binder (fecha_inicio/fin = None). Falla si este binder ya tiene manuales."""
+    """Copia el ESQUEMA de tareas del binder anterior del mismo programa: las manuales (con su
+    checklist) y los CHECKLISTS de las automáticas (Risk/Premium/Claims). No copia el histórico de
+    marcado. Las manuales anclan sus fechas al nuevo binder (fecha_inicio/fin = None); en las auto, los
+    pasos se meten en la tarea auto de la MISMA categoría del nuevo binder (si no existe, se crea y luego
+    «Generar automáticas» le ajusta las fechas del BDX). Falla si este binder ya tiene esquema."""
     b = db.get(Binder, binder_id)
     if b is None:
         raise HTTPException(status_code=404, detail=f"Binder {binder_id} no encontrado")
-    if _n_tareas_manuales(db, binder_id) > 0:
-        raise HTTPException(status_code=409, detail="Este binder ya tiene tareas manuales; no se copia para evitar duplicados.")
+    if _tareas_copiables(db, binder_id):
+        raise HTTPException(status_code=409, detail="Este binder ya tiene esquema de tareas; no se copia para evitar duplicados.")
     prev = _binder_anterior(db, b)
     if prev is None:
         raise HTTPException(status_code=404, detail="No hay un binder anterior en este programa del que copiar.")
-    fuente = db.scalars(select(Tarea).where(Tarea.binder_id == prev.id, Tarea.origen == "manual")
-                        .options(selectinload(Tarea.pasos))).all()
+    fuente = _tareas_copiables(db, prev.id)
     if not fuente:
-        raise HTTPException(status_code=404, detail="El binder anterior no tiene tareas manuales que copiar.")
-    creadas = 0
+        raise HTTPException(status_code=404, detail="El binder anterior no tiene esquema de tareas que copiar.")
+    # Tareas auto ya existentes en el destino, por categoría (para meterles el checklist sin duplicar).
+    auto_destino = {t.categoria: t for t in db.scalars(select(Tarea).where(
+        Tarea.binder_id == binder_id, Tarea.origen == "auto")).all()}
+    tareas_creadas = pasos_copiados = 0
     for t in fuente:
-        nueva = Tarea(
-            binder_id=binder_id, titulo=t.titulo, descripcion=t.descripcion,
-            categoria=t.categoria, origen="manual",
-            frecuencia=t.frecuencia, intervalo_meses=t.intervalo_meses,
-            fecha_inicio=None, fecha_fin=None,     # se anclan a la vigencia del nuevo binder
-            aviso_dias_antes=t.aviso_dias_antes, estado="Activa", secuencial=t.secuencial,
-        )
-        for p in sorted(t.pasos, key=lambda x: (x.orden, x.id)):
-            nueva.pasos.append(TareaPaso(titulo=p.titulo, orden=p.orden, regla_auto=p.regla_auto))
-        db.add(nueva)
-        creadas += 1
+        if t.origen == "manual":
+            nueva = Tarea(
+                binder_id=binder_id, titulo=t.titulo, descripcion=t.descripcion,
+                categoria=t.categoria, origen="manual",
+                frecuencia=t.frecuencia, intervalo_meses=t.intervalo_meses,
+                fecha_inicio=None, fecha_fin=None,     # se anclan a la vigencia del nuevo binder
+                aviso_dias_antes=t.aviso_dias_antes, estado="Activa", secuencial=t.secuencial,
+            )
+            pasos_copiados += _copiar_pasos(t, nueva)
+            db.add(nueva)
+            tareas_creadas += 1
+        else:  # automática con checklist → mete los pasos en la auto de la misma categoría del destino
+            dest = auto_destino.get(t.categoria)
+            if dest is None:
+                dest = Tarea(
+                    binder_id=binder_id, titulo=t.titulo, descripcion=t.descripcion,
+                    categoria=t.categoria, origen="auto",
+                    frecuencia=t.frecuencia, intervalo_meses=t.intervalo_meses,
+                    fecha_inicio=None, fecha_fin=None, aviso_dias_antes=t.aviso_dias_antes,
+                    estado="Activa", secuencial=t.secuencial,
+                )
+                db.add(dest)
+                auto_destino[t.categoria] = dest
+                tareas_creadas += 1
+            if not dest.pasos:                          # no pisar un checklist ya existente
+                pasos_copiados += _copiar_pasos(t, dest)
     db.commit()
-    return {"creadas": creadas, "desde_binder_id": prev.id, "desde_binder_umr": prev.umr or prev.agreement_number}
+    return {"tareas": tareas_creadas, "pasos": pasos_copiados,
+            "desde_binder_id": prev.id, "desde_binder_umr": prev.umr or prev.agreement_number}
 
 
 @router.put("/tareas/{tarea_id}", response_model=TareaRead)
