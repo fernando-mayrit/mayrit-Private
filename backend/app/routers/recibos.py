@@ -363,10 +363,10 @@ def _campos_emision(db: Session, binder: Binder, periodo: str, lineas, fecha: dt
         periodo=periodo,
         anio=fecha.year,
         estado="Emitido",
-        # Contexto
-        numero_poliza=None,                           # bordereau: varias pólizas
+        # Contexto. En binder el nº de póliza es el UMR (como el histórico); referencia no se usa.
+        numero_poliza=binder.umr or binder.agreement_number,
         tipo_poliza="Binder",
-        referencia=binder.umr or binder.agreement_number,
+        referencia=None,
         nombre_mercado=nombre_mercado,
         mercado=mercado_pago,
         # Corredor = alias de la agencia (coverholder); si no tiene alias, el nombre.
