@@ -86,6 +86,8 @@ export default function TareasBinder({ binderId }: { binderId?: number }) {
   const [soloPend, setSoloPend] = useState(true);
   const [agenda, setAgenda] = useState<TareaAgendaItem[]>([]);
   const [agCol, setAgCol] = useState<Record<string, boolean>>({});   // agencias plegadas (bloques)
+  // Binder anterior del mismo programa (para copiar su esquema de tareas). Solo en vista de binder.
+  const [prevInfo, setPrevInfo] = useState<{ binder_umr: string | null; n_tareas: number } | null>(null);
 
   async function cargar() {
     try { setTareas(esGlobal ? await tareasApi.listAll() : await tareasApi.list(binderId!)); }
@@ -101,9 +103,26 @@ export default function TareasBinder({ binderId }: { binderId?: number }) {
       bindersApi.list(undefined, 5000)
         .then((bs) => setBinders(bs as Binder[]))
         .catch(() => {});
+    } else {
+      // Info del binder anterior del mismo programa (para el botón "copiar esquema").
+      tareasApi.tareasAnterior(binderId!).then(setPrevInfo).catch(() => setPrevInfo(null));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [binderId]);
+
+  // El botón de copiar solo aparece si hay un binder anterior con tareas y ESTE binder aún no tiene
+  // ninguna tarea manual (tras copiar, `tareas` incluye las nuevas → el botón desaparece solo).
+  const puedeCopiar = !esGlobal && (prevInfo?.n_tareas ?? 0) > 0 && !tareas.some((t) => t.origen === "manual");
+  async function copiarEsquema() {
+    if (!binderId || !puedeCopiar || !prevInfo) return;
+    if (!window.confirm(`Copiar ${prevInfo.n_tareas} tarea(s) del binder anterior (${prevInfo.binder_umr ?? "—"}) a este binder?`)) return;
+    setSaving(true); setError(null);
+    try {
+      const r = await tareasApi.copiarAnterior(binderId);
+      await cargar();
+      alert(`Copiadas ${r.creadas} tarea(s) del binder ${r.desde_binder_umr ?? ""}.`);
+    } catch (e) { setError((e as Error).message); } finally { setSaving(false); }
+  }
   useEffect(() => {
     if (vista === "mes") cargarAgenda();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -526,6 +545,12 @@ export default function TareasBinder({ binderId }: { binderId?: number }) {
           )}
         </div>
         <div style={{ display: "flex", gap: 8 }}>
+          {puedeCopiar && (
+            <button className="btn-secondary" onClick={copiarEsquema} disabled={saving}
+              title={`Copia el esquema de tareas (con su checklist) del binder anterior del mismo programa: ${prevInfo?.binder_umr ?? ""}`}>
+              📋 Copiar esquema del anterior
+            </button>
+          )}
           <button className="btn-secondary" onClick={sincronizar} disabled={sincronizando}
             title="Crea/actualiza las tareas Risk/Premium/Claims desde el intervalo y plazo de BDX del binder">
             {sincronizando ? "Generando…" : "🔄 Generar automáticas"}

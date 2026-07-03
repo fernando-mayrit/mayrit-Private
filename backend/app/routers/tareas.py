@@ -438,6 +438,79 @@ def sincronizar_binder(binder_id: int, db: Session = Depends(get_db)):
     return _sincronizar_binder(db, b)
 
 
+# ── Copiar el esquema de tareas del binder ANTERIOR del mismo programa ──────────────────────────
+def _binder_anterior(db: Session, binder: Binder) -> Binder | None:
+    """El binder ANTERIOR del mismo programa: el de mayor fecha_efecto estrictamente anterior a la de
+    este binder (desempate por id). Si este binder no tiene fecha_efecto, el más reciente del programa."""
+    if binder.programa_id is None:
+        return None
+    q = select(Binder).where(
+        Binder.programa_id == binder.programa_id, Binder.id != binder.id, Binder.fecha_efecto.is_not(None))
+    if binder.fecha_efecto is not None:
+        q = q.where(Binder.fecha_efecto < binder.fecha_efecto)
+    return db.scalars(q.order_by(Binder.fecha_efecto.desc(), Binder.id.desc())).first()
+
+
+def _n_tareas_manuales(db: Session, binder_id: int) -> int:
+    return db.scalar(select(func.count()).select_from(Tarea).where(
+        Tarea.binder_id == binder_id, Tarea.origen == "manual")) or 0
+
+
+class TareaAnteriorInfo(BaseModel):
+    binder_id: int | None = None
+    binder_umr: str | None = None
+    n_tareas: int = 0       # nº de tareas MANUALES (copiables) del binder anterior
+
+
+@router.get("/binders/{binder_id}/tareas/anterior", response_model=TareaAnteriorInfo)
+def tareas_binder_anterior(binder_id: int, db: Session = Depends(get_db)):
+    """Info del binder anterior del mismo programa y cuántas tareas manuales tiene (para ofrecer copiar
+    su esquema). El frontend oculta el botón si ESTE binder ya tiene tareas manuales (evita duplicados)."""
+    b = db.get(Binder, binder_id)
+    if b is None:
+        raise HTTPException(status_code=404, detail=f"Binder {binder_id} no encontrado")
+    prev = _binder_anterior(db, b)
+    if prev is None:
+        return TareaAnteriorInfo()
+    return TareaAnteriorInfo(
+        binder_id=prev.id, binder_umr=(prev.umr or prev.agreement_number),
+        n_tareas=_n_tareas_manuales(db, prev.id))
+
+
+@router.post("/binders/{binder_id}/tareas/copiar-anterior", status_code=201)
+def copiar_tareas_anterior(binder_id: int, db: Session = Depends(get_db)):
+    """Copia el esquema de tareas MANUALES (con su checklist) del binder anterior del mismo programa.
+    No copia las automáticas (se regeneran del BDX) ni el histórico de marcado. Las fechas se anclan a
+    la vigencia del NUEVO binder (fecha_inicio/fin = None). Falla si este binder ya tiene manuales."""
+    b = db.get(Binder, binder_id)
+    if b is None:
+        raise HTTPException(status_code=404, detail=f"Binder {binder_id} no encontrado")
+    if _n_tareas_manuales(db, binder_id) > 0:
+        raise HTTPException(status_code=409, detail="Este binder ya tiene tareas manuales; no se copia para evitar duplicados.")
+    prev = _binder_anterior(db, b)
+    if prev is None:
+        raise HTTPException(status_code=404, detail="No hay un binder anterior en este programa del que copiar.")
+    fuente = db.scalars(select(Tarea).where(Tarea.binder_id == prev.id, Tarea.origen == "manual")
+                        .options(selectinload(Tarea.pasos))).all()
+    if not fuente:
+        raise HTTPException(status_code=404, detail="El binder anterior no tiene tareas manuales que copiar.")
+    creadas = 0
+    for t in fuente:
+        nueva = Tarea(
+            binder_id=binder_id, titulo=t.titulo, descripcion=t.descripcion,
+            categoria=t.categoria, origen="manual",
+            frecuencia=t.frecuencia, intervalo_meses=t.intervalo_meses,
+            fecha_inicio=None, fecha_fin=None,     # se anclan a la vigencia del nuevo binder
+            aviso_dias_antes=t.aviso_dias_antes, estado="Activa", secuencial=t.secuencial,
+        )
+        for p in sorted(t.pasos, key=lambda x: (x.orden, x.id)):
+            nueva.pasos.append(TareaPaso(titulo=p.titulo, orden=p.orden, regla_auto=p.regla_auto))
+        db.add(nueva)
+        creadas += 1
+    db.commit()
+    return {"creadas": creadas, "desde_binder_id": prev.id, "desde_binder_umr": prev.umr or prev.agreement_number}
+
+
 @router.put("/tareas/{tarea_id}", response_model=TareaRead)
 def editar(tarea_id: int, payload: TareaUpdate, db: Session = Depends(get_db)):
     t = db.get(Tarea, tarea_id)
