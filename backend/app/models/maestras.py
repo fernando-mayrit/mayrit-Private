@@ -14,7 +14,7 @@ from __future__ import annotations
 import datetime as dt
 from decimal import Decimal
 
-from sqlalchemy import JSON, Boolean, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint, func, text
+from sqlalchemy import JSON, Boolean, Computed, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint, func, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
 
@@ -850,6 +850,12 @@ class Recibo(Base):
     notas: Mapped[str | None] = mapped_column(Text)
     cuenta: Mapped[str | None] = mapped_column(String(120))
     fecha_contable: Mapped[dt.date | None] = mapped_column(Date)
+    # Año/mes contable derivados de fecha_contable (columnas GENERADAS por la BD). Para dinámicas de
+    # Excel: evitan la agrupación automática de fechas (que se topa y no coge los meses nuevos).
+    anio_contable: Mapped[int | None] = mapped_column(
+        Integer, Computed("EXTRACT(YEAR FROM fecha_contable)::int", persisted=True))
+    mes_contable: Mapped[int | None] = mapped_column(
+        Integer, Computed("EXTRACT(MONTH FROM fecha_contable)::int", persisted=True))
 
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[dt.datetime] = mapped_column(
