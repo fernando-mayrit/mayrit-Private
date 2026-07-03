@@ -327,12 +327,23 @@ export default function App() {
   const avDia = avisos.filter((a) => a.categoria !== "alerta");
   const hayAlto = (xs: Aviso[]) => xs.some((a) => a.nivel === "alto");
   const abrirPanel = (p: "alerta" | "dia") => { cargarAvisos(); setPanelAviso((x) => (x === p ? null : p)); };
+  // Ordena los avisos por Binder (UMR); los que no van ligados a un binder (p. ej. facturas de
+  // Consultoría) al final. Desempate: importancia (alto→bajo) y luego título.
+  const NIVEL_ORD: Record<string, number> = { alto: 0, medio: 1, bajo: 2 };
+  const ordenarPorBinder = (xs: Aviso[]) =>
+    [...xs].sort((a, b) => {
+      if (!!a.umr !== !!b.umr) return a.umr ? -1 : 1;   // los que no tienen binder, al final
+      const c = (a.umr ?? "").localeCompare(b.umr ?? "", "es", { numeric: true });
+      if (c !== 0) return c;
+      const nv = (NIVEL_ORD[a.nivel] ?? 9) - (NIVEL_ORD[b.nivel] ?? 9);
+      return nv !== 0 ? nv : a.titulo.localeCompare(b.titulo, "es");
+    });
   const renderLista = (xs: Aviso[]) =>
     xs.length === 0 ? (
       <div className="avisos-vacio">Sin avisos 🎉</div>
     ) : (
       <div className="avisos-lista">
-        {xs.map((a, i) => (
+        {ordenarPorBinder(xs).map((a, i) => (
           <button key={i} className={`aviso-item nivel-borde-${a.nivel}`}
             onClick={() => { if (a.pagina) ir(a.pagina as Page); setPanelAviso(null); }}>
             <span className="aviso-titulo"><span className={`nivel-dot nivel-${a.nivel}`} /> {a.titulo}</span>
