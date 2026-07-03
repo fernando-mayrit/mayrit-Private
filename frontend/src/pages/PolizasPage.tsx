@@ -9,6 +9,15 @@ const num = (v: unknown) => Number(v) || 0;
 const seguroLabel = (s: string | null) => (s === "1" ? "Seguro Directo" : s === "2" ? "Reaseguro" : s ?? "");
 const ESTADOS = ["En Vigor", "Cancelada", "Renovada", "No Renovada", "Temporal-Vencida"];
 
+// Estado → clase de pastilla de color (misma paleta que Recibos/Siniestros).
+const ESTADO_PILL: Record<string, string> = {
+  "En Vigor": "pill-pol-envigor",
+  "Renovada": "pill-pol-renovada",
+  "No Renovada": "pill-pol-norenovada",
+  "Cancelada": "pill-pol-cancelada",
+  "Temporal-Vencida": "pill-pol-vencida",
+};
+
 // ¿Queda menos de 1 mes para el vencimiento? (incluye ya vencidas)
 function venceEnMenosDeUnMes(fv: string | null): boolean {
   if (!fv) return false;
@@ -29,7 +38,8 @@ const CATALOGO: Col<Poliza>[] = [
   { key: "produccion", label: "Producción", tipo: "text" },
   { key: "seguro", label: "Seguro", tipo: "text", calc: (p) => seguroLabel(p.seguro) },
   { key: "tipo_documento", label: "Tipo Documento", tipo: "text" },
-  { key: "estado", label: "Estado", tipo: "text" },
+  { key: "estado", label: "Estado", tipo: "text",
+    render: (p) => (p.estado ? <span className={`pill ${ESTADO_PILL[p.estado] ?? "pill-anulado"}`}>{p.estado}</span> : "—") },
   { key: "pago", label: "Pago", tipo: "text" },
   { key: "moneda", label: "Moneda", tipo: "text" },
   { key: "fecha_efecto", label: "F. Efecto", tipo: "date" },
@@ -141,11 +151,9 @@ export default function PolizasPage() {
           storageKey="mayrit.polizas.tabla.v8"
           defaultSort={{ key: "fecha_efecto", dir: -1 }}
           rowClass={(p) =>
-            p.estado === "En Vigor"
-              ? venceEnMenosDeUnMes(p.fecha_vencimiento)
-                ? "fila-vence"
-                : "fila-envigor"
-              : undefined
+            // El estado se muestra con pastilla de color; solo se colorea la fila cuando la póliza
+            // En Vigor está próxima a vencer (mismo criterio que antes).
+            p.estado === "En Vigor" && venceEnMenosDeUnMes(p.fecha_vencimiento) ? "fila-vence" : undefined
           }
           rowAction={(p) => (
             <button className="btn-icono" title="Editar" aria-label="Editar" onClick={() => setForm(p)}>

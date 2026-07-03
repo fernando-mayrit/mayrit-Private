@@ -372,9 +372,7 @@ input[type="date"], input[type="month"] { text-align: center; }
 
 /* Pólizas sin recibo: fila resaltada en rojo suave */
 tr.fila-sin-recibo td { background: #fdecea; }
-/* Pólizas por Estado: En Vigor en rojo pastel (el resto, en blanco) */
-tr.fila-envigor td { background: #fdecea; }
-/* En Vigor con menos de 1 mes para vencer: rojo fuerte */
+/* Pólizas En Vigor con menos de 1 mes para vencer: rojo fuerte (el Estado va en pastilla de color) */
 tr.fila-vence td { background: #f1a0a0; }
 
 /* Desplegable con buscador + botón "+" (SelectConAlta) */
@@ -814,6 +812,13 @@ td.num, th.num { text-align: right; }
 .pill-parcial   { background: #fdecd1; color: #b45309; }
 .pill-cobrado   { background: #dcebe0; color: #1a7f37; }
 .pill-anulado   { background: var(--gris-claro); color: var(--gris-medio); }
+
+/* Pólizas: color por Estado (en vigor verde, renovada azul, no renovada gris, cancelada rojo, temporal-vencida ámbar) */
+.pill-pol-envigor    { background: #dcebe0; color: #1a7f37; }
+.pill-pol-renovada   { background: #dde8fb; color: #1d4ed8; }
+.pill-pol-norenovada { background: var(--gris-claro); color: var(--gris-medio); }
+.pill-pol-cancelada  { background: #fde2dd; color: #b42318; }
+.pill-pol-vencida    { background: #fdecd1; color: #b45309; }
 
 /* Siniestros: color por estado (abierto rojo, cerrado verde, en revisión ámbar, otro gris) */
 .pill-sin-abierto  { background: #fde2dd; color: #b42318; }
