@@ -250,7 +250,9 @@ def _crear_recibo_cobro(db: Session, c: ConsultoriaContrato, fecha: dt.date, per
         fecha_efecto=fecha, fecha_vencimiento=fecha, fecha_contable=fecha,
         # El listado de recibos usa fecha_efecto_recibo / fecha_vcto_recibo (no fecha_efecto).
         fecha_efecto_recibo=fecha, fecha_vcto_recibo=fecha,
-        honorarios=base, comision_retenida=base, impuestos_porc=c.impuestos_porc,
+        # El importe base va a `prima_neta_recibo` (para que se vea en la columna "Prima Neta", igual
+        # que el resto de consultorías). Los cálculos contables usan `comision_retenida` (= base).
+        prima_neta_recibo=base, comision_retenida=base, impuestos_porc=c.impuestos_porc,
         impuestos_recibo=iva, prima_bruta_recibo=base + iva, prima_adeudada=base + iva,
     )
     _recompute(r)
