@@ -14,11 +14,12 @@ app = FastAPI(title="Mayrit API", version="0.1.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
         "https://app.mayritbroker.com",
         "https://mayrit.azurewebsites.net",
     ],
+    # En desarrollo, Vite puede arrancar en cualquier puerto (5173, 5174…) si el anterior está
+    # ocupado; se permite cualquier puerto de localhost para no tener que ir tocando la lista.
+    allow_origin_regex=r"http://(localhost|127\.0\.0\.1):\d+",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
