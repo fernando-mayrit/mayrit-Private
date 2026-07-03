@@ -151,6 +151,41 @@ def _mercados_binder(db: Session, binder_id: int) -> str | None:
     return ", ".join(sorted(set(nombres))) if nombres else None
 
 
+# A los sindicatos de Lloyd's se les liquida a través de esta entidad única (Lloyd's Bruselas).
+LLOYDS_COMPANY = "Lloyds Insurance Company"
+
+
+def _mercado_recibo_binder(db: Session, binder_id: int) -> tuple[str | None, str | None]:
+    """(mercado, nombre_mercado) del recibo de un binder:
+      - `nombre_mercado` = nombres de los mercados del binder (sindicatos/compañías), sin repetir.
+      - `mercado` = la entidad por la que se AGRUPA/liquida: para sindicatos de Lloyd's
+        (tipo_mercado='Lloyds') es SIEMPRE 'Lloyds Insurance Company' (el settlement de Lloyd's);
+        para compañías es el propio nombre. Así los recibos de Lloyd's agrupan por Lloyd's."""
+    rows = db.execute(
+        select(Mercado.nombre, Mercado.tipo_mercado)
+        .join(SeccionMercado, SeccionMercado.mercado_id == Mercado.id)
+        .join(BinderSeccion, BinderSeccion.id == SeccionMercado.seccion_id)
+        .where(BinderSeccion.binder_id == binder_id)
+        .distinct()
+    ).all()
+    nombres = sorted({n for n, _ in rows if n})
+    if not nombres:
+        return None, None
+    nombre_mercado = ", ".join(nombres)
+    tipos = {t for _, t in rows}
+    mercado = LLOYDS_COMPANY if tipos and tipos <= {"Lloyds"} else nombre_mercado
+    return mercado, nombre_mercado
+
+
+def _mercado_pago(db: Session, nombre: str | None) -> str | None:
+    """Entidad por la que se agrupa/liquida un mercado (para el campo `mercado` del recibo):
+    'Lloyds Insurance Company' si es sindicato de Lloyd's (tipo_mercado='Lloyds'); si no, el nombre."""
+    if not nombre:
+        return nombre
+    tipo = db.scalar(select(Mercado.tipo_mercado).where(Mercado.nombre == nombre))
+    return LLOYDS_COMPANY if tipo == "Lloyds" else nombre
+
+
 def _yoa_int(binder: Binder) -> int | None:
     return int(binder.yoa) if binder.yoa and str(binder.yoa).isdigit() else None
 
@@ -320,7 +355,7 @@ def _campos_emision(db: Session, binder: Binder, periodo: str, lineas, fecha: dt
         return _q4(x / prima_neta * 100) if prima_neta else None
 
     ini, fin = _rango_mes(periodo)
-    mercados = _mercados_binder(db, binder.id)
+    mercado_pago, nombre_mercado = _mercado_recibo_binder(db, binder.id)
     pos, total = _pos_bdx_anual(binder, periodo)
 
     return dict(
@@ -332,8 +367,8 @@ def _campos_emision(db: Session, binder: Binder, periodo: str, lineas, fecha: dt
         numero_poliza=None,                           # bordereau: varias pólizas
         tipo_poliza="Binder",
         referencia=binder.umr or binder.agreement_number,
-        nombre_mercado=mercados,
-        mercado=mercados,
+        nombre_mercado=nombre_mercado,
+        mercado=mercado_pago,
         # Corredor = alias de la agencia (coverholder); si no tiene alias, el nombre.
         corredor=((binder.productor.alias or binder.productor.nombre) if binder.productor else None),
         ramo=_ramos_binder(db, binder.id),
@@ -611,7 +646,7 @@ def _generar_recibos(db: Session, poliza: Poliza, n: int) -> None:
                 periodo=fe.strftime("%Y-%m"), anio=anio, yoa=anio, estado="Emitido",
                 numero_poliza=poliza.numero_poliza,
                 asegurado=poliza.asegurado, corredor=poliza.corredor, ramo=poliza.ramo,
-                mercado=mercado_nom, nombre_mercado=mercado_nom, produccion=poliza.produccion,
+                mercado=_mercado_pago(db, mercado_nom), nombre_mercado=mercado_nom, produccion=poliza.produccion,
                 tipo_poliza="Póliza", fecha_efecto=poliza.fecha_efecto, fecha_vencimiento=poliza.fecha_vencimiento,
                 pago=PAGO_LABEL.get(n, ""), moneda=poliza.moneda or "EUR",
                 prima_neta_poliza=prima_comp, participacion=_q4(share * 100),
