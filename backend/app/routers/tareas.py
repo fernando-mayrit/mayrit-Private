@@ -231,6 +231,7 @@ class TareaIn(BaseModel):
     fecha_inicio: dt.date | None = None    # None = fecha de efecto del binder
     aviso_dias_antes: int = 5
     estado: str = "Activa"
+    secuencial: bool = False               # pasos secuenciales (cada uno se desbloquea al completar el anterior)
 
 
 class TareaUpdate(BaseModel):
@@ -242,6 +243,7 @@ class TareaUpdate(BaseModel):
     fecha_inicio: dt.date | None = None
     aviso_dias_antes: int | None = None
     estado: str | None = None
+    secuencial: bool | None = None
 
 
 class TareaRead(BaseModel):
@@ -258,6 +260,7 @@ class TareaRead(BaseModel):
     fecha_fin: dt.date | None = None
     aviso_dias_antes: int
     estado: str
+    secuencial: bool = False
     binder_umr: str | None = None
     agencia: str | None = None       # coverholder (para agrupar Agencia → Programa → Binder)
     programa: str | None = None
@@ -305,6 +308,7 @@ class PasoEstado(BaseModel):
     periodo: str | None = None       # periodo (YYYY-MM) que comprueba la regla en esta entrega
     hecho: bool
     fecha_hecha: dt.date | None = None
+    bloqueado: bool = False          # tarea secuencial: hay un paso anterior sin completar (no marcable aún)
 
 
 def _pasos_de_ocurrencia(t: Tarea, binder: Binder | None, f: dt.date, k: int,
@@ -315,6 +319,9 @@ def _pasos_de_ocurrencia(t: Tarea, binder: Binder | None, f: dt.date, k: int,
     periodo = _periodo_de(binder, k, _paso(t)) if binder else None
     pasos: list[PasoEstado] = []
     completa = True
+    # Secuencial: un paso está BLOQUEADO si algún paso anterior (t.pasos ya viene ordenado por 'orden')
+    # sigue sin completarse. `prev_hechos` deja de ser cierto en cuanto encontramos el primer no hecho.
+    prev_hechos = True
     for p in t.pasos:
         ph = manual.get((p.id, f))
         auto_done = _auto_ok(p, periodo, datos, binder.id) if binder else False
@@ -326,7 +333,10 @@ def _pasos_de_ocurrencia(t: Tarea, binder: Binder | None, f: dt.date, k: int,
             regla_auto=p.regla_auto, auto=(auto_done and ph is None),
             periodo=periodo if p.regla_auto else None,
             hecho=hecho, fecha_hecha=(ph.fecha_hecha if ph else None),
+            bloqueado=(bool(t.secuencial) and not prev_hechos),
         ))
+        if not hecho:
+            prev_hechos = False
     return pasos, completa
 
 
@@ -667,6 +677,18 @@ def marcar_paso(paso_id: int, payload: PasoHechoIn, db: Session = Depends(get_db
         raise HTTPException(status_code=404, detail=f"Paso {paso_id} no encontrado")
     if p.regla_auto:
         raise HTTPException(status_code=409, detail="Paso automático: se marca solo cuando el dato existe.")
+    # Tarea secuencial: no se puede MARCAR un paso si algún paso anterior sigue pendiente (desmarcar sí).
+    t = db.get(Tarea, p.tarea_id)
+    if t and t.secuencial and not payload.deshacer:
+        binder = db.get(Binder, t.binder_id)
+        ocs = _ocurrencias(t, binder) if binder else []
+        k = ocs.index(payload.fecha_ocurrencia) if payload.fecha_ocurrencia in ocs else 0
+        manual = {(ph2.paso_id, ph2.fecha_ocurrencia): ph2 for pp in t.pasos for ph2 in pp.hechos}
+        estados, _ = _pasos_de_ocurrencia(t, binder, payload.fecha_ocurrencia, k,
+                                          _periodos_datos(db, {t.binder_id}), manual)
+        est = next((e for e in estados if e.paso_id == paso_id), None)
+        if est and est.bloqueado:
+            raise HTTPException(status_code=409, detail="Paso bloqueado: completa antes los pasos anteriores.")
     ph = db.scalar(select(TareaPasoHecho).where(
         TareaPasoHecho.paso_id == paso_id, TareaPasoHecho.fecha_ocurrencia == payload.fecha_ocurrencia))
     if payload.deshacer:

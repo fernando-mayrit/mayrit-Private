@@ -983,6 +983,9 @@ class Tarea(Base):
     fecha_fin: Mapped[dt.date | None] = mapped_column(Date)      # fin (None = vencimiento del binder)
     aviso_dias_antes: Mapped[int] = mapped_column(Integer, server_default=text("5"), default=5)
     estado: Mapped[str] = mapped_column(String(20), server_default="Activa", default="Activa")  # Activa | Pausada | Finalizada
+    # Pasos secuenciales: cada paso se desbloquea al completar el anterior (por 'orden'). Solo afecta al
+    # checklist (el resto de la tarea igual). False = todos los pasos disponibles a la vez.
+    secuencial: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
 
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[dt.datetime] = mapped_column(

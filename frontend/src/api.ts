@@ -606,6 +606,7 @@ export interface Tarea {
   fecha_fin?: string | null;
   aviso_dias_antes: number;
   estado: string;
+  secuencial: boolean;          // pasos secuenciales (cada uno se desbloquea al completar el anterior)
   binder_umr?: string | null;
   agencia?: string | null;
   programa?: string | null;
@@ -630,6 +631,7 @@ export interface TareaPasoEstado {
   periodo?: string | null;      // periodo YYYY-MM que comprueba la regla en esta entrega
   hecho: boolean;
   fecha_hecha?: string | null;
+  bloqueado?: boolean;          // tarea secuencial: hay un paso anterior sin completar (no marcable aún)
 }
 export interface TareaOcurrencia {
   fecha: string;

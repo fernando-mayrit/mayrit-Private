@@ -35,10 +35,12 @@ type Form = {
   fecha_inicio: string;
   aviso_dias_antes: string;
   estado: string;
+  secuencial: boolean;
 };
 const VACIO: Form = {
   agencia_id: "", programa_id: "", binder_id: "", titulo: "", descripcion: "", categoria: "General",
   frecuencia: "Mensual", intervalo_meses: "1", fecha_inicio: "", aviso_dias_antes: "5", estado: "Activa",
+  secuencial: false,
 };
 
 const PILL: Record<string, [string, string]> = {
@@ -107,7 +109,7 @@ export default function TareasBinder({ binderId }: { binderId?: number }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vista, soloPend, binderId]);
 
-  const set = (k: keyof Form, v: string) => setForm((s) => ({ ...s, [k]: v }));
+  const set = <K extends keyof Form>(k: K, v: Form[K]) => setForm((s) => ({ ...s, [k]: v }));
   const dirty = useMemo(
     () => JSON.stringify(form) !== JSON.stringify(formIni) || JSON.stringify(formPasos) !== JSON.stringify(pasosIni),
     [form, formIni, formPasos, pasosIni]
@@ -156,6 +158,7 @@ export default function TareasBinder({ binderId }: { binderId?: number }) {
       descripcion: t.descripcion ?? "", categoria: t.categoria || "General", frecuencia: t.frecuencia,
       intervalo_meses: t.intervalo_meses == null ? "1" : String(t.intervalo_meses),
       fecha_inicio: t.fecha_inicio ?? "", aviso_dias_antes: String(t.aviso_dias_antes ?? 5), estado: t.estado,
+      secuencial: !!t.secuencial,
     };
     setForm(f); setFormIni(f); setEditId(t.id);
     setAutoEdit(t.origen === "auto");
@@ -190,6 +193,7 @@ export default function TareasBinder({ binderId }: { binderId?: number }) {
       fecha_inicio: form.fecha_inicio || null,
       aviso_dias_antes: Number(form.aviso_dias_antes) || 0,
       estado: form.estado,
+      secuencial: form.secuencial,
     };
     try {
       let tareaId: number;
@@ -386,14 +390,20 @@ export default function TareasBinder({ binderId }: { binderId?: number }) {
     <div style={{ display: "flex", flexDirection: "column", gap: 4, padding: "6px 0 6px 26px" }}>
       {pasos.map((ps) => {
         const esAuto = !!ps.regla_auto;
+        // Secuencial: un paso aún no hecho con algún anterior pendiente sale bloqueado (gris + 🔒).
+        const bloqueado = !!ps.bloqueado && !ps.hecho;
+        const inerte = esAuto || bloqueado;   // no marcable a mano (auto o bloqueado)
         return (
-          <label key={ps.paso_id} style={{ display: "flex", alignItems: "center", gap: 6, cursor: esAuto ? "default" : "pointer" }}>
+          <label key={ps.paso_id} style={{ display: "flex", alignItems: "center", gap: 6, cursor: inerte ? "default" : "pointer", opacity: bloqueado ? 0.55 : 1 }}>
             <input type="checkbox" checked={ps.hecho}
-              disabled={esAuto || busyOc === busyKey(ps)}
-              onChange={() => { if (!esAuto) onToggle(ps); }} />
+              disabled={inerte || busyOc === busyKey(ps)}
+              onChange={() => { if (!inerte) onToggle(ps); }} />
             <span style={{ textDecoration: ps.hecho ? "line-through" : "none", color: ps.hecho ? "var(--texto-suave, #888)" : undefined }}>
               {ps.titulo}
             </span>
+            {bloqueado && !esAuto && (
+              <span className="hint" title="Se desbloquea al completar el paso anterior">· 🔒 bloqueado</span>
+            )}
             {esAuto && (
               <span className="hint" title={`Se marca solo: ${reglaLabel(ps.regla_auto)}${ps.periodo ? ` · periodo ${ps.periodo}` : ""}`}>
                 · 🔒 auto ({reglaLabel(ps.regla_auto)}{ps.periodo ? ` ${ps.periodo}` : ""}) {ps.hecho ? "✓" : "pendiente"}
@@ -721,6 +731,10 @@ export default function TareasBinder({ binderId }: { binderId?: number }) {
               <b> marcado automático</b> se tacha solo cuando el dato del periodo ya está en la app (no hay que
               tocarlo). Cuando se completan todos, la entrega cuenta como hecha.
             </span>
+            <label className="check" style={{ display: "flex", alignItems: "center", gap: 6, margin: "2px 0 8px", fontSize: 13 }}>
+              <input type="checkbox" checked={form.secuencial} onChange={(e) => set("secuencial", e.target.checked)} />
+              <b>Pasos secuenciales</b> — cada paso se desbloquea al completar el anterior (los siguientes salen 🔒 hasta que toquen).
+            </label>
             {formPasos.length > 0 && (
               <ol style={{ paddingLeft: 20, margin: "2px 0 8px" }}>
                 {formPasos.map((p, i) => (
