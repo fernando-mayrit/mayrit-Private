@@ -81,15 +81,18 @@ function diaSiguiente(iso: string): string {
   if (!y || !m || !d) return "";
   return new Date(Date.UTC(y, m - 1, d + 1)).toISOString().slice(0, 10);
 }
-// Duración exactamente anual: el efecto +1 año coincide con el día siguiente al vencimiento.
-// Solo estas pólizas se renuevan; las temporales (plazos cortos o > 1 año) no.
+// Duración anual: el vencimiento cae ~1 año después del efecto, en cualquiera de las DOS
+// convenciones que usamos — vto = efecto+1año (misma fecha) o vto = efecto+1año−1día (fin de
+// periodo). Solo estas pólizas se renuevan; las temporales (plazos cortos) o plurianuales no.
 function esAnual(efecto?: string | null, vencimiento?: string | null): boolean {
   if (!efecto || !vencimiento) return false;
-  return masUnAnio(s(efecto)) === diaSiguiente(s(vencimiento)) && masUnAnio(s(efecto)) !== "";
+  const efMas1 = masUnAnio(s(efecto));
+  if (!efMas1) return false;
+  return efMas1 === s(vencimiento).slice(0, 10) || efMas1 === diaSiguiente(s(vencimiento));
 }
-// La póliza que renueva a `p`: mismo asegurado y ramo, con efecto = día siguiente a su vencimiento.
+// La póliza que renueva a `p`: mismo asegurado y ramo, con efecto = efecto de `p` + 1 año.
 function renovacionDe(p: Poliza, todas: Poliza[]): Poliza | undefined {
-  const objetivo = diaSiguiente(s(p.fecha_vencimiento));
+  const objetivo = masUnAnio(s(p.fecha_efecto));
   if (!objetivo) return undefined;
   return todas.find(
     (x) =>
@@ -99,14 +102,15 @@ function renovacionDe(p: Poliza, todas: Poliza[]): Poliza | undefined {
       s(x.fecha_efecto).slice(0, 10) === objetivo
   );
 }
-// Estado inicial de una renovación: copia la póliza, la fecha al año siguiente y limpia lo propio del alta.
+// Estado inicial de una renovación: copia la póliza, desplaza efecto y vencimiento +1 año (mantiene
+// la duración y la convención de fechas) y limpia lo propio del alta.
 function desdeRenovacion(p: Poliza): FormState {
   return {
     ...desde(p),
     numero_poliza: "",
     estado: "En Vigor",
     produccion: "Cartera",
-    fecha_efecto: diaSiguiente(s(p.fecha_vencimiento)),
+    fecha_efecto: masUnAnio(s(p.fecha_efecto)),
     fecha_vencimiento: masUnAnio(s(p.fecha_vencimiento)),
   };
 }
