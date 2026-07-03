@@ -539,6 +539,20 @@ def _plazos_de_pago(pago: str | None) -> int:
     return {"Único": 1, "Semestral": 2, "Trimestral": 4}.get((pago or "").strip(), 1)
 
 
+def _mercado_nombre(db: Session, valor: str | None) -> str | None:
+    """Resuelve el mercado a su NOMBRE canónico: si `valor` coincide con un alias (p. ej. 'LSM'),
+    devuelve el nombre completo ('Liberty Specialty Markets'); si ya es un nombre —o no se reconoce—
+    lo deja igual. Así el recibo guarda el nombre del mercado aunque la póliza tenga el alias."""
+    v = (valor or "").strip()
+    if not v:
+        return valor
+    # Prioridad al match por nombre; si no, por alias.
+    nombre = db.scalar(select(Mercado.nombre).where(Mercado.nombre == v))
+    if nombre:
+        return nombre
+    return db.scalar(select(Mercado.nombre).where(Mercado.alias == v)) or valor
+
+
 def _generar_recibos(db: Session, poliza: Poliza, n: int) -> None:
     """Genera los recibos de una póliza YA guardada: n plazos × compañías (coaseguro).
     Prima de cada compañía = prima_neta × su % sobre el total; repartida entre los plazos.
@@ -578,6 +592,7 @@ def _generar_recibos(db: Session, poliza: Poliza, n: int) -> None:
         _exigir_mes_abierto(db, fecha_plazo(i))
 
     for mercado_nom, share in companias:
+        mercado_nom = _mercado_nombre(db, mercado_nom)  # alias ('LSM') → nombre ('Liberty Specialty Markets')
         prima_comp = _q2(prima_neta * share)            # prima de esta compañía (su parte del total)
         cuota = _q2(prima_comp / n)
         for i in range(n):
