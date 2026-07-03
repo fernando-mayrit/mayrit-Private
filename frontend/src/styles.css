@@ -86,6 +86,15 @@ h1, h2, h3 { font-family: var(--fuente-titulo); font-weight: 600; color: var(--g
 .aviso-nivel-sel .nivel-dot.nivel-on { opacity: 1; outline-color: rgba(0,0,0,.25); outline-offset: 1px; }
 .avisos-vacio { padding: 16px; color: var(--gris-medio); }
 .avisos-lista { display: flex; flex-direction: column; }
+/* Grupo plegable por Binder (UMR): cabecera con flecha, UMR y nº de avisos. */
+.aviso-grupo { border-bottom: 1px solid var(--gris-claro); }
+.aviso-grupo-head { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; background: #f6f7f9; border: none; padding: 8px 14px; cursor: pointer; font-size: 13px; }
+.aviso-grupo-head:hover { background: #eef0f4; }
+.aviso-grupo-head.tiene-alto { background: #fdeceb; }
+.aviso-grupo-head.tiene-alto:hover { background: #fbdedb; }
+.aviso-grupo-arrow { width: 12px; color: var(--gris-medio); font-size: 11px; }
+.aviso-grupo-umr { font-weight: 700; color: var(--gris); }
+.aviso-grupo-cuenta { margin-left: auto; color: var(--gris-medio); font-weight: 600; }
 .aviso-item { display: flex; flex-direction: column; gap: 2px; text-align: left; background: none; border: none; border-bottom: 1px solid var(--gris-claro); border-left: 4px solid transparent; padding: 9px 14px 9px 12px; cursor: pointer; }
 .aviso-item:hover { background: #fff7f3; }
 .aviso-titulo { font-weight: 600; color: var(--naranja-osc); font-size: 13px; display: flex; align-items: center; gap: 7px; }

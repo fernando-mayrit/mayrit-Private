@@ -270,6 +270,7 @@ export default function App() {
   // La categoría de cada tipo es configurable (se mueve de una campana a otra desde el ⚙️).
   const [avisos, setAvisos] = useState<Aviso[]>([]);
   const [panelAviso, setPanelAviso] = useState<null | "alerta" | "dia">(null);
+  const [avGrupoAbierto, setAvGrupoAbierto] = useState<Record<string, boolean>>({});   // grupos (UMR) desplegados
   const [verConfig, setVerConfig] = useState(false);
   const [configNiveles, setConfigNiveles] = useState(false);
   const [niveles, setNiveles] = useState<AvisoNivel[]>([]);
@@ -338,20 +339,42 @@ export default function App() {
       const nv = (NIVEL_ORD[a.nivel] ?? 9) - (NIVEL_ORD[b.nivel] ?? 9);
       return nv !== 0 ? nv : a.titulo.localeCompare(b.titulo, "es");
     });
-  const renderLista = (xs: Aviso[]) =>
-    xs.length === 0 ? (
-      <div className="avisos-vacio">Sin avisos 🎉</div>
-    ) : (
+  const renderLista = (xs: Aviso[]) => {
+    if (xs.length === 0) return <div className="avisos-vacio">Sin avisos 🎉</div>;
+    // Agrupar por Binder (UMR) en secciones plegables; los sin binder, en un grupo al final.
+    const grupos = new Map<string, Aviso[]>();
+    for (const a of ordenarPorBinder(xs)) {
+      const k = a.umr ?? "—";
+      if (!grupos.has(k)) grupos.set(k, []);
+      grupos.get(k)!.push(a);
+    }
+    return (
       <div className="avisos-lista">
-        {ordenarPorBinder(xs).map((a, i) => (
-          <button key={i} className={`aviso-item nivel-borde-${a.nivel}`}
-            onClick={() => { if (a.pagina) ir(a.pagina as Page); setPanelAviso(null); }}>
-            <span className="aviso-titulo"><span className={`nivel-dot nivel-${a.nivel}`} /> {a.titulo}</span>
-            <span className="aviso-detalle">{a.detalle}</span>
-          </button>
-        ))}
+        {[...grupos.entries()].map(([umr, items]) => {
+          const abierto = avGrupoAbierto[umr] ?? false;
+          const alto = items.some((a) => a.nivel === "alto");
+          return (
+            <div key={umr} className="aviso-grupo">
+              <button type="button" className={`aviso-grupo-head${alto ? " tiene-alto" : ""}`}
+                onClick={() => setAvGrupoAbierto((s) => ({ ...s, [umr]: !abierto }))}>
+                <span className="aviso-grupo-arrow">{abierto ? "▾" : "▸"}</span>
+                <span className="aviso-grupo-umr">📑 {umr === "—" ? "Sin binder" : umr}</span>
+                {alto && <span className="nivel-dot nivel-alto" />}
+                <span className="aviso-grupo-cuenta">({items.length})</span>
+              </button>
+              {abierto && items.map((a, i) => (
+                <button key={i} className={`aviso-item nivel-borde-${a.nivel}`}
+                  onClick={() => { if (a.pagina) ir(a.pagina as Page); setPanelAviso(null); }}>
+                  <span className="aviso-titulo"><span className={`nivel-dot nivel-${a.nivel}`} /> {a.titulo}</span>
+                  <span className="aviso-detalle">{a.detalle}</span>
+                </button>
+              ))}
+            </div>
+          );
+        })}
       </div>
     );
+  };
   const renderConfig = () => (
     <div className="aviso-niveles">
       <p className="hint" style={{ padding: "8px 14px 4px" }}>Importancia (semáforo) y campana de cada aviso:</p>
