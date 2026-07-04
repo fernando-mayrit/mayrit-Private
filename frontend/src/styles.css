@@ -676,8 +676,8 @@ td.num, th.num { text-align: right; }
 .fin-card h3 { margin: 2px 0 10px; font-size: 16px; color: var(--gris); flex: 0 0 auto; }
 /* El scroll es de cada cuadro: llena el alto del cuadro y scrollea dentro (cabecera y totales fijos) */
 .fin-scroll { flex: 1; min-height: 0; overflow: auto; }
-/* border-collapse: separate → necesario para que el sticky (cabecera y totales) funcione */
-.fin-scroll table { border-collapse: separate; border-spacing: 0; }
+/* overflow: visible en la tabla → si no, la regla global 'table{overflow:hidden}' rompe el sticky */
+.fin-scroll table { border-collapse: separate; border-spacing: 0; overflow: visible; border-radius: 0; }
 .fin-scroll thead th { position: sticky; top: 0; background: var(--gris-claro); z-index: 2; box-shadow: inset 0 -1px 0 var(--borde); }
 .fin-scroll tfoot td { position: sticky; bottom: 0; background: var(--gris-claro); z-index: 2; box-shadow: inset 0 1px 0 var(--borde); }
 
