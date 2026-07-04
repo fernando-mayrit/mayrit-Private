@@ -993,3 +993,91 @@ tr.fila-inactiva td { opacity: 0.55; }
 .campo-vacio { grid-column: 1 / -1; color: var(--gris-medio); font-size: 13px; padding: 10px; text-align: center; border: 1px dashed var(--borde); border-radius: 8px; }
 .disponibles .chips-wrap { display: flex; flex-wrap: wrap; gap: 8px; }
 .disponibles .campo-chip { cursor: grab; }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Responsive — armazón para tabletas y móviles (fase 1: cabecera + cajón).
+   En escritorio la sidebar es fija; por debajo del breakpoint se convierte en
+   un cajón lateral deslizante que abre el botón hamburguesa de la cabecera.
+   ───────────────────────────────────────────────────────────────────────── */
+.hamburger { display: none; }              /* oculto en escritorio */
+.sidebar-backdrop { display: none; }
+
+@media (max-width: 860px) {
+  /* Botón hamburguesa */
+  .hamburger {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 40px; height: 40px; flex-shrink: 0;
+    background: none; border: 1px solid var(--borde); border-radius: 9px;
+    font-size: 20px; line-height: 1; color: var(--gris); cursor: pointer;
+  }
+  .hamburger:hover { background: #fff7f3; color: var(--naranja-osc); border-color: #f3d4c6; }
+
+  /* Cabecera: se reordena en dos filas; los tabs de maestras pasan a su propia
+     fila con scroll horizontal para no romper el ancho. */
+  .app-header { flex-wrap: wrap; padding: 8px 12px; gap: 8px; }
+  .app-header img.logo { height: 34px; }
+  .app-header .sep { display: none; }
+  .app-header .tabs {
+    order: 10; flex-basis: 100%;
+    flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch;
+    padding-bottom: 2px;
+  }
+  .app-header .tabs .tab { flex-shrink: 0; }
+  .header-user span { display: none; }     /* deja solo el enlace "cambiar" */
+
+  /* Sidebar → cajón lateral deslizante sobre un fondo oscurecido */
+  .sidebar {
+    position: fixed; top: 0; left: 0; bottom: 0; z-index: 60;
+    width: 260px; max-width: 82vw;
+    transform: translateX(-100%); transition: transform .22s ease;
+    box-shadow: 0 0 30px rgba(0, 0, 0, .22);
+  }
+  .sidebar.abierta { transform: translateX(0); }
+  .sidebar-backdrop {
+    display: block; position: fixed; inset: 0; z-index: 55;
+    background: rgba(0, 0, 0, .38);
+  }
+
+  /* Menos padding lateral para aprovechar la pantalla estrecha */
+  .container { padding: 14px 14px; }
+
+  /* Tablas: en vez de aplastar las columnas y partir el texto, se dejan a su ancho natural
+     (nowrap) para que el contenedor con scroll (.bdx-scroll/.lista-scroll/.tabla-scroll/.fin-scroll)
+     haga scroll HORIZONTAL. Momentum táctil en iOS. */
+  .bdx-scroll, .lista-scroll, .tabla-scroll, .fin-scroll { -webkit-overflow-scrolling: touch; }
+  .bdx-scroll table th, .bdx-scroll table td,
+  .lista-scroll table th, .lista-scroll table td,
+  .tabla-scroll table th, .tabla-scroll table td,
+  .fin-scroll table th, .fin-scroll table td {
+    white-space: nowrap;
+  }
+
+  /* Barra de herramientas de las tablas (buscador + acciones): que envuelva en móvil. */
+  .bdx-topbar { flex-wrap: wrap; gap: 8px; }
+
+  /* Formularios y rejillas de varias columnas → una sola columna en móvil. */
+  .alta-mov, .sin-total-fila, .export-cols { grid-template-columns: 1fr; }
+  .fin-grid { grid-template-columns: 1fr; }
+  .inicio-accesos { grid-template-columns: repeat(2, 1fr); }   /* 5 → 2 accesos por fila */
+
+  /* Panel lateral de formularios: ancho completo y menos padding. */
+  .panel { width: 100%; padding: 16px; }
+
+  /* Barra de pestañas del detalle de binder: scroll horizontal si no cabe. */
+  .detalle-tabs { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+  /* Formularios de dos columnas (pólizas, binders, transferencias) → apilados;
+     filas de campos que envuelven en lugar de apretarse. */
+  .dos-columnas { flex-direction: column; gap: 12px; }
+  .field-row { flex-wrap: wrap; }
+
+  /* Densidad táctil: controles de formulario, botones de acción y navegación
+     con altura cómoda para el dedo (~42px). No afecta a mini-botones de tablas. */
+  .field input, .field select, .field textarea { min-height: 42px; }
+  .btn-primary, .btn-secondary, .btn-danger, .btn-danger-solid, .btn-toggle { min-height: 42px; }
+  .nav-item, .tab { min-height: 42px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar { transition: none; }
+}

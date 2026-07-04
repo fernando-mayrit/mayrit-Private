@@ -172,19 +172,6 @@ class MesComision(BaseModel):
     recibos: list[str] = []                # todos los nº de recibo del mes (para el tooltip)
 
 
-def _mes_de_liq(db: Session, liq: ComisionLiquidacion, base: Decimal) -> MesComision:
-    r = db.get(Recibo, liq.recibo_id) if liq.recibo_id else None
-    com = _comision_efectiva(liq)
-    return MesComision(
-        periodo=liq.periodo, base_prima=_q2(base), comision_premium=_q2(liq.comision_premium),
-        liq_id=liq.id, estado=liq.estado,
-        comision=_q2(com), cedida=_q2(com * liq.cedida_pct / 100), retenida=_q2(com * liq.retenida_pct / 100),
-        pago1_nombre=liq.pago1_nombre, pago1_importe=liq.pago1_importe,
-        pago2_nombre=liq.pago2_nombre, pago2_importe=liq.pago2_importe,
-        recibo_numero=r.numero if r else None,
-    )
-
-
 REF_MODULO = "comision-iberian"   # marca los recibos creados por este módulo (vs. los históricos)
 PERIODO_MIN = "2021-06"           # antes de junio 2021 no se generó comisión: no se listan esos meses
 # Recibos tipo «Comisiones»/Iberian que NO son la comisión de Iberian-RC Profesional (fueron otra

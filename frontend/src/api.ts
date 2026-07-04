@@ -1017,6 +1017,20 @@ export function resumenBinder(id: number) {
   return request<ResumenBinder>(`/binders/${id}/resumen`);
 }
 
+// Evolución comparativa año a año del programa: prima (GWP our line) acumulada por mes de
+// cobertura de cada binder del mismo programa, alineada al mes de efecto.
+export interface EvolucionPunto { mes: number; acumulado: number }
+export interface EvolucionSerie {
+  id: number; etiqueta: string; yoa: string | null; fecha_efecto: string | null;
+  total: number; es_actual: boolean; puntos: EvolucionPunto[];
+}
+export interface EvolucionPrograma {
+  programa: string | null; binder_actual: number; series: EvolucionSerie[];
+}
+export function evolucionPrograma(id: number) {
+  return request<EvolucionPrograma>(`/binders/${id}/evolucion-programa`);
+}
+
 // CRUD genérico para una colección (p. ej. "/mercados").
 export function crud<TRead, TWrite>(collection: string) {
   return {

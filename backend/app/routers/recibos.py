@@ -21,7 +21,6 @@ from pydantic import BaseModel
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session, load_only
 
-from ..config import settings
 from ..db import get_db
 from ..models.maestras import (
     Bdx,
@@ -35,7 +34,6 @@ from ..models.maestras import (
     Mercado,
     Poliza,
     PremiumNota,
-    Productor,
     Programa,
     Recibo,
     SeccionMercado,
@@ -136,19 +134,6 @@ def _lineas_risk_periodo(db: Session, binder_id: int, periodo: str):
             BdxLinea.reporting_period_start < fin,
         )
     ).all()
-
-
-def _mercados_binder(db: Session, binder_id: int) -> str | None:
-    """Snapshot de los mercados del binder (nombres, sin repetir)."""
-    nombres = db.execute(
-        select(Mercado.nombre)
-        .join(SeccionMercado, SeccionMercado.mercado_id == Mercado.id)
-        .join(BinderSeccion, BinderSeccion.id == SeccionMercado.seccion_id)
-        .where(BinderSeccion.binder_id == binder_id)
-        .distinct()
-    ).scalars().all()
-    nombres = [n for n in nombres if n]
-    return ", ".join(sorted(set(nombres))) if nombres else None
 
 
 # A los sindicatos de Lloyd's se les liquida a través de esta entidad única (Lloyd's Bruselas).
@@ -830,14 +815,25 @@ def gestion(recibo_id: int, payload: GestionRecibo, db: Session = Depends(get_db
     paga_corredor = (r.pagador or "") == "Corredor" and r.poliza_id is not None
 
     if a == "cobrar":
+        # Consultoría y Comisiones se cobran DIRECTO en la cuenta de gastos (no hay custodia de primas):
+        # el cobro ES el traspaso → se marca traspasado en el acto, sin movimiento aparte, y nada queda
+        # pendiente de traspasar.
+        cobro_es_traspaso = r.tipo_poliza in ("Consultoría", "Comisiones")
         if off:
             # El pago de comisión solo bloquea si es manual (Tomador); con Corredor se revierte aquí.
             pago_manual = (r.comision_cedida_pagada or D0) > 0 and not paga_corredor
-            if (r.liquidar_liquidado or D0) > 0 or (r.comision_retenida_traspasada or D0) > 0 or pago_manual:
+            # El traspaso automático (consultoría/comisiones) NO bloquea el descobro: se revierte aquí.
+            traspaso_bloquea = (r.comision_retenida_traspasada or D0) > 0 and not cobro_es_traspaso
+            if (r.liquidar_liquidado or D0) > 0 or traspaso_bloquea or pago_manual:
                 raise HTTPException(status_code=409, detail="Deshaz antes la liquidación, el traspaso y el pago de comisión.")
             r.prima_cobrada = r.comision_retenida_cobrada = r.liquidar_cobrado = D0
             r.prima_fecha_cobro = None
             r.cuenta_cobro_id = None
+            if cobro_es_traspaso:
+                r.comision_retenida_traspasada = D0
+                r.comision_fecha_traspaso = None
+                r.cuenta_traspaso_origen_id = None
+                r.cuenta_traspaso_destino_id = None
             if paga_corredor:
                 r.comision_cedida_pagada = D0
                 r.comision_cedida_fecha_pago = None
@@ -850,6 +846,11 @@ def gestion(recibo_id: int, payload: GestionRecibo, db: Session = Depends(get_db
             r.liquidar_cobrado = r.liquidar
             r.prima_fecha_cobro = f
             r.cuenta_cobro_id = cta
+            if cobro_es_traspaso:   # cobro = traspaso (mismo día y cuenta de gastos), sin transferencia aparte
+                r.comision_retenida_traspasada = r.comision_retenida_cobrada
+                r.comision_fecha_traspaso = f
+                r.cuenta_traspaso_origen_id = cta
+                r.cuenta_traspaso_destino_id = cta
             if paga_corredor:
                 base = r.comision_cedida_a_pagar or r.comision_cedida or D0
                 r.comision_cedida_a_pagar = base

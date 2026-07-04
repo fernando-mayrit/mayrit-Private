@@ -3,6 +3,7 @@ Endpoints de Binders. Estructura anidada:
   Binder → Secciones → (Mercado + participación %).
 Por eso lleva lógica propia (no el CRUD genérico de las maestras).
 """
+import datetime as dt
 from collections import defaultdict
 from decimal import Decimal
 
@@ -408,6 +409,76 @@ def resumen(binder_id: int, db: Session = Depends(get_db)):
         por_risk_code=[ResumenItem(clave=rc, gwp=q2(g))
                        for rc, g in sorted(por_rc.items(), key=lambda kv: -kv[1])],
     )
+
+
+@router.get("/{binder_id}/evolucion-programa")
+def evolucion_programa(binder_id: int, db: Session = Depends(get_db)):
+    """Evolución comparativa año a año del PROGRAMA al que pertenece el binder.
+
+    Para cada binder del mismo programa devuelve la prima (GWP our line del Risk BDX) acumulada
+    por mes de cobertura, alineada al mes de efecto (mes 1 = mes de arranque de cada binder), de
+    modo que se pueden superponer distintos años y ver si la anualidad va por delante o por detrás
+    de las anteriores en el mismo punto de su desarrollo."""
+    b = db.get(Binder, binder_id)
+    if b is None:
+        raise HTTPException(status_code=404, detail=f"Binder {binder_id} no encontrado")
+    D0 = Decimal(0)
+
+    # Hermanos del programa (incluido él mismo). Sin programa → solo este binder.
+    if b.programa_id is not None:
+        hermanos = db.scalars(
+            select(Binder).where(Binder.programa_id == b.programa_id)
+        ).all()
+    else:
+        hermanos = [b]
+
+    def _mkey(fecha) -> int:
+        return fecha.year * 12 + (fecha.month - 1)
+
+    series = []
+    for h in sorted(hermanos, key=lambda x: (x.fecha_efecto or dt.date.min)):
+        # Σ GWP our line por mes de reporting del Risk BDX.
+        filas = db.execute(
+            select(BdxLinea.reporting_period_start, func.sum(BdxLinea.total_gwp_our_line))
+            .join(Bdx, BdxLinea.bdx_id == Bdx.id)
+            .where(Bdx.binder_id == h.id, Bdx.tipo == "Risk",
+                   BdxLinea.reporting_period_start.isnot(None))
+            .group_by(BdxLinea.reporting_period_start)
+        ).all()
+        base = _mkey(h.fecha_efecto) if h.fecha_efecto else None
+        por_idx: dict[int, Decimal] = defaultdict(lambda: D0)
+        for fecha, gwp in filas:
+            if fecha is None:
+                continue
+            idx = (_mkey(fecha) - base) if base is not None else 0
+            if idx < 0:
+                idx = 0
+            por_idx[idx] += gwp or D0
+        total = sum(por_idx.values(), D0)
+        # Curva acumulada mes a mes (hasta el último mes con dato, tope 12 meses de cobertura).
+        max_idx = max([*por_idx.keys(), 0]) if por_idx else 0
+        max_idx = min(max_idx, 11)
+        acc = D0
+        puntos = []
+        for i in range(max_idx + 1):
+            acc += por_idx.get(i, D0)
+            puntos.append({"mes": i + 1, "acumulado": float(acc)})
+        etiqueta = h.umr or h.agreement_number or f"Binder {h.id}"
+        series.append({
+            "id": h.id,
+            "etiqueta": etiqueta,
+            "yoa": h.yoa,
+            "fecha_efecto": h.fecha_efecto.isoformat() if h.fecha_efecto else None,
+            "total": float(total),
+            "es_actual": h.id == b.id,
+            "puntos": puntos,
+        })
+
+    return {
+        "programa": b.programa.nombre if b.programa else None,
+        "binder_actual": binder_id,
+        "series": series,
+    }
 
 
 @router.post("", response_model=sch.BinderRead, status_code=201)

@@ -19,7 +19,7 @@ from decimal import Decimal
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import func, or_, select
-from sqlalchemy.orm import Session, joinedload, selectinload
+from sqlalchemy.orm import Session, selectinload
 
 from ..db import get_db
 from ..models.maestras import Binder, BinderSeccion, CuentaBancaria, Poliza, Recibo, SeccionMercado, Transferencia

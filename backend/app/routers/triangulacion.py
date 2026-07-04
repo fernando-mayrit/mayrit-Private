@@ -19,7 +19,7 @@ import io
 
 import openpyxl
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
-from openpyxl.styles import Alignment, Font, PatternFill
+from openpyxl.styles import Font, PatternFill
 from openpyxl.utils import get_column_letter
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session

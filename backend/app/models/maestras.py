@@ -14,7 +14,7 @@ from __future__ import annotations
 import datetime as dt
 from decimal import Decimal
 
-from sqlalchemy import JSON, Boolean, Computed, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint, func, text
+from sqlalchemy import JSON, Boolean, Computed, Date, DateTime, ForeignKey, Index, Integer, Numeric, String, Text, UniqueConstraint, func, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
 
@@ -367,6 +367,10 @@ class Bdx(Base):
     Coverholder/UMR/YOA NO se repiten aquí: salen del binder."""
 
     __tablename__ = "bdx"
+    # El patrón `tipo='Risk'/'Premium' AND binder_id IN (...)` se usa por toda la app (siniestros,
+    # binders, avisos, triangulación, contabilidad). El índice compuesto ya existe en la BD (creado en
+    # la migración de índices de rendimiento); se declara aquí para que el modelo lo refleje.
+    __table_args__ = (Index("ix_bdx_binder_id_tipo", "binder_id", "tipo"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     binder_id: Mapped[int] = mapped_column(ForeignKey("binders.id", ondelete="CASCADE"), index=True)

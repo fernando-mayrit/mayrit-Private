@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
-import { bdxApi, recibosApi, siniestrosApi, claimsBdxApi, triangulacionApi, lpanApi, resumenBinder, type BdxDetalle, type BdxPreview, type BdxImportResult, type PremiumGrupo, type ClaimsBdxVista, type Triangulacion, type MetricaTriangulo, type VistaLpan, type ResumenBinder, type ResumenItem } from "../api";
+import { bdxApi, recibosApi, siniestrosApi, claimsBdxApi, triangulacionApi, lpanApi, resumenBinder, evolucionPrograma, type BdxDetalle, type BdxPreview, type BdxImportResult, type PremiumGrupo, type ClaimsBdxVista, type Triangulacion, type MetricaTriangulo, type VistaLpan, type ResumenBinder, type ResumenItem, type EvolucionPrograma, type EvolucionSerie } from "../api";
 import type { Binder, Bdx, BdxLinea, Recibo, Siniestro } from "../types";
 import BdxLineaPanel from "../components/BdxLineaPanel";
 import BdxTabla from "../components/BdxTabla";
@@ -55,6 +55,131 @@ function ResumenCuadro({ titulo, col, datos, imp }: {
           </tr>
         </tbody>
       </table>
+    </div>
+  );
+}
+
+// Gráfico de líneas (SVG) de la evolución comparativa año a año del programa: una línea por binder,
+// X = mes de cobertura (alineado al efecto), Y = prima (GWP our line) acumulada. Resalta el binder actual.
+const MESES_ABR = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+function EvolucionProgramaChart({ series, actualId, storageKey }: { series: EvolucionSerie[]; actualId: number; storageKey: string }) {
+  // Años ocultos, persistidos por programa: al salir y volver se mantiene lo seleccionado.
+  const [ocultas, setOcultas] = useState<Set<number>>(() => {
+    try {
+      const raw = localStorage.getItem(storageKey);
+      return raw ? new Set<number>(JSON.parse(raw)) : new Set<number>();
+    } catch { return new Set<number>(); }
+  });
+  useEffect(() => {
+    try { localStorage.setItem(storageKey, JSON.stringify([...ocultas])); } catch { /* ignore */ }
+  }, [ocultas, storageKey]);
+  const visibles = series.filter((s) => !ocultas.has(s.id));
+  const maxMes = Math.max(12, ...visibles.map((s) => s.puntos.length));
+  const maxY = Math.max(1, ...visibles.flatMap((s) => s.puntos.map((p) => p.acumulado)));
+
+  // Etiqueta de mes del eje X: M1 = mes de efecto del binder actual (todas las anualidades del
+  // programa renuevan en el mismo mes), así se leen como may, jun, jul… en vez de M1, M2…
+  const efectoMes = (() => {
+    const a = series.find((s) => s.id === actualId) ?? series[series.length - 1];
+    return a?.fecha_efecto ? Number(a.fecha_efecto.slice(5, 7)) : null;   // 1..12
+  })();
+  const etiquetaMes = (i: number) =>          // i base 0
+    efectoMes ? MESES_ABR[(efectoMes - 1 + i) % 12] : `M${i + 1}`;
+
+  // Paleta estable por año (índice en la lista ordenada), con el actual en naranja marca Mayrit.
+  const COLORES = ["#2563eb", "#16a34a", "#9333ea", "#0891b2", "#ca8a04", "#dc2626", "#4f46e5", "#059669", "#db2777", "#65a30d", "#0d9488", "#7c3aed"];
+  const colorDe = (s: EvolucionSerie, i: number) => (s.id === actualId ? "#ea6a1e" : COLORES[i % COLORES.length]);
+
+  const W = 720, H = 320, ML = 64, MR = 16, MT = 16, MB = 34;
+  const iw = W - ML - MR, ih = H - MT - MB;
+  const x = (mes: number) => ML + (maxMes <= 1 ? 0 : ((mes - 1) / (maxMes - 1)) * iw);
+  const y = (v: number) => MT + ih - (v / maxY) * ih;
+
+  const yTicks = 4;
+  const anio = (s: EvolucionSerie) => s.yoa ?? (s.fecha_efecto ? s.fecha_efecto.slice(0, 4) : s.etiqueta);
+  const toggle = (id: number) =>
+    setOcultas((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+
+  // Valor acumulado de una serie en un mes de cobertura dado (los puntos ya son acumulados).
+  const valorEnMes = (s: EvolucionSerie, mes: number) => {
+    let v = 0;
+    for (const p of s.puntos) { if (p.mes <= mes) v = p.acumulado; else break; }
+    return v;
+  };
+  // % de crecimiento del último mes de una serie frente al año anterior EN EL MISMO mes de cobertura.
+  const crecimiento = (s: EvolucionSerie): number | null => {
+    const idx = series.indexOf(s);
+    if (idx <= 0) return null;                       // no hay año anterior
+    const ultimo = s.puntos[s.puntos.length - 1];
+    if (!ultimo) return null;
+    const prevV = valorEnMes(series[idx - 1], ultimo.mes);
+    if (prevV <= 0) return null;
+    return ((ultimo.acumulado - prevV) / prevV) * 100;
+  };
+
+  return (
+    <div style={{ marginTop: 20 }}>
+      <h4 style={{ margin: "0 0 8px" }}>Evolución del programa por año (prima acumulada, GWP our line)</h4>
+      <div style={{ display: "flex", gap: 16, flexWrap: "wrap", alignItems: "flex-start" }}>
+        <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", maxWidth: W, height: "auto", flex: "1 1 480px" }}>
+          {/* rejilla + eje Y */}
+          {Array.from({ length: yTicks + 1 }, (_, i) => {
+            const v = (maxY / yTicks) * i;
+            return (
+              <g key={i}>
+                <line x1={ML} y1={y(v)} x2={W - MR} y2={y(v)} stroke="#e5e7eb" strokeWidth={1} />
+                <text x={ML - 8} y={y(v) + 4} textAnchor="end" fontSize={11} fill="#6b7280">{fmtMiles(v)}</text>
+              </g>
+            );
+          })}
+          {/* eje X: meses de cobertura (abreviatura, desde el mes de efecto) */}
+          {Array.from({ length: maxMes }, (_, i) => (
+            <text key={i} x={x(i + 1)} y={H - 12} textAnchor="middle" fontSize={11} fill="#6b7280">{etiquetaMes(i)}</text>
+          ))}
+          {/* líneas */}
+          {visibles.map((s) => {
+            const i = series.indexOf(s);
+            const c = colorDe(s, i);
+            const d = s.puntos.map((p, k) => `${k === 0 ? "M" : "L"}${x(p.mes)},${y(p.acumulado)}`).join(" ");
+            const esA = s.id === actualId;
+            const ult = s.puntos[s.puntos.length - 1];
+            const pct = crecimiento(s);
+            return (
+              <g key={s.id}>
+                <path d={d} fill="none" stroke={c} strokeWidth={esA ? 3 : 1.6} opacity={esA ? 1 : 0.85} />
+                {s.puntos.map((p) => <circle key={p.mes} cx={x(p.mes)} cy={y(p.acumulado)} r={esA ? 3.5 : 2.4} fill={c} />)}
+                {ult && pct !== null && (
+                  <text x={x(ult.mes)} y={y(ult.acumulado) - 7} textAnchor="middle"
+                        fontSize={esA ? 12 : 10.5} fontWeight={esA ? 700 : 600}
+                        fill={pct >= 0 ? "#16a34a" : "#dc2626"}>
+                    {pct >= 0 ? "+" : ""}{pct.toFixed(1)}%
+                  </text>
+                )}
+              </g>
+            );
+          })}
+        </svg>
+        {/* selector de años: casilla por anualidad + Todos/Ninguno */}
+        <div style={{ minWidth: 150, fontSize: 12 }}>
+          <div style={{ display: "flex", gap: 8, marginBottom: 6, fontSize: 12 }}>
+            <button className="btn-mini" onClick={() => setOcultas(new Set())}>Todos</button>
+            <button className="btn-mini" onClick={() => setOcultas(new Set(series.map((s) => s.id)))}>Ninguno</button>
+          </div>
+          {series.map((s, i) => {
+            const visible = !ocultas.has(s.id);
+            const c = colorDe(s, i);
+            return (
+              <label key={s.id} title="Mostrar/ocultar"
+                   style={{ display: "flex", alignItems: "center", gap: 6, padding: "1px 0", cursor: "pointer", opacity: visible ? 1 : 0.5 }}>
+                <input type="checkbox" checked={visible} onChange={() => toggle(s.id)} style={{ width: 12, height: 12 }} />
+                <span style={{ width: 12, height: 3, background: c, display: "inline-block", borderRadius: 2 }} />
+                <span style={{ fontWeight: s.id === actualId ? 700 : 400 }}>{anio(s)}</span>
+                <span className="num" style={{ marginLeft: "auto", fontSize: 11, color: "#6b7280" }}>{fmtMiles(s.total)}</span>
+              </label>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }
@@ -141,6 +266,7 @@ const SIN_DEFAULT = [
 export default function BinderDetalle({ binder }: { binder: Binder }) {
   const [tab, setTab] = useState<"resumen" | "datos" | "bloqueo" | "bdx" | "lpan" | "premium" | "calculos" | "recibos" | "siniestros" | "claimsbdx" | "triangulacion" | "tareas">("resumen");
   const [resumen, setResumen] = useState<ResumenBinder | null>(null);
+  const [evolucion, setEvolucion] = useState<EvolucionPrograma | null>(null);
 
   // ── BDX (uno por binder) ──
   const [bdxs, setBdxs] = useState<Bdx[]>([]);
@@ -249,7 +375,10 @@ export default function BinderDetalle({ binder }: { binder: Binder }) {
     // Se recarga al abrir la pestaña (refleja correcciones sin re-importar de SharePoint).
     if (tab === "siniestros" || tab === "calculos") cargarSiniestros();
     if (tab === "lpan") cargarLpan();
-    if (tab === "resumen") resumenBinder(binder.id).then(setResumen).catch(() => {});
+    if (tab === "resumen") {
+      resumenBinder(binder.id).then(setResumen).catch(() => {});
+      evolucionPrograma(binder.id).then(setEvolucion).catch(() => {});
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
 
@@ -862,6 +991,10 @@ export default function BinderDetalle({ binder }: { binder: Binder }) {
               <ResumenCuadro titulo="Por Mercado" col="Mercado" datos={resumen.por_mercado} imp={imp} />
               <ResumenCuadro titulo="Por Risk Code" col="Risk Code" datos={resumen.por_risk_code} imp={imp} />
             </div>
+          )}
+          {evolucion && evolucion.series.length > 1 && (
+            <EvolucionProgramaChart series={evolucion.series} actualId={evolucion.binder_actual}
+              storageKey={`evol-prog:${evolucion.programa ?? binder.programa_id ?? binder.id}`} />
           )}
         </div>
       )}

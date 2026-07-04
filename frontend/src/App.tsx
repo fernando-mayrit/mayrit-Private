@@ -211,10 +211,13 @@ export default function App() {
   // Cambia en cada clic del menú; sirve de `key` del contenido para REMONTAR la página, también al
   // re-pulsar la página activa (así "Binders" desde dentro de un binder vuelve a la lista).
   const [navKey, setNavKey] = useState(0);
+  // Cajón de menú lateral (solo en tabletas/móviles; en escritorio la sidebar es fija).
+  const [menuAbierto, setMenuAbierto] = useState(false);
 
   function ir(p: Page) {
     setPage(p);
     setNavKey((k) => k + 1);
+    setMenuAbierto(false);   // al navegar se cierra el cajón (móvil)
   }
   // ¿El usuario actual puede ver esta página? (páginas restringidas a ciertos usuarios)
   const puedeVer = (p: string) => {
@@ -309,9 +312,12 @@ export default function App() {
     return () => document.removeEventListener("mousedown", cerrar);
   }, [verConfig]);
 
-  // Auto-refresco de avisos SIN recargar la página: cada 60 s y al volver a la pestaña/ventana.
+  // Auto-refresco de avisos SIN recargar la página: cada 5 min (solo con la pestaña visible, para no
+  // machacar la BD con pestañas en segundo plano) y al volver a la pestaña/ventana.
   useEffect(() => {
-    const id = setInterval(cargarAvisos, 60_000);
+    const id = setInterval(() => {
+      if (document.visibilityState === "visible") cargarAvisos();
+    }, 300_000);
     const onVisible = () => { if (document.visibilityState === "visible") cargarAvisos(); };
     document.addEventListener("visibilitychange", onVisible);
     window.addEventListener("focus", cargarAvisos);
@@ -406,6 +412,14 @@ export default function App() {
   return (
     <div className="app">
       <header className="app-header">
+        <button
+          className="hamburger"
+          aria-label="Menú"
+          aria-expanded={menuAbierto}
+          onClick={() => setMenuAbierto((v) => !v)}
+        >
+          {menuAbierto ? "✕" : "☰"}
+        </button>
         <img
           className="logo"
           src={logo}
@@ -484,7 +498,8 @@ export default function App() {
       <div className="acento-naranja" />
 
       <div className="body">
-        <aside className="sidebar">
+        {menuAbierto && <div className="sidebar-backdrop" onClick={() => setMenuAbierto(false)} />}
+        <aside className={"sidebar" + (menuAbierto ? " abierta" : "")}>
           <nav className="sidebar-nav">
             {GRUPOS.filter((g) => !g.soloUsuarios || g.soloUsuarios.includes(usuario ?? "")).map((g) => (
               <NavGroup key={g.titulo} grupo={g} page={page} usuario={usuario} onIr={ir} />

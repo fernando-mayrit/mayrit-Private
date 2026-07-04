@@ -319,16 +319,6 @@ def _clase_de_concepto(concepto: str | None) -> str:
     return "cobro"
 
 
-class TransferJustif(BaseModel):
-    id: int
-    fecha: dt.date | None
-    importe: Decimal
-    referencia: str | None     # UMR / nº póliza
-    recibo: str | None         # nº de recibo (si la transferencia lo lleva)
-    cliente: str | None        # coverholder (agencia) deducido del UMR
-    mercado: str | None
-
-
 class ReciboJustif(BaseModel):
     """Una fila POR RECIBO del justificante. Varias filas pueden compartir `transferencia_id`
     (un cobro que paga varios recibos); el cuadre con el apunte se hace por transferencia, por eso
@@ -353,85 +343,6 @@ def _coverholders(db: Session, umrs: set[str]) -> dict[str, str]:
         .where(Binder.umr.in_(umrs))
     ).all()
     return {umr: nom for (umr, nom) in rows if umr}
-
-
-def _recibos_de(db: Session, trs: list[Transferencia]) -> dict[int, str | None]:
-    """Mapea cada transferencia → nº de recibo(s) para el desglose, en este orden de fiabilidad:
-      1) `recibo_num` directo de la transferencia.
-      2) `recibo_id` directo → su número.
-      3) DEDUCCIÓN por las LÍNEAS del Premium (fuente de verdad): los recibos de las líneas cuyo
-         binder + mes de `premium_bdx` coinciden con el (binder, periodo) de la transferencia. Así,
-         cualquier cobro/liquidación hecho en la app queda deducido aunque el mes de premium no
-         coincida con el de riesgo del recibo. Si hay varios recibos, se listan separados por coma."""
-    # binder de las que no traen binder_id, por su UMR
-    umrs = {t.numero_poliza for t in trs if t.numero_poliza and t.binder_id is None}
-    umr2bid: dict[str, int] = (
-        {u: i for (u, i) in db.execute(select(Binder.umr, Binder.id).where(Binder.umr.in_(umrs))).all()} if umrs else {}
-    )
-    bid_de = lambda t: t.binder_id or umr2bid.get(t.numero_poliza or "")
-
-    # recibo por id directo
-    rids = {t.recibo_id for t in trs if t.recibo_id}
-    rec_por_id: dict[int, str] = (
-        {i: n for (i, n) in db.execute(select(Recibo.id, Recibo.numero).where(Recibo.id.in_(rids))).all()} if rids else {}
-    )
-
-    bids = {bid_de(t) for t in trs}
-    bids.discard(None)
-
-    # deducción A: por (binder, 'YYYY-MM' del premium_bdx de las líneas) ↔ periodo de la transferencia
-    por_premio: dict[tuple[int, str], set[str]] = defaultdict(set)
-    # deducción B (más fiable para movimientos sueltos): por la FECHA de pago/liquidación/traspaso de
-    # las líneas ↔ fecha de la transferencia, según el subtipo. Campo de fecha por subtipo:
-    campo_fecha = {
-        "Cobro": BdxLinea.premium_payment_date,
-        "Liquidación": BdxLinea.fecha_liquidacion, "Liquidacion": BdxLinea.fecha_liquidacion,
-        "Traspaso": BdxLinea.fecha_traspaso,
-    }
-    por_fecha: dict[tuple[str, int, dt.date], set[str]] = defaultdict(set)
-    if bids:
-        for (b, pbdx, num) in db.execute(
-            select(Bdx.binder_id, BdxLinea.premium_bdx, Recibo.numero)
-            .join(Bdx, Bdx.id == BdxLinea.bdx_id).join(Recibo, Recibo.id == BdxLinea.recibo_id)
-            .where(Bdx.binder_id.in_(bids), BdxLinea.premium_bdx.is_not(None), Recibo.numero.is_not(None))
-        ).all():
-            por_premio[(b, pbdx.strftime("%Y-%m"))].add(num)
-        for sub, col in (("Cobro", BdxLinea.premium_payment_date), ("Liquidación", BdxLinea.fecha_liquidacion), ("Traspaso", BdxLinea.fecha_traspaso)):
-            for (b, f, num) in db.execute(
-                select(Bdx.binder_id, col, Recibo.numero)
-                .join(Bdx, Bdx.id == BdxLinea.bdx_id).join(Recibo, Recibo.id == BdxLinea.recibo_id)
-                .where(Bdx.binder_id.in_(bids), col.is_not(None), Recibo.numero.is_not(None))
-            ).all():
-                por_fecha[(sub, b, f)].add(num)
-
-    def _sub(t):  # normaliza el subtipo de la transferencia a la clave de fecha
-        return "Liquidación" if (t.subtipo or "").startswith("Liquidaci") else t.subtipo
-
-    out: dict[int, str | None] = {}
-    for t in trs:
-        if t.recibo_num:
-            out[t.id] = t.recibo_num
-            continue
-        if t.recibo_id and t.recibo_id in rec_por_id:
-            out[t.id] = rec_por_id[t.recibo_id]
-            continue
-        b = bid_de(t)
-        # PREFERIR periodo (A): es preciso (1 recibo por transferencia). La fecha (B) empareja TODOS
-        # los recibos cobrados ese día → solo se usa como respaldo cuando A no da nada.
-        nums: set[str] = set()
-        if b and t.periodo:
-            nums = set(por_premio.get((b, t.periodo.strftime("%Y-%m")), set()))
-        if not nums and b and t.fecha:
-            nums = set(por_fecha.get((_sub(t), b, t.fecha), set()))
-        out[t.id] = ", ".join(sorted(nums)) if nums else None
-    return out
-
-
-def _transfer_row(t: Transferencia, cliente: str | None, recibo: str | None) -> TransferJustif:
-    return TransferJustif(
-        id=t.id, fecha=t.fecha, importe=Decimal(t.importe or 0),
-        referencia=t.numero_poliza, recibo=recibo, cliente=cliente, mercado=t.mercado,
-    )
 
 
 def _desglose_recibos(db: Session, trs: list[Transferencia]) -> dict[int, list[tuple[str | None, Decimal]]]:

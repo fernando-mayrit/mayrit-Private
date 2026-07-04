@@ -10,7 +10,6 @@ from pydantic import BaseModel
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
 
-from ..config import settings
 from ..db import get_db
 from .. import bdx_import
 from ..models.maestras import Binder, Bdx, BdxBloqueo, BdxLinea
