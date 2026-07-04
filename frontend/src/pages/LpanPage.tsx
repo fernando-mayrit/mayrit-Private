@@ -48,13 +48,14 @@ export default function LpanPage() {
   const [fTipo, setFTipo] = useState("");
   const [fUmr, setFUmr] = useState("");
   const [fSdd, setFSdd] = useState("");
+  const [fEstado, setFEstado] = useState("");   // filtro rápido por estado (botones WIP/Queried)
   const [exportando, setExportando] = useState(false);
   const [expCols, setExpCols] = useState<Set<string>>(new Set());
   const [expSaving, setExpSaving] = useState(false);
   const [resetSignal, setResetSignal] = useState(0);
 
   function limpiarFiltros() {
-    setFPrograma(""); setFTipo(""); setFUmr(""); setFSdd("");
+    setFPrograma(""); setFTipo(""); setFUmr(""); setFSdd(""); setFEstado("");
     setResetSignal((n) => n + 1); // limpia también los filtros por columna de la tabla
   }
 
@@ -78,13 +79,20 @@ export default function LpanPage() {
     () => [...new Set(items.map((l) => l.tipo).filter(Boolean))].sort(),
     [items],
   );
-  const filtrados = useMemo(
+  // Sin el filtro de estado: sirve para contar WIP/Queried (los contadores no cambian al pulsar un estado).
+  const filtradosBase = useMemo(
     () => items
       .filter((l) => !fPrograma || l.programa === fPrograma)
       .filter((l) => !fTipo || l.tipo === fTipo)
       .filter((l) => !fUmr || (l.binder_poliza ?? "").toLowerCase().includes(fUmr.toLowerCase()))
       .filter((l) => !fSdd || `${fmtFechaES(l.sdd)} ${l.sdd ?? ""}`.toLowerCase().includes(fSdd.toLowerCase())),
     [items, fPrograma, fTipo, fUmr, fSdd],
+  );
+  const nWip = useMemo(() => filtradosBase.filter((l) => l.estado === "Work in Progress").length, [filtradosBase]);
+  const nQueried = useMemo(() => filtradosBase.filter((l) => l.estado === "Queried").length, [filtradosBase]);
+  const filtrados = useMemo(
+    () => (fEstado ? filtradosBase.filter((l) => l.estado === fEstado) : filtradosBase),
+    [filtradosBase, fEstado],
   );
 
   // Edición en línea de Liberado/Pagado: guarda en el backend (mismo registro que la pestaña del
@@ -270,8 +278,8 @@ export default function LpanPage() {
             filtroCascada
             filtroDesc
           />
-          {/* Descarga a Excel: fila inferior, alineada a la izquierda bajo el listado */}
-          <div style={{ marginTop: 10 }}>
+          {/* Fila inferior: descarga + filtros rápidos por estado (con su contador) */}
+          <div style={{ marginTop: 10, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
             <button className="btn-excel" title="Descargar el listado a Excel" onClick={abrirExport}>
               <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
                 <rect x="2" y="2" width="20" height="20" rx="3.5" fill="#217346" />
@@ -281,6 +289,20 @@ export default function LpanPage() {
                 </g>
               </svg>
               Descarga
+            </button>
+            <button
+              className={"pill-status pill-status-wip" + (fEstado === "Work in Progress" ? " on" : "")}
+              title="Filtrar por Work in Progress"
+              onClick={() => setFEstado((e) => (e === "Work in Progress" ? "" : "Work in Progress"))}
+            >
+              Work in Progress ({nWip})
+            </button>
+            <button
+              className={"pill-status pill-status-queried" + (fEstado === "Queried" ? " on" : "")}
+              title="Filtrar por Queried"
+              onClick={() => setFEstado((e) => (e === "Queried" ? "" : "Queried"))}
+            >
+              Queried ({nQueried})
             </button>
           </div>
         </>

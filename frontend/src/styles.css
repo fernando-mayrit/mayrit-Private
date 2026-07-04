@@ -833,6 +833,8 @@ td.num, th.num { text-align: right; }
 .pill-status-queried   { background: #fee2e2; color: #991b1b; }   /* rojo */
 .pill-status-rejected  { background: #e5e7eb; color: #374151; }   /* gris */
 .pill-status-otro      { background: var(--gris-claro); color: var(--gris-medio); }
+button.pill-status { padding: 6px 14px; font-size: 12.5px; }   /* variante botón (filtros rápidos del LPAN) */
+.pill-status.on { box-shadow: 0 0 0 2px rgba(0,0,0,.4); }       /* filtro activo */
 
 /* Pólizas: color por Estado (en vigor verde, renovada azul, no renovada gris, cancelada rojo, temporal-vencida ámbar) */
 .pill-pol-envigor    { background: #dcebe0; color: #1a7f37; }
