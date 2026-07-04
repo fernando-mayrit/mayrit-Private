@@ -821,6 +821,15 @@ td.num, th.num { text-align: right; }
 .pill-parcial   { background: #fdecd1; color: #b45309; }
 .pill-cobrado   { background: #dcebe0; color: #1a7f37; }
 .pill-anulado   { background: var(--gris-claro); color: var(--gris-medio); }
+/* Estado del LPAN como pastilla EDITABLE (un <select> con forma de pastilla y color por estado) */
+.pill-status { border: 1px solid transparent; border-radius: 999px; padding: 3px 12px 3px 10px; font-size: 11.5px; font-weight: 700; cursor: pointer; -webkit-appearance: none; appearance: none; text-align: center; font-family: inherit; }
+.pill-status:hover { filter: brightness(0.97); }
+.pill-status:focus { outline: none; box-shadow: 0 0 0 2px rgba(0,0,0,.18); }
+.pill-status-completed { background: #dcfce7; color: #166534; }   /* verde */
+.pill-status-wip       { background: #fef9c3; color: #854d0e; }   /* amarillo */
+.pill-status-queried   { background: #fee2e2; color: #991b1b; }   /* rojo */
+.pill-status-rejected  { background: #e5e7eb; color: #374151; }   /* gris */
+.pill-status-otro      { background: var(--gris-claro); color: var(--gris-medio); }
 
 /* Pólizas: color por Estado (en vigor verde, renovada azul, no renovada gris, cancelada rojo, temporal-vencida ámbar) */
 .pill-pol-envigor    { background: #dcebe0; color: #1a7f37; }

@@ -7,6 +7,11 @@ import { fmtMiles, fmtFechaES } from "../format";
 
 const STORAGE_KEY = "mayrit.lpans.global.tabla.v4";
 const n = (v: unknown) => Number(v) || 0;
+// Estados (WP Status) del LPAN — mismos que la pestaña LPAN del binder — y su color de pastilla.
+const WP_STATUS = ["Work in Progress", "Queried", "Completed", "Rejected"];
+const CLASE_ESTADO: Record<string, string> = {
+  "Completed": "completed", "Work in Progress": "wip", "Queried": "queried", "Rejected": "rejected",
+};
 
 const COLS: Col<LpanGlobal>[] = [
   { key: "tipo", label: "Tipo", tipo: "text" },
@@ -95,9 +100,38 @@ export default function LpanPage() {
     }
   }, []);
 
+  // Edición en línea del Status (WP Status): mismo desplegable que la pestaña del binder.
+  const editarEstado = useCallback(async (l: LpanGlobal, estado: string) => {
+    setItems((arr) => arr.map((x) => (x.id === l.id ? { ...x, estado } : x)));
+    try {
+      await lpanApi.actualizarLpan(l.id, { estado });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudo guardar el estado.");
+      try { setItems(await lpanApi.listarTodos()); } catch { /* */ }
+    }
+  }, []);
+
   // Liberado editable solo si el LPAN está «Completed»; Pagado solo si ya hay fecha de Liberado.
   const cols = useMemo<Col<LpanGlobal>[]>(
     () => COLS.map((c) => {
+      if (c.key === "estado") {
+        return {
+          ...c,
+          render: (l: LpanGlobal) => (
+            <select
+              className={`pill-status pill-status-${CLASE_ESTADO[l.estado] ?? "otro"}`}
+              value={l.estado}
+              onClick={(e) => e.stopPropagation()}
+              onChange={(e) => editarEstado(l, e.target.value)}
+              title="Cambiar el estado (WP Status)"
+            >
+              {(WP_STATUS.includes(l.estado) ? WP_STATUS : [l.estado, ...WP_STATUS]).map((s) => (
+                <option key={s} value={s}>{s}</option>
+              ))}
+            </select>
+          ),
+        };
+      }
       if (c.key !== "liberado" && c.key !== "pagado") return c;
       const campo = c.key as "liberado" | "pagado";
       return {
@@ -125,7 +159,7 @@ export default function LpanPage() {
         },
       };
     }),
-    [editarFecha],
+    [editarFecha, editarEstado],
   );
 
   // Filas que la tabla muestra de verdad (tras sus filtros por columna). Hasta que la tabla
