@@ -79,8 +79,18 @@ function LineaAnual({ datos }: { datos: { anio: number; valor: number }[] }) {
 
 // Multi-línea por año: comisión neta por mes. Leyenda con checks (mostrar/ocultar años) y tooltip
 // al pasar por encima que lista el valor de cada año visible en ese mes.
+const LM_STORAGE_KEY = "kpi-comis-neta-mensual:ocultas";
 function LineasMensuales({ series }: { series: { anio: number; valores: number[] }[] }) {
-  const [ocultas, setOcultas] = useState<Set<number>>(new Set());
+  // Años ocultos, persistidos entre sesiones (se mantiene lo seleccionado al salir y volver).
+  const [ocultas, setOcultas] = useState<Set<number>>(() => {
+    try {
+      const raw = localStorage.getItem(LM_STORAGE_KEY);
+      return raw ? new Set<number>(JSON.parse(raw)) : new Set<number>();
+    } catch { return new Set<number>(); }
+  });
+  useEffect(() => {
+    try { localStorage.setItem(LM_STORAGE_KEY, JSON.stringify([...ocultas])); } catch { /* ignore */ }
+  }, [ocultas]);
   const [hoverMes, setHoverMes] = useState<number | null>(null);
   const visibles = series.filter((s) => !ocultas.has(s.anio));
   const maxY = Math.max(1, ...visibles.flatMap((s) => s.valores));
