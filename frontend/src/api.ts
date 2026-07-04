@@ -1039,6 +1039,7 @@ export interface Kpis {
     comis_ret_anio: number; comis_ret_anterior: number;
     facturacion_anio: number; facturacion_anterior: number;
     proyeccion: number | null;
+    comis_ret_anterior_full: number;
     corte_mes: number;
     binders_en_vigor: number; polizas_en_vigor: number;
     comis_ret_serie: { anio: number; valor: number }[];

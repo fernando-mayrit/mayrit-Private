@@ -78,6 +78,10 @@ def kpis(anio: int | None = None, db: Session = Depends(get_db)):
 
     # Proyección de ingresos del presupuesto (sincronizada desde el Ppto 2026.xlsx → tabla parametros).
     proyeccion = db.scalar(select(Parametro.valor).where(Parametro.clave == f"proyeccion_ingresos_{y}"))
+    # Comisión retenida (neta) del AÑO ANTERIOR COMPLETO (100%), para comparar contra la proyección.
+    comis_ret_anterior_full = db.scalar(
+        select(func.coalesce(func.sum(Recibo.comision_retenida), 0))
+        .where(Recibo.anio_contable == y_ant)) or D0
 
     # ── FINANCIERO (acumulado, mismas definiciones que la página Financiero) ──
     fin_row = db.execute(select(
@@ -106,6 +110,7 @@ def kpis(anio: int | None = None, db: Session = Depends(get_db)):
             "facturacion_anio": _f(factura_de(y)),
             "facturacion_anterior": _f(factura_de(y_ant)),
             "proyeccion": _f(proyeccion) if proyeccion is not None else None,
+            "comis_ret_anterior_full": _f(comis_ret_anterior_full),
             "corte_mes": corte_mes,
             "binders_en_vigor": int(binders_vigor),
             "polizas_en_vigor": int(polizas_vigor),

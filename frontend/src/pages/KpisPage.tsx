@@ -15,7 +15,7 @@ function Stat({ label, value, sub, tono, action }: { label: string; value: strin
       <div className="kpi-val">{value}</div>
       <div className="kpi-lbl">{label}</div>
       {sub && <div className="kpi-sub">{sub}</div>}
-      {action}
+      {action && <div className="kpi-stat-action">{action}</div>}
     </div>
   );
 }
@@ -37,11 +37,12 @@ function BotonSyncProyeccion({ onDone }: { onDone: (v: number) => void }) {
   };
   return (
     <div className="kpi-sync">
-      <button className="btn-secondary btn-mini" onClick={sync} disabled={estado === "cargando"}>
-        {estado === "cargando" ? "Sincronizando…" : "↻ Sincronizar"}
+      {estado === "ok" && <span className="kpi-sync-ok" title="Actualizado">✓</span>}
+      {estado === "error" && <span className="kpi-sync-err" title={msg || "No disponible aquí"}>⚠</span>}
+      <button className="kpi-sync-btn" onClick={sync} disabled={estado === "cargando"}
+              title="Sincronizar la proyección desde el Excel (solo funciona desde el PC con el fichero)">
+        {estado === "cargando" ? "…" : "↻"}
       </button>
-      {estado === "ok" && <span className="kpi-sync-ok">✓ {msg}</span>}
-      {estado === "error" && <span className="kpi-sync-err" title={msg}>⚠ No disponible aquí</span>}
     </div>
   );
 }
@@ -184,6 +185,8 @@ export default function KpisPage() {
   const varPct = p.prima_anterior > 0 ? ((p.prima_anio - p.prima_anterior) / p.prima_anterior) * 100 : null;
   const varComis = p.comis_ret_anterior > 0 ? ((p.comis_ret_anio - p.comis_ret_anterior) / p.comis_ret_anterior) * 100 : null;
   const varFact = p.facturacion_anterior > 0 ? ((p.facturacion_anio - p.facturacion_anterior) / p.facturacion_anterior) * 100 : null;
+  const varProy = (p.proyeccion !== null && p.comis_ret_anterior_full > 0)
+    ? ((p.proyeccion - p.comis_ret_anterior_full) / p.comis_ret_anterior_full) * 100 : null;
   const mesCorte = MESES_ABR[p.corte_mes - 1];
 
   return (
@@ -203,8 +206,9 @@ export default function KpisPage() {
           <Stat label={`Prima ${k.anio}`} value={`${eur(p.prima_anio)} €`}
             sub={varPct !== null ? `${varPct >= 0 ? "▲" : "▼"} ${Math.abs(varPct).toFixed(1)}% vs ${k.anio - 1} (a ${mesCorte})` : undefined}
             tono={varPct === null ? undefined : varPct >= 0 ? "ok" : "bad"} />
-          <Stat label={`Proyección ingresos ${k.anio}`} value={p.proyeccion !== null ? `${eur(p.proyeccion)} €` : "—"}
-            sub="presupuesto (Ppto 2026)"
+          <Stat label={`Proyección comisiones netas ${k.anio}`} value={p.proyeccion !== null ? `${eur(p.proyeccion)} €` : "—"}
+            sub={varProy !== null ? `${varProy >= 0 ? "▲" : "▼"} ${Math.abs(varProy).toFixed(1)}% vs ${k.anio - 1} (100%)` : "presupuesto (Ppto 2026)"}
+            tono={varProy === null ? undefined : varProy >= 0 ? "ok" : "bad"}
             action={<BotonSyncProyeccion onDone={(v) => setK((prev) => prev ? { ...prev, produccion: { ...prev.produccion, proyeccion: v } } : prev)} />} />
         </div>
         <div className="kpi-graf">
