@@ -312,6 +312,7 @@ class LpanGlobal(BaseModel):
     periodo: str
     binder_umr: str | None = None
     poliza_numero: str | None = None
+    binder_poliza: str | None = None   # UMR del binder o nº de póliza (una sola columna en el listado)
     programa: str | None = None
     section: int
     risk_code: str
@@ -443,9 +444,10 @@ def listar_lpans(db: Session = Depends(get_db)):
     out: list[LpanGlobal] = []
     for lp in db.scalars(select(Lpan).order_by(Lpan.periodo.desc(), Lpan.id)).all():
         umr, prog = binders.get(lp.binder_id, (None, None))
+        pol = polizas.get(lp.poliza_id)
         out.append(LpanGlobal(
             id=lp.id, tipo=lp.tipo, periodo=lp.periodo,
-            binder_umr=umr, poliza_numero=polizas.get(lp.poliza_id), programa=prog,
+            binder_umr=umr, poliza_numero=pol, binder_poliza=(umr or pol), programa=prog,
             section=lp.section, risk_code=lp.risk_code,
             broker_ref1=lp.broker_ref1, broker_ref2=lp.broker_ref2,
             signing_number=lp.signing_number, work_package=lp.work_package,

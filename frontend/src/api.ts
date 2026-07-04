@@ -172,6 +172,7 @@ export interface LpanGlobal {
   periodo: string;
   binder_umr: string | null;
   poliza_numero: string | null;
+  binder_poliza: string | null;   // UMR del binder o nº de póliza (columna unificada)
   programa: string | null;
   section: number;
   risk_code: string;
