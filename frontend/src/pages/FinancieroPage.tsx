@@ -5,7 +5,9 @@ import PageHeader from "../components/PageHeader";
 import { fmtMiles, fmtFechaES } from "../format";
 
 const num = (v: unknown) => Number(v) || 0;
-const eur = (v: number) => (Math.abs(v) < 0.005 ? "" : fmtMiles(v));
+// Tolerancia: importes por debajo de este umbral (residuos de redondeo) se consideran 0 y no cuentan.
+const TOL = 0.10;
+const eur = (v: number) => (Math.abs(v) < TOL ? "" : fmtMiles(v));
 
 // Métricas de "pendiente" por recibo (mismas definiciones que el listado de Recibos).
 const METRICAS: { titulo: string; valor: (r: Recibo) => number }[] = [
@@ -22,7 +24,7 @@ function PivotCard({ titulo, recibos, valor }: { titulo: string; recibos: Recibo
   const anios = new Set<number>();
   for (const r of recibos) {
     const v = valor(r);
-    if (Math.abs(v) < 0.005) continue;
+    if (Math.abs(v) < TOL) continue;
     const ref = r.numero_poliza ?? r.binder_umr ?? "—";
     anios.add(r.anio);
     const m = mapa.get(ref) ?? new Map<number, number>();
@@ -32,7 +34,7 @@ function PivotCard({ titulo, recibos, valor }: { titulo: string; recibos: Recibo
   const yrs = [...anios].sort();
   const filas = [...mapa.entries()]
     .map(([ref, m]) => ({ ref, m }))
-    .filter((f) => yrs.some((y) => Math.abs(f.m.get(y) ?? 0) > 0.005))
+    .filter((f) => yrs.some((y) => Math.abs(f.m.get(y) ?? 0) > TOL))
     .sort((a, b) => a.ref.localeCompare(b.ref));
   const totalAnio = (y: number) => filas.reduce((a, f) => a + (f.m.get(y) ?? 0), 0);
   const totalGen = filas.reduce((a, f) => a + yrs.reduce((s, y) => s + (f.m.get(y) ?? 0), 0), 0);
