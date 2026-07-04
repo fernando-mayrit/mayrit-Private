@@ -166,7 +166,7 @@ export default function FinancieroPage() {
   }, []);
 
   return (
-    <div className="container">
+    <div className="container lista-page">
       <PageHeader emoji="💰" title="Financiero" />
       {error && <div className="error">⚠ {error}</div>}
       {loading ? (

@@ -670,10 +670,12 @@ td.num, th.num { text-align: right; }
 .bdx-scroll table.risk-mes thead th { position: sticky; top: 0; background: var(--gris-claro); z-index: 2; }
 
 /* Financiero: rejilla de cuadros (pendientes de cobro/liquidación/traspaso/pago) */
-.fin-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 18px; }
-.fin-card { background: #fff; border: 1px solid var(--borde); border-radius: 12px; padding: 10px 14px 14px; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
-.fin-card h3 { margin: 2px 0 10px; font-size: 16px; color: var(--gris); }
-.fin-scroll { max-height: 320px; overflow: auto; }
+/* La rejilla llena la altura disponible; NO scrollea (scroll individual por cuadro) */
+.fin-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); grid-auto-rows: 1fr; gap: 18px; flex: 1; min-height: 0; overflow: hidden; }
+.fin-card { background: #fff; border: 1px solid var(--borde); border-radius: 12px; padding: 10px 14px 14px; box-shadow: 0 1px 3px rgba(0,0,0,.06); display: flex; flex-direction: column; min-height: 0; }
+.fin-card h3 { margin: 2px 0 10px; font-size: 16px; color: var(--gris); flex: 0 0 auto; }
+/* El scroll es de cada cuadro: llena el alto del cuadro y scrollea dentro (cabecera y totales fijos) */
+.fin-scroll { flex: 1; min-height: 0; overflow: auto; }
 /* border-collapse: separate → necesario para que el sticky (cabecera y totales) funcione */
 .fin-scroll table { border-collapse: separate; border-spacing: 0; }
 .fin-scroll thead th { position: sticky; top: 0; background: var(--gris-claro); z-index: 2; box-shadow: inset 0 -1px 0 var(--borde); }
