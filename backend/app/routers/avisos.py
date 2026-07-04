@@ -94,7 +94,7 @@ def _risk_sin_recibo(db: Session) -> list[Aviso]:
         avisos.append(Aviso(
             tipo="risk_sin_recibo", severidad="warning",
             titulo="Recibo pendiente de generar",
-            detalle=f"{b.umr if b else ''}: hay Risk BDX sin recibo en {', '.join(pendientes)}",
+            detalle=f"Hay Risk BDX sin recibo en {', '.join(pendientes)}",
             binder_id=bid, umr=b.umr if b else None, periodos=pendientes, pagina="binders",
         ))
     avisos.sort(key=lambda a: a.umr or "")
@@ -140,7 +140,7 @@ def _vencimientos_sin_renovar(db: Session) -> list[Aviso]:
         avisos.append(Aviso(
             tipo="binder_sin_renovar", severidad="warning",
             titulo="Binder por vencer sin renovar",
-            detalle=f"{b.umr or b.agreement_number}: vence el {b.fecha_vencimiento.strftime('%d/%m/%Y')} y no tiene renovación.",
+            detalle=f"Vence el {b.fecha_vencimiento.strftime('%d/%m/%Y')} y no tiene renovación.",
             binder_id=b.id, umr=b.umr, pagina="binders",
         ))
 
@@ -163,7 +163,7 @@ def _vencimientos_sin_renovar(db: Session) -> list[Aviso]:
         avisos.append(Aviso(
             tipo="poliza_sin_renovar", severidad="warning",
             titulo="Póliza por vencer sin renovar",
-            detalle=f"{p.numero_poliza or p.asegurado}: vence el {p.fecha_vencimiento.strftime('%d/%m/%Y')} y no tiene renovación.",
+            detalle=f"{p.asegurado + ': ' if p.asegurado else ''}vence el {p.fecha_vencimiento.strftime('%d/%m/%Y')} y no tiene renovación.",
             umr=p.numero_poliza, pagina="polizas",
         ))
     return avisos
@@ -281,7 +281,7 @@ def _lpan_mes_incompleto(db: Session) -> list[Aviso]:
         avisos.append(Aviso(
             tipo="lpan_mes_incompleto", severidad="danger",
             titulo="Mes con LPAN a medias",
-            detalle=f"{b.umr or b.agreement_number}: LPAN generados solo en parte en {', '.join(pers)}.",
+            detalle=f"LPAN generados solo en parte en {', '.join(pers)}.",
             binder_id=bid, umr=b.umr, periodos=pers, pagina="binders",
         ))
     avisos.sort(key=lambda a: a.umr or "")
@@ -307,7 +307,7 @@ def _lpan_sin_procesar(db: Session) -> list[Aviso]:
         avisos.append(Aviso(
             tipo="lpan_sin_procesar", severidad="info",
             titulo="LPAN sin WP/Procesado",
-            detalle=f"{b.umr or b.agreement_number}: {n} LPAN sin WP y/o Procesado ({', '.join(pers)}).",
+            detalle=f"{n} LPAN sin WP y/o Procesado ({', '.join(pers)}).",
             binder_id=bid, umr=b.umr, periodos=pers, pagina="binders",
         ))
     avisos.sort(key=lambda a: a.umr or "")
@@ -341,7 +341,7 @@ def _limite_sin_notificar(db: Session) -> list[Aviso]:
                 continue
             pct = por_limite.get(lim.id, {}).get("consumo_pct")
             tope = _fmt_importe(lim.limite_primas)
-            detalle = f"{b.umr or b.agreement_number}: producción al {pct}% del límite"
+            detalle = f"Producción al {pct}% del límite"
             if tope:
                 detalle += f" ({tope})"
             detalle += " — pendiente de notificar al mercado."
@@ -388,9 +388,9 @@ def _tareas_pendientes(db: Session) -> list[Aviso]:
         f0 = min(pend)
         avisos.append(Aviso(
             tipo="tarea_pendiente", severidad="warning",
-            titulo="Tarea de binder pendiente",
-            detalle=f"{b.umr or b.agreement_number} · {t.titulo}: pendiente desde {f0.strftime('%d/%m/%Y')}"
-                    + (f" (+{len(pend) - 1})" if len(pend) > 1 else ""),
+            titulo=t.titulo,   # el nombre exacto de la tarea (el binder ya lo agrupa el frontend por UMR)
+            detalle=f"Pendiente desde {f0.strftime('%d/%m/%Y')}"
+                    + (f" (+{len(pend) - 1} más)" if len(pend) > 1 else ""),
             binder_id=b.id, umr=b.umr, periodos=[f.strftime('%Y-%m') for f in pend], pagina="binders",
         ))
     return avisos
