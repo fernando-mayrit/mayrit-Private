@@ -16,6 +16,7 @@ import LpanPage from "./pages/LpanPage";
 import CierreContablePage from "./pages/CierreContablePage";
 import ContabilidadPage from "./pages/ContabilidadPage";
 import FinancieroPage from "./pages/FinancieroPage";
+import KpisPage from "./pages/KpisPage";
 import TransferenciasPage from "./pages/TransferenciasPage";
 import RamosPage from "./pages/RamosPage";
 import CuentasBancariasPage from "./pages/CuentasBancariasPage";
@@ -51,6 +52,7 @@ const EMOJI: Record<string, string> = {
   financiero: "💰",
   transferencias: "🔁",
   contabilidad: "📒",
+  kpis: "📊",
 };
 
 type Page =
@@ -75,7 +77,8 @@ type Page =
   | "cierre"
   | "financiero"
   | "transferencias"
-  | "contabilidad";
+  | "contabilidad"
+  | "kpis";
 
 // Barra superior: las Maestras (las partes).
 const MAESTRAS: { id: Page; label: string }[] = [
@@ -121,6 +124,7 @@ const FACTURACION: { id: Page; label: string }[] = [
 
 // Menú lateral: Financiero / Caja (cuadros de pendientes de cobro/liquidación/traspaso/pago).
 const FINANCIERO: { id: Page; label: string }[] = [
+  { id: "kpis", label: "KPIs" },
   { id: "financiero", label: "Financiero" },
   { id: "transferencias", label: "Transferencias" },
 ];
@@ -522,6 +526,7 @@ export default function App() {
           {page === "ucr" && <EnConstruccion titulo="UCR" />}
           {page === "cierre" && <CierreContablePage />}
           {page === "financiero" && <FinancieroPage />}
+          {page === "kpis" && <KpisPage />}
           {page === "transferencias" && <TransferenciasPage />}
           {page === "contabilidad" && puedeVer("contabilidad") && <ContabilidadPage />}
           {page === "polizas" && <PolizasPage />}

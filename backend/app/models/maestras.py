@@ -1212,3 +1212,16 @@ class MovimientoBancario(Base):
 
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class Parametro(Base):
+    """Parámetros sueltos de la app (clave-valor numérico). P. ej. la proyección de ingresos del
+    presupuesto, que se sincroniza desde el Excel con una herramienta local (producción no puede
+    leer el fichero de OneDrive; la BD local es la de producción)."""
+    __tablename__ = "parametros"
+
+    clave: Mapped[str] = mapped_column(String(80), primary_key=True)
+    valor: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    descripcion: Mapped[str | None] = mapped_column(String(200))
+    actualizado: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

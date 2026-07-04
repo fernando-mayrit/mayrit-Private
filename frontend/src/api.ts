@@ -1031,6 +1031,36 @@ export function evolucionPrograma(id: number) {
   return request<EvolucionPrograma>(`/binders/${id}/evolucion-programa`);
 }
 
+// ── KPIs (cuadro de mando) ──
+export interface Kpis {
+  anio: number;
+  produccion: {
+    prima_anio: number; prima_anterior: number;
+    comis_ret_anio: number; comis_ret_anterior: number;
+    facturacion_anio: number; facturacion_anterior: number;
+    proyeccion: number | null;
+    corte_mes: number;
+    binders_en_vigor: number; polizas_en_vigor: number;
+    comis_ret_serie: { anio: number; valor: number }[];
+    comis_neta_mensual: { anio: number; valores: number[] }[];
+  };
+  financiero: {
+    pendiente_cobro: number; pendiente_liquidacion: number;
+    pendiente_traspaso: number; pendiente_pago: number;
+  };
+  operativo: {
+    alertas: number; avisos_dia: number;
+    recibos_por_generar: number; tareas_pendientes: number; lpan_pendientes: number;
+  };
+}
+export function getKpis(anio?: number) {
+  return request<Kpis>(`/kpis${anio ? `?anio=${anio}` : ""}`);
+}
+// Resincroniza la proyección de ingresos desde el Excel (solo funciona en el PC con el fichero).
+export function syncProyeccion() {
+  return request<{ proyeccion: number }>("/kpis/proyeccion/sync", { method: "POST" });
+}
+
 // CRUD genérico para una colección (p. ej. "/mercados").
 export function crud<TRead, TWrite>(collection: string) {
   return {
