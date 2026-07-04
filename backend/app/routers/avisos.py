@@ -369,7 +369,8 @@ def _aplicar_niveles(db: Session, avisos: list[Aviso]) -> list[Aviso]:
 
 def _tareas_pendientes(db: Session) -> list[Aviso]:
     """Tareas (recurrentes manuales) activas con alguna ocurrencia pendiente cuyo aviso ya saltó."""
-    from .tareas import _ocurrencias, _debida, _fechas_hechas, _periodos_datos   # lazy: evita import circular
+    # lazy: evita import circular
+    from .tareas import _ocurrencias, _debida, _fechas_hechas, _periodos_datos, _pasos_de_ocurrencia
 
     hoy = dt.date.today()
     binders = {b.id: b for b in db.scalars(select(Binder)).all()}
@@ -381,16 +382,27 @@ def _tareas_pendientes(db: Session) -> list[Aviso]:
         b = binders.get(t.binder_id)
         if not b:
             continue
+        ocs = _ocurrencias(t, b)
         hechas = _fechas_hechas(t, b, datos)
-        pend = [f for f in _ocurrencias(t, b) if f not in hechas and _debida(t, f, hoy, False)]
+        pend = [f for f in ocs if f not in hechas and _debida(t, f, hoy, False)]
         if not pend:
             continue
         f0 = min(pend)
+        # Si la tarea tiene checklist, el aviso muestra el PASO concreto pendiente (el primero no hecho
+        # y no bloqueado, p. ej. "Envío a Ana"), con la tarea como contexto. Si no, el título de la tarea.
+        titulo, contexto = t.titulo, ""
+        if t.pasos:
+            manual = {(ph.paso_id, ph.fecha_ocurrencia): ph for p in t.pasos for ph in p.hechos}
+            pasos, _completa = _pasos_de_ocurrencia(t, b, f0, ocs.index(f0), datos, manual)
+            pend_pasos = [p for p in pasos if not p.hecho]
+            accionable = next((p for p in pend_pasos if not p.bloqueado), pend_pasos[0] if pend_pasos else None)
+            if accionable:
+                titulo, contexto = accionable.titulo, f"{t.titulo} · "
+        desde = f"pendiente desde {f0.strftime('%d/%m/%Y')}" + (f" (+{len(pend) - 1} más)" if len(pend) > 1 else "")
         avisos.append(Aviso(
             tipo="tarea_pendiente", severidad="warning",
-            titulo=t.titulo,   # el nombre exacto de la tarea (el binder ya lo agrupa el frontend por UMR)
-            detalle=f"Pendiente desde {f0.strftime('%d/%m/%Y')}"
-                    + (f" (+{len(pend) - 1} más)" if len(pend) > 1 else ""),
+            titulo=titulo,
+            detalle=(contexto + desde) if contexto else (desde[0].upper() + desde[1:]),
             binder_id=b.id, umr=b.umr, periodos=[f.strftime('%Y-%m') for f in pend], pagina="binders",
         ))
     return avisos
