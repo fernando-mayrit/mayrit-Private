@@ -25,7 +25,7 @@ function PivotCard({ titulo, recibos, valor }: { titulo: string; recibos: Recibo
   for (const r of recibos) {
     const v = valor(r);
     if (Math.abs(v) < TOL) continue;
-    const ref = r.numero_poliza ?? r.binder_umr ?? "—";
+    const ref = r.numero_poliza ?? r.binder_umr ?? r.asegurado ?? "—";
     anios.add(r.anio);
     const m = mapa.get(ref) ?? new Map<number, number>();
     m.set(r.anio, (m.get(r.anio) ?? 0) + v);
