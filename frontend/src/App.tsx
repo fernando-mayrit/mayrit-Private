@@ -89,6 +89,7 @@ const MAESTRAS: { id: Page; label: string }[] = [
   { id: "mercados", label: "Mercados" },
   { id: "tomadores", label: "Tomadores" },
   { id: "programas", label: "Programas" },
+  { id: "agencias_dgsfp", label: "Agencias" },
 ];
 
 // Menú lateral: el Negocio (las 4 fuentes principales).
@@ -97,7 +98,6 @@ const NEGOCIO: { id: Page; label: string }[] = [
   { id: "polizas", label: "Pólizas" },
   { id: "consultoria", label: "Consultoría" },
   { id: "comisiones", label: "Comisiones" },
-  { id: "agencias_dgsfp", label: "Agencias Suscripción" },
 ];
 
 // Menú lateral: Tareas (tareas recurrentes manuales de los binders).
