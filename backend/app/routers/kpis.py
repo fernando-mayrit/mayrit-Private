@@ -6,7 +6,7 @@ bloque Operativo, que reutiliza el módulo de Avisos (mismos criterios que las c
 import datetime as dt
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
@@ -131,18 +131,3 @@ def kpis(anio: int | None = None, db: Session = Depends(get_db)):
             "lpan_pendientes": int(lpan_pend),
         },
     }
-
-
-@router.post("/kpis/proyeccion/sync")
-def sync_proyeccion(db: Session = Depends(get_db)):
-    """Relee la proyección de ingresos del Ppto 2026.xlsx y la guarda en la BD. SOLO funciona desde
-    un equipo con acceso al fichero (el PC local); en producción el fichero no existe."""
-    from ..ppto_sync import sincronizar   # import perezoso: solo al pulsar el botón
-    try:
-        valor = sincronizar(db)
-    except (FileNotFoundError, PermissionError):
-        raise HTTPException(status_code=409, detail="No se puede leer el Ppto 2026.xlsx desde aquí. "
-                            "Sincroniza abriendo la app en el PC que tiene el fichero.")
-    except (KeyError, ValueError) as e:
-        raise HTTPException(status_code=422, detail=f"El Excel no tiene el dato esperado: {e}")
-    return {"proyeccion": valor}

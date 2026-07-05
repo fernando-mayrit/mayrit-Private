@@ -1093,18 +1093,7 @@ tr.fila-inactiva td { opacity: 0.55; }
   background: #fff; border: 1px solid var(--borde); border-radius: 12px; padding: 16px 18px;
   border-left: 4px solid var(--gris-claro);
 }
-.kpi-stat:has(.kpi-stat-action) { padding-right: 42px; }
 .kpi-val { font-size: 26px; font-weight: 700; line-height: 1.1; color: var(--gris); }
-.kpi-stat-action { position: absolute; top: 8px; right: 8px; }
-.kpi-sync { display: flex; align-items: center; gap: 5px; }
-.kpi-sync-btn {
-  width: 26px; height: 26px; padding: 0; border-radius: 7px; font-size: 14px; line-height: 1;
-  background: #fff; border: 1px solid var(--borde); color: var(--gris); cursor: pointer;
-}
-.kpi-sync-btn:hover { background: var(--gris-claro); border-color: var(--naranja); color: var(--naranja-osc); }
-.kpi-sync-btn:disabled { opacity: .5; cursor: default; }
-.kpi-sync-ok { font-size: 13px; color: #16a34a; font-weight: 700; }
-.kpi-sync-err { font-size: 13px; color: var(--rojo); font-weight: 700; cursor: help; }
 .kpi-lbl { margin-top: 6px; font-size: 13px; color: var(--gris-medio); }
 .kpi-sub { margin-top: 4px; font-size: 12px; font-weight: 600; }
 .kpi-ok   { border-left-color: #16a34a; }

@@ -1,5 +1,5 @@
-import { useEffect, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
-import { getKpis, syncProyeccion, type Kpis } from "../api";
+import { useEffect, useState, type MouseEvent as ReactMouseEvent } from "react";
+import { getKpis, type Kpis } from "../api";
 import PageHeader from "../components/PageHeader";
 import { fmtMiles } from "../format";
 
@@ -8,41 +8,13 @@ const MESES_FULL = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "juli
 const COLORES_ANIO = ["#7c3aed", "#db2777", "#9333ea", "#ca8a04", "#dc2626", "#0d9488", "#16a34a", "#2563eb", "#1e3a8a", "#ea6a1e", "#0891b2", "#65a30d"];
 const eur = (v: number) => fmtMiles(v, 0);
 
-// Tarjeta de un indicador: valor grande + etiqueta (+ pie opcional + acción opcional).
-function Stat({ label, value, sub, tono, action }: { label: string; value: string; sub?: string; tono?: "ok" | "warn" | "bad"; action?: ReactNode }) {
+// Tarjeta de un indicador: valor grande + etiqueta (+ pie opcional).
+function Stat({ label, value, sub, tono }: { label: string; value: string; sub?: string; tono?: "ok" | "warn" | "bad" }) {
   return (
     <div className={"kpi-stat" + (tono ? ` kpi-${tono}` : "")}>
       <div className="kpi-val">{value}</div>
       <div className="kpi-lbl">{label}</div>
       {sub && <div className="kpi-sub">{sub}</div>}
-      {action && <div className="kpi-stat-action">{action}</div>}
-    </div>
-  );
-}
-
-// Botón para resincronizar la proyección desde el Excel (con estado de carga/resultado).
-function BotonSyncProyeccion({ onDone }: { onDone: (v: number) => void }) {
-  const [estado, setEstado] = useState<"idle" | "cargando" | "ok" | "error">("idle");
-  const [msg, setMsg] = useState<string>("");
-  const sync = async () => {
-    setEstado("cargando"); setMsg("");
-    try {
-      const r = await syncProyeccion();
-      onDone(r.proyeccion);
-      setEstado("ok"); setMsg("Actualizado");
-      setTimeout(() => setEstado("idle"), 2500);
-    } catch (e) {
-      setEstado("error"); setMsg((e as Error).message);
-    }
-  };
-  return (
-    <div className="kpi-sync">
-      {estado === "ok" && <span className="kpi-sync-ok" title="Actualizado">✓</span>}
-      {estado === "error" && <span className="kpi-sync-err" title={msg || "No disponible aquí"}>⚠</span>}
-      <button className="kpi-sync-btn" onClick={sync} disabled={estado === "cargando"}
-              title="Sincronizar la proyección desde el Excel (solo funciona desde el PC con el fichero)">
-        {estado === "cargando" ? "…" : "↻"}
-      </button>
     </div>
   );
 }
@@ -208,8 +180,7 @@ export default function KpisPage() {
             tono={varPct === null ? undefined : varPct >= 0 ? "ok" : "bad"} />
           <Stat label={`Proyección comisiones netas ${k.anio}`} value={p.proyeccion !== null ? `${eur(p.proyeccion)} €` : "—"}
             sub={varProy !== null ? `${varProy >= 0 ? "▲" : "▼"} ${Math.abs(varProy).toFixed(1)}% vs ${k.anio - 1} (100%)` : "presupuesto (Ppto 2026)"}
-            tono={varProy === null ? undefined : varProy >= 0 ? "ok" : "bad"}
-            action={<BotonSyncProyeccion onDone={(v) => setK((prev) => prev ? { ...prev, produccion: { ...prev.produccion, proyeccion: v } } : prev)} />} />
+            tono={varProy === null ? undefined : varProy >= 0 ? "ok" : "bad"} />
         </div>
         <div className="kpi-graf">
           <div className="kpi-graf-box">

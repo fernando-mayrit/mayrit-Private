@@ -1057,10 +1057,6 @@ export interface Kpis {
 export function getKpis(anio?: number) {
   return request<Kpis>(`/kpis${anio ? `?anio=${anio}` : ""}`);
 }
-// Resincroniza la proyección de ingresos desde el Excel (solo funciona en el PC con el fichero).
-export function syncProyeccion() {
-  return request<{ proyeccion: number }>("/kpis/proyeccion/sync", { method: "POST" });
-}
 
 // CRUD genérico para una colección (p. ej. "/mercados").
 export function crud<TRead, TWrite>(collection: string) {
