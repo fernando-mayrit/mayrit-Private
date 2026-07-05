@@ -1147,3 +1147,19 @@ tr.fila-inactiva td { opacity: 0.55; }
   .kpi-lm { flex-direction: column; }
   .kpi-lm-leg { flex-direction: row; flex-wrap: wrap; gap: 4px 12px; margin-top: 6px; }
 }
+
+/* ── Agencias de Suscripción (DGSFP) ── */
+.as-barra { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 4px 0 12px; }
+.as-toggle { display: flex; gap: 6px; }
+.as-buscar { flex: 1; min-width: 220px; max-width: 420px; padding: 8px 12px; border: 1px solid var(--borde); border-radius: 8px; font-size: 14px; font-family: inherit; }
+.as-sello { font-size: 12px; color: var(--gris-medio); margin-left: auto; white-space: nowrap; }
+.as-scroll { flex: 1; min-height: 0; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 12px; align-content: start; padding-right: 4px; }
+.as-grupo { border: 1px solid var(--borde); border-radius: 10px; background: #fff; overflow: hidden; }
+.as-grupo-cab { display: flex; align-items: baseline; gap: 8px; padding: 10px 12px; background: var(--gris-claro); border-bottom: 1px solid var(--borde); }
+.as-grupo-tit { font-weight: 700; font-size: 13.5px; flex: 1; }
+.as-grupo-sub { font-size: 11px; color: var(--gris-medio); white-space: nowrap; }
+.as-grupo-n { background: var(--naranja); color: #fff; border-radius: 10px; padding: 1px 8px; font-size: 11px; font-weight: 700; }
+.as-hijos { list-style: none; margin: 0; padding: 6px 12px 10px; }
+.as-hijos li { font-size: 13px; padding: 3px 0; border-bottom: 1px solid #f4f4f4; }
+.as-hijos li:last-child { border-bottom: none; }
+.as-hijo-clave { display: inline-block; min-width: 52px; color: var(--naranja-osc); font-weight: 600; font-size: 11.5px; }

@@ -1225,3 +1225,51 @@ class Parametro(Base):
     descripcion: Mapped[str | None] = mapped_column(String(200))
     actualizado: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+# ── Registro DGSFP: aseguradoras y sus agencias de suscripción ──────────────────────────────────
+# Reflejo (solo lectura desde la app) del Registro Público de la DGSFP. Se sincroniza con una
+# herramienta LOCAL (tools/sync_agencias_dgsfp.py) que raspa el registro con Playwright y hace
+# upsert aquí; producción (Azure) no puede scrapear (anti-bot), así que solo LEE de estas tablas.
+
+class DgsfpAseguradora(Base):
+    """Entidad aseguradora activa del registro de la DGSFP (clave tipo C0001/E0237/L1228)."""
+    __tablename__ = "dgsfp_aseguradoras"
+
+    clave: Mapped[str] = mapped_column(String(10), primary_key=True)
+    nombre: Mapped[str] = mapped_column(String(255))
+    nif: Mapped[str | None] = mapped_column(String(20))
+    telefono: Mapped[str | None] = mapped_column(String(30))
+    situacion: Mapped[str | None] = mapped_column(String(40))
+    actualizado: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class DgsfpAgencia(Base):
+    """Agencia de suscripción del registro de la DGSFP (clave tipo AS0108)."""
+    __tablename__ = "dgsfp_agencias"
+
+    clave: Mapped[str] = mapped_column(String(10), primary_key=True)
+    nombre: Mapped[str] = mapped_column(String(255))
+    actualizado: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class DgsfpVinculo(Base):
+    """Vínculo aseguradora ↔ agencia de suscripción (qué agencia suscribe para qué compañía).
+    Se conserva el histórico: al desaparecer del registro se marca activo=False (no se borra)."""
+    __tablename__ = "dgsfp_vinculos"
+    __table_args__ = (UniqueConstraint("aseguradora_clave", "agencia_clave", name="uq_dgsfp_vinculo"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    aseguradora_clave: Mapped[str] = mapped_column(
+        ForeignKey("dgsfp_aseguradoras.clave", ondelete="CASCADE"), index=True)
+    agencia_clave: Mapped[str] = mapped_column(
+        ForeignKey("dgsfp_agencias.clave", ondelete="CASCADE"), index=True)
+    activo: Mapped[bool] = mapped_column(Boolean, server_default=text("true"), default=True)
+    primera_sync: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    ultima_sync: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    fecha_baja: Mapped[dt.date | None] = mapped_column(Date)
+
+    aseguradora: Mapped["DgsfpAseguradora"] = relationship()
+    agencia: Mapped["DgsfpAgencia"] = relationship()

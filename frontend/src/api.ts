@@ -1058,6 +1058,19 @@ export function getKpis(anio?: number) {
   return request<Kpis>(`/kpis${anio ? `?anio=${anio}` : ""}`);
 }
 
+// ── DGSFP: agencias de suscripción por aseguradora (reflejo del registro público) ──
+export interface DgsfpResumen {
+  actualizado: string | null;
+  n_aseguradoras: number; n_agencias: number; n_vinculos: number;
+}
+export interface DgsfpVinculo {
+  aseguradora_clave: string; aseguradora_nombre: string;
+  aseguradora_nif: string | null; aseguradora_situacion: string | null;
+  agencia_clave: string; agencia_nombre: string;
+}
+export function getDgsfpResumen() { return request<DgsfpResumen>("/dgsfp/resumen"); }
+export function getDgsfpVinculos() { return request<DgsfpVinculo[]>("/dgsfp/vinculos"); }
+
 // CRUD genérico para una colección (p. ej. "/mercados").
 export function crud<TRead, TWrite>(collection: string) {
   return {

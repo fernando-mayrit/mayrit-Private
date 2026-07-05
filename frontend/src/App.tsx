@@ -17,6 +17,7 @@ import CierreContablePage from "./pages/CierreContablePage";
 import ContabilidadPage from "./pages/ContabilidadPage";
 import FinancieroPage from "./pages/FinancieroPage";
 import KpisPage from "./pages/KpisPage";
+import AgenciasSuscripcionPage from "./pages/AgenciasSuscripcionPage";
 import TransferenciasPage from "./pages/TransferenciasPage";
 import RamosPage from "./pages/RamosPage";
 import CuentasBancariasPage from "./pages/CuentasBancariasPage";
@@ -53,6 +54,7 @@ const EMOJI: Record<string, string> = {
   transferencias: "🔁",
   contabilidad: "📒",
   kpis: "📊",
+  agencias_dgsfp: "🏛️",
 };
 
 type Page =
@@ -78,7 +80,8 @@ type Page =
   | "financiero"
   | "transferencias"
   | "contabilidad"
-  | "kpis";
+  | "kpis"
+  | "agencias_dgsfp";
 
 // Barra superior: las Maestras (las partes).
 const MAESTRAS: { id: Page; label: string }[] = [
@@ -94,6 +97,7 @@ const NEGOCIO: { id: Page; label: string }[] = [
   { id: "polizas", label: "Pólizas" },
   { id: "consultoria", label: "Consultoría" },
   { id: "comisiones", label: "Comisiones" },
+  { id: "agencias_dgsfp", label: "Agencias Suscripción" },
 ];
 
 // Menú lateral: Tareas (tareas recurrentes manuales de los binders).
@@ -527,6 +531,7 @@ export default function App() {
           {page === "cierre" && <CierreContablePage />}
           {page === "financiero" && <FinancieroPage />}
           {page === "kpis" && <KpisPage />}
+          {page === "agencias_dgsfp" && <AgenciasSuscripcionPage />}
           {page === "transferencias" && <TransferenciasPage />}
           {page === "contabilidad" && puedeVer("contabilidad") && <ContabilidadPage />}
           {page === "polizas" && <PolizasPage />}
