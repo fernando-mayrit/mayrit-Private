@@ -8,6 +8,8 @@ Módulo de Agencias de Suscripción (MGAs), sobre el reflejo del Registro DGSFP 
   solo marca `revisar` cuando hay discrepancia con el registro).
 """
 import datetime as dt
+import os
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -20,6 +22,8 @@ from ..models.maestras import DgsfpAgencia, DgsfpAseguradora, DgsfpVinculo, Para
 router = APIRouter(prefix="/dgsfp", tags=["DGSFP"])
 
 CLAVE_PARAM = "dgsfp_agencias_sync"
+# Carpeta donde la sync deja los informes de cambios (backend/tools/informes_dgsfp).
+INFORMES_DIR = Path(__file__).resolve().parent.parent.parent / "tools" / "informes_dgsfp"
 
 
 class ResumenDgsfp(BaseModel):
@@ -190,3 +194,49 @@ def editar_vinculo(vinculo_id: int, payload: VinculoUpdate, db: Session = Depend
     db.commit()
     db.refresh(v)
     return _vinculo_dto(v)
+
+
+# ── Informe de cambios: existe un fichero mientras haya cambios sin revisar ──
+class InformeDgsfp(BaseModel):
+    fecha: str
+    ruta: str
+    contenido: str
+
+
+def _informes() -> list[Path]:
+    return sorted(INFORMES_DIR.glob("informe_*.md")) if INFORMES_DIR.exists() else []
+
+
+@router.get("/informe", response_model=InformeDgsfp | None)
+def informe_pendiente():
+    """El informe de cambios más reciente pendiente de revisar (existe como fichero). None si no hay."""
+    files = _informes()
+    if not files:
+        return None
+    f = files[-1]
+    return InformeDgsfp(fecha=f.stem.replace("informe_", ""), ruta=str(f), contenido=f.read_text(encoding="utf-8"))
+
+
+@router.post("/informe/abrir")
+def abrir_informe():
+    """Abre el informe en el visor por defecto del PC (solo funciona en local, donde está el fichero)."""
+    files = _informes()
+    if not files:
+        raise HTTPException(status_code=404, detail="No hay informe pendiente.")
+    try:
+        os.startfile(str(files[-1]))   # noqa: type-checker (solo Windows/local)
+    except Exception:
+        raise HTTPException(status_code=409, detail="Solo se puede abrir desde el PC que tiene el fichero.")
+    return {"ok": True}
+
+
+@router.delete("/informe")
+def eliminar_informe():
+    """Elimina los informes pendientes (tras revisarlos) → desaparece la alerta."""
+    n = 0
+    for f in _informes():
+        try:
+            f.unlink(); n += 1
+        except OSError:
+            pass
+    return {"eliminados": n}

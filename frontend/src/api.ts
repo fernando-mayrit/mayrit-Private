@@ -1097,6 +1097,11 @@ export function updateDgsfpAgencia(clave: string, data: AgenciaUpdate) {
 export function updateDgsfpVinculo(id: number, data: { activo?: boolean }) {
   return request<DgsfpVinculo>(`/dgsfp/vinculos/${id}`, { method: "PUT", body: JSON.stringify(data) });
 }
+// Informe de cambios (existe mientras haya cambios sin revisar).
+export interface DgsfpInforme { fecha: string; ruta: string; contenido: string }
+export function getDgsfpInforme() { return request<DgsfpInforme | null>("/dgsfp/informe"); }
+export function abrirDgsfpInforme() { return request<{ ok: boolean }>("/dgsfp/informe/abrir", { method: "POST" }); }
+export function eliminarDgsfpInforme() { return request<{ eliminados: number }>("/dgsfp/informe", { method: "DELETE" }); }
 
 // CRUD genérico para una colección (p. ej. "/mercados").
 export function crud<TRead, TWrite>(collection: string) {

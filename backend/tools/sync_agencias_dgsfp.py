@@ -197,15 +197,18 @@ def main(limite: int | None = None):
     from pathlib import Path
     aseguradoras, agencias, vinculos, situ_map = asyncio.run(_scrape(limite))
     cambios = _upsert(aseguradoras, agencias, vinculos, situ_map)
-    informe = _informe(cambios)
+    n_cambios = sum(len(v) for v in cambios.values())
+    print(f"\nHecho: {len(aseguradoras)} compañías, {len(agencias)} agencias, {len(vinculos)} vínculos en el registro. "
+          "No se toca el 'activo' manual.")
+    # Solo se genera el informe SI hay cambios (su existencia = alerta en el módulo Agencias).
+    if n_cambios == 0:
+        print("Sin cambios respecto al mes anterior: no se genera informe.")
+        return
     carpeta = Path(__file__).parent / "informes_dgsfp"
     carpeta.mkdir(exist_ok=True)
     ruta = carpeta / f"informe_{dt.date.today().isoformat()}.md"
-    ruta.write_text(informe, encoding="utf-8")
-    print(f"\nHecho: {len(aseguradoras)} compañías, {len(agencias)} agencias, {len(vinculos)} vínculos en el registro. "
-          "No se toca el 'activo' manual.")
-    print(f"Informe de cambios: {ruta}")
-    print("\n" + informe)
+    ruta.write_text(_informe(cambios), encoding="utf-8")
+    print(f"Informe de cambios ({n_cambios}): {ruta}")
 
 
 if __name__ == "__main__":

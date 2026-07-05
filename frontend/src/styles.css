@@ -1196,3 +1196,9 @@ tr.fila-inactiva td { opacity: 0.55; }
 .as-vin-check { display: inline-flex; }
 .as-vin-nom { flex: 1; min-width: 0; }
 @media (max-width: 860px) { .as-form { grid-template-columns: 1fr; } }
+
+/* Alerta de informe de cambios pendiente (módulo Agencias) */
+.as-alerta { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; background: #fff8e6; border: 1px solid #f0d98a; border-radius: 10px; padding: 10px 14px; margin: 4px 0 12px; }
+.as-alerta-txt { flex: 1; min-width: 220px; font-size: 13.5px; color: #6b5600; }
+.as-alerta .btn-mini { padding: 4px 10px; }
+.as-alerta-cont { flex-basis: 100%; margin: 6px 0 0; max-height: 320px; overflow: auto; background: #fff; border: 1px solid var(--borde); border-radius: 8px; padding: 10px 12px; font-size: 12.5px; white-space: pre-wrap; font-family: ui-monospace, monospace; }

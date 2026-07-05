@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import {
   getDgsfpResumen, getDgsfpVinculos, getDgsfpAgencias, getDgsfpAgencia,
   updateDgsfpAgencia, updateDgsfpVinculo,
-  type DgsfpResumen, type DgsfpVinculo, type AgenciaLista, type AgenciaFicha, type AgenciaUpdate,
+  getDgsfpInforme, abrirDgsfpInforme, eliminarDgsfpInforme,
+  type DgsfpResumen, type DgsfpVinculo, type AgenciaLista, type AgenciaFicha, type AgenciaUpdate, type DgsfpInforme,
 } from "../api";
 import PageHeader from "../components/PageHeader";
 import { fmtFechaES } from "../format";
@@ -116,6 +117,8 @@ export default function AgenciasSuscripcionPage() {
   const [soloSinLic, setSoloSinLic] = useState(false);
   const [abiertos, setAbiertos] = useState<Set<string>>(new Set());
   const [ficha, setFicha] = useState<string | null>(null);
+  const [informe, setInforme] = useState<DgsfpInforme | null>(null);
+  const [verInforme, setVerInforme] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -124,6 +127,13 @@ export default function AgenciasSuscripcionPage() {
     setVinculos(v); setAgencias(a); setResumen(r);
   };
   useEffect(() => { cargar().catch((e) => setError((e as Error).message)).finally(() => setLoading(false)); }, []);
+  useEffect(() => { getDgsfpInforme().then(setInforme).catch(() => {}); }, []);
+
+  const abrirInforme = () => abrirDgsfpInforme().catch(() => alert("Solo se puede abrir desde el PC que tiene el fichero."));
+  const eliminarInforme = async () => {
+    if (!confirm("¿Eliminar el informe? Desaparecerá la alerta.")) return;
+    await eliminarDgsfpInforme(); setInforme(null); setVerInforme(false);
+  };
 
   const toggle = (c: string) => setAbiertos((p) => { const s = new Set(p); s.has(c) ? s.delete(c) : s.add(c); return s; });
   const t = q.trim().toLowerCase();
@@ -153,6 +163,16 @@ export default function AgenciasSuscripcionPage() {
     <div className="container lista-page">
       <PageHeader emoji="🏛️" title="Agencias de Suscripción" />
       {error && <div className="error">⚠ {error}</div>}
+
+      {informe && (
+        <div className="as-alerta">
+          <span className="as-alerta-txt">📋 El listado se actualizó — <b>informe de cambios del {informe.fecha}</b> pendiente de revisar.</span>
+          <button className="btn-link" onClick={() => setVerInforme((s) => !s)}>{verInforme ? "ocultar" : "ver aquí"}</button>
+          <button className="btn-link" onClick={abrirInforme} title={informe.ruta}>abrir en el PC</button>
+          <button className="btn-primary btn-mini" onClick={eliminarInforme}>Revisado, eliminar</button>
+          {verInforme && <pre className="as-alerta-cont">{informe.contenido}</pre>}
+        </div>
+      )}
 
       <div className="as-barra">
         <div className="as-toggle">
