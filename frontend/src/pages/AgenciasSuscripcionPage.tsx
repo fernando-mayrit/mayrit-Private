@@ -25,18 +25,22 @@ const CAMPOS: { k: keyof AgenciaFicha; label: string; tipo?: string; full?: bool
 function FichaAgencia({ clave, onClose, onSaved }: { clave: string; onClose: () => void; onSaved: () => void }) {
   const [f, setF] = useState<AgenciaFicha | null>(null);
   const [borr, setBorr] = useState<AgenciaUpdate>({});
+  const [editando, setEditando] = useState(false);
   const [guardando, setGuardando] = useState(false);
 
-  useEffect(() => { getDgsfpAgencia(clave).then((d) => { setF(d); setBorr({}); }).catch(() => {}); }, [clave]);
-  if (!f) return <div className="panel"><div className="loading">Cargando…</div></div>;
+  useEffect(() => { getDgsfpAgencia(clave).then((d) => { setF(d); setBorr({}); setEditando(false); }).catch(() => {}); }, [clave]);
+  if (!f) return <div className="panel as-ficha"><div className="loading">Cargando…</div></div>;
 
   const val = (k: keyof AgenciaFicha) => (borr[k as keyof AgenciaUpdate] ?? f[k] ?? "") as string;
   const set = (k: keyof AgenciaUpdate, v: unknown) => setBorr((b) => ({ ...b, [k]: v }));
   const guardar = async () => {
     setGuardando(true);
-    try { await updateDgsfpAgencia(clave, borr); onSaved(); onClose(); }
-    finally { setGuardando(false); }
+    try {
+      const d = await updateDgsfpAgencia(clave, borr);
+      setF(d); setBorr({}); setEditando(false); onSaved();
+    } finally { setGuardando(false); }
   };
+  const cancelar = () => { setBorr({}); setEditando(false); };
   const toggleVinculo = async (id: number, activo: boolean) => {
     const nv = await updateDgsfpVinculo(id, { activo });
     setF((prev) => prev ? { ...prev, vinculos: prev.vinculos.map((x) => x.id === id ? nv : x) } : prev);
@@ -44,35 +48,36 @@ function FichaAgencia({ clave, onClose, onSaved }: { clave: string; onClose: () 
   };
 
   return (
-    <div className="panel as-ficha">
+    <div className={"panel as-ficha" + (editando ? " editando" : " viendo")}>
       <div className="panel-head">
         <h2>{f.nombre} <span className="as-ficha-clave">{f.clave}</span></h2>
         <button className="panel-close" onClick={onClose}>✕</button>
       </div>
       <div className="panel-body">
         <div className="as-flags">
-          <label><input type="checkbox" checked={borr.activo ?? f.activo} onChange={(e) => set("activo", e.target.checked)} /> Activa</label>
-          <label><input type="checkbox" checked={borr.dudoso ?? f.dudoso} onChange={(e) => set("dudoso", e.target.checked)} /> Dudosa</label>
+          <label><input type="checkbox" disabled={!editando} checked={borr.activo ?? f.activo} onChange={(e) => set("activo", e.target.checked)} /> Activa</label>
+          <label><input type="checkbox" disabled={!editando} checked={borr.dudoso ?? f.dudoso} onChange={(e) => set("dudoso", e.target.checked)} /> Dudosa</label>
         </div>
         <div className="as-form">
           {CAMPOS.map((c) => (
             <div key={c.k} className={"field" + (c.full ? " campo-full" : "")}>
               <label>{c.label}</label>
-              <input type={c.tipo ?? "text"} value={c.tipo === "date" ? (val(c.k) || "").slice(0, 10) : val(c.k)}
+              <input type={c.tipo ?? "text"} disabled={!editando} placeholder="—"
+                     value={c.tipo === "date" ? (val(c.k) || "").slice(0, 10) : val(c.k)}
                      onChange={(e) => set(c.k as keyof AgenciaUpdate, e.target.value || null)} />
             </div>
           ))}
           <div className="field campo-full"><label>Productos</label>
-            <textarea rows={2} value={val("productos")} onChange={(e) => set("productos", e.target.value || null)} /></div>
+            <textarea rows={2} disabled={!editando} placeholder="—" value={val("productos")} onChange={(e) => set("productos", e.target.value || null)} /></div>
           <div className="field campo-full"><label>Notas</label>
-            <textarea rows={3} value={val("notas")} onChange={(e) => set("notas", e.target.value || null)} /></div>
+            <textarea rows={3} disabled={!editando} placeholder="—" value={val("notas")} onChange={(e) => set("notas", e.target.value || null)} /></div>
         </div>
 
         <h4 style={{ margin: "14px 0 6px" }}>Compañías vinculadas ({f.vinculos.length})</h4>
         <ul className="as-vinlist">
           {f.vinculos.map((v) => (
             <li key={v.id} className={v.activo ? "" : "inactivo"}>
-              <label className="as-vin-check"><input type="checkbox" checked={v.activo}
+              <label className="as-vin-check"><input type="checkbox" disabled={!editando} checked={v.activo}
                 onChange={(e) => toggleVinculo(v.id, e.target.checked)} /></label>
               <span className="as-hijo-clave">{v.aseguradora_clave}</span>
               <span className="as-vin-nom">{v.aseguradora_nombre}</span>
@@ -83,8 +88,17 @@ function FichaAgencia({ clave, onClose, onSaved }: { clave: string; onClose: () 
         </ul>
       </div>
       <div className="panel-actions">
-        <button className="btn-secondary" onClick={onClose}>Cerrar</button>
-        <button className="btn-primary" onClick={guardar} disabled={guardando}>{guardando ? "Guardando…" : "Guardar"}</button>
+        {editando ? (
+          <>
+            <button className="btn-secondary" onClick={cancelar} disabled={guardando}>Cancelar</button>
+            <button className="btn-primary" onClick={guardar} disabled={guardando}>{guardando ? "Guardando…" : "Guardar"}</button>
+          </>
+        ) : (
+          <>
+            <button className="btn-secondary" onClick={onClose}>Cerrar</button>
+            <button className="btn-primary" onClick={() => setEditando(true)}>✎ Editar</button>
+          </>
+        )}
       </div>
     </div>
   );

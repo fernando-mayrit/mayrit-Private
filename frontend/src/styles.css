@@ -1187,15 +1187,24 @@ tr.fila-inactiva td { opacity: 0.55; }
 /* Ficha editable */
 .as-ficha { width: 580px; max-width: 100%; }
 .as-ficha-clave { font-size: 13px; color: var(--gris-medio); font-weight: 400; }
-.as-flags { display: flex; gap: 18px; margin-bottom: 12px; font-size: 13.5px; }
+.as-flags { display: flex; flex-wrap: wrap; gap: 10px 18px; margin-bottom: 12px; font-size: 13.5px; }
 .as-flags label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
 .as-form { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 14px; }
-.as-form .field { margin-bottom: 8px; }
+.as-form .field { margin-bottom: 8px; min-width: 0; }
+.as-ficha .field input, .as-ficha .field textarea { width: 100%; box-sizing: border-box; max-width: none; }
+/* Modo solo-lectura: los campos deshabilitados se ven como texto plano, no como inputs. */
+.as-ficha.viendo .field input:disabled, .as-ficha.viendo .field textarea:disabled {
+  background: transparent; border-color: transparent; color: var(--gris); opacity: 1; padding-left: 0; cursor: default; resize: none;
+}
 .as-vinlist { list-style: none; margin: 0; padding: 0; }
 .as-vinlist li { display: flex; align-items: center; gap: 8px; font-size: 13px; padding: 4px 0; border-bottom: 1px solid #f4f4f4; }
 .as-vin-check { display: inline-flex; }
 .as-vin-nom { flex: 1; min-width: 0; }
-@media (max-width: 860px) { .as-form { grid-template-columns: 1fr; } }
+@media (max-width: 860px) {
+  .as-form { grid-template-columns: 1fr; }
+  .as-ficha { width: 100%; }              /* panel a ancho completo en móvil */
+  .as-ficha .panel-head h2 { font-size: 18px; }
+}
 
 /* Alerta de informe de cambios pendiente (módulo Agencias) */
 .as-alerta { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; background: #fff8e6; border: 1px solid #f0d98a; border-radius: 10px; padding: 10px 14px; margin: 4px 0 12px; }
