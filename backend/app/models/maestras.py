@@ -1241,6 +1241,9 @@ class DgsfpAseguradora(Base):
     nif: Mapped[str | None] = mapped_column(String(20))
     telefono: Mapped[str | None] = mapped_column(String(30))
     situacion: Mapped[str | None] = mapped_column(String(40))
+    # Licencia activa en el registro DGSFP (la sync la pone True si la aseguradora está en la lista de
+    # activas; False = licencia retirada / no opera). Sustituye al 'revisar' de vínculo.
+    licencia_activa: Mapped[bool] = mapped_column(Boolean, server_default=text("true"), default=True)
     actualizado: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 

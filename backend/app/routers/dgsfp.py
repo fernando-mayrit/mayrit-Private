@@ -28,7 +28,7 @@ class ResumenDgsfp(BaseModel):
     n_agencias_activas: int
     n_aseguradoras: int
     n_vinculos: int
-    n_revisar: int
+    n_sin_licencia: int   # aseguradoras referenciadas con licencia no activa
 
 
 class VinculoDgsfp(BaseModel):
@@ -36,12 +36,12 @@ class VinculoDgsfp(BaseModel):
     aseguradora_clave: str
     aseguradora_nombre: str
     aseguradora_nif: str | None
+    aseguradora_situacion: str | None
+    aseguradora_licencia_activa: bool
     agencia_clave: str
     agencia_nombre: str
     activo: bool
     en_dgsfp: bool
-    revisar: bool
-    revisar_motivo: str | None
 
 
 class AgenciaLista(BaseModel):
@@ -103,13 +103,16 @@ class VinculoUpdate(BaseModel):
 
 
 def _vinculo_dto(v: DgsfpVinculo) -> VinculoDgsfp:
+    ase = v.aseguradora
     return VinculoDgsfp(
         id=v.id, aseguradora_clave=v.aseguradora_clave,
-        aseguradora_nombre=v.aseguradora.nombre if v.aseguradora else v.aseguradora_clave,
-        aseguradora_nif=v.aseguradora.nif if v.aseguradora else None,
+        aseguradora_nombre=ase.nombre if ase else v.aseguradora_clave,
+        aseguradora_nif=ase.nif if ase else None,
+        aseguradora_situacion=ase.situacion if ase else None,
+        aseguradora_licencia_activa=ase.licencia_activa if ase else True,
         agencia_clave=v.agencia_clave,
         agencia_nombre=v.agencia.nombre if v.agencia else v.agencia_clave,
-        activo=v.activo, en_dgsfp=v.en_dgsfp, revisar=v.revisar, revisar_motivo=v.revisar_motivo)
+        activo=v.activo, en_dgsfp=v.en_dgsfp)
 
 
 @router.get("/resumen", response_model=ResumenDgsfp)
@@ -121,7 +124,10 @@ def resumen(db: Session = Depends(get_db)):
         n_agencias_activas=db.scalar(select(func.count()).select_from(DgsfpAgencia).where(DgsfpAgencia.activo.is_(True))) or 0,
         n_aseguradoras=db.scalar(select(func.count(func.distinct(DgsfpVinculo.aseguradora_clave)))) or 0,
         n_vinculos=db.scalar(select(func.count()).select_from(DgsfpVinculo)) or 0,
-        n_revisar=db.scalar(select(func.count()).select_from(DgsfpVinculo).where(DgsfpVinculo.revisar.is_(True))) or 0,
+        n_sin_licencia=db.scalar(
+            select(func.count(func.distinct(DgsfpVinculo.aseguradora_clave)))
+            .join(DgsfpAseguradora, DgsfpAseguradora.clave == DgsfpVinculo.aseguradora_clave)
+            .where(DgsfpAseguradora.licencia_activa.is_(False))) or 0,
     )
 
 

@@ -47,17 +47,25 @@ def _agencias_de_html(html: str) -> list[dict]:
             for a in arr if a.get("idAgencia")]
 
 
+# Búsqueda con TODAS las situaciones: para saber la situación real (Activa/Cancelada/Liquidación…)
+# de cada aseguradora referenciada, y así marcar `licencia_activa`.
+BUSQUEDA_TODAS = BUSQUEDA_ACTIVAS.replace("&Situacion=1&", "&Situacion=&")
+
+
 async def _scrape(limite: int | None):
-    """Devuelve (aseguradoras, agencias, vinculos): dicts por clave + lista de pares."""
+    """Devuelve (aseguradoras, agencias, vinculos, situ_map). situ_map = clave→situación (todas)."""
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
         page = await browser.new_page()
         print("Abriendo el registro DGSFP (sesión/anti-bot)…")
         await page.goto(f"{BASE}/Aseguradora", wait_until="networkidle", timeout=60000)
+        hdr = {"content-type": "application/x-www-form-urlencoded; charset=UTF-8", "x-requested-with": "XMLHttpRequest"}
 
-        r = await page.request.post(f"{BASE}/Aseguradora/GetAseguradorasBusqueda", data=BUSQUEDA_ACTIVAS,
-                                    headers={"content-type": "application/x-www-form-urlencoded; charset=UTF-8",
-                                             "x-requested-with": "XMLHttpRequest"})
+        # Situación de TODAS las entidades (para licencia_activa)
+        rt = await page.request.post(f"{BASE}/Aseguradora/GetAseguradorasBusqueda", data=BUSQUEDA_TODAS, headers=hdr)
+        situ_map = {e["clave"]: e.get("situacion") for e in await rt.json()}
+
+        r = await page.request.post(f"{BASE}/Aseguradora/GetAseguradorasBusqueda", data=BUSQUEDA_ACTIVAS, headers=hdr)
         entidades = await r.json()
         if limite:
             entidades = entidades[:limite]
@@ -86,64 +94,118 @@ async def _scrape(limite: int | None):
                 print(f"  {i}/{total}  (compañías con agencias: {len(aseguradoras)})")
             await page.wait_for_timeout(60)
         await browser.close()
-        return aseguradoras, agencias, vinculos
+        return aseguradoras, agencias, vinculos, situ_map
 
 
-def _upsert(aseguradoras: dict, agencias: dict, vinculos: list):
+def _upsert(aseguradoras: dict, agencias: dict, vinculos: list, situ_map: dict) -> dict:
+    """Aplica la sync y devuelve un dict de CAMBIOS respecto al estado anterior (para el informe).
+    NO toca el `activo` manual de los vínculos; solo actualiza presencia (en_dgsfp) y la situación/
+    licencia de las aseguradoras."""
     db = SessionLocal()
     ahora = dt.datetime.now(dt.timezone.utc)
     hoy = ahora.date()
+    C = {"agencias_nuevas": [], "aseguradoras_nuevas": [], "vinculos_nuevos": [],
+         "vinculos_desaparecidos": [], "vinculos_reaparecidos": [], "licencia_cambios": []}
     try:
-        # Aseguradoras y agencias (upsert por PK)
-        for clave, info in aseguradoras.items():
-            o = db.get(DgsfpAseguradora, clave) or DgsfpAseguradora(clave=clave)
-            o.nombre, o.nif, o.telefono, o.situacion = info["nombre"], info["nif"], info["telefono"], info["situacion"]
-            db.add(o)
+        # Agencias (upsert por PK; solo nombre oficial, no la ficha manual)
         for clave, nombre in agencias.items():
-            o = db.get(DgsfpAgencia, clave) or DgsfpAgencia(clave=clave)
-            o.nombre = nombre
-            db.add(o)
+            o = db.get(DgsfpAgencia, clave)
+            if o is None:
+                o = DgsfpAgencia(clave=clave, nombre=nombre); db.add(o)
+                C["agencias_nuevas"].append(f"{clave} {nombre}")
+            else:
+                o.nombre = nombre or o.nombre
+
+        # Aseguradoras (nombre/nif/tel de las que tienen agencias) + situación/licencia de TODAS las
+        # referenciadas (incluidas las que solo salen en vínculos históricos).
+        referidas = {ase for ase, _ in vinculos} | {v.aseguradora_clave for v in db.query(DgsfpVinculo).all()}
+        for clave in referidas | set(aseguradoras):
+            o = db.get(DgsfpAseguradora, clave)
+            info = aseguradoras.get(clave)
+            if o is None:
+                o = DgsfpAseguradora(clave=clave, nombre=(info or {}).get("nombre") or clave)
+                db.add(o)
+                C["aseguradoras_nuevas"].append(f"{clave} {o.nombre}")
+            elif info:
+                o.nombre = info["nombre"] or o.nombre; o.nif = info["nif"]; o.telefono = info["telefono"]
+            situ = situ_map.get(clave)
+            lic = (situ == "Activa")
+            if situ and situ != o.situacion:
+                C["licencia_cambios"].append(f"{clave} {o.nombre}: {o.situacion or '—'} → {situ}")
+            if situ:
+                o.situacion = situ
+            o.licencia_activa = lic
         db.flush()
 
-        # Vínculos (estado MIXTO): la sync NO toca `activo` (lo controla el usuario). Solo informa de
-        # presencia en el registro (en_dgsfp/dgsfp_visto) y levanta `revisar` en las discrepancias.
+        # Vínculos: presencia en el registro. NO se toca `activo` (lo controla el usuario).
         existentes = {(v.aseguradora_clave, v.agencia_clave): v for v in db.query(DgsfpVinculo).all()}
         vistos = set(vinculos)
-        altas = 0
+        nom = lambda c: (db.get(DgsfpAgencia, c) and db.get(DgsfpAgencia, c).nombre) or c
         for par in vistos:
             v = existentes.get(par)
-            if v is None:   # nuevo en el registro: se propone (revisar), activo por defecto
+            if v is None:
                 v = DgsfpVinculo(aseguradora_clave=par[0], agencia_clave=par[1], primera_sync=ahora,
-                                 activo=True, revisar=True, revisar_motivo="nuevo en DGSFP")
+                                 activo=True, en_dgsfp=True)
                 db.add(v)
-                altas += 1
-            v.en_dgsfp = True
+                C["vinculos_nuevos"].append(f"{par[0]} ↔ {par[1]} {nom(par[1])}")
+            else:
+                if not v.en_dgsfp:
+                    C["vinculos_reaparecidos"].append(f"{par[0]} ↔ {par[1]} {nom(par[1])}")
+                v.en_dgsfp = True
             v.dgsfp_visto = hoy
             v.ultima_sync = ahora
-        desaparecidos = 0
         for par, v in existentes.items():
-            if par not in vistos and v.en_dgsfp:   # dejó de aparecer en el registro
+            if par not in vistos and v.en_dgsfp:
                 v.en_dgsfp = False
-                v.revisar = True
-                v.revisar_motivo = "ya no en DGSFP"
-                desaparecidos += 1
-        bajas = desaparecidos
+                C["vinculos_desaparecidos"].append(f"{par[0]} ↔ {par[1]} {nom(par[1])}")
 
-        # Sello de sincronización
         pr = db.get(Parametro, CLAVE_PARAM) or Parametro(clave=CLAVE_PARAM)
         pr.valor = len(vistos)
-        pr.descripcion = f"Sincronización DGSFP agencias de suscripción ({len(aseguradoras)} compañías, {len(vistos)} vínculos)"
+        pr.descripcion = f"Sync DGSFP: {len(aseguradoras)} compañías, {len(vistos)} vínculos en registro"
         db.add(pr)
         db.commit()
-        print(f"\nHecho: {len(aseguradoras)} compañías, {len(agencias)} agencias, {len(vistos)} vínculos en DGSFP "
-              f"(nuevos a revisar: {altas}, desaparecidos del registro: {bajas}). No se toca el 'activo' manual.")
+        return C
     finally:
         db.close()
 
 
+def _informe(cambios: dict) -> str:
+    """Informe markdown de los cambios de este mes respecto al anterior."""
+    hoy = dt.date.today().isoformat()
+    L = [f"# Informe de cambios DGSFP — {hoy}", ""]
+    secciones = [
+        ("Vínculos NUEVOS en el registro", "vinculos_nuevos"),
+        ("Vínculos que YA NO están en el registro", "vinculos_desaparecidos"),
+        ("Vínculos que REAPARECEN en el registro", "vinculos_reaparecidos"),
+        ("Agencias nuevas", "agencias_nuevas"),
+        ("Aseguradoras nuevas", "aseguradoras_nuevas"),
+        ("Cambios de licencia/situación de aseguradoras", "licencia_cambios"),
+    ]
+    total = sum(len(cambios[k]) for _, k in secciones)
+    if total == 0:
+        L.append("_Sin cambios respecto al mes anterior._")
+    for titulo, k in secciones:
+        items = cambios[k]
+        if items:
+            L.append(f"## {titulo} ({len(items)})")
+            L += [f"- {x}" for x in sorted(items)]
+            L.append("")
+    return "\n".join(L)
+
+
 def main(limite: int | None = None):
-    aseguradoras, agencias, vinculos = asyncio.run(_scrape(limite))
-    _upsert(aseguradoras, agencias, vinculos)
+    from pathlib import Path
+    aseguradoras, agencias, vinculos, situ_map = asyncio.run(_scrape(limite))
+    cambios = _upsert(aseguradoras, agencias, vinculos, situ_map)
+    informe = _informe(cambios)
+    carpeta = Path(__file__).parent / "informes_dgsfp"
+    carpeta.mkdir(exist_ok=True)
+    ruta = carpeta / f"informe_{dt.date.today().isoformat()}.md"
+    ruta.write_text(informe, encoding="utf-8")
+    print(f"\nHecho: {len(aseguradoras)} compañías, {len(agencias)} agencias, {len(vinculos)} vínculos en el registro. "
+          "No se toca el 'activo' manual.")
+    print(f"Informe de cambios: {ruta}")
+    print("\n" + informe)
 
 
 if __name__ == "__main__":

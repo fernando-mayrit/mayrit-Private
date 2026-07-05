@@ -36,8 +36,8 @@ function FichaAgencia({ clave, onClose, onSaved }: { clave: string; onClose: () 
     try { await updateDgsfpAgencia(clave, borr); onSaved(); onClose(); }
     finally { setGuardando(false); }
   };
-  const toggleVinculo = async (id: number, campo: "activo" | "revisar", v: boolean) => {
-    const nv = await updateDgsfpVinculo(id, { [campo]: v });
+  const toggleVinculo = async (id: number, activo: boolean) => {
+    const nv = await updateDgsfpVinculo(id, { activo });
     setF((prev) => prev ? { ...prev, vinculos: prev.vinculos.map((x) => x.id === id ? nv : x) } : prev);
     onSaved();
   };
@@ -73,14 +73,11 @@ function FichaAgencia({ clave, onClose, onSaved }: { clave: string; onClose: () 
           {f.vinculos.map((v) => (
             <li key={v.id} className={v.activo ? "" : "inactivo"}>
               <label className="as-vin-check"><input type="checkbox" checked={v.activo}
-                onChange={(e) => toggleVinculo(v.id, "activo", e.target.checked)} /></label>
+                onChange={(e) => toggleVinculo(v.id, e.target.checked)} /></label>
               <span className="as-hijo-clave">{v.aseguradora_clave}</span>
               <span className="as-vin-nom">{v.aseguradora_nombre}</span>
+              {!v.aseguradora_licencia_activa && <span className="as-badge as-badge-rev" title="Licencia no activa en DGSFP">{v.aseguradora_situacion ?? "sin licencia"}</span>}
               {v.en_dgsfp && <span className="as-badge as-badge-dgsfp" title="Presente en el registro DGSFP">DGSFP</span>}
-              {v.revisar && (
-                <button className="as-badge as-badge-rev" title={`${v.revisar_motivo} — marcar como revisado`}
-                        onClick={() => toggleVinculo(v.id, "revisar", false)}>⚠ {v.revisar_motivo} ✓</button>
-              )}
             </li>
           ))}
         </ul>
@@ -94,13 +91,14 @@ function FichaAgencia({ clave, onClose, onSaved }: { clave: string; onClose: () 
 }
 
 // ── Vista "Por compañía": acordeón aseguradora → agencias ──
-type Grupo = { clave: string; titulo: string; sub: string; hijos: DgsfpVinculo[] };
+type Grupo = { clave: string; titulo: string; sub: string; sinLicencia: boolean; situacion: string | null; hijos: DgsfpVinculo[] };
 function agruparPorCompania(vinc: DgsfpVinculo[]): Grupo[] {
   const m = new Map<string, Grupo>();
   for (const v of vinc) {
     const g = m.get(v.aseguradora_clave) ?? {
       clave: v.aseguradora_clave, titulo: v.aseguradora_nombre,
-      sub: `${v.aseguradora_clave}${v.aseguradora_nif ? " · " + v.aseguradora_nif : ""}`, hijos: [],
+      sub: `${v.aseguradora_clave}${v.aseguradora_nif ? " · " + v.aseguradora_nif : ""}`,
+      sinLicencia: !v.aseguradora_licencia_activa, situacion: v.aseguradora_situacion, hijos: [],
     };
     g.hijos.push(v); m.set(v.aseguradora_clave, g);
   }
@@ -115,7 +113,7 @@ export default function AgenciasSuscripcionPage() {
   const [resumen, setResumen] = useState<DgsfpResumen | null>(null);
   const [vista, setVista] = useState<Vista>("compania");
   const [q, setQ] = useState("");
-  const [soloRevisar, setSoloRevisar] = useState(false);
+  const [soloSinLic, setSoloSinLic] = useState(false);
   const [abiertos, setAbiertos] = useState<Set<string>>(new Set());
   const [ficha, setFicha] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -132,27 +130,22 @@ export default function AgenciasSuscripcionPage() {
 
   // Vista compañía
   const grupos = useMemo(() => {
-    let vin = vinculos;
-    if (soloRevisar) vin = vin.filter((v) => v.revisar);
-    let g = agruparPorCompania(vin);
+    let g = agruparPorCompania(vinculos);
+    if (soloSinLic) g = g.filter((x) => x.sinLicencia);
     if (t) g = g.map((x) => {
       const enG = x.titulo.toLowerCase().includes(t) || x.sub.toLowerCase().includes(t);
       const hijos = enG ? x.hijos : x.hijos.filter((h) => h.agencia_nombre.toLowerCase().includes(t) || h.agencia_clave.toLowerCase().includes(t));
       return hijos.length ? { ...x, hijos } : null;
     }).filter(Boolean) as Grupo[];
     return g;
-  }, [vinculos, soloRevisar, t]);
+  }, [vinculos, soloSinLic, t]);
 
   // Vista agencia (lista de fichas)
-  const revisarPorAgencia = useMemo(() => {
-    const s = new Set<string>(); for (const v of vinculos) if (v.revisar) s.add(v.agencia_clave); return s;
-  }, [vinculos]);
   const listaAgencias = useMemo(() => {
     let a = agencias;
-    if (soloRevisar) a = a.filter((x) => revisarPorAgencia.has(x.clave));
     if (t) a = a.filter((x) => x.nombre.toLowerCase().includes(t) || x.clave.toLowerCase().includes(t) || (x.localidad ?? "").toLowerCase().includes(t) || (x.cif ?? "").toLowerCase().includes(t));
     return a;
-  }, [agencias, soloRevisar, revisarPorAgencia, t]);
+  }, [agencias, t]);
 
   const buscando = t.length > 0;
 
@@ -167,9 +160,9 @@ export default function AgenciasSuscripcionPage() {
           <button className={"btn-toggle" + (vista === "agencia" ? " on" : "")} onClick={() => setVista("agencia")}>Agencias</button>
         </div>
         <input className="as-buscar" placeholder="Buscar…" value={q} onChange={(e) => setQ(e.target.value)} />
-        {resumen && resumen.n_revisar > 0 && (
-          <button className={"btn-toggle as-rev-btn" + (soloRevisar ? " on" : "")} onClick={() => setSoloRevisar((s) => !s)}>
-            ⚠ A revisar ({resumen.n_revisar})
+        {resumen && resumen.n_sin_licencia > 0 && vista === "compania" && (
+          <button className={"btn-toggle as-rev-btn" + (soloSinLic ? " on" : "")} onClick={() => setSoloSinLic((s) => !s)}>
+            ⚠ Sin licencia ({resumen.n_sin_licencia})
           </button>
         )}
         {resumen && (
@@ -183,12 +176,13 @@ export default function AgenciasSuscripcionPage() {
       {loading ? <div className="loading">Cargando…</div> : vista === "compania" ? (
         <div className="as-scroll">
           {grupos.length === 0 ? <div className="hint">Sin resultados.</div> : grupos.map((g) => {
-            const abierto = buscando || soloRevisar || abiertos.has(g.clave);
+            const abierto = buscando || soloSinLic || abiertos.has(g.clave);
             return (
-              <div className={"as-fila" + (abierto ? " abierta" : "")} key={g.clave}>
+              <div className={"as-fila" + (abierto ? " abierta" : "") + (g.sinLicencia ? " sin-lic" : "")} key={g.clave}>
                 <button className="as-fila-cab" onClick={() => toggle(g.clave)}>
                   <span className="as-chevron">{abierto ? "▾" : "▸"}</span>
                   <span className="as-fila-tit">{g.titulo}</span>
+                  {g.sinLicencia && <span className="as-badge as-badge-rev" title="Licencia no activa en el registro DGSFP">{g.situacion ?? "sin licencia"}</span>}
                   <span className="as-fila-sub">{g.sub}</span>
                   <span className="as-fila-n">{g.hijos.filter((h) => h.activo).length}</span>
                 </button>
@@ -198,7 +192,6 @@ export default function AgenciasSuscripcionPage() {
                       <li key={h.id} className={h.activo ? "" : "inactivo"}>
                         <span className="as-hijo-clave">{h.agencia_clave}</span> {h.agencia_nombre}
                         {!h.activo && <span className="as-badge as-badge-off">inactivo</span>}
-                        {h.revisar && <span className="as-badge as-badge-rev" title={h.revisar_motivo ?? ""}>⚠ revisar</span>}
                       </li>
                     ))}
                   </ul>
@@ -216,7 +209,6 @@ export default function AgenciasSuscripcionPage() {
               <span className="as-ag-loc">{a.localidad ?? ""}</span>
               {!a.activo && <span className="as-badge as-badge-off">inactiva</span>}
               {a.dudoso && <span className="as-badge as-badge-dudoso">dudosa</span>}
-              {revisarPorAgencia.has(a.clave) && <span className="as-badge as-badge-rev">⚠</span>}
               <span className="as-fila-n" title="vínculos activos / total">{a.n_vinculos_activos}/{a.n_vinculos}</span>
             </button>
           ))}

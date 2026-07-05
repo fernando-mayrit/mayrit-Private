@@ -1062,13 +1062,14 @@ export function getKpis(anio?: number) {
 export interface DgsfpResumen {
   actualizado: string | null;
   n_agencias: number; n_agencias_activas: number;
-  n_aseguradoras: number; n_vinculos: number; n_revisar: number;
+  n_aseguradoras: number; n_vinculos: number; n_sin_licencia: number;
 }
 export interface DgsfpVinculo {
   id: number;
   aseguradora_clave: string; aseguradora_nombre: string; aseguradora_nif: string | null;
+  aseguradora_situacion: string | null; aseguradora_licencia_activa: boolean;
   agencia_clave: string; agencia_nombre: string;
-  activo: boolean; en_dgsfp: boolean; revisar: boolean; revisar_motivo: string | null;
+  activo: boolean; en_dgsfp: boolean;
 }
 export interface AgenciaLista {
   clave: string; nombre: string; cif: string | null;
@@ -1093,7 +1094,7 @@ export function getDgsfpAgencia(clave: string) { return request<AgenciaFicha>(`/
 export function updateDgsfpAgencia(clave: string, data: AgenciaUpdate) {
   return request<AgenciaFicha>(`/dgsfp/agencias/${clave}`, { method: "PUT", body: JSON.stringify(data) });
 }
-export function updateDgsfpVinculo(id: number, data: { activo?: boolean; revisar?: boolean }) {
+export function updateDgsfpVinculo(id: number, data: { activo?: boolean }) {
   return request<DgsfpVinculo>(`/dgsfp/vinculos/${id}`, { method: "PUT", body: JSON.stringify(data) });
 }
 
