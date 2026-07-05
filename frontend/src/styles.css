@@ -1153,8 +1153,8 @@ tr.fila-inactiva td { opacity: 0.55; }
 .as-toggle { display: flex; gap: 6px; }
 .as-buscar { flex: 1; min-width: 220px; max-width: 420px; padding: 8px 12px; border: 1px solid var(--borde); border-radius: 8px; font-size: 14px; font-family: inherit; }
 .as-sello { font-size: 12px; color: var(--gris-medio); margin-left: auto; white-space: nowrap; }
-.as-scroll { flex: 1; min-height: 0; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 12px; align-content: start; padding-right: 4px; }
-.as-grupo { border: 1px solid var(--borde); border-radius: 10px; background: #fff; overflow: hidden; }
+.as-scroll { flex: 1; min-height: 0; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); grid-auto-rows: min-content; align-items: start; gap: 12px; align-content: start; padding-right: 4px; }
+.as-grupo { align-self: start; border: 1px solid var(--borde); border-radius: 10px; background: #fff; }
 .as-grupo-cab { display: flex; align-items: baseline; gap: 8px; padding: 10px 12px; background: var(--gris-claro); border-bottom: 1px solid var(--borde); }
 .as-grupo-tit { font-weight: 700; font-size: 13.5px; flex: 1; }
 .as-grupo-sub { font-size: 11px; color: var(--gris-medio); white-space: nowrap; }
