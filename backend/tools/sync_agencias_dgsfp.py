@@ -105,25 +105,29 @@ def _upsert(aseguradoras: dict, agencias: dict, vinculos: list):
             db.add(o)
         db.flush()
 
-        # Vínculos: índice de los existentes para upsert; marcar bajas los no vistos
+        # Vínculos (estado MIXTO): la sync NO toca `activo` (lo controla el usuario). Solo informa de
+        # presencia en el registro (en_dgsfp/dgsfp_visto) y levanta `revisar` en las discrepancias.
         existentes = {(v.aseguradora_clave, v.agencia_clave): v for v in db.query(DgsfpVinculo).all()}
         vistos = set(vinculos)
         altas = 0
         for par in vistos:
             v = existentes.get(par)
-            if v is None:
-                v = DgsfpVinculo(aseguradora_clave=par[0], agencia_clave=par[1], primera_sync=ahora)
+            if v is None:   # nuevo en el registro: se propone (revisar), activo por defecto
+                v = DgsfpVinculo(aseguradora_clave=par[0], agencia_clave=par[1], primera_sync=ahora,
+                                 activo=True, revisar=True, revisar_motivo="nuevo en DGSFP")
                 db.add(v)
                 altas += 1
-            v.activo = True
+            v.en_dgsfp = True
+            v.dgsfp_visto = hoy
             v.ultima_sync = ahora
-            v.fecha_baja = None
-        bajas = 0
+        desaparecidos = 0
         for par, v in existentes.items():
-            if par not in vistos and v.activo:
-                v.activo = False
-                v.fecha_baja = hoy
-                bajas += 1
+            if par not in vistos and v.en_dgsfp:   # dejó de aparecer en el registro
+                v.en_dgsfp = False
+                v.revisar = True
+                v.revisar_motivo = "ya no en DGSFP"
+                desaparecidos += 1
+        bajas = desaparecidos
 
         # Sello de sincronización
         pr = db.get(Parametro, CLAVE_PARAM) or Parametro(clave=CLAVE_PARAM)
@@ -131,8 +135,8 @@ def _upsert(aseguradoras: dict, agencias: dict, vinculos: list):
         pr.descripcion = f"Sincronización DGSFP agencias de suscripción ({len(aseguradoras)} compañías, {len(vistos)} vínculos)"
         db.add(pr)
         db.commit()
-        print(f"\nHecho: {len(aseguradoras)} compañías, {len(agencias)} agencias, {len(vistos)} vínculos "
-              f"(altas nuevas: {altas}, bajas: {bajas}).")
+        print(f"\nHecho: {len(aseguradoras)} compañías, {len(agencias)} agencias, {len(vistos)} vínculos en DGSFP "
+              f"(nuevos a revisar: {altas}, desaparecidos del registro: {bajas}). No se toca el 'activo' manual.")
     finally:
         db.close()
 

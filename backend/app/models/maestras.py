@@ -1246,18 +1246,38 @@ class DgsfpAseguradora(Base):
 
 
 class DgsfpAgencia(Base):
-    """Agencia de suscripción del registro de la DGSFP (clave tipo AS0108)."""
+    """Agencia de suscripción (MGA). `clave`/`nombre` vienen del registro DGSFP (clave tipo AS0108);
+    el resto de campos es FICHA MANUAL (editable en la app, la sync del DGSFP NO los toca). `activo`
+    permite conservar agencias que ya no operan."""
     __tablename__ = "dgsfp_agencias"
 
     clave: Mapped[str] = mapped_column(String(10), primary_key=True)
     nombre: Mapped[str] = mapped_column(String(255))
+    # Ficha manual (origen inicial: Access MGAs; luego editable en la app)
+    cif: Mapped[str | None] = mapped_column(String(30))
+    fecha_constitucion: Mapped[dt.date | None] = mapped_column(Date)
+    direccion: Mapped[str | None] = mapped_column(String(255))
+    cp: Mapped[str | None] = mapped_column(String(10))
+    localidad: Mapped[str | None] = mapped_column(String(120))
+    provincia: Mapped[str | None] = mapped_column(String(120))
+    pais: Mapped[str | None] = mapped_column(String(60))
+    contacto: Mapped[str | None] = mapped_column(String(255))
+    telefono: Mapped[str | None] = mapped_column(String(60))
+    web: Mapped[str | None] = mapped_column(String(255))
+    productos: Mapped[str | None] = mapped_column(Text)
+    notas: Mapped[str | None] = mapped_column(Text)
+    activo: Mapped[bool] = mapped_column(Boolean, server_default=text("true"), default=True)
+    dudoso: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
+    revisado: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
     actualizado: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
 class DgsfpVinculo(Base):
-    """Vínculo aseguradora ↔ agencia de suscripción (qué agencia suscribe para qué compañía).
-    Se conserva el histórico: al desaparecer del registro se marca activo=False (no se borra)."""
+    """Vínculo aseguradora ↔ agencia de suscripción. Estado MIXTO: `activo` lo controla el usuario
+    (histórico curado, no se borra); la sync del DGSFP solo informa de presencia (`en_dgsfp`,
+    `dgsfp_visto`) y levanta `revisar` cuando hay discrepancia (nuevo en DGSFP / ya no en DGSFP),
+    sin cambiar `activo`."""
     __tablename__ = "dgsfp_vinculos"
     __table_args__ = (UniqueConstraint("aseguradora_clave", "agencia_clave", name="uq_dgsfp_vinculo"),)
 
@@ -1266,7 +1286,11 @@ class DgsfpVinculo(Base):
         ForeignKey("dgsfp_aseguradoras.clave", ondelete="CASCADE"), index=True)
     agencia_clave: Mapped[str] = mapped_column(
         ForeignKey("dgsfp_agencias.clave", ondelete="CASCADE"), index=True)
-    activo: Mapped[bool] = mapped_column(Boolean, server_default=text("true"), default=True)
+    activo: Mapped[bool] = mapped_column(Boolean, server_default=text("true"), default=True)   # estado del usuario
+    en_dgsfp: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)  # visto en la última sync
+    dgsfp_visto: Mapped[dt.date | None] = mapped_column(Date)          # última vez visto en el registro
+    revisar: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)   # discrepancia por revisar
+    revisar_motivo: Mapped[str | None] = mapped_column(String(40))    # 'nuevo en DGSFP' | 'ya no en DGSFP'
     primera_sync: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     ultima_sync: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     fecha_baja: Mapped[dt.date | None] = mapped_column(Date)

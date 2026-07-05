@@ -1168,3 +1168,31 @@ tr.fila-inactiva td { opacity: 0.55; }
 .as-hijos li { font-size: 13px; padding: 4px 0; border-bottom: 1px solid #f4f4f4; }
 .as-hijos li:last-child { border-bottom: none; }
 .as-hijo-clave { display: inline-block; min-width: 56px; color: var(--naranja-osc); font-weight: 600; font-size: 11.5px; }
+
+/* ── Agencias DGSFP: badges, lista de agencias y ficha editable ── */
+.as-rev-btn { color: var(--rojo) !important; }
+.as-rev-btn.on { background: var(--rojo); color: #fff !important; border-color: var(--rojo); }
+.as-badge { display: inline-block; font-size: 10.5px; font-weight: 700; border-radius: 8px; padding: 1px 7px; margin-left: 6px; vertical-align: middle; }
+.as-badge-off { background: #eee; color: var(--gris-medio); }
+.as-badge-dudoso { background: #fff3cd; color: #8a6d00; }
+.as-badge-rev { background: #fdecea; color: var(--rojo); border: none; cursor: pointer; }
+.as-badge-dgsfp { background: #e8f0fe; color: #2563eb; }
+.as-hijos li.inactivo, .as-vinlist li.inactivo { opacity: .5; }
+/* Lista de agencias (vista Agencias): filas-botón que abren la ficha */
+.as-ag-fila { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; background: #fff; border: 1px solid var(--borde); border-radius: 8px; padding: 9px 12px; margin-bottom: 5px; cursor: pointer; font-family: inherit; flex-shrink: 0; }
+.as-ag-fila:hover { background: #fff7f3; border-color: var(--naranja); }
+.as-ag-fila.inactiva { opacity: .55; }
+.as-ag-nom { font-weight: 600; font-size: 14px; color: var(--gris); flex: 1; min-width: 0; }
+.as-ag-loc { font-size: 12px; color: var(--gris-medio); white-space: nowrap; }
+/* Ficha editable */
+.as-ficha { width: 580px; max-width: 100%; }
+.as-ficha-clave { font-size: 13px; color: var(--gris-medio); font-weight: 400; }
+.as-flags { display: flex; gap: 18px; margin-bottom: 12px; font-size: 13.5px; }
+.as-flags label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+.as-form { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 14px; }
+.as-form .field { margin-bottom: 8px; }
+.as-vinlist { list-style: none; margin: 0; padding: 0; }
+.as-vinlist li { display: flex; align-items: center; gap: 8px; font-size: 13px; padding: 4px 0; border-bottom: 1px solid #f4f4f4; }
+.as-vin-check { display: inline-flex; }
+.as-vin-nom { flex: 1; min-width: 0; }
+@media (max-width: 860px) { .as-form { grid-template-columns: 1fr; } }

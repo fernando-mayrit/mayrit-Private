@@ -1058,18 +1058,44 @@ export function getKpis(anio?: number) {
   return request<Kpis>(`/kpis${anio ? `?anio=${anio}` : ""}`);
 }
 
-// ── DGSFP: agencias de suscripción por aseguradora (reflejo del registro público) ──
+// ── DGSFP: módulo de Agencias de Suscripción (registro público + ficha manual) ──
 export interface DgsfpResumen {
   actualizado: string | null;
-  n_aseguradoras: number; n_agencias: number; n_vinculos: number;
+  n_agencias: number; n_agencias_activas: number;
+  n_aseguradoras: number; n_vinculos: number; n_revisar: number;
 }
 export interface DgsfpVinculo {
-  aseguradora_clave: string; aseguradora_nombre: string;
-  aseguradora_nif: string | null; aseguradora_situacion: string | null;
+  id: number;
+  aseguradora_clave: string; aseguradora_nombre: string; aseguradora_nif: string | null;
   agencia_clave: string; agencia_nombre: string;
+  activo: boolean; en_dgsfp: boolean; revisar: boolean; revisar_motivo: string | null;
 }
+export interface AgenciaLista {
+  clave: string; nombre: string; cif: string | null;
+  localidad: string | null; provincia: string | null;
+  activo: boolean; dudoso: boolean; revisado: boolean;
+  n_vinculos: number; n_vinculos_activos: number;
+}
+export interface AgenciaFicha {
+  clave: string; nombre: string; cif: string | null; fecha_constitucion: string | null;
+  direccion: string | null; cp: string | null; localidad: string | null; provincia: string | null;
+  pais: string | null; contacto: string | null; telefono: string | null; web: string | null;
+  productos: string | null; notas: string | null;
+  activo: boolean; dudoso: boolean; revisado: boolean;
+  vinculos: DgsfpVinculo[];
+}
+export type AgenciaUpdate = Partial<Omit<AgenciaFicha, "clave" | "vinculos">>;
+
 export function getDgsfpResumen() { return request<DgsfpResumen>("/dgsfp/resumen"); }
 export function getDgsfpVinculos() { return request<DgsfpVinculo[]>("/dgsfp/vinculos"); }
+export function getDgsfpAgencias() { return request<AgenciaLista[]>("/dgsfp/agencias"); }
+export function getDgsfpAgencia(clave: string) { return request<AgenciaFicha>(`/dgsfp/agencias/${clave}`); }
+export function updateDgsfpAgencia(clave: string, data: AgenciaUpdate) {
+  return request<AgenciaFicha>(`/dgsfp/agencias/${clave}`, { method: "PUT", body: JSON.stringify(data) });
+}
+export function updateDgsfpVinculo(id: number, data: { activo?: boolean; revisar?: boolean }) {
+  return request<DgsfpVinculo>(`/dgsfp/vinculos/${id}`, { method: "PUT", body: JSON.stringify(data) });
+}
 
 // CRUD genérico para una colección (p. ej. "/mercados").
 export function crud<TRead, TWrite>(collection: string) {
