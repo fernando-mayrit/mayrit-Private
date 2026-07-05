@@ -53,7 +53,6 @@ function FichaAgencia({ clave, onClose, onSaved }: { clave: string; onClose: () 
         <div className="as-flags">
           <label><input type="checkbox" checked={borr.activo ?? f.activo} onChange={(e) => set("activo", e.target.checked)} /> Activa</label>
           <label><input type="checkbox" checked={borr.dudoso ?? f.dudoso} onChange={(e) => set("dudoso", e.target.checked)} /> Dudosa</label>
-          <label><input type="checkbox" checked={borr.revisado ?? f.revisado} onChange={(e) => set("revisado", e.target.checked)} /> Revisada</label>
         </div>
         <div className="as-form">
           {CAMPOS.map((c) => (
@@ -112,7 +111,8 @@ export default function AgenciasSuscripcionPage() {
   const [vinculos, setVinculos] = useState<DgsfpVinculo[]>([]);
   const [agencias, setAgencias] = useState<AgenciaLista[]>([]);
   const [resumen, setResumen] = useState<DgsfpResumen | null>(null);
-  const [vista, setVista] = useState<Vista>("compania");
+  const [vista, setVista] = useState<Vista>("agencia");
+  const [orden, setOrden] = useState<"nombre" | "codigo">("nombre");
   const [q, setQ] = useState("");
   const [soloSinLic, setSoloSinLic] = useState(false);
   const [abiertos, setAbiertos] = useState<Set<string>>(new Set());
@@ -154,8 +154,10 @@ export default function AgenciasSuscripcionPage() {
   const listaAgencias = useMemo(() => {
     let a = agencias;
     if (t) a = a.filter((x) => x.nombre.toLowerCase().includes(t) || x.clave.toLowerCase().includes(t) || (x.localidad ?? "").toLowerCase().includes(t) || (x.cif ?? "").toLowerCase().includes(t));
-    return a;
-  }, [agencias, t]);
+    return [...a].sort((x, y) => orden === "codigo"
+      ? x.clave.localeCompare(y.clave, "es", { numeric: true })
+      : x.nombre.localeCompare(y.nombre, "es"));
+  }, [agencias, t, orden]);
 
   const buscando = t.length > 0;
 
@@ -180,6 +182,12 @@ export default function AgenciasSuscripcionPage() {
           <button className={"btn-toggle" + (vista === "agencia" ? " on" : "")} onClick={() => setVista("agencia")}>Agencias</button>
         </div>
         <input className="as-buscar" placeholder="Buscar…" value={q} onChange={(e) => setQ(e.target.value)} />
+        {vista === "agencia" && (
+          <div className="as-toggle">
+            <button className={"btn-toggle" + (orden === "nombre" ? " on" : "")} onClick={() => setOrden("nombre")}>Nombre</button>
+            <button className={"btn-toggle" + (orden === "codigo" ? " on" : "")} onClick={() => setOrden("codigo")}>Código</button>
+          </div>
+        )}
         {resumen && resumen.n_sin_licencia > 0 && vista === "compania" && (
           <button className={"btn-toggle as-rev-btn" + (soloSinLic ? " on" : "")} onClick={() => setSoloSinLic((s) => !s)}>
             ⚠ Sin licencia ({resumen.n_sin_licencia})
