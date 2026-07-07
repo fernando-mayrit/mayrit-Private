@@ -1100,7 +1100,7 @@ reales (sin ejecutar liquidaciones): los periodos sin LPAN bloquean, Myrtea 2026
 `_es_lloyds` en `routers/recibos.py`).
 
 ### Módulo "📖 Manual" (instrucciones de uso dentro de la app)
-Nueva página `pages/ManualPage.tsx` + grupo **"Ayuda" → Manual** en el menú lateral (`App.tsx`). Es un
+Nueva página `pages/ManualPage.tsx` + botón **"📖 Manual"** en la **barra superior** (junto a Configuración, `App.tsx`). Es un
 manual **FIJO en el repo** (v1, versionado con la app), estructurado para migrarse a **editable** (BD)
 más adelante sin rehacer la parte visual. Índice lateral pegajoso + secciones en tarjetas, con recuadros
 📌 (regla) y ⚠️ (ojo); estilos `.manual-*` en `styles.css`. Responsive.

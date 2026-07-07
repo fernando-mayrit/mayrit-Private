@@ -121,6 +121,7 @@ tr.fila-sin-justificante td { color: #3a3f44; background: #b9c0c7; }
 tr.fila-sin-justificante:hover td { background: #aeb6be; }
 tr.fila-sin-justificante td span { color: inherit !important; }
 /* Configuración: desplegable en la cabecera (arriba a la derecha). */
+.header-manual { position: relative; margin-left: 14px; }
 .header-config { position: relative; margin-left: 14px; }
 .header-config-btn { display: flex; align-items: center; gap: 5px; background: none; border: 1px solid transparent; border-radius: 8px; padding: 6px 10px; font-size: 13.5px; font-weight: 600; color: var(--gris); cursor: pointer; }
 .header-config-btn:hover { background: #fff7f3; color: var(--naranja-osc); }
