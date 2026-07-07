@@ -1273,3 +1273,11 @@ tr.fila-inactiva td { opacity: 0.55; }
 .manual-preview-tit { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--gris-medio); margin-bottom: 2px; }
 .manual-editor-acciones { display: flex; gap: 8px; }
 .manual-add { align-self: flex-start; }
+
+/* ── Importación de Risk BDX: panel de problemas ── */
+.import-bloqueo { background: #fdecea; border: 1px solid #f3b4ab; border-left: 4px solid var(--rojo); border-radius: 8px; padding: 10px 14px; margin-bottom: 10px; font-size: 13.5px; line-height: 1.45; color: #7a1409; }
+.import-bloqueo ul, .import-aviso ul { margin: 6px 0 4px; padding-left: 20px; }
+.import-bloqueo .hint { color: #7a1409; opacity: .85; }
+.import-aviso { background: #fff8e6; border: 1px solid #f0d98a; border-left: 4px solid #e0a800; border-radius: 8px; padding: 10px 14px; margin-bottom: 10px; font-size: 13px; line-height: 1.45; color: #6b5600; }
+.tabla-risk-preview .fila-sin-periodo { background: #fdecea; }
+.tabla-risk-preview .fila-sin-periodo td { color: #7a1409; }

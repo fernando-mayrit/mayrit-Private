@@ -107,7 +107,12 @@ async def risk_excel_import(binder_id: int, file: UploadFile = File(...), hoja: 
         return bdx_import.importar_risk_excel(db, b, content, hoja)
     except HTTPException:
         raise
+    except ValueError as e:
+        # Guardarraíl: problemas críticos (columnas clave, periodo…). No se ha importado nada.
+        db.rollback()
+        raise HTTPException(status_code=422, detail=str(e))
     except Exception as e:
+        db.rollback()
         raise HTTPException(status_code=400, detail=f"No se pudo importar el Excel: {e}")
 
 

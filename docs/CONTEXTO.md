@@ -1139,5 +1139,17 @@ Al subir el Risk de **junio del PI2725** (hoja `June 2026` de un Excel de 11 hoj
 - **Remediación en producción (a mano):** se borraron las 314 líneas rotas y se **re-importó** la hoja
   `June 2026` con el código corregido → 314 líneas OK (periodo 2026-06, risk code E7/E9, país, etc.),
   total del binder intacto (2406), 0 líneas sin periodo.
-- **PENDIENTE:** revisar si otros binders Iberian/AXIS con este mismo formato de Excel tienen subidas
-  antiguas afectadas (buscar líneas con `reporting_period_start` nulo).
+- **Verificado:** tras la remediación, **0 binders** con líneas de `reporting_period_start` nulo.
+
+### Red de seguridad del importador de Risk (principio: NUNCA importar a medias en silencio)
+A raíz del susto anterior, el importador **valida y avisa** en vez de tragar en silencio:
+- **Backend** (`bdx_import.py`): helper `_bloqueantes(meta, coerced)` con **columnas CLAVE** que un Risk
+  DEBE traer (Reporting Period, Certificate Ref, Total GWP Our Line, Commission Coverholder Amount,
+  Brokerage Amount, Final Net Premium to UW) + fuente de sección (Section No o Risk Code). Si falta
+  alguna, o hay líneas sin periodo, `importar_risk_excel` **ABORTA con ValueError** (no importa nada).
+  `preview_risk_excel` devuelve `problemas` (bloqueante/aviso) y `bloqueado`.
+- **Router** (`routers/bdx.py`): el ValueError del guardarraíl → **422** con el mensaje (y `rollback`).
+- **Frontend** (`RiskExcelImport.tsx`): panel de **problemas** — recuadro rojo (bloqueante, con lista) y
+  ámbar (avisos: columnas no reconocidas, sin sección, meses ya cargados). Si `bloqueado`, el botón
+  **«Importar» queda deshabilitado** (`saveDisabled`). Las filas de la muestra sin periodo se marcan (⛔).
+  Estilos `.import-bloqueo` / `.import-aviso` en `styles.css`.

@@ -347,6 +347,35 @@ def _extra_no_mapeadas(fila: dict, meta_mapeadas: dict) -> dict | None:
     return extra or None
 
 
+# Columnas CLAVE que un Risk BDX DEBE traer: sin ellas no se puede facturar/liquidar bien. Si alguna
+# no se reconoce (o el periodo no se puede parsear), la importación se ABORTA (no se importa a medias).
+_COLUMNAS_CLAVE = {
+    "reporting_period_start": "Reporting Period Start Date",
+    "certificate_ref": "Certificate Ref",
+    "total_gwp_our_line": "Total GWP (Our Line)",
+    "commission_coverholder_amount": "Commission Coverholder Amount",
+    "brokerage_amount": "Brokerage Amount",
+    "final_net_premium_uw": "Final Net Premium to UW",
+}
+
+
+def _bloqueantes(meta: dict, coerced: list[dict]) -> list[str]:
+    """Problemas CRÍTICOS que impiden importar (columnas clave sin reconocer, líneas sin periodo…)."""
+    problemas: list[str] = []
+    mapeadas = meta.get("mapeadas", {})
+    faltan = [nombre for campo, nombre in _COLUMNAS_CLAVE.items() if campo not in mapeadas]
+    if faltan:
+        problemas.append("No se reconocen columnas CLAVE en el Excel: " + ", ".join(faltan)
+                         + ". Revisa que la hoja y el formato sean correctos (o hay que añadir el alias).")
+    if "section_no" not in mapeadas and "risk_code" not in mapeadas:
+        problemas.append("No se reconoce ni «Section No» ni «Risk Code»: no se puede asignar la sección.")
+    sin_periodo = sum(1 for d in coerced if not d.get("reporting_period_start"))
+    if sin_periodo:
+        problemas.append(f"{sin_periodo} de {len(coerced)} líneas no tienen «Reporting Period» válido "
+                         "(la columna falta o las fechas están en un formato no soportado).")
+    return problemas
+
+
 def preview_risk_excel(db: Session, binder: Binder, content: bytes, hoja: str | None = None) -> dict:
     """Coacciona las filas y devuelve un resumen (sin escribir): hojas, nº líneas, periodos, totales,
     reparto por sección (con asignación por risk code) y los meses que ya están cargados en el Risk."""
@@ -388,6 +417,14 @@ def preview_risk_excel(db: Session, binder: Binder, content: bytes, hoja: str | 
         "prima_traspasar": float(d["brokerage_amount"]) if d.get("brokerage_amount") is not None else None,
         "liquidar": float(d["final_net_premium_uw"]) if d.get("final_net_premium_uw") is not None else None,
     } for d in coerced]   # todas las líneas (no solo una muestra), con su fila de totales en el modal
+    problemas = [{"nivel": "bloqueante", "texto": t} for t in _bloqueantes(meta, coerced)]
+    if sin_seccion:
+        problemas.append({"nivel": "aviso", "texto": f"{sin_seccion} línea(s) sin sección (su risk code no está en ninguna sección del binder)."})
+    if meta["sin_mapear"]:
+        problemas.append({"nivel": "aviso", "texto": f"{len(meta['sin_mapear'])} columna(s) del Excel no reconocida(s): se guardan íntegras en «Extra» (no se pierde nada), pero no van a su campo."})
+    if periodos_ya_cargados:
+        problemas.append({"nivel": "aviso", "texto": f"Mes(es) ya cargado(s) que se OMITIRÁN al importar: {', '.join(periodos_ya_cargados)}."})
+
     return {
         "hojas": meta["hojas"], "hoja": meta["hoja"],
         "n_lineas": meta["n_filas"], "periodos": periodos,
@@ -398,6 +435,9 @@ def preview_risk_excel(db: Session, binder: Binder, content: bytes, hoja: str | 
         "periodos_ya_cargados": periodos_ya_cargados,
         # Líneas sin periodo reconocible: si es > 0, el import ABORTA (guardarraíl). El front lo avisa.
         "sin_periodo": sum(1 for d in coerced if not d.get("reporting_period_start")),
+        # Diagnóstico para el front: problemas (bloqueante/aviso) y si la importación está BLOQUEADA.
+        "problemas": problemas,
+        "bloqueado": any(p["nivel"] == "bloqueante" for p in problemas),
     }
 
 
@@ -430,13 +470,10 @@ def importar_risk_excel(db: Session, binder: Binder, content: bytes, hoja: str |
     # usuario lo revise. Sin periodo no se agrupa ni genera recibo, y encima se salta la protección
     # de 'mes ya cargado' → duplicados. (Bug detectado con el Risk de junio del PI2725.)
     coerced = [_coerce_fila(cols, f) for f in filas]
-    sin_periodo = sum(1 for d in coerced if not d.get("reporting_period_start"))
-    if sin_periodo:
-        raise ValueError(
-            f"{sin_periodo} de {len(filas)} líneas no tienen 'Reporting Period Start Date' reconocible. "
-            f"Revisa que la hoja seleccionada tenga esa columna y que las fechas sean válidas. "
-            f"No se ha importado NADA (para no dejar líneas sin periodo)."
-        )
+    blk = _bloqueantes(meta, coerced)
+    if blk:
+        raise ValueError("No se ha importado NADA para no dejar el Risk BDX a medias. "
+                         "Problemas críticos:\n· " + "\n· ".join(blk))
 
     insertadas = omitidas_periodo = auto_seccion = sin_seccion = 0
     periodos_omitidos: set[str] = set()

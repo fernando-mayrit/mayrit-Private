@@ -41,13 +41,12 @@ export default function RiskExcelImport({
     finally { setBusy(false); }
   }
 
-  const todoCargado = !!prev && prev.periodos.length > 0 && prev.periodos_ya_cargados.length === prev.periodos.length;
-
   return (
     <FormPanel
       title={`Subir Risk · ${file.name}`}
       dirty={false} saving={busy}
       saveLabel={res ? "Cerrar" : `Importar ${prev ? `(${prev.n_lineas})` : ""}`}
+      saveDisabled={!res && !!prev?.bloqueado}
       error={error}
       onSave={res ? () => { onImported(); } : importar}
       onClose={onClose}
@@ -89,19 +88,29 @@ export default function RiskExcelImport({
             </div>
           </div>
 
-          {todoCargado ? (
-            <div className="hint" style={{ marginBottom: 10, color: "#b45309" }}>
-              ⚠️ {prev.periodos_ya_cargados.length === 1 ? "Este mes ya está" : "Estos meses ya están"} cargado(s)
-              en el Risk ({prev.periodos_ya_cargados.map(mesAnyo).join(", ")}). Al importar no se añadirá nada (no se recarga).
+          {/* Panel de PROBLEMAS: crítico (rojo, bloquea) + avisos (ámbar). El BDX es el núcleo del
+              negocio: si algo no cuadra, NO se importa a medias y se dice claramente por qué. */}
+          {prev.bloqueado && (
+            <div className="import-bloqueo">
+              <b>🚫 No se puede importar este BDX.</b> Hay datos críticos que no se reconocen o no cuadran,
+              así que <b>no se importará nada</b> hasta resolverlo:
+              <ul>
+                {prev.problemas.filter((p) => p.nivel === "bloqueante").map((p, i) => <li key={i}>{p.texto}</li>)}
+              </ul>
+              <span className="hint">Suele ser un desajuste de nombres de columna en este fichero. Avísame y añado el alias que falte.</span>
             </div>
-          ) : prev.periodos_ya_cargados.length > 0 ? (
-            <div className="hint" style={{ marginBottom: 10, color: "#b45309" }}>
-              ⚠️ Ya cargado(s): {prev.periodos_ya_cargados.map(mesAnyo).join(", ")} — esos meses se omitirán; el resto se añade.
+          )}
+          {prev.problemas.some((p) => p.nivel === "aviso") && (
+            <div className="import-aviso">
+              <b>⚠️ Avisos</b> (no impiden importar, pero revísalos):
+              <ul>
+                {prev.problemas.filter((p) => p.nivel === "aviso").map((p, i) => <li key={i}>{p.texto}</li>)}
+              </ul>
             </div>
-          ) : (
+          )}
+          {!prev.bloqueado && prev.problemas.length === 0 && (
             <div className="hint" style={{ marginBottom: 10 }}>
-              Revisa que las cifras cuadran antes de importar. Si la <b>comisión</b> sale 0% o faltan periodos,
-              el mapeo de columnas no es correcto para este fichero (avísame y añadimos el alias).
+              ✅ Columnas clave reconocidas. Revisa igualmente que las cifras cuadran antes de importar.
             </div>
           )}
 
@@ -135,12 +144,12 @@ export default function RiskExcelImport({
               </thead>
               <tbody>
                 {prev.muestra.map((m, i) => (
-                  <tr key={i}>
+                  <tr key={i} className={m.reporting ? undefined : "fila-sin-periodo"}>
                     <td>{m.certificado ?? "—"}</td>
                     <td>{m.asegurado ?? "—"}</td>
                     <td>{m.section_no ?? "—"}</td>
                     <td>{m.risk_code ?? "—"}</td>
-                    <td>{m.reporting ?? "—"}</td>
+                    <td>{m.reporting ?? "⛔"}</td>
                     <td className="num">{m.gwp_our_line != null ? fmtMiles(m.gwp_our_line) : "—"}</td>
                     <td className="num">{m.comision_pct.toFixed(2)}%</td>
                     <td className="num">{m.prima_traspasar != null ? fmtMiles(m.prima_traspasar) : "—"}</td>
