@@ -1119,3 +1119,25 @@ El manual pasó de fijo a **editable en la app** (decisión: editable por **cual
   `remark-gfm`, nuevas deps) con convención de recuadros (párrafo que empieza por 📌=regla, ⚠️=aviso),
   y **modo edición** (✏️ Editar): añadir/editar/borrar/reordenar (▲▼) con vista previa. `manualApi` en api.ts.
 - **Convención de contenido:** Markdown estándar + tablas GFM; recuadros con 📌/⚠️ al inicio del párrafo.
+
+### BUG GRAVE del importador de Risk Excel — fechas dd/mm/aaaa como texto (07/07/2026)
+Al subir el Risk de **junio del PI2725** (hoja `June 2026` de un Excel de 11 hojas, una por mes),
+**314 líneas entraron SIN periodo** y con varias columnas sin mapear. Causa raíz (dos bugs de
+`bdx_import.py` / `sharepoint.py`):
+1. **Fechas como TEXTO `dd/mm/aaaa`:** esa hoja trae `Reporting Period` como texto `01/06/2026`, y
+   `_fecha()` solo parseaba **ISO** (`aaaa-mm-dd`) → devolvía `None` en silencio. Las otras hojas traían
+   la fecha como datetime real, por eso no fallaban. **Fix:** `_fecha()` ahora acepta date/datetime, ISO
+   y europeo `dd/mm/aaaa`/`dd-mm-aaaa`.
+2. **Encabezados estándar largos:** esa hoja usa `"Risk Code (see list)"`, `"Insured Country (ISO code
+   list)"`, `"Tax N - Jurisdiction: Country, State, Province, Territory"`, etc., que no casaban con el
+   MAPEO → iban a `extra`. **Fix:** añadidos esos alias en `sharepoint.MAPEO` (risk_code, insured_country/
+   province/id, location_risk_*, tax1/2_jurisdiction, risk_transaction_type, transaction_type).
+3. **Guardarraíl:** `importar_risk_excel` ahora **ABORTA** (ValueError, no importa nada) si alguna línea
+   queda sin `reporting_period_start` reconocible; `preview_risk_excel` devuelve `sin_periodo` para avisar.
+   Antes, sin periodo se saltaba la protección de "mes ya cargado" y podía duplicar.
+- **NO se perdió dato:** lo no mapeado siempre se guardaba en `bdx_lineas.extra`. Solo el periodo se caía.
+- **Remediación en producción (a mano):** se borraron las 314 líneas rotas y se **re-importó** la hoja
+  `June 2026` con el código corregido → 314 líneas OK (periodo 2026-06, risk code E7/E9, país, etc.),
+  total del binder intacto (2406), 0 líneas sin periodo.
+- **PENDIENTE:** revisar si otros binders Iberian/AXIS con este mismo formato de Excel tienen subidas
+  antiguas afectadas (buscar líneas con `reporting_period_start` nulo).

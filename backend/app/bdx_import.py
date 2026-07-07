@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import datetime as dt
 import io
+import re
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
 import openpyxl
@@ -54,12 +55,32 @@ def _num(v) -> Decimal | None:
 
 
 def _fecha(v) -> dt.date | None:
+    """Fecha desde: date/datetime, texto ISO (aaaa-mm-dd) o texto EUROPEO (dd/mm/aaaa o dd-mm-aaaa).
+    OJO: algunas plantillas traen las fechas como TEXTO dd/mm/aaaa; si solo se aceptara ISO, el dato
+    se perdería en silencio (bug real detectado con el Risk de junio del PI2725)."""
     if not v:
         return None
-    try:
-        return dt.date.fromisoformat(str(v)[:10])
-    except ValueError:
+    if isinstance(v, dt.datetime):
+        return v.date()
+    if isinstance(v, dt.date):
+        return v
+    s = str(v).strip()
+    if not s:
         return None
+    try:
+        return dt.date.fromisoformat(s[:10])   # ISO (con o sin hora)
+    except ValueError:
+        pass
+    m = re.match(r"^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})$", s)   # dd/mm/aaaa europeo
+    if m:
+        d, mo, y = (int(x) for x in m.groups())
+        if y < 100:
+            y += 2000
+        try:
+            return dt.date(y, mo, d)
+        except ValueError:
+            return None
+    return None
 
 
 def _int(v) -> int | None:
@@ -375,6 +396,8 @@ def preview_risk_excel(db: Session, binder: Binder, content: bytes, hoja: str | 
         "mapeadas": meta["mapeadas"], "sin_mapear": meta["sin_mapear"], "muestra": muestra,
         "por_seccion": por_seccion, "auto_seccion": auto_seccion, "sin_seccion": sin_seccion,
         "periodos_ya_cargados": periodos_ya_cargados,
+        # Líneas sin periodo reconocible: si es > 0, el import ABORTA (guardarraíl). El front lo avisa.
+        "sin_periodo": sum(1 for d in coerced if not d.get("reporting_period_start")),
     }
 
 
@@ -401,10 +424,23 @@ def importar_risk_excel(db: Session, binder: Binder, content: bytes, hoja: str |
         if l.reporting_period_start
     }
 
+    # GUARDARRAÍL (crítico): NO importar en silencio líneas sin periodo. Un Risk BDX SIEMPRE tiene
+    # 'Reporting Period Start Date'; si alguna línea queda sin periodo reconocible (columna con otro
+    # encabezado, o fechas en un formato no soportado), se ABORTA la importación entera para que el
+    # usuario lo revise. Sin periodo no se agrupa ni genera recibo, y encima se salta la protección
+    # de 'mes ya cargado' → duplicados. (Bug detectado con el Risk de junio del PI2725.)
+    coerced = [_coerce_fila(cols, f) for f in filas]
+    sin_periodo = sum(1 for d in coerced if not d.get("reporting_period_start"))
+    if sin_periodo:
+        raise ValueError(
+            f"{sin_periodo} de {len(filas)} líneas no tienen 'Reporting Period Start Date' reconocible. "
+            f"Revisa que la hoja seleccionada tenga esa columna y que las fechas sean válidas. "
+            f"No se ha importado NADA (para no dejar líneas sin periodo)."
+        )
+
     insertadas = omitidas_periodo = auto_seccion = sin_seccion = 0
     periodos_omitidos: set[str] = set()
-    for fila in filas:
-        datos = _coerce_fila(cols, fila)
+    for fila, datos in zip(filas, coerced):
         sec = _seccion_de(datos, rc2sec, rc_amb)
         if datos.get("section_no") is None and sec is not None:
             datos["section_no"] = sec
