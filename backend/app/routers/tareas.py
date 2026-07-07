@@ -122,12 +122,22 @@ def _periodos_datos(db: Session, binder_ids: set[int]) -> dict[str, dict[int, se
     return out
 
 
-def _periodo_de(binder: Binder, k: int, paso_meses: int) -> str | None:
-    """Periodo (YYYY-MM) que corresponde a la k-ésima entrega: el k-ésimo mes de cobertura desde el
-    efecto del binder. Plazo-independiente: la entrega de febrero cierra el dato de enero, etc."""
-    if not binder or not binder.fecha_efecto or paso_meses <= 0:
+# Campo de plazo (días) del binder según la categoría de la tarea auto.
+_CAT_PLAZO = {"Risk": "risk_bdx_plazo", "Premium": "premium_bdx_plazo", "Claims": "claims_bdx_plazo"}
+
+
+def _periodo_de(binder: Binder, t: Tarea, f: dt.date, paso_meses: int) -> str | None:
+    """Periodo (YYYY-MM) que CIERRA la entrega con fecha límite `f`. Se deriva de la PROPIA fecha de la
+    entrega (misma ancla que `_ocurrencias`), no del efecto del binder: fin de periodo = f − plazo, y el
+    periodo es ese mes retrocedido `paso_meses` (la entrega de marzo cierra el dato de enero, etc.). Así
+    la fecha de la entrega y el periodo comprobado NO pueden desincronizarse aunque se edite el
+    `fecha_inicio` de la tarea o el efecto/plazo del binder (bug de anclaje doble, corregido 2026-07-07)."""
+    if not binder or not f or paso_meses <= 0:
         return None
-    return _add_months(binder.fecha_efecto, k * paso_meses).strftime("%Y-%m")
+    attr = _CAT_PLAZO.get(t.categoria)
+    plazo = int(getattr(binder, attr, 0) or 0) if attr else 0
+    base = (f - dt.timedelta(days=plazo)).replace(day=1)
+    return _add_months(base, -paso_meses).strftime("%Y-%m")
 
 
 def _auto_ok(paso: TareaPaso, periodo: str | None, datos: dict, binder_id: int) -> bool:
@@ -154,7 +164,7 @@ def _fechas_hechas(t: Tarea, binder: Binder | None, datos: dict) -> set[dt.date]
     paso = _paso(t)
     done: set[dt.date] = set()
     for k, f in enumerate(ocs):
-        periodo = _periodo_de(binder, k, paso)
+        periodo = _periodo_de(binder, t, f, paso)
         if all(p.id in manual_pp[f] or _auto_ok(p, periodo, datos, binder.id) for p in t.pasos):
             done.add(f)
     return done
@@ -316,7 +326,7 @@ def _pasos_de_ocurrencia(t: Tarea, binder: Binder | None, f: dt.date, k: int,
     """Estado de los pasos de UNA ocurrencia (fecha f, índice k) + si la entrega está completa.
     `manual` = {(paso_id, fecha): TareaPasoHecho}. Un paso está hecho si está marcado a mano o si su
     regla auto se cumple para el periodo de esa entrega."""
-    periodo = _periodo_de(binder, k, _paso(t)) if binder else None
+    periodo = _periodo_de(binder, t, f, _paso(t)) if binder else None
     pasos: list[PasoEstado] = []
     completa = True
     # Secuencial: un paso está BLOQUEADO si algún paso anterior (t.pasos ya viene ordenado por 'orden')
