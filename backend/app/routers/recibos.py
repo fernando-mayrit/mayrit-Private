@@ -1223,11 +1223,33 @@ def traspasar_premium(binder_id: int, payload: AccionPremium, db: Session = Depe
 @router.post("/binders/{binder_id}/premium/liquidar")
 def liquidar_premium(binder_id: int, payload: AccionPremium, db: Session = Depends(get_db)):
     """🏦 Liquidar: paga a la compañía/Lloyd's la parte a liquidar (adeudada − comisión retenida).
-    Requiere que los LPAN de ese Premium tengan fecha de **Liberado**; al liquidar, sella su fecha
-    de pago (=liquidación) con la fecha de la liquidación."""
-    # Los LPAN asociados a este Premium (mismo binder + periodo) deben estar liberados por Xchanging
-    # antes de poder liquidar al mercado. Los no liberados bloquean la liquidación.
+    EXIGE que existan LPAN que cubran el neto a pagar al mercado (los LPAN controlan la liquidación,
+    en Lloyd's Y en Compañía; la única diferencia es que los Lloyd's requieren FDO previo al LPAN, lo
+    cual se valida al generar el LPAN), que su neto CUADRE con el del Premium, y que estén **Liberados**.
+    Al liquidar, sella su fecha de pago (=liquidación) con la fecha de la liquidación."""
     lpans = db.scalars(select(Lpan).where(Lpan.binder_id == binder_id, Lpan.periodo == payload.periodo)).all()
+
+    # 1) Los LPAN son OBLIGATORIOS para liquidar (Lloyd's y Compañía): controlan la liquidación al
+    # mercado. Su neto (Σ net_premium) debe cuadrar con el neto a pagar del Premium (Σ Final Net Premium
+    # to UW de sus líneas), con el que se construye el propio LPAN. Si no hay LPAN, o su neto no cuadra
+    # (falta/sobra un LPAN, o cambiaron las líneas), no se liquida.
+    neto_premium = _q2(sum((l.final_net_premium_uw or D0) for l in _lineas_premium(db, binder_id, payload.periodo)))
+    neto_lpan = _q2(sum((lp.net_premium or D0) for lp in lpans))
+    tol = Decimal("0.01") * max(len(lpans), 1)   # solo absorbe céntimos de redondeo
+    if abs(neto_premium - neto_lpan) > tol:
+        b = db.get(Binder, binder_id)
+        moneda = (b.moneda if b else None) or "EUR"
+        if not lpans:
+            detalle = (f"No se puede liquidar: este Premium no tiene LPAN generados (neto a pagar al "
+                       f"mercado {neto_premium:,.2f} {moneda}). Genera primero el/los LPAN de este periodo.")
+        else:
+            detalle = (f"No se puede liquidar: las cantidades no coinciden. Neto del Premium "
+                       f"{neto_premium:,.2f} {moneda} vs suma de los {len(lpans)} LPAN {neto_lpan:,.2f} "
+                       f"{moneda} (diferencia {abs(neto_premium - neto_lpan):,.2f} {moneda}). Revisa o "
+                       f"regenera los LPAN de este periodo antes de liquidar.")
+        raise HTTPException(status_code=409, detail=detalle)
+
+    # 2) Todos los LPAN deben estar Liberados (por Xchanging) antes de poder pagar al mercado.
     sin_liberar = [lp for lp in lpans if lp.liberado is None]
     if sin_liberar:
         refs = ", ".join((lp.broker_ref2 or f"LPAN {lp.id}") for lp in sin_liberar[:6])
@@ -1237,7 +1259,8 @@ def liquidar_premium(binder_id: int, payload: AccionPremium, db: Session = Depen
             detail=f"No se puede liquidar: {len(sin_liberar)} LPAN de este Premium sin fecha de Liberado "
                    f"({refs}{mas}). Cumpliméntala primero.",
         )
-    # Al liquidar el Premium, marcar como pagados (fecha de liquidación) los LPAN que aún no lo estén.
+
+    # 3) Al liquidar el Premium, sella la fecha de liquidación (pagado) en los LPAN que aún no la tengan.
     for lp in lpans:
         if lp.pagado is None:
             lp.pagado = payload.fecha

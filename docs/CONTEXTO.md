@@ -1067,3 +1067,33 @@ Sus recibos deben llevar el **nombre canónico** del mercado, no el alias. Estab
 
 > Nota: las correcciones de datos se aplicaron **directo a producción** (no son migraciones). Los cambios
 > de código (validador + mercado Iberian) requieren **reiniciar el backend** para emisiones/ediciones nuevas.
+
+---
+
+## Sesión 07/07/2026 (equipo "ferna") — Liquidar Premium exige LPAN que cuadren + sella su fecha
+
+### Liquidar un Premium: los LPAN son obligatorios y sus cantidades tienen que coincidir
+Al liquidar un Premium (`POST /binders/{id}/premium/liquidar`, `routers/recibos.py`), además de lo que ya
+hacía (sella `pagado` = fecha de liquidación en los LPAN del periodo), ahora **exige**, EN ESTE ORDEN:
+1. **Que existan LPAN que cubran el neto** — para TODOS los binders (Lloyd's **y Compañía**): los LPAN
+   controlan la liquidación al mercado. Compara el **neto a pagar al mercado del Premium** (Σ `final_net_premium_uw`
+   de sus líneas) con la **suma del neto de los LPAN** (Σ `net_premium`, que es justo con lo que se
+   construye el LPAN). Si no hay LPAN → *"genera primero el/los LPAN"*; si hay pero no cuadran → *"las
+   cantidades no coinciden"* (con ambos importes y la diferencia). Tolerancia = 1 cént. × nº LPAN (solo redondeo).
+   Periodos con **neto 0** no exigen LPAN (no hay pago que controlar).
+2. **Que todos estén Liberados** (sello de Xchanging) — como antes.
+3. Sella la **fecha de liquidación** (`pagado`) en los LPAN que aún no la tengan.
+
+**Regla de negocio (aclarada por el usuario):** los LPAN son obligatorios para liquidar en Lloyd's **y**
+Compañía. La ÚNICA diferencia es que **solo los Lloyd's exigen FDO** previo al LPAN (ya validado en
+`generar_lpan`: `_binder_es_lloyds` → FDO+signing; los no-Lloyd's generan LPAN sin FDO). Cadena completa
+que queda blindada: **Cobrar → Generar LPAN → Liberar → Liquidar** (cada paso bloquea el siguiente; el
+LPAN además no se genera hasta que TODAS las líneas del grupo están cobradas — `generar_lpan`).
+
+**Impacto:** binders de Compañía (MA0121HEL, MA0222HEL, SB0226IBE, Myrtea) con periodos de Premium **sin
+LPAN** ahora **no se pueden liquidar** hasta generarlos. Los ya liquidados no se rompen (el guard solo
+actúa al liquidar). Sin cambios de frontend (el 409 se muestra como el resto). **Verificado** con datos
+reales (sin ejecutar liquidaciones): los periodos sin LPAN bloquean, Myrtea 2026-05 (LPAN cuadra) pasa.
+
+**Duda abierta:** ¿el paso **"Liberado"** aplica también a Compañía, o es solo de Lloyd's/Xchanging? De
+momento se exige a ambos (el usuario dijo que solo el FDO difiere).
