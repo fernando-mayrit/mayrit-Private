@@ -219,7 +219,9 @@ tr.fila-sin-justificante td span { color: inherit !important; }
 }
 
 /* Título de cada pantalla (emoji + nombre), encima del buscador */
-.page-title { font-size: 31px; margin: 0 0 16px; display: flex; align-items: center; gap: 12px; }
+/* Título de página FIJO: se queda pegado arriba del área de contenido al hacer scroll. */
+.page-title { font-size: 31px; margin: 0 0 16px; display: flex; align-items: center; gap: 12px;
+  position: sticky; top: 0; z-index: 5; padding: 10px 0 12px; background: var(--fondo); }
 .page-title-emoji { font-size: 36px; line-height: 1; }
 
 .toolbar { display: flex; gap: 12px; align-items: center; margin-bottom: 16px; }
@@ -1216,13 +1218,13 @@ tr.fila-inactiva td { opacity: 0.55; }
 /* ── Manual de uso ── */
 .manual-intro { color: var(--gris-medio); font-size: 14px; margin: -4px 0 16px; }
 .manual-layout { display: grid; grid-template-columns: 220px 1fr; gap: 22px; align-items: start; }
-.manual-toc { position: sticky; top: 8px; background: #fff; border: 1px solid var(--borde); border-radius: 12px; padding: 10px; display: flex; flex-direction: column; gap: 2px; }
+.manual-toc { position: sticky; top: 64px; background: #fff; border: 1px solid var(--borde); border-radius: 12px; padding: 10px; display: flex; flex-direction: column; gap: 2px; }
 .manual-toc-tit { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--gris-medio); padding: 4px 8px 8px; }
 .manual-toc-item { text-align: left; background: none; border: none; cursor: pointer; padding: 7px 8px; border-radius: 8px; font-size: 13.5px; color: var(--gris); }
 .manual-toc-item:hover { background: var(--gris-claro); color: var(--naranja-osc); }
 .manual-toc-emoji { margin-right: 6px; }
 .manual-content { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
-.manual-seccion { background: #fff; border: 1px solid var(--borde); border-radius: 12px; padding: 16px 20px; scroll-margin-top: 12px; }
+.manual-seccion { background: #fff; border: 1px solid var(--borde); border-radius: 12px; padding: 16px 20px; scroll-margin-top: 72px; }
 .manual-seccion-tit { margin: 0 0 8px; font-size: 18px; }
 .manual-seccion-emoji { margin-right: 8px; }
 .manual-seccion p { font-size: 14px; line-height: 1.55; margin: 8px 0; }
