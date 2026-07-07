@@ -1098,3 +1098,14 @@ reales (sin ejecutar liquidaciones): los periodos sin LPAN bloquean, Myrtea 2026
 
 **Resuelto:** el paso **"Liberado"** es **solo de Lloyd's** (Xchanging); en Compañía NO se exige (helper
 `_es_lloyds` en `routers/recibos.py`).
+
+### Módulo "📖 Manual" (instrucciones de uso dentro de la app)
+Nueva página `pages/ManualPage.tsx` + grupo **"Ayuda" → Manual** en el menú lateral (`App.tsx`). Es un
+manual **FIJO en el repo** (v1, versionado con la app), estructurado para migrarse a **editable** (BD)
+más adelante sin rehacer la parte visual. Índice lateral pegajoso + secciones en tarjetas, con recuadros
+📌 (regla) y ⚠️ (ojo); estilos `.manual-*` en `styles.css`. Responsive.
+- **Decisión del usuario:** «fijo ahora, editable después» + alcance «reglas y flujos clave» (conciso).
+- **Contenido v1:** Conceptos base · BDX Risk/Premium · Recibos (fecha contable día 1) · **El ciclo de
+  liquidación** (Cobrar→Generar LPAN→Liberar→Liquidar) · LPAN y FDO (tabla Lloyd's vs Compañía) ·
+  Comisiones Iberian · Mercados (nombre vs alias) · Cierre contable.
+- **PENDIENTE (idea):** v2 editable desde la app (tabla + editor markdown + permisos).

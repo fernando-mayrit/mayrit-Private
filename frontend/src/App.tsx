@@ -22,6 +22,7 @@ import TransferenciasPage from "./pages/TransferenciasPage";
 import RamosPage from "./pages/RamosPage";
 import CuentasBancariasPage from "./pages/CuentasBancariasPage";
 import UsuariosPage from "./pages/UsuariosPage";
+import ManualPage from "./pages/ManualPage";
 import EnConstruccion from "./components/EnConstruccion";
 import Inicio from "./components/Inicio";
 import LoginUsuario from "./components/LoginUsuario";
@@ -55,6 +56,7 @@ const EMOJI: Record<string, string> = {
   contabilidad: "📒",
   kpis: "📊",
   agencias_dgsfp: "🏛️",
+  manual: "📖",
 };
 
 type Page =
@@ -81,7 +83,8 @@ type Page =
   | "transferencias"
   | "contabilidad"
   | "kpis"
-  | "agencias_dgsfp";
+  | "agencias_dgsfp"
+  | "manual";
 
 // Barra superior: las Maestras (las partes).
 const MAESTRAS: { id: Page; label: string }[] = [
@@ -140,6 +143,11 @@ const CONTABILIDAD: ItemMenu[] = [
   { id: "cierre", label: "Cierre Contable" },
 ];
 
+// Menú lateral: Ayuda (manual de uso de la app).
+const AYUDA: { id: Page; label: string }[] = [
+  { id: "manual", label: "Manual" },
+];
+
 // Menú lateral: Configuración (catálogos compartidos).
 const CONFIG: { id: Page; label: string }[] = [
   { id: "ramos", label: "Ramos" },
@@ -156,6 +164,7 @@ const GRUPOS: Grupo[] = [
   { titulo: "Financiero", items: FINANCIERO },
   { titulo: "Contabilidad", items: CONTABILIDAD, soloUsuarios: ["Fernando", "Lola"] },
   { titulo: "Tareas", items: TAREAS },
+  { titulo: "Ayuda", items: AYUDA },
 ];
 // Páginas restringidas a ciertos usuarios (no aparecen en el menú ni se renderizan a los demás).
 // Permitidos = restricción del grupo ∩ restricción del ítem (lo que no tiene restricción, lo ven todos).
@@ -540,6 +549,7 @@ export default function App() {
           {page === "ramos" && <RamosPage />}
           {page === "cuentas" && <CuentasBancariasPage />}
           {page === "usuarios" && <UsuariosPage />}
+          {page === "manual" && <ManualPage />}
         </main>
       </div>
 
