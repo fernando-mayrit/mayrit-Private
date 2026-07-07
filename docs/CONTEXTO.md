@@ -1108,4 +1108,14 @@ más adelante sin rehacer la parte visual. Índice lateral pegajoso + secciones 
 - **Contenido v1:** Conceptos base · BDX Risk/Premium · Recibos (fecha contable día 1) · **El ciclo de
   liquidación** (Cobrar→Generar LPAN→Liberar→Liquidar) · LPAN y FDO (tabla Lloyd's vs Compañía) ·
   Comisiones Iberian · Mercados (nombre vs alias) · Cierre contable.
-- **PENDIENTE (idea):** v2 editable desde la app (tabla + editor markdown + permisos).
+### Módulo Manual v2 — EDITABLE desde la app (07/07/2026)
+El manual pasó de fijo a **editable en la app** (decisión: editable por **cualquier** usuario).
+- **BD:** tabla `manual_secciones` (`orden`, `emoji`, `titulo`, `cuerpo` Markdown, `updated_at`).
+  Migración `manual_secciones_0001` (crea + **siembra** el contenido v1). ⚠️ Las migraciones NO se
+  aplican solas en el deploy: se corrió **`alembic upgrade head` a mano** (apunta a la BD de Azure).
+- **Backend:** `models.ManualSeccion`, schemas `ManualSeccion*`, `routers/manual.py` (GET/POST/PUT/DELETE
+  `/manual` + `PUT /manual/reordenar`; registrado en `main.py`). Verificado e2e contra la BD real.
+- **Frontend:** `ManualPage.tsx` reescrita — carga de la API, render **Markdown** (`react-markdown` +
+  `remark-gfm`, nuevas deps) con convención de recuadros (párrafo que empieza por 📌=regla, ⚠️=aviso),
+  y **modo edición** (✏️ Editar): añadir/editar/borrar/reordenar (▲▼) con vista previa. `manualApi` en api.ts.
+- **Convención de contenido:** Markdown estándar + tablas GFM; recuadros con 📌/⚠️ al inicio del párrafo.

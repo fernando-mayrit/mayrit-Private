@@ -821,3 +821,25 @@ class ReciboPreview(ReciboCampos):
     anio: int
     numero: str                 # nº provisional (el definitivo se asigna al emitir)
     num_lineas: int = 0
+
+
+# ── Manual de uso (editable desde la app) ──
+class ManualSeccionWrite(BaseModel):
+    emoji: str = ""
+    titulo: str = ""
+    cuerpo: str = ""            # Markdown
+    orden: int | None = None    # al crear, si no se indica, va al final
+
+
+class ManualSeccionRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    orden: int
+    emoji: str
+    titulo: str
+    cuerpo: str
+    updated_at: dt.datetime
+
+
+class ManualReorden(BaseModel):
+    ids: list[int]              # ids de las secciones en el nuevo orden

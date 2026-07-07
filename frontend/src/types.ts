@@ -628,3 +628,19 @@ export interface ProductorWrite {
   pais?: string | null;
   notas?: string | null;
 }
+
+// Sección del Manual de uso (editable desde la app; cuerpo en Markdown).
+export interface ManualSeccion {
+  id: number;
+  orden: number;
+  emoji: string;
+  titulo: string;
+  cuerpo: string;
+  updated_at: string;
+}
+export interface ManualSeccionWrite {
+  emoji: string;
+  titulo: string;
+  cuerpo: string;
+  orden?: number | null;
+}

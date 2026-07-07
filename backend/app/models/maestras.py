@@ -1300,3 +1300,19 @@ class DgsfpVinculo(Base):
 
     aseguradora: Mapped["DgsfpAseguradora"] = relationship()
     agencia: Mapped["DgsfpAgencia"] = relationship()
+
+
+class ManualSeccion(Base):
+    """Sección del Manual de uso de la app (editable desde la propia app). El cuerpo es Markdown.
+    El orden lo da `orden` (menor primero)."""
+
+    __tablename__ = "manual_secciones"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    orden: Mapped[int] = mapped_column(Integer, server_default="0", default=0, index=True)
+    emoji: Mapped[str] = mapped_column(String(16), server_default="", default="")
+    titulo: Mapped[str] = mapped_column(String(160), server_default="", default="")
+    cuerpo: Mapped[str] = mapped_column(Text, server_default="", default="")   # Markdown
+    updated_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )

@@ -1152,3 +1152,15 @@ export const avisosApi = {
   fijarCategoria: (tipo: string, categoria: string) =>
     request<AvisoNivel>(`/avisos/niveles/${tipo}/categoria`, { method: "PUT", body: JSON.stringify({ categoria }) }),
 };
+
+// ── Manual de uso (secciones editables) ──
+export const manualApi = {
+  listar: () => request<import("./types").ManualSeccion[]>(`/manual`),
+  crear: (datos: import("./types").ManualSeccionWrite) =>
+    request<import("./types").ManualSeccion>(`/manual`, { method: "POST", body: JSON.stringify(datos) }),
+  actualizar: (id: number, datos: import("./types").ManualSeccionWrite) =>
+    request<import("./types").ManualSeccion>(`/manual/${id}`, { method: "PUT", body: JSON.stringify(datos) }),
+  borrar: (id: number) => request<void>(`/manual/${id}`, { method: "DELETE" }),
+  reordenar: (ids: number[]) =>
+    request<import("./types").ManualSeccion[]>(`/manual/reordenar`, { method: "PUT", body: JSON.stringify({ ids }) }),
+};

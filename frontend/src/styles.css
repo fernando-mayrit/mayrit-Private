@@ -1243,3 +1243,33 @@ tr.fila-inactiva td { opacity: 0.55; }
   .manual-layout { grid-template-columns: 1fr; }
   .manual-toc { position: static; }
 }
+
+/* ── Manual v2: Markdown renderizado + edición ── */
+.manual-top { display: flex; align-items: center; gap: 12px; margin: -4px 0 12px; }
+.manual-top .manual-intro { margin: 0; flex: 1; }
+.btn-sm.active { color: var(--naranja-osc); border-color: #f3d4c6; background: #fff7f3; }
+.manual-md > :first-child { margin-top: 0; }
+.manual-md > :last-child { margin-bottom: 0; }
+.manual-md table { border-collapse: collapse; margin: 12px 0; font-size: 13.5px; display: block; overflow-x: auto; }
+.manual-md th, .manual-md td { border: 1px solid var(--borde); padding: 7px 10px; text-align: left; vertical-align: top; }
+.manual-md thead th { background: var(--gris-claro); }
+.manual-md code { background: var(--gris-claro); border-radius: 5px; padding: 1px 5px; font-size: 12.5px; font-family: ui-monospace, monospace; }
+/* controles de edición */
+.manual-seccion-edit { padding: 12px 16px; }
+.manual-seccion-barra { display: flex; align-items: center; gap: 10px; }
+.manual-seccion-barra .manual-seccion-tit { margin: 0; flex: 1; font-size: 17px; }
+.manual-seccion-btns { display: flex; gap: 4px; flex-shrink: 0; }
+.btn-icon { background: none; border: 1px solid var(--borde); border-radius: 7px; cursor: pointer; padding: 4px 9px; font-size: 13px; color: var(--gris); }
+.btn-icon:hover:not(:disabled) { background: var(--gris-claro); }
+.btn-icon:disabled { opacity: .35; cursor: default; }
+.btn-icon-rojo:hover:not(:disabled) { background: #fdecea; }
+.manual-editor { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+.manual-editor-fila { display: flex; gap: 8px; }
+.manual-emoji-input { width: 62px; text-align: center; font-size: 16px; padding: 7px; border: 1px solid var(--borde); border-radius: 8px; }
+.manual-titulo-input { flex: 1; padding: 7px 9px; border: 1px solid var(--borde); border-radius: 8px; font-size: 14px; font-weight: 600; }
+.manual-cuerpo-input { width: 100%; padding: 9px 11px; border: 1px solid var(--borde); border-radius: 8px; font-size: 13.5px; font-family: ui-monospace, monospace; line-height: 1.5; resize: vertical; }
+.manual-md-ayuda { font-size: 12px; }
+.manual-preview { border: 1px dashed var(--borde); border-radius: 8px; padding: 8px 14px; background: #fcfcfc; }
+.manual-preview-tit { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--gris-medio); margin-bottom: 2px; }
+.manual-editor-acciones { display: flex; gap: 8px; }
+.manual-add { align-self: flex-start; }

@@ -1,202 +1,181 @@
-import type { ReactNode } from "react";
+import { useEffect, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import PageHeader from "../components/PageHeader";
+import { manualApi } from "../api";
+import type { ManualSeccion, ManualSeccionWrite } from "../types";
 
-// Manual de uso (v1): reglas y flujos "no obvios" de la app. Contenido FIJO en el repo (versionado
-// con la app). Pensado para migrarse a editable (BD) más adelante sin cambiar la estructura visual.
+// Manual de uso (v2): secciones EDITABLES desde la app (cuerpo en Markdown, guardadas en BD).
+// Cualquier usuario puede editar. Convención de recuadros: un párrafo que empieza por 📌 se pinta
+// como "regla" y por ⚠️ como "aviso".
 
-// Recuadro de "regla importante" (lo que más se olvida).
-function Regla({ children }: { children: ReactNode }) {
-  return <div className="manual-regla">📌 {children}</div>;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const COMPONENTES: any = {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  p({ node, children }: any) {
+    const first = node?.children?.[0];
+    const t = first && first.type === "text" ? (first.value as string) : "";
+    if (t.startsWith("📌")) return <div className="manual-regla">{children}</div>;
+    if (t.startsWith("⚠️")) return <div className="manual-ojo">{children}</div>;
+    return <p>{children}</p>;
+  },
+};
+
+function Markdown({ texto }: { texto: string }) {
+  return (
+    <div className="manual-md">
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={COMPONENTES}>{texto}</ReactMarkdown>
+    </div>
+  );
 }
-// Recuadro de "ojo/aviso".
-function Ojo({ children }: { children: ReactNode }) {
-  return <div className="manual-ojo">⚠️ {children}</div>;
-}
 
-type Seccion = { id: string; emoji: string; titulo: string; cuerpo: ReactNode };
-
-const SECCIONES: Seccion[] = [
-  {
-    id: "conceptos",
-    emoji: "🧩",
-    titulo: "Conceptos base",
-    cuerpo: (
-      <>
-        <p>La app gira alrededor del <b>binder</b> (acuerdo de suscripción agencia ↔ mercado):</p>
-        <ul>
-          <li><b>Binder → Secciones → Mercados</b> (con su % de participación). La suma de participaciones de una sección es 100 %.</li>
-          <li><b>Lloyd's vs Compañía:</b> un binder es <b>Lloyd's</b> si algún mercado de sus secciones es de tipo <code>Lloyds</code> (sindicatos); el resto son de <b>Compañía</b>. Esta distinción cambia el proceso de LPAN/FDO (ver más abajo).</li>
-          <li><b>Programa:</b> agrupa binders relacionados. Algunos programas son de <b>reaseguro</b> (p. ej. caución), con una economía de recibo distinta.</li>
-        </ul>
-      </>
-    ),
-  },
-  {
-    id: "bdx",
-    emoji: "📥",
-    titulo: "BDX: Risk y Premium",
-    cuerpo: (
-      <>
-        <p>Cada binder reporta dos tipos de bordereau (BDX) por mes:</p>
-        <ul>
-          <li><b>Risk BDX:</b> los <b>riesgos suscritos</b> del mes (qué se ha vendido). De él se genera el <b>recibo</b>.</li>
-          <li><b>Premium BDX:</b> las <b>primas cobradas</b> (el dinero que entra). Rara vez coincide en el tiempo con el Risk. El cobro/traspaso/liquidación del recibo se <b>derivan</b> del Premium.</li>
-        </ul>
-        <p>«<b>Our line</b>» = la parte que le corresponde a nuestra participación (no el 100 %). Una línea solo entra en la facturación si está marcada <b>«incluida en Premium»</b>.</p>
-      </>
-    ),
-  },
-  {
-    id: "recibos",
-    emoji: "🧾",
-    titulo: "Recibos",
-    cuerpo: (
-      <>
-        <ul>
-          <li><b>1 recibo por Risk BDX</b> = por (binder, periodo <code>YYYY-MM</code>). Numeración por año natural: <code>AÑO-NNNN</code>.</li>
-          <li>La comisión de Mayrit (<b>retenida</b>) = Σ brokerage de las líneas de ese periodo.</li>
-          <li>El <b>cobro</b> llega con los Premium BDX (puede ser parcial); los «pendientes» los recalcula la app.</li>
-        </ul>
-        <Regla>
-          La <b>Fecha Contable</b> es el <b>mes al que se imputa</b> el recibo (para el cierre). El día
-          es <b>SIEMPRE 1</b>: se elige el mes libremente (el del periodo o, si está cerrado, otro
-          abierto), pero nunca un día distinto del 1. La app lo fuerza sola.
-        </Regla>
-        <Ojo>
-          Un recibo <b>Contabilizado</b> (enviado al cierre mensual) queda <b>bloqueado</b>: para
-          corregirlo hay que <b>reabrirlo</b> primero.
-        </Ojo>
-      </>
-    ),
-  },
-  {
-    id: "ciclo",
-    emoji: "🔗",
-    titulo: "El ciclo de liquidación (la cadena)",
-    cuerpo: (
-      <>
-        <p>Para pagar al mercado hay que seguir esta cadena. <b>Cada paso bloquea el siguiente</b> si no está hecho:</p>
-        <div className="manual-cadena">
-          <span>💰 Cobrar</span><span className="manual-flecha">→</span>
-          <span>📐 Generar LPAN</span><span className="manual-flecha">→</span>
-          <span>🔓 Liberar</span><span className="manual-flecha">→</span>
-          <span>🏦 Liquidar</span>
-        </div>
-        <ul>
-          <li><b>Cobrar</b> las líneas del Premium (marcar cobro con su fecha).</li>
-          <li><b>Generar el LPAN</b> del periodo. <b>No se puede generar hasta que TODAS las líneas del grupo estén cobradas.</b></li>
-          <li><b>Liberar</b> el LPAN (sello de Xchanging) — <b>solo en binders Lloyd's</b>.</li>
-          <li><b>Liquidar</b> el Premium: paga al mercado y <b>sella la fecha de liquidación en los LPAN</b> automáticamente.</li>
-        </ul>
-        <Regla>
-          Para liquidar, <b>tienen que existir LPAN que cuadren</b>: la suma del neto de los LPAN debe
-          coincidir con el neto a pagar al mercado del Premium. Si no hay LPAN, o no cuadran, la app
-          <b> no deja liquidar</b> (te avisa con los dos importes y la diferencia).
-        </Regla>
-        <Ojo>
-          Los LPAN son obligatorios para liquidar <b>tanto en Lloyd's como en Compañía</b> (os sirven
-          para controlar la liquidación). La diferencia está en el FDO y el «Liberado» (ver LPAN y FDO).
-        </Ojo>
-      </>
-    ),
-  },
-  {
-    id: "lpan",
-    emoji: "📐",
-    titulo: "LPAN y FDO (Lloyd's vs Compañía)",
-    cuerpo: (
-      <>
-        <p>El <b>LPAN</b> (London Premium Advice Note) es la nota de pago que agrupa las líneas del Premium de un risk code y controla la liquidación al mercado.</p>
-        <table className="manual-tabla">
-          <thead><tr><th></th><th>Lloyd's</th><th>Compañía</th></tr></thead>
-          <tbody>
-            <tr><td><b>FDO previo</b> (con signing number)</td><td>✅ Obligatorio antes del LPAN</td><td>❌ No hace falta</td></tr>
-            <tr><td><b>Generar LPAN</b></td><td>✅ (necesita el FDO)</td><td>✅ (directo, sin FDO)</td></tr>
-            <tr><td><b>Liberar</b> (Xchanging)</td><td>✅ Se exige antes de liquidar</td><td>❌ No aplica</td></tr>
-            <tr><td><b>LPAN para liquidar</b></td><td>✅ Obligatorio</td><td>✅ Obligatorio</td></tr>
-          </tbody>
-        </table>
-        <p>En resumen: la <b>única diferencia real</b> es que los <b>Lloyd's exigen FDO previo</b> (y el paso «Liberado» de Xchanging). En Compañía se genera el LPAN directo y se liquida sin Liberado.</p>
-      </>
-    ),
-  },
-  {
-    id: "comisiones",
-    emoji: "💶",
-    titulo: "Comisiones (Iberian)",
-    cuerpo: (
-      <>
-        <ul>
-          <li>Cada mes se <b>prepara un recibo tipo «Comisiones»</b> (prima 0, día 1 del mes) con la comisión <b>estimada</b> del Premium: <b>10 % del GWP</b> (our line).</li>
-          <li>Queda <b>pendiente de ratificar</b> hasta que Iberian envía la comisión <b>definitiva</b> y el reparto del <b>85 % cedido</b> entre sus sociedades. Mayrit <b>retiene el 15 %</b>.</li>
-        </ul>
-        <Regla>
-          En los recibos de comisiones de Iberian, el <b>Mercado</b> es siempre
-          <b> «Iberian Insurance Group, S.L.»</b>.
-        </Regla>
-      </>
-    ),
-  },
-  {
-    id: "mercados",
-    emoji: "🏦",
-    titulo: "Mercados: alias vs nombre",
-    cuerpo: (
-      <>
-        <p>Cada mercado tiene un <b>nombre canónico</b> y un <b>alias</b> corto (p. ej. nombre «Liberty Specialty Markets», alias «LSM»).</p>
-        <Regla>
-          En los recibos se guarda siempre el <b>nombre canónico</b> del mercado, no el alias
-          (p. ej. «Axeria» → «Axeria Iard, S.L.»).
-        </Regla>
-      </>
-    ),
-  },
-  {
-    id: "cierre",
-    emoji: "🔒",
-    titulo: "Cierre contable",
-    cuerpo: (
-      <>
-        <ul>
-          <li>El cierre mensual <b>cierra un (año, mes)</b> por <b>Fecha Contable</b>: sus recibos pasan a <b>Contabilizado</b> y quedan bloqueados.</li>
-          <li>No se pueden <b>crear ni imputar</b> recibos en un mes ya cerrado (hay que elegir un mes abierto).</li>
-          <li>Para corregir algo de un mes cerrado, primero se <b>reabre</b> el recibo (descontabilizar).</li>
-        </ul>
-      </>
-    ),
-  },
-];
+const VACIO: ManualSeccionWrite = { emoji: "", titulo: "", cuerpo: "" };
 
 export default function ManualPage() {
+  const [secs, setSecs] = useState<ManualSeccion[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [edit, setEdit] = useState(false);
+  const [editingId, setEditingId] = useState<number | "new" | null>(null);
+  const [form, setForm] = useState<ManualSeccionWrite>(VACIO);
+  const [saving, setSaving] = useState(false);
+
+  async function cargar() {
+    setLoading(true); setError(null);
+    try { setSecs(await manualApi.listar()); }
+    catch (e) { setError((e as Error).message); }
+    finally { setLoading(false); }
+  }
+  useEffect(() => { cargar(); }, []);
+
   function irA(id: string) {
     document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
+  const set = (k: keyof ManualSeccionWrite, v: string) => setForm((f) => ({ ...f, [k]: v }));
+
+  function nueva() { setEditingId("new"); setForm(VACIO); }
+  function editar(s: ManualSeccion) { setEditingId(s.id); setForm({ emoji: s.emoji, titulo: s.titulo, cuerpo: s.cuerpo }); }
+  function cancelar() { setEditingId(null); setForm(VACIO); }
+
+  async function guardar() {
+    if (!form.titulo.trim() && !form.cuerpo.trim()) { setError("La sección necesita al menos un título o un cuerpo."); return; }
+    setSaving(true); setError(null);
+    try {
+      if (editingId === "new") await manualApi.crear(form);
+      else if (typeof editingId === "number") await manualApi.actualizar(editingId, form);
+      cancelar();
+      await cargar();
+    } catch (e) { setError((e as Error).message); }
+    finally { setSaving(false); }
+  }
+
+  async function borrar(s: ManualSeccion) {
+    if (!confirm(`¿Borrar la sección «${s.titulo || "(sin título)"}»?`)) return;
+    setError(null);
+    try { await manualApi.borrar(s.id); await cargar(); }
+    catch (e) { setError((e as Error).message); }
+  }
+
+  async function mover(i: number, dir: -1 | 1) {
+    const j = i + dir;
+    if (j < 0 || j >= secs.length) return;
+    const arr = [...secs];
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+    setSecs(arr);   // optimista
+    try { setSecs(await manualApi.reordenar(arr.map((s) => s.id))); }
+    catch (e) { setError((e as Error).message); cargar(); }
+  }
+
+  const anchorId = (s: ManualSeccion) => `manual-${s.id}`;
+
+  // Editor inline de una sección (nueva o existente).
+  const Editor = () => (
+    <div className="manual-editor">
+      <div className="manual-editor-fila">
+        <input className="manual-emoji-input" placeholder="📌" value={form.emoji}
+          onChange={(e) => set("emoji", e.target.value)} />
+        <input className="manual-titulo-input" placeholder="Título de la sección" value={form.titulo}
+          onChange={(e) => set("titulo", e.target.value)} autoFocus />
+      </div>
+      <textarea className="manual-cuerpo-input" rows={12} placeholder="Texto en Markdown…" value={form.cuerpo}
+        onChange={(e) => set("cuerpo", e.target.value)} />
+      <div className="hint manual-md-ayuda">
+        Markdown: <code>**negrita**</code>, listas con <code>- </code>, tablas, <code>`código`</code>.
+        Un párrafo que empiece por 📌 sale como recuadro de regla; por ⚠️ como aviso.
+      </div>
+      {form.cuerpo.trim() && (
+        <div className="manual-preview">
+          <div className="manual-preview-tit">Vista previa</div>
+          <Markdown texto={form.cuerpo} />
+        </div>
+      )}
+      <div className="manual-editor-acciones">
+        <button className="btn-primary" onClick={guardar} disabled={saving}>{saving ? "Guardando…" : "💾 Guardar"}</button>
+        <button className="btn-secondary" onClick={cancelar} disabled={saving}>Cancelar</button>
+      </div>
+    </div>
+  );
+
   return (
     <div className="container manual-page">
       <PageHeader emoji="📖" title="Manual de uso" />
-      <p className="manual-intro">
-        Guía rápida de los flujos y reglas de la app que más se olvidan. Se irá ampliando.
-      </p>
-      <div className="manual-layout">
-        <nav className="manual-toc">
-          <div className="manual-toc-tit">Contenido</div>
-          {SECCIONES.map((s) => (
-            <button key={s.id} className="manual-toc-item" onClick={() => irA(s.id)}>
-              <span className="manual-toc-emoji">{s.emoji}</span> {s.titulo}
-            </button>
-          ))}
-        </nav>
+      <div className="manual-top">
+        <p className="manual-intro">Guía de los flujos y reglas de la app. Cualquiera puede editarla.</p>
+        <button className={"btn-secondary btn-sm" + (edit ? " active" : "")} onClick={() => { setEdit((v) => !v); cancelar(); }}>
+          {edit ? "✅ Hecho" : "✏️ Editar"}
+        </button>
+      </div>
+
+      {error && <div className="error">⚠ {error}</div>}
+
+      {loading ? (
+        <div className="loading">Cargando…</div>
+      ) : edit ? (
+        // ── Modo edición: lista con controles + editor inline ──
         <div className="manual-content">
-          {SECCIONES.map((s) => (
-            <section key={s.id} id={s.id} className="manual-seccion">
-              <h2 className="manual-seccion-tit">
-                <span className="manual-seccion-emoji">{s.emoji}</span> {s.titulo}
-              </h2>
-              {s.cuerpo}
+          {secs.map((s, i) => (
+            <section key={s.id} className="manual-seccion manual-seccion-edit">
+              <div className="manual-seccion-barra">
+                <h2 className="manual-seccion-tit"><span className="manual-seccion-emoji">{s.emoji}</span> {s.titulo || <em>(sin título)</em>}</h2>
+                <div className="manual-seccion-btns">
+                  <button className="btn-icon" title="Subir" disabled={i === 0} onClick={() => mover(i, -1)}>▲</button>
+                  <button className="btn-icon" title="Bajar" disabled={i === secs.length - 1} onClick={() => mover(i, 1)}>▼</button>
+                  <button className="btn-icon" title="Editar" onClick={() => editar(s)}>✏️</button>
+                  <button className="btn-icon btn-icon-rojo" title="Borrar" onClick={() => borrar(s)}>🗑️</button>
+                </div>
+              </div>
+              {editingId === s.id && <Editor />}
             </section>
           ))}
+          {editingId === "new" ? (
+            <section className="manual-seccion manual-seccion-edit"><Editor /></section>
+          ) : (
+            <button className="btn-secondary manual-add" onClick={nueva}>＋ Añadir sección</button>
+          )}
         </div>
-      </div>
+      ) : secs.length === 0 ? (
+        <div className="empty">El manual está vacío. Pulsa «✏️ Editar» para añadir la primera sección.</div>
+      ) : (
+        // ── Modo lectura: índice + secciones ──
+        <div className="manual-layout">
+          <nav className="manual-toc">
+            <div className="manual-toc-tit">Contenido</div>
+            {secs.map((s) => (
+              <button key={s.id} className="manual-toc-item" onClick={() => irA(anchorId(s))}>
+                <span className="manual-toc-emoji">{s.emoji}</span> {s.titulo}
+              </button>
+            ))}
+          </nav>
+          <div className="manual-content">
+            {secs.map((s) => (
+              <section key={s.id} id={anchorId(s)} className="manual-seccion">
+                <h2 className="manual-seccion-tit"><span className="manual-seccion-emoji">{s.emoji}</span> {s.titulo}</h2>
+                <Markdown texto={s.cuerpo} />
+              </section>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
