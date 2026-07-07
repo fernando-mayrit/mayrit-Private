@@ -1081,7 +1081,8 @@ hacía (sella `pagado` = fecha de liquidación en los LPAN del periodo), ahora *
    construye el LPAN). Si no hay LPAN → *"genera primero el/los LPAN"*; si hay pero no cuadran → *"las
    cantidades no coinciden"* (con ambos importes y la diferencia). Tolerancia = 1 cént. × nº LPAN (solo redondeo).
    Periodos con **neto 0** no exigen LPAN (no hay pago que controlar).
-2. **Que todos estén Liberados** (sello de Xchanging) — como antes.
+2. **Que todos estén Liberados** (sello de Xchanging) — **solo en binders Lloyd's** (`_es_lloyds`, por
+   `tipo_mercado='Lloyds'`). Los de Compañía NO pasan por Xchanging, así que no se les exige 'Liberado'.
 3. Sella la **fecha de liquidación** (`pagado`) en los LPAN que aún no la tengan.
 
 **Regla de negocio (aclarada por el usuario):** los LPAN son obligatorios para liquidar en Lloyd's **y**
@@ -1095,5 +1096,5 @@ LPAN** ahora **no se pueden liquidar** hasta generarlos. Los ya liquidados no se
 actúa al liquidar). Sin cambios de frontend (el 409 se muestra como el resto). **Verificado** con datos
 reales (sin ejecutar liquidaciones): los periodos sin LPAN bloquean, Myrtea 2026-05 (LPAN cuadra) pasa.
 
-**Duda abierta:** ¿el paso **"Liberado"** aplica también a Compañía, o es solo de Lloyd's/Xchanging? De
-momento se exige a ambos (el usuario dijo que solo el FDO difiere).
+**Resuelto:** el paso **"Liberado"** es **solo de Lloyd's** (Xchanging); en Compañía NO se exige (helper
+`_es_lloyds` en `routers/recibos.py`).

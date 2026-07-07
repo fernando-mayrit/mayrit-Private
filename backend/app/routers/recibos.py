@@ -967,6 +967,20 @@ def _impuestos_locales(db: Session, binder_id: int | None) -> bool:
     ).scalar())
 
 
+def _es_lloyds(db: Session, binder_id: int | None) -> bool:
+    """True si alguna sección del binder tiene un mercado de tipo 'Lloyds'. Solo los Lloyd's pasan
+    por Xchanging (paso 'Liberado' del LPAN); los de Compañía no lo requieren para liquidar."""
+    if not binder_id:
+        return False
+    tipos = db.execute(
+        select(Mercado.tipo_mercado)
+        .join(SeccionMercado, SeccionMercado.mercado_id == Mercado.id)
+        .join(BinderSeccion, BinderSeccion.id == SeccionMercado.seccion_id)
+        .where(BinderSeccion.binder_id == binder_id)
+    ).scalars().all()
+    return any((t or "").strip().lower() == "lloyds" for t in tipos)
+
+
 def _recalcular_cobro_recibo(db: Session, recibo: Recibo) -> None:
     """El cobro/traspaso/liquidación del recibo se DERIVAN de sus líneas (vía Premium)."""
     lineas = db.scalars(select(BdxLinea).where(BdxLinea.recibo_id == recibo.id)).all()
@@ -1249,16 +1263,18 @@ def liquidar_premium(binder_id: int, payload: AccionPremium, db: Session = Depen
                        f"regenera los LPAN de este periodo antes de liquidar.")
         raise HTTPException(status_code=409, detail=detalle)
 
-    # 2) Todos los LPAN deben estar Liberados (por Xchanging) antes de poder pagar al mercado.
-    sin_liberar = [lp for lp in lpans if lp.liberado is None]
-    if sin_liberar:
-        refs = ", ".join((lp.broker_ref2 or f"LPAN {lp.id}") for lp in sin_liberar[:6])
-        mas = f" y {len(sin_liberar) - 6} más" if len(sin_liberar) > 6 else ""
-        raise HTTPException(
-            status_code=409,
-            detail=f"No se puede liquidar: {len(sin_liberar)} LPAN de este Premium sin fecha de Liberado "
-                   f"({refs}{mas}). Cumpliméntala primero.",
-        )
+    # 2) Solo en binders LLOYD'S: todos los LPAN deben estar Liberados (por Xchanging) antes de pagar
+    # al mercado. Los de Compañía no pasan por Xchanging, así que NO se exige el paso 'Liberado'.
+    if _es_lloyds(db, binder_id):
+        sin_liberar = [lp for lp in lpans if lp.liberado is None]
+        if sin_liberar:
+            refs = ", ".join((lp.broker_ref2 or f"LPAN {lp.id}") for lp in sin_liberar[:6])
+            mas = f" y {len(sin_liberar) - 6} más" if len(sin_liberar) > 6 else ""
+            raise HTTPException(
+                status_code=409,
+                detail=f"No se puede liquidar: {len(sin_liberar)} LPAN de este Premium sin fecha de Liberado "
+                       f"({refs}{mas}). Cumpliméntala primero.",
+            )
 
     # 3) Al liquidar el Premium, sella la fecha de liquidación (pagado) en los LPAN que aún no la tengan.
     for lp in lpans:
