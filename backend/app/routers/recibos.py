@@ -1367,7 +1367,8 @@ async def excel_preview(binder_id: int, file: UploadFile = File(...), hoja: str 
         "muestra": muestra,
         "mapeo": {
             "certificado": _sugerir(columnas, prod.premium_col_certificado if prod else None, ["certificate", "certificado", "cert ref", "policy", "poliza"]),
-            "importe": _sugerir(columnas, prod.premium_col_importe if prod else None, ["our line", "gross written", "net to broker", "net to", "gwp", "importe", "premium"]),
+            # Se compara contra el Net Premium to Lloyd's Broker del Risk → se sugiere esa misma columna.
+            "importe": _sugerir(columnas, prod.premium_col_importe if prod else None, ["net premium to lloyd", "net premium to broker", "net premium to pay", "net to broker", "our line", "gross written", "gwp", "importe", "premium"]),
         },
     }
 
@@ -1433,19 +1434,19 @@ async def match_excel(binder_id: int, file: UploadFile = File(...), hoja: str = 
         if not cands:
             filas.append(MatchRow(certificate_ref=cert, importe_excel=imp, estado="no_encontrada"))
             continue
-        # mejor candidata: la de importe más cercano (entre our line / gwp / net)
-        def candidatos_importe(l: BdxLinea):
-            return [l.total_gwp_our_line, l.gross_written_premium, l.net_premium_to_broker]
+        # La comparación se hace contra el "Net Premium to Lloyd's Broker" del Risk
+        # (net_premium_to_broker), que es el importe que DE VERDAD cuenta para conciliar el Premium.
+        # Si el certificado tiene varias líneas (endosos), se elige la de net más cercano al del Excel.
         best = cands[0]
         best_diff = None
         for l in cands:
-            for amt in candidatos_importe(l):
-                if amt is None:
-                    continue
-                d = abs(Decimal(amt) - (imp if imp is not None else Decimal(amt)))
-                if best_diff is None or d < best_diff:
-                    best, best_diff = l, d
-        risk_amt = _q2(best.total_gwp_our_line or 0)
+            amt = l.net_premium_to_broker
+            if amt is None:
+                continue
+            d = abs(Decimal(amt) - (imp if imp is not None else Decimal(amt)))
+            if best_diff is None or d < best_diff:
+                best, best_diff = l, d
+        risk_amt = _q2(best.net_premium_to_broker or 0)
         ok_importe = imp is None or (best_diff is not None and best_diff <= max(Decimal("0.02"), abs(imp) * Decimal("0.01")))
         estado = "match" if ok_importe else "importe_distinto"
         filas.append(MatchRow(certificate_ref=cert, importe_excel=imp, estado=estado, linea_id=best.id, importe_risk=risk_amt))

@@ -136,7 +136,7 @@ export default function PremiumMatch({
               </select>
             </div>
             <div className="field">
-              <label>Columna Importe (comprobación)</label>
+              <label>Columna Importe · se compara con <b>Net Premium to Lloyd's Broker</b> del Risk</label>
               <select value={importe} onChange={(e) => { setImporte(e.target.value); setMatch(null); }}>
                 <option value="">— ninguna —</option>
                 {prev.columnas.map((c) => (
@@ -149,7 +149,8 @@ export default function PremiumMatch({
           {!match ? (
             <div className="hint" style={{ marginTop: 8 }}>
               {prev.columnas.length} columnas y <b>{prev.n_filas}</b> líneas detectadas en «{prev.hoja}».
-              Pulsa <b>Machear</b> para casar por Certificado (el importe es una comprobación; si no cuadra, se marca para revisar).
+              Pulsa <b>Machear</b> para casar por Certificado. El importe es solo una comprobación: se
+              contrasta con el <b>Net Premium to Lloyd's Broker</b> del Risk; si no cuadra, se marca para revisar.
             </div>
           ) : (
             <>
@@ -162,7 +163,7 @@ export default function PremiumMatch({
               <div className="tabla-scroll" style={{ maxHeight: "42vh" }}>
                 <table className="compacto">
                   <thead>
-                    <tr><th>Certificado</th><th className="num">Importe Excel</th><th className="num">Importe Risk</th><th>Estado</th></tr>
+                    <tr><th>Certificado</th><th className="num">Importe (Excel)</th><th className="num">Net Prem. Lloyd's (Risk)</th><th>Estado</th></tr>
                   </thead>
                   <tbody>
                     {match.filas.map((f, i) => (

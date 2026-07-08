@@ -1180,3 +1180,13 @@ cabecera, no solo la muestra de 3) y el diálogo muestra "N columnas y **M líne
 El resultado mostraba el periodo en ISO `2026-06` (induce a error). Ahora usa el helper `mesAnyo`
 (formato único de la app) → **"Junio 2026"** en el resumen y en la caja del Premium. El `input
 type=month` sigue con el valor ISO internamente (el navegador ya lo muestra localizado).
+
+### Machear Premium: comparar contra Net Premium to Lloyd's Broker (no "el mejor de 3 columnas")
+Antes `match_excel` (`routers/recibos.py`) comparaba el importe del Excel contra el **más cercano** entre
+`total_gwp_our_line` / `gross_written_premium` / `net_premium_to_broker` y mostraba el our line → confuso.
+Ahora la comprobación es SIEMPRE contra **`net_premium_to_broker`** (Net Premium to Lloyd's Broker), que
+es el importe que cuenta para conciliar el Premium; la columna «Importe Risk» pasa a **«Net Prem. Lloyd's
+(Risk)»**. La sugerencia automática de la columna Importe del Excel prioriza esa columna
+(`_sugerir` con keywords "net premium to lloyd/broker/pay" primero). El macheo de líneas sigue siendo por
+Certificate Ref; el importe es solo comprobación. (Nota: si una agencia tenía recordada otra columna,
+se re-guarda al elegir la de net en la próxima subida.)
