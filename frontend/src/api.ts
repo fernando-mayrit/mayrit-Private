@@ -927,13 +927,17 @@ export const recibosApi = {
     request(`/binders/${binderId}/premium/liquidar`, { method: "POST", body: JSON.stringify({ periodo, fecha }) }),
   guardarNotaPremium: (binderId: number, periodo: string, nota: string | null) =>
     request<{ periodo: string; nota: string | null }>(`/binders/${binderId}/premium/nota`, { method: "PUT", body: JSON.stringify({ periodo, nota }) }),
-  excelPreview: (binderId: number, file: File, hoja?: string) => {
-    const fd = new FormData(); fd.append("file", file); if (hoja) fd.append("hoja", hoja);
+  // Sube el fichero SOLO si no hay token (el backend lo cachea y devuelve token para reusarlo).
+  excelPreview: (binderId: number, file: File | null, hoja?: string, token?: string) => {
+    const fd = new FormData();
+    if (token) fd.append("token", token); else if (file) fd.append("file", file);
+    if (hoja) fd.append("hoja", hoja);
     return requestForm<ExcelPreview>(`/binders/${binderId}/premium/excel-preview`, fd);
   },
-  matchExcel: (binderId: number, file: File, data: { hoja: string; certificado: string; importe: string | null; periodo: string }) => {
+  matchExcel: (binderId: number, file: File | null, data: { hoja: string; certificado: string; importe: string | null; periodo: string }, token?: string) => {
     const fd = new FormData();
-    fd.append("file", file); fd.append("hoja", data.hoja); fd.append("certificado", data.certificado);
+    if (token) fd.append("token", token); else if (file) fd.append("file", file);
+    fd.append("hoja", data.hoja); fd.append("certificado", data.certificado);
     if (data.importe) fd.append("importe", data.importe); fd.append("periodo", data.periodo);
     return requestForm<MatchResult>(`/binders/${binderId}/premium/match-excel`, fd);
   },
@@ -958,6 +962,7 @@ export interface PremiumGrupo {
 export interface ExcelPreview {
   hojas: string[];
   hoja: string;
+  token: string;
   columnas: string[];
   n_filas: number;
   muestra: Record<string, string>[];

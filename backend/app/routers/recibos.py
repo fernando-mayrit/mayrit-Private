@@ -10,6 +10,8 @@ import calendar
 import datetime as dt
 import io
 import re
+import time
+import uuid
 from decimal import Decimal, ROUND_HALF_UP
 
 import openpyxl
@@ -1321,13 +1323,54 @@ def _sugerir(cols: list[str], guardado: str | None, claves: list[str]) -> str | 
     return None
 
 
-async def _wb_subido(file: UploadFile):
-    """Carga un workbook openpyxl desde el Excel subido (.xlsx)."""
+# Caché en memoria del Excel subido, para NO re-subir/re-parsear el mismo fichero en cada paso del
+# macheo (preview inicial, cambio de hoja y machear). El front sube el fichero UNA vez, recibe un
+# `token` y lo reutiliza; si el token caduca (10 min) o falla, reintenta subiendo el fichero.
+# (El backend corre con 1 worker gunicorn → la caché en proceso es suficiente.)
+_XLSX_TTL = 600.0
+_XLSX_CACHE: dict[str, tuple[float, bytes]] = {}
+
+
+def _xlsx_cache_put(content: bytes) -> str:
+    ahora = time.time()
+    for k in [k for k, (exp, _) in _XLSX_CACHE.items() if exp < ahora]:
+        _XLSX_CACHE.pop(k, None)
+    tok = uuid.uuid4().hex
+    _XLSX_CACHE[tok] = (ahora + _XLSX_TTL, content)
+    return tok
+
+
+def _xlsx_cache_get(token: str | None) -> bytes | None:
+    if not token:
+        return None
+    v = _XLSX_CACHE.get(token)
+    if not v:
+        return None
+    exp, content = v
+    if exp < time.time():
+        _XLSX_CACHE.pop(token, None)
+        return None
+    return content
+
+
+async def _xlsx_contenido(file: UploadFile | None, token: str | None) -> tuple[bytes, str]:
+    """Devuelve (bytes, token) del Excel: reutiliza el de la caché si el token es válido; si no, lee
+    el fichero subido y lo cachea. Si no hay ni token válido ni fichero, pide re-subir (409)."""
+    cached = _xlsx_cache_get(token)
+    if cached is not None:
+        return cached, token   # reutiliza (no se re-sube ni re-parsea la subida)
+    if file is None:
+        raise HTTPException(status_code=409, detail="token_caducado")   # el front reintenta con el fichero
     if not (file.filename or "").lower().endswith(".xlsx"):
         raise HTTPException(status_code=400, detail="Solo se admite .xlsx (convierte los .xls antes de subir).")
     content = await file.read()
     if not content:
         raise HTTPException(status_code=400, detail="El fichero está vacío.")
+    return content, _xlsx_cache_put(content)
+
+
+def _wb_de_bytes(content: bytes):
+    """Carga un workbook openpyxl (solo lectura) desde bytes."""
     try:
         return openpyxl.load_workbook(io.BytesIO(content), read_only=True, data_only=True)
     except Exception as e:
@@ -1335,13 +1378,14 @@ async def _wb_subido(file: UploadFile):
 
 
 @router.post("/binders/{binder_id}/premium/excel-preview")
-async def excel_preview(binder_id: int, file: UploadFile = File(...), hoja: str | None = Form(None),
-                        db: Session = Depends(get_db)):
+async def excel_preview(binder_id: int, file: UploadFile | None = File(None), hoja: str | None = Form(None),
+                        token: str | None = Form(None), db: Session = Depends(get_db)):
     """Lee hojas/cabeceras del Excel subido y sugiere el mapeo (recordado de la agencia o por palabras clave)."""
     binder = db.get(Binder, binder_id)
     if binder is None:
         raise HTTPException(status_code=404, detail=f"Binder {binder_id} no encontrado")
-    wb = await _wb_subido(file)
+    content, token = await _xlsx_contenido(file, token)
+    wb = _wb_de_bytes(content)
     hoja = hoja if (hoja and hoja in wb.sheetnames) else wb.sheetnames[0]
     ws = wb[hoja]
     hdr_i, cols = _cabecera(ws)
@@ -1362,6 +1406,7 @@ async def excel_preview(binder_id: int, file: UploadFile = File(...), hoja: str 
     return {
         "hojas": wb.sheetnames,
         "hoja": hoja,
+        "token": token,
         "columnas": columnas,
         "n_filas": n_filas,
         "muestra": muestra,
@@ -1392,16 +1437,17 @@ def _a_decimal(v) -> Decimal | None:
 
 
 @router.post("/binders/{binder_id}/premium/match-excel")
-async def match_excel(binder_id: int, file: UploadFile = File(...), hoja: str = Form(...),
+async def match_excel(binder_id: int, file: UploadFile | None = File(None), hoja: str = Form(...),
                       certificado: str = Form(...), importe: str | None = Form(None),
-                      periodo: str = Form(...), db: Session = Depends(get_db)):
+                      periodo: str = Form(...), token: str | None = Form(None), db: Session = Depends(get_db)):
     """Casa las filas del Excel subido con las líneas Risk del binder por Certificate Ref (importe como
     comprobación). Guarda el mapeo en la agencia. NO aplica: devuelve preview + ids macheados."""
     binder = db.get(Binder, binder_id)
     if binder is None:
         raise HTTPException(status_code=404, detail=f"Binder {binder_id} no encontrado")
     _rango_mes(periodo)
-    wb = await _wb_subido(file)
+    content, _token = await _xlsx_contenido(file, token)
+    wb = _wb_de_bytes(content)
     if hoja not in wb.sheetnames:
         raise HTTPException(status_code=404, detail=f"Hoja '{hoja}' no encontrada")
     ws = wb[hoja]
@@ -1412,9 +1458,17 @@ async def match_excel(binder_id: int, file: UploadFile = File(...), hoja: str = 
         raise HTTPException(status_code=422, detail=f"Columna de certificado '{certificado}' no está en la hoja")
     imp_idx = cols.index(importe) if (importe and importe in cols) else None
 
-    # Líneas Risk del binder indexadas por certificate_ref
+    # Líneas Risk del binder indexadas por certificate_ref. load_only: solo las columnas que usan el
+    # macheo (id, certificado, net) y el cálculo de totales (_comp_linea), en vez de las ~90 de la
+    # entidad → mucho menos que traer y que hidratar (el binder puede tener miles de líneas).
     risk = db.scalars(
         select(BdxLinea).join(Bdx, BdxLinea.bdx_id == Bdx.id).where(Bdx.binder_id == binder_id)
+        .options(load_only(
+            BdxLinea.certificate_ref, BdxLinea.net_premium_to_broker,
+            BdxLinea.total_gwp_our_line, BdxLinea.total_taxes_levies,
+            BdxLinea.commission_coverholder_amount, BdxLinea.brokerage_amount,
+            BdxLinea.final_net_premium_uw,
+        ))
     ).all()
     por_cert: dict[str, list[BdxLinea]] = {}
     for l in risk:

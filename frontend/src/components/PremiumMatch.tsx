@@ -43,14 +43,27 @@ export default function PremiumMatch({
   const [match, setMatch] = useState<MatchResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Token del fichero cacheado en el backend: se sube UNA vez y se reutiliza (preview/hoja/machear).
+  const [token, setToken] = useState<string | null>(null);
+
+  const esTokenCaducado = (e: unknown) => (e as Error).message === "token_caducado";
 
   async function cargarPreview(h?: string) {
     setBusy(true);
     setError(null);
     try {
-      const p = await recibosApi.excelPreview(binderId, file, h);
+      // Reutiliza el token si lo hay; si caduca, reintenta subiendo el fichero.
+      let p: ExcelPreview;
+      try {
+        p = await recibosApi.excelPreview(binderId, token ? null : file, h, token ?? undefined);
+      } catch (e) {
+        if (!token || !esTokenCaducado(e)) throw e;
+        setToken(null);
+        p = await recibosApi.excelPreview(binderId, file, h);
+      }
       setPrev(p);
       setHoja(p.hoja);
+      setToken(p.token);
       setCertificado(p.mapeo.certificado ?? "");
       setImporte(p.mapeo.importe ?? "");
       setMatch(null);
@@ -71,8 +84,17 @@ export default function PremiumMatch({
     if (!/^\d{4}-\d{2}$/.test(periodo)) return setError("Indica el mes del Premium (AAAA-MM).");
     setBusy(true);
     setError(null);
+    const data = { hoja, certificado, importe: importe || null, periodo };
     try {
-      setMatch(await recibosApi.matchExcel(binderId, file, { hoja, certificado, importe: importe || null, periodo }));
+      let r: MatchResult;
+      try {
+        r = await recibosApi.matchExcel(binderId, token ? null : file, data, token ?? undefined);
+      } catch (e) {
+        if (!token || !esTokenCaducado(e)) throw e;
+        setToken(null);
+        r = await recibosApi.matchExcel(binderId, file, data);
+      }
+      setMatch(r);
     } catch (e) {
       setError((e as Error).message);
     } finally {

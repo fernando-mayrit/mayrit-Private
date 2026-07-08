@@ -1111,8 +1111,9 @@ más adelante sin rehacer la parte visual. Índice lateral pegajoso + secciones 
 ### Módulo Manual v2 — EDITABLE desde la app (07/07/2026)
 El manual pasó de fijo a **editable en la app** (decisión: editable por **cualquier** usuario).
 - **BD:** tabla `manual_secciones` (`orden`, `emoji`, `titulo`, `cuerpo` Markdown, `updated_at`).
-  Migración `manual_secciones_0001` (crea + **siembra** el contenido v1). ⚠️ Las migraciones NO se
-  aplican solas en el deploy: se corrió **`alembic upgrade head` a mano** (apunta a la BD de Azure).
+  Migración `manual_secciones_0001` (crea + **siembra** el contenido v1). Nota: las migraciones **SÍ**
+  se aplican solas en el deploy (`backend/startup.sh` corre `alembic upgrade head` antes de gunicorn);
+  también se puede correr a mano en local (apunta a la BD de Azure). [corrección 08/07: antes puse que no]
 - **Backend:** `models.ManualSeccion`, schemas `ManualSeccion*`, `routers/manual.py` (GET/POST/PUT/DELETE
   `/manual` + `PUT /manual/reordenar`; registrado en `main.py`). Verificado e2e contra la BD real.
 - **Frontend:** `ManualPage.tsx` reescrita — carga de la API, render **Markdown** (`react-markdown` +
@@ -1193,3 +1194,12 @@ Certificate Ref; el importe es solo comprobación.
   (ignora la recordada, que en Iberian era "Gross ... Our Line" → comparaba gross-Excel vs net-Risk y
   nunca cuadraba, con 0 macheadas → A Cobrar/Traspasar/Liquidar a 0). El resultado ahora muestra
   explícitamente «columna Excel ↔ Net Premium to Lloyd's Broker (Risk)» y avisa si ninguna cuadra.
+
+### Macheo del Premium: acelerar (subir el fichero una sola vez)
+El flujo subía y parseaba el Excel **en cada paso** (preview inicial, cambio de hoja, machear). Medido:
+openpyxl ~84 ms/parseo + BD ~50 ms; el coste real es re-subir el fichero por la red 2-3 veces.
+- **`load_only`** en la carga de líneas Risk del macheo (`match_excel`): solo ~8 columnas en vez de ~90.
+- **Caché del fichero en el backend** (`recibos.py`): se sube UNA vez, el backend lo guarda por `token`
+  (10 min, en memoria; el backend corre **1 worker** gunicorn → `startup.sh` sin `--workers`) y lo
+  reutiliza en cambio de hoja y en machear. `excel_preview`/`match_excel` aceptan `file` **o** `token`;
+  el front (`PremiumMatch`, `api.ts`) guarda el token y reintenta subiendo el fichero si caduca (409).
