@@ -1236,3 +1236,9 @@ listados pintan miles sin virtualizar). Arreglo en `TablaDatos.tsx` + `styles.cs
   estado (`setAnchos`) se guarda **al soltar**. Se quitaron los anchos inline de `th`/`td`.
 - Prop nuevo **`rowActionWidth`** (la columna de acción necesita ancho fijo con layout fixed; Recibos en
   modo gestión pasa 220 por los varios botones; por defecto 76).
+- **Estrechar columnas (fit sin scroll):** con `min-width:100%` el hueco liberado se redistribuía a las
+  demás → "no dejaba" estrechar. Ahora `.tabla-datos { width: 100% }` + una **columna spacer** al final
+  (auto, absorbe el sobrante) → cada columna mantiene su ancho exacto y estrechar se queda estrecho (el
+  hueco va al spacer). Mínimo de ancho bajado de 60 a **32 px**. Si las columnas superan el ancho, hay
+  scroll horizontal. (El objetivo del usuario: que los listados quepan sin scroll; ahora se puede
+  compactar a mano y se guarda en localStorage. Falta, si se quiere, afinar los anchos por defecto por listado.)

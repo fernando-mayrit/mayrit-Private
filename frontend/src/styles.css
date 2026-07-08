@@ -467,8 +467,12 @@ td.num, th.num { text-align: right; }
    evita que el navegador re-mida el contenido de todas las filas en cada cambio (redimensionar/
    ordenar/filtrar era lentísimo en listados grandes). width: max-content → la tabla es tan ancha
    como sus columnas (scroll horizontal); min-width: 100% → al menos llena el contenedor. */
-.tabla-datos { table-layout: fixed; width: max-content; min-width: 100%; }
+.tabla-datos { table-layout: fixed; width: 100%; }
 .tabla-datos thead th { overflow: hidden; }   /* cabecera larga no ensancha la columna (ancho por colgroup) */
+/* Columna "spacer" (última, sin ancho): absorbe el hueco sobrante para que la tabla llene el
+   contenedor SIN redistribuir a las columnas reales → estrechar una columna se queda estrecha
+   (el hueco va al spacer, no vuelve). Si las columnas superan el ancho, el spacer es 0 y hay scroll. */
+.tabla-datos .col-spacer { padding: 0; }
 .col-arrastrable { cursor: grab; }
 .col-arrastrable.arrastrando { opacity: .5; }
 .col-arrastrable:active { cursor: grabbing; }

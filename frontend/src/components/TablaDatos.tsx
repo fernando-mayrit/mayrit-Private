@@ -280,6 +280,7 @@ export default function TablaDatos<T extends { id: number }>({
               <col key={c.key} ref={(el) => { colRefs.current[c.key] = el; }} style={{ width: anchoDe(c) }} />
             ))}
             {rowAction && <col style={{ width: rowActionWidth ?? 76 }} />}
+            <col className="col-spacer" />
           </colgroup>
           <thead>
             <tr
@@ -325,7 +326,7 @@ export default function TablaDatos<T extends { id: number }>({
                         setResizingKey(c.key);
                         // Durante el arrastre solo tocamos el <col> por DOM → 0 re-renders de filas.
                         const onMove = (ev: MouseEvent) => {
-                          lastW = Math.max(60, Math.round(startW + (ev.clientX - startX)));
+                          lastW = Math.max(32, Math.round(startW + (ev.clientX - startX)));
                           if (col) col.style.width = `${lastW}px`;
                         };
                         const onUp = () => {
@@ -342,6 +343,7 @@ export default function TablaDatos<T extends { id: number }>({
                 );
               })}
               {rowAction && <th></th>}
+              <th className="col-spacer" aria-hidden="true"></th>
             </tr>
           </thead>
           <tbody>
@@ -368,6 +370,7 @@ export default function TablaDatos<T extends { id: number }>({
                     {rowAction(r)}
                   </td>
                 )}
+                <td className="col-spacer"></td>
               </tr>
             ))}
           </tbody>
