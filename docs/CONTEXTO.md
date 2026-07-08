@@ -1257,3 +1257,44 @@ listados pintan miles sin virtualizar). Arreglo en `TablaDatos.tsx` + `styles.cs
   hueco va al spacer). Mínimo de ancho bajado de 60 a **32 px**. Si las columnas superan el ancho, hay
   scroll horizontal. (El objetivo del usuario: que los listados quepan sin scroll; ahora se puede
   compactar a mano y se guarda en localStorage. Falta, si se quiere, afinar los anchos por defecto por listado.)
+
+### Tareas — auto-marcado "antes de tiempo": desfase de periodo (bug de anclaje doble)
+Una entrega auto (Risk/Premium/Claims) se daba por hecha con el dato de un mes equivocado (p. ej. una
+entrega de julio auto-marcada con el Risk de **febrero**). Causa: la FECHA de cada entrega salía de
+`fecha_inicio` de la tarea, pero el PERIODO que comprobaba `_periodo_de` salía del **efecto** del binder;
+cuando `fecha_inicio` se desviaba de `efecto+intervalo+plazo`, las dos series se desincronizaban.
+- **Fix definitivo (`tareas.py`):** `_ocurrencias` deriva SIEMPRE la fecha de inicio de las tareas AUTO
+  del binder (`efecto + intervalo + plazo`), nunca del `fecha_inicio` guardado (que se desfasa o lo
+  reescribe cualquiera al regenerar). Con las entregas ancladas al efecto, `_periodo_de(binder, k, paso)`
+  vuelve a la forma exacta `efecto + k·intervalo` (por índice) — que además evita el colapso de dos
+  entregas en el mismo periodo al restar días de plazo cerca de febrero. El desfase real de presentación
+  (fin de periodo + plazo) sigue en la FECHA de la entrega, no en el periodo. Robusto: da igual lo que le
+  pase al `fecha_inicio` en la BD.
+
+### Tareas secuenciales — los pasos auto respetan el orden
+En una tarea secuencial, un paso con regla auto se marcaba en cuanto existía su dato, **saltándose** pasos
+manuales anteriores pendientes (quedaba "hecho" y bloqueado a la vez). Ahora un paso no cuenta como hecho
+hasta que le llega el turno (gate `hecho` con `bloqueado` en `_pasos_de_ocurrencia`). Solo visualización;
+una entrega sigue siendo completa solo con TODOS los pasos.
+
+### Tareas — pasos en PARALELO dentro de una tarea secuencial (grupos por `orden`)
+El `secuencial` era todo-o-nada por tarea. Ahora el bloqueo es por **grupos**: los pasos con el MISMO
+`orden` forman un grupo paralelo (no se bloquean entre sí) y el siguiente grupo espera a que TODO el grupo
+anterior esté hecho. **Sin cambio de esquema** (se reutiliza `orden`; duplicado = grupo). Backend:
+`_pasos_de_ocurrencia` bloquea por "grupo anterior con algún paso sin hacer" (el endpoint de marcar hereda
+la validación). Frontend (`TareasBinder.tsx`): toggle **"⇄ en paralelo con el anterior"** por paso (solo
+en tareas secuenciales); el `orden` se calcula de los flags al guardar y se deriva de la igualdad de
+`orden` al cargar. Retrocompatible (pasos con orden distinto → siguen estrictamente en fila). Ej.: los tres
+"Envío a Dale/Cincinatti/Ana" en el mismo grupo → cualquier orden entre ellos, y "Cobro" espera a los tres.
+
+### Tareas — "Procesar Premium" pasa a manual; periodo como "Mayo 2026"
+- Los pasos "Procesar Premium"/"Procesar en Mayrit" (regla `premium`) se pasaron a **manual** (a petición):
+  se auto-marcaban en cuanto el Premium del periodo estaba cargado, y las cargas en bloque de varios meses
+  los daban por procesados antes de tiempo. Reversible (volver a poner la regla).
+- La etiqueta del paso auto y la cabecera de la vista "Por mes" muestran el periodo como **"Mayo 2026"**
+  (helper `mesAnyo`), nunca `2026-05` (se confunde con un recibo).
+
+### Gráfico de evolución del binder (Resumen) — tooltip por mes
+Al pasar el cursor por un mes: guía vertical + recuadro con la **prima acumulada de cada año visible** en
+ese mes (resalta el punto de cada línea y el año actual en negrita). Respeta la selección de años. Todo en
+SVG con bandas de hover invisibles por mes (`EvolucionProgramaChart` en `BinderDetalle.tsx`).
