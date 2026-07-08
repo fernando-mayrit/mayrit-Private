@@ -335,15 +335,19 @@ def _pasos_de_ocurrencia(t: Tarea, binder: Binder | None, f: dt.date, k: int,
     for p in t.pasos:
         ph = manual.get((p.id, f))
         auto_done = _auto_ok(p, periodo, datos, binder.id) if binder else False
-        hecho = ph is not None or auto_done
+        bloqueado = bool(t.secuencial) and not prev_hechos
+        # En tarea secuencial un paso NO cuenta como hecho hasta que le llega el turno (todos los
+        # anteriores hechos), aunque su regla auto ya se cumpla: así el checklist respeta el orden y
+        # un paso auto no se marca "antes de tiempo" saltándose un paso manual anterior pendiente.
+        hecho = (ph is not None or auto_done) and not bloqueado
         if not hecho:
             completa = False
         pasos.append(PasoEstado(
             paso_id=p.id, titulo=p.titulo, orden=p.orden,
-            regla_auto=p.regla_auto, auto=(auto_done and ph is None),
+            regla_auto=p.regla_auto, auto=(auto_done and ph is None and not bloqueado),
             periodo=periodo if p.regla_auto else None,
             hecho=hecho, fecha_hecha=(ph.fecha_hecha if ph else None),
-            bloqueado=(bool(t.secuencial) and not prev_hechos),
+            bloqueado=bloqueado,
         ))
         if not hecho:
             prev_hechos = False
