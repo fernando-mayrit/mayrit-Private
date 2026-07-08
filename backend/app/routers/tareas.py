@@ -333,19 +333,26 @@ def _pasos_de_ocurrencia(t: Tarea, binder: Binder | None, f: dt.date, k: int,
     periodo = _periodo_de(binder, k, _paso(t)) if binder else None
     pasos: list[PasoEstado] = []
     completa = True
-    # Secuencial: un paso está BLOQUEADO si algún paso anterior (t.pasos ya viene ordenado por 'orden')
-    # sigue sin completarse. `prev_hechos` deja de ser cierto en cuanto encontramos el primer no hecho.
-    prev_hechos = True
+    # Bloqueo por GRUPOS: los pasos con el MISMO `orden` forman un grupo paralelo (no se bloquean entre
+    # sí). En tarea secuencial, un grupo está BLOQUEADO mientras algún grupo ANTERIOR (orden menor) tenga
+    # algún paso sin hacer. `t.pasos` ya viene ordenado por (orden, id), así que los grupos son tramos
+    # consecutivos. Un paso auto no cuenta como hecho si su grupo está bloqueado (no se salta el orden).
+    grupos_previos_ok = True   # ¿están completos todos los grupos anteriores al actual?
+    grupo_orden = None         # `orden` del grupo que estamos recorriendo
+    grupo_completo = True      # ¿el grupo actual va completo hasta ahora?
+    bloqueado = False          # ¿está bloqueado el grupo actual?
     for p in t.pasos:
+        if p.orden != grupo_orden:                       # empieza un grupo nuevo
+            if grupo_orden is not None:
+                grupos_previos_ok = grupos_previos_ok and grupo_completo
+            grupo_orden, grupo_completo = p.orden, True
+            bloqueado = bool(t.secuencial) and not grupos_previos_ok
         ph = manual.get((p.id, f))
         auto_done = _auto_ok(p, periodo, datos, binder.id) if binder else False
-        bloqueado = bool(t.secuencial) and not prev_hechos
-        # En tarea secuencial un paso NO cuenta como hecho hasta que le llega el turno (todos los
-        # anteriores hechos), aunque su regla auto ya se cumpla: así el checklist respeta el orden y
-        # un paso auto no se marca "antes de tiempo" saltándose un paso manual anterior pendiente.
         hecho = (ph is not None or auto_done) and not bloqueado
         if not hecho:
             completa = False
+            grupo_completo = False
         pasos.append(PasoEstado(
             paso_id=p.id, titulo=p.titulo, orden=p.orden,
             regla_auto=p.regla_auto, auto=(auto_done and ph is None and not bloqueado),
@@ -353,8 +360,6 @@ def _pasos_de_ocurrencia(t: Tarea, binder: Binder | None, f: dt.date, k: int,
             hecho=hecho, fecha_hecha=(ph.fecha_hecha if ph else None),
             bloqueado=bloqueado,
         ))
-        if not hecho:
-            prev_hechos = False
     return pasos, completa
 
 

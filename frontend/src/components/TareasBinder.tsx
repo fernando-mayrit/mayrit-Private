@@ -77,7 +77,9 @@ export default function TareasBinder({ binderId }: { binderId?: number }) {
 
   // Pasos (checklist) editados DENTRO del formulario de la tarea. Se persisten al Guardar.
   // Cada uno lleva su id si ya existe en el servidor; sin id = nuevo.
-  type PasoEdit = { id?: number; titulo: string; regla_auto?: string | null };
+  // `paralelo` = este paso va en el MISMO grupo que el de arriba (mismo `orden`): se pueden hacer a la
+  // vez, sin orden entre ellos. `orden` guarda el valor cargado del servidor (para detectar cambios).
+  type PasoEdit = { id?: number; titulo: string; regla_auto?: string | null; orden?: number; paralelo?: boolean };
   const [formPasos, setFormPasos] = useState<PasoEdit[]>([]);
   const [pasosIni, setPasosIni] = useState<PasoEdit[]>([]);   // snapshot para detectar cambios / diff al guardar
   const [nuevoPaso, setNuevoPaso] = useState("");
@@ -185,7 +187,11 @@ export default function TareasBinder({ binderId }: { binderId?: number }) {
     setAutoEdit(t.origen === "auto");
     setFormPasos([]); setPasosIni([]); setNuevoPaso("");
     try {
-      const ps = (await tareasApi.pasos(t.id)).map((p) => ({ id: p.id, titulo: p.titulo, regla_auto: p.regla_auto ?? null }));
+      const raw = (await tareasApi.pasos(t.id)).slice().sort((a, b) => a.orden - b.orden || a.id - b.id);
+      const ps: PasoEdit[] = raw.map((p, i) => ({
+        id: p.id, titulo: p.titulo, regla_auto: p.regla_auto ?? null,
+        orden: p.orden, paralelo: i > 0 && p.orden === raw[i - 1].orden,   // mismo orden que el anterior = grupo
+      }));
       setFormPasos(ps); setPasosIni(ps);
     } catch (e) { setError((e as Error).message); }
   }
@@ -234,21 +240,25 @@ export default function TareasBinder({ binderId }: { binderId?: number }) {
   async function persistPasos(tareaId: number) {
     const vivos = new Set(formPasos.filter((p) => p.id != null).map((p) => p.id));
     for (const o of pasosIni) if (o.id != null && !vivos.has(o.id)) await tareasApi.borrarPaso(o.id);
+    // Orden con grupos paralelos: un paso "en paralelo con el anterior" comparte su `orden`; si no, +1.
+    let curOrden = 0;
     for (let i = 0; i < formPasos.length; i++) {
-      const p = formPasos[i], orden = i + 1, titulo = p.titulo.trim();
+      const p = formPasos[i], titulo = p.titulo.trim();
       if (!titulo) continue;
+      const orden = i > 0 && p.paralelo ? curOrden : curOrden + 1;
+      curOrden = orden;
       if (p.id == null) {
         await tareasApi.crearPaso(tareaId, { titulo, orden, regla_auto: p.regla_auto || null });
         continue;
       }
       const o = pasosIni.find((x) => x.id === p.id);
-      const movido = pasosIni.findIndex((x) => x.id === p.id) !== i;
       const renombrado = !o || o.titulo !== titulo;
       const reglaCambia = (o?.regla_auto ?? null) !== (p.regla_auto ?? null);
-      if (renombrado || movido || reglaCambia) {
+      const ordenCambia = (o?.orden ?? -1) !== orden;
+      if (renombrado || ordenCambia || reglaCambia) {
         await tareasApi.editarPaso(p.id, {
           ...(renombrado ? { titulo } : {}),
-          ...(movido ? { orden } : {}),
+          ...(ordenCambia ? { orden } : {}),
           ...(reglaCambia ? { regla_auto: p.regla_auto || null } : {}),
         });
       }
@@ -307,6 +317,9 @@ export default function TareasBinder({ binderId }: { binderId?: number }) {
   }
   function setPasoRegla(i: number, regla: string) {
     setFormPasos((s) => s.map((p, k) => (k === i ? { ...p, regla_auto: regla || null } : p)));
+  }
+  function setPasoParalelo(i: number, v: boolean) {
+    setFormPasos((s) => s.map((p, k) => (k === i ? { ...p, paralelo: v } : p)));
   }
   function delPaso(i: number) {
     setFormPasos((s) => s.filter((_, k) => k !== i));
@@ -758,6 +771,12 @@ export default function TareasBinder({ binderId }: { binderId?: number }) {
               <input type="checkbox" checked={form.secuencial} onChange={(e) => set("secuencial", e.target.checked)} />
               <b>Pasos secuenciales</b> — cada paso se desbloquea al completar el anterior (los siguientes salen 🔒 hasta que toquen).
             </label>
+            {form.secuencial && (
+              <span className="hint" style={{ display: "block", marginBottom: 8, fontSize: 12 }}>
+                Marca <b>⇄ en paralelo con el anterior</b> en los pasos que se puedan hacer a la vez (mismo grupo,
+                sin orden entre ellos). El siguiente grupo espera a que TODO el grupo anterior esté hecho.
+              </span>
+            )}
             {formPasos.length > 0 && (
               <ol style={{ paddingLeft: 20, margin: "2px 0 8px" }}>
                 {formPasos.map((p, i) => (
@@ -769,12 +788,21 @@ export default function TareasBinder({ binderId }: { binderId?: number }) {
                       <button type="button" className="btn-link btn-sm" disabled={i === formPasos.length - 1} onClick={() => moverPaso(i, 1)} title="Bajar">↓</button>
                       <button type="button" className="btn-link btn-sm" onClick={() => delPaso(i)} title="Quitar">✕</button>
                     </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 6, marginLeft: 2, marginTop: 2 }}>
-                      <span className="hint">Marcado:</span>
-                      <select value={p.regla_auto ?? ""} onChange={(e) => setPasoRegla(i, e.target.value)}
-                        title="Cómo se marca este paso" style={{ fontSize: 12, padding: "2px 4px" }}>
-                        {REGLAS_AUTO.map((r) => <option key={r.v} value={r.v}>{r.v ? `Auto · ${r.label}` : "Manual"}</option>)}
-                      </select>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, marginLeft: 2, marginTop: 2, flexWrap: "wrap" }}>
+                      <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <span className="hint">Marcado:</span>
+                        <select value={p.regla_auto ?? ""} onChange={(e) => setPasoRegla(i, e.target.value)}
+                          title="Cómo se marca este paso" style={{ fontSize: 12, padding: "2px 4px" }}>
+                          {REGLAS_AUTO.map((r) => <option key={r.v} value={r.v}>{r.v ? `Auto · ${r.label}` : "Manual"}</option>)}
+                        </select>
+                      </span>
+                      {form.secuencial && i > 0 && (
+                        <label className="hint" style={{ display: "flex", alignItems: "center", gap: 4, cursor: "pointer", fontSize: 12 }}
+                          title="Se puede hacer a la vez que el paso de arriba (mismo grupo, sin orden entre ellos)">
+                          <input type="checkbox" checked={!!p.paralelo} onChange={(e) => setPasoParalelo(i, e.target.checked)} />
+                          ⇄ en paralelo con el anterior
+                        </label>
+                      )}
                     </div>
                   </li>
                 ))}
