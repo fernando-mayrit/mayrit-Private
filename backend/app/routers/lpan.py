@@ -811,10 +811,11 @@ def _bdx_fila(l: "BdxLinea", b, coverholder: str) -> list:
 
 
 @router.get("/binders/{binder_id}/lpan/bdx-excel")
-def bdx_excel(binder_id: int, periodo: str, db: Session = Depends(get_db)):
-    """Premium Bordereau del periodo en formato Llo'yds (61 columnas), con las líneas AGRUPADAS por
-    (Sección, Risk Code) como los bloques LPAN: cada grupo lleva sus filas + una fila de SUBTOTALES
-    (GWP, impuestos, neto a UW) + una fila en blanco de separación."""
+def bdx_excel(binder_id: int, periodo: str, agrupar: bool = True, db: Session = Depends(get_db)):
+    """Bordereau del periodo en formato Lloyd's (61 columnas). Dos variantes:
+    - `agrupar=True` (**LPAN Bdx**): líneas AGRUPADAS por (Sección, Risk Code) como los bloques LPAN,
+      con una fila de SUBTOTALES (GWP, impuestos, neto a UW) + una fila en blanco por grupo.
+    - `agrupar=False` (**Premium Bdx**): las mismas líneas pero PLANAS, sin agrupar ni subtotales."""
     import io
 
     import openpyxl
@@ -896,18 +897,24 @@ def bdx_excel(binder_id: int, periodo: str, db: Session = Depends(get_db)):
         c.font, c.fill, c.alignment, c.border = hdr_font, hdr_fill, hdr_align, hdr_border
     ws.row_dimensions[1].height = 96
 
-    for clave in sorted(grupos.keys()):
-        filas = grupos[clave]
-        for l in filas:
+    if agrupar:
+        for clave in sorted(grupos.keys()):
+            filas = grupos[clave]
+            for l in filas:
+                ws.append(_bdx_fila(l, b, coverholder))
+                estilo_fila(ws.max_row)
+            # Subtotales del grupo (solo en las 3 columnas de importe).
+            sub = [None] * ncol
+            for idx, campo in zip(_BDX_SUBTOT, ("gross_written_premium", "total_taxes_levies", "final_net_premium_uw")):
+                sub[idx] = float(sum((getattr(l, campo) or 0) for l in filas))
+            ws.append(sub)
+            estilo_fila(ws.max_row, subtotal=True)
+            ws.append([])   # separación entre grupos
+    else:
+        # Premium Bdx PLANO: todas las líneas seguidas, sin agrupar por Risk Code ni subtotales.
+        for l in lineas:
             ws.append(_bdx_fila(l, b, coverholder))
             estilo_fila(ws.max_row)
-        # Subtotales del grupo (solo en las 3 columnas de importe).
-        sub = [None] * ncol
-        for idx, campo in zip(_BDX_SUBTOT, ("gross_written_premium", "total_taxes_levies", "final_net_premium_uw")):
-            sub[idx] = float(sum((getattr(l, campo) or 0) for l in filas))
-        ws.append(sub)
-        estilo_fila(ws.max_row, subtotal=True)
-        ws.append([])   # separación entre grupos
 
     for col in range(1, ncol + 1):
         ws.column_dimensions[get_column_letter(col)].width = widths.get(col, 13.0)
@@ -915,7 +922,7 @@ def bdx_excel(binder_id: int, periodo: str, db: Session = Depends(get_db)):
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
-    fname = f"Premium Bordereaux {b.umr or b.agreement_number or binder_id} {periodo}.xlsx"
+    fname = f"{'LPAN' if agrupar else 'Premium'} Bdx {b.umr or b.agreement_number or binder_id} {periodo}.xlsx"
     return StreamingResponse(
         buf, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="{fname}"'},

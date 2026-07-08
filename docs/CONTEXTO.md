@@ -1204,8 +1204,13 @@ openpyxl ~84 ms/parseo + BD ~50 ms; el coste real es re-subir el fichero por la 
   reutiliza en cambio de hoja y en machear. `excel_preview`/`match_excel` aceptan `file` **o** `token`;
   el front (`PremiumMatch`, `api.ts`) guarda el token y reintenta subiendo el fichero si caduca (409).
 
-### Descargar el Premium Bordereaux por mes: hacerlo visible siempre
-Ya existía (`GET /binders/{id}/lpan/bdx-excel?periodo=` → "Premium Bordereaux {UMR} {mes}.xlsx", formato
-Lloyd's 61 col agrupado), pero en `BinderDetalle` el botón estaba en el bloque LPAN, se llamaba
-"⬇️ Excel BDX" y **solo salía en meses NO completados** → no se encontraba en los meses ya cerrados.
-Ahora el botón sale en **todos los meses** y se llama **"⬇️ Premium (Excel)"**.
+### Dos descargas de bordereau por mes: LPAN Bdx (agrupado) y Premium Bdx (plano)
+Un solo endpoint `GET /binders/{id}/lpan/bdx-excel?periodo=&agrupar=` (formato Lloyd's, 61 col):
+- **`agrupar=true` → LPAN Bdx** (fichero "LPAN Bdx {UMR} {mes}.xlsx"): agrupado por (Sección, Risk Code)
+  con subtotales, como los bloques LPAN. Botón **"⬇️ LPAN Bdx (Excel)"** en el bloque LPAN de cada mes,
+  visible **solo cuando los LPAN están preparados** (`lpanPreparado`: todo risk code con prima tiene su
+  LPAN generado / o exento / histórico). Nunca antes.
+- **`agrupar=false` → Premium Bdx** (fichero "Premium Bdx {UMR} {mes}.xlsx"): las mismas líneas pero
+  PLANAS, sin agrupar ni subtotales. Botón **"⬇️"** junto al mes en la tabla **Premium BDX (cobro)**.
+`lpanApi.bdxExcel(binderId, periodo, agrupar)` y `descargarBdxExcel(periodo, agrupar)` en `BinderDetalle`.
+(Antes había un único botón "Excel BDX"/"Premium" mal ubicado; esto lo separa en las dos descargas reales.)

@@ -396,15 +396,16 @@ export default function BinderDetalle({ binder }: { binder: Binder }) {
       setError((e as Error).message);
     }
   }
-  // Descargar el Excel BDX de un periodo eligiendo carpeta (mismo flujo que LPAN/FDO, con memoria
-  // de carpeta compartida). Se pide el destino DENTRO del gesto del clic, antes de la red.
-  async function descargarBdxExcel(periodo: string) {
-    const { handle, cancelado } = await pedirDestino(`Premium Bordereaux ${binder.umr ?? binder.id} ${periodo}.xlsx`);
+  // Descargar el Excel del bordereau de un periodo eligiendo carpeta (mismo flujo que LPAN/FDO, con
+  // memoria de carpeta compartida). agrupar=true → LPAN Bdx (agrupado); false → Premium Bdx (plano).
+  async function descargarBdxExcel(periodo: string, agrupar = true) {
+    const tipo = agrupar ? "LPAN Bdx" : "Premium Bdx";
+    const { handle, cancelado } = await pedirDestino(`${tipo} ${binder.umr ?? binder.id} ${periodo}.xlsx`);
     if (cancelado) return;
     setLpanBusy(true);
     setError(null);
     try {
-      const { blob, filename } = await lpanApi.bdxExcel(binder.id, periodo);
+      const { blob, filename } = await lpanApi.bdxExcel(binder.id, periodo, agrupar);
       await guardarEn(handle, blob, filename);
     } catch (e) {
       setError((e as Error).message);
@@ -1272,7 +1273,12 @@ export default function BinderDetalle({ binder }: { binder: Binder }) {
                   return (
                     <Fragment key={p.periodo}>
                     <tr>
-                      <td>{mesLargo(p.periodo)}</td>
+                      <td style={{ whiteSpace: "nowrap" }}>
+                        {mesLargo(p.periodo)}
+                        <button className="btn-link" disabled={lpanBusy} style={{ marginLeft: 6 }}
+                          title="Descargar el Premium Bdx de este mes (Excel plano, sin agrupar)"
+                          onClick={() => descargarBdxExcel(p.periodo, false)}>⬇️</button>
+                      </td>
                       <td className="num">{p.num_lineas}</td>
                       <td className="num">{imp(n(p.prima_lloyds))}</td>
                       <td className="num">{imp(n(p.comision))}</td>
@@ -1720,6 +1726,9 @@ export default function BinderDetalle({ binder }: { binder: Binder }) {
               // (un bloque con prima 0 € no necesita LPAN, no bloquea el tic.)
               const completo = p.secciones.length > 0 && p.secciones.every((s) =>
                 s.risk_codes.every((r) => r.lpan?.estado === "Completed" || Number(r.gross_premium) === 0 || r.exento_lpan || r.cubierto_historico));
+              // LPAN "preparados": todo risk code con prima tiene ya su LPAN generado (o está exento/histórico).
+              const lpanPreparado = p.secciones.length > 0 && p.secciones.every((s) =>
+                s.risk_codes.every((r) => r.lpan != null || Number(r.gross_premium) === 0 || r.exento_lpan || r.cubierto_historico));
               const abierto = periodoOverride[p.periodo] ?? !completo; // pendiente -> abierto por defecto
               return (
               <div key={p.periodo} className="recibo-box" style={{ marginBottom: 14 }}>
@@ -1728,11 +1737,13 @@ export default function BinderDetalle({ binder }: { binder: Binder }) {
                     <span className="nav-chevron">{abierto ? "▾" : "▸"}</span>
                     {p.periodo_label}{completo ? " ✓" : ""}
                   </h4>
-                  <button className="btn-secondary btn-sm" disabled={lpanBusy}
-                     title="Descargar el Premium Bordereaux de este mes (formato Lloyd's, elige carpeta)"
-                     onClick={() => descargarBdxExcel(p.periodo)}>
-                    ⬇️ Premium (Excel)
-                  </button>
+                  {lpanPreparado && (
+                    <button className="btn-secondary btn-sm" disabled={lpanBusy}
+                       title="Descargar el LPAN Bdx de este mes (agrupado por Risk Code, formato Lloyd's; elige carpeta)"
+                       onClick={() => descargarBdxExcel(p.periodo)}>
+                      ⬇️ LPAN Bdx (Excel)
+                    </button>
+                  )}
                 </div>
                 {abierto && p.secciones.map((s) => (
                   <div key={s.section} style={{ marginBottom: 8 }}>

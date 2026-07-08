@@ -236,8 +236,9 @@ export const lpanApi = {
   // LPAN al que pertenece una línea del Risk (o null). Para ver/corregir el LPAN desde el modal de la línea.
   deLinea: (lineId: number) => request<LpanRegistro | null>(`/bdx-lineas/${lineId}/lpan`),
   // Descarga el Excel BDX de un periodo (blob + nombre propuesto), para guardarlo eligiendo carpeta.
-  bdxExcel: async (binderId: number, periodo: string): Promise<{ blob: Blob; filename: string }> => {
-    const res = await fetch(`${BASE}/binders/${binderId}/lpan/bdx-excel?periodo=${encodeURIComponent(periodo)}`);
+  // agrupar=true → LPAN Bdx (agrupado por Risk Code); agrupar=false → Premium Bdx (plano).
+  bdxExcel: async (binderId: number, periodo: string, agrupar = true): Promise<{ blob: Blob; filename: string }> => {
+    const res = await fetch(`${BASE}/binders/${binderId}/lpan/bdx-excel?periodo=${encodeURIComponent(periodo)}&agrupar=${agrupar}`);
     if (!res.ok) {
       let msg = `Error al generar el Excel BDX (${res.status})`;
       try { const j = await res.json(); if (j?.detail) msg = j.detail; } catch { /* sin cuerpo JSON */ }
