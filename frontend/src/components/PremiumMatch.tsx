@@ -120,6 +120,13 @@ export default function PremiumMatch({
   const txt = (e: string) =>
     e === "match" ? "OK" : e === "importe_distinto" ? "Importe ≠" : "No encontrada";
 
+  // Si NO cuadra todo, el listado muestra SOLO las filas que no machean y los totales añaden la
+  // diferencia (Excel − Risk). Si todo cuadra, se muestra tal cual.
+  const todoMachea = !match || (match.resumen.importe_distinto === 0 && match.resumen.no_encontrada === 0);
+  const filasVista = match ? (todoMachea ? match.filas : match.filas.filter((f) => f.estado !== "match")) : [];
+  const sumExcel = filasVista.reduce((a, f) => a + (Number(f.importe_excel) || 0), 0);
+  const sumRisk = filasVista.reduce((a, f) => a + (Number(f.importe_risk) || 0), 0);
+
   return (
     <FormPanel
       title={`Machear Premium · ${nombre}`}
@@ -186,13 +193,19 @@ export default function PremiumMatch({
                   <span> · ¿La columna del Excel es la correcta? Debe ser la de <b>Net Premium to Lloyd's Broker</b>.</span>
                 )}
               </div>
+              {!todoMachea && (
+                <div className="hint" style={{ marginBottom: 6 }}>
+                  Mostrando solo las <b>{filasVista.length}</b> filas que <b>no cuadran</b> (las {match.resumen.match} correctas se ocultan).
+                  La <b>Δ</b> de los totales es la diferencia Excel − Risk.
+                </div>
+              )}
               <div className="tabla-scroll" style={{ maxHeight: "42vh" }}>
-                <table className="compacto">
+                <table className="compacto match-tabla">
                   <thead>
                     <tr><th>Certificado</th><th className="num">Importe (Excel)</th><th className="num">Net Prem. Lloyd's (Risk)</th><th>Estado</th></tr>
                   </thead>
                   <tbody>
-                    {match.filas.map((f, i) => (
+                    {filasVista.map((f, i) => (
                       <tr key={i}>
                         <td>{f.certificate_ref}</td>
                         <td className="num">{eur(f.importe_excel)}</td>
@@ -203,10 +216,10 @@ export default function PremiumMatch({
                   </tbody>
                   <tfoot>
                     <tr className="match-total">
-                      <td><b>Total ({match.filas.length})</b></td>
-                      <td className="num"><b>{eur(match.filas.reduce((a, f) => a + (Number(f.importe_excel) || 0), 0))}</b></td>
-                      <td className="num"><b>{eur(match.filas.reduce((a, f) => a + (Number(f.importe_risk) || 0), 0))}</b></td>
-                      <td></td>
+                      <td><b>{todoMachea ? `Total (${filasVista.length})` : `No cuadran (${filasVista.length})`}</b></td>
+                      <td className="num"><b>{eur(sumExcel)}</b></td>
+                      <td className="num"><b>{eur(sumRisk)}</b></td>
+                      <td className="num">{!todoMachea && <b>Δ {eur(sumExcel - sumRisk)}</b>}</td>
                     </tr>
                   </tfoot>
                 </table>

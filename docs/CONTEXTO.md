@@ -1215,3 +1215,12 @@ Un solo endpoint `GET /binders/{id}/lpan/bdx-excel?periodo=&agrupar=` (formato L
   (tras Nota)** en la tabla **Premium BDX (cobro)**.
 `lpanApi.bdxExcel(binderId, periodo, agrupar)` y `descargarBdxExcel(periodo, agrupar)` en `BinderDetalle`.
 (Antes había un único botón "Excel BDX"/"Premium" mal ubicado; esto lo separa en las dos descargas reales.)
+- El botón "⬇️ Excel" del Premium Bdx va en **columna propia a la derecha del todo (tras Nota)** en la
+  tabla Premium BDX (cobro).
+
+### Macheo Premium: filtrar lo que no cuadra + encabezado fijo
+En el modal de resultado (`PremiumMatch.tsx`): si el macheo **no es exacto** (hay importe_distinto o
+no_encontrada), el listado muestra **solo las filas que NO cuadran** y los totales añaden la **Δ =
+Σ Excel − Σ Risk**. Si todo cuadra, se muestra igual que antes. Además el **encabezado (y el pie de
+totales) quedan fijos** al hacer scroll del listado (`.match-tabla thead/tfoot` sticky en `styles.css`,
+mismo patrón que `.tabla-risk-preview`). El resto del modal no cambia.
