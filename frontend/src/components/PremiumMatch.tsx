@@ -8,6 +8,20 @@ import FormPanel from "./FormPanel";
 
 const eur = (v: unknown) => (v == null || v === "" ? "—" : `${fmtMiles(v)} €`);
 
+// Nombre de mes (español, completo o abreviado) → nº de mes.
+const MESES: Record<string, number> = {
+  enero: 1, febrero: 2, marzo: 3, abril: 4, mayo: 5, junio: 6, julio: 7, agosto: 8,
+  septiembre: 9, octubre: 10, noviembre: 11, diciembre: 12,
+  ene: 1, feb: 2, mar: 3, abr: 4, may: 5, jun: 6, jul: 7, ago: 8, sep: 9, set: 9, oct: 10, nov: 11, dic: 12,
+};
+// Deduce el 'AAAA-MM' del nombre del fichero (p. ej. "Premium Bordereaux abril 2026…" → "2026-04").
+// Ignora acentos/mayúsculas. Coge el año pegado al nombre del mes (evita el YOA de otra parte).
+function periodoDeNombre(nombre: string): string {
+  const s = nombre.toLowerCase();   // los meses en español no llevan tilde
+  const m = s.match(/\b(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre|ene|feb|mar|abr|may|jun|jul|ago|sep|set|oct|nov|dic)\b[.\s]*(\d{4})/);
+  return m ? `${m[2]}-${String(MESES[m[1]]).padStart(2, "0")}` : "";
+}
+
 export default function PremiumMatch({
   binderId,
   file,
@@ -25,7 +39,7 @@ export default function PremiumMatch({
   const [hoja, setHoja] = useState<string>("");
   const [certificado, setCertificado] = useState<string>("");
   const [importe, setImporte] = useState<string>("");
-  const [periodo, setPeriodo] = useState<string>(""); // 'YYYY-MM'
+  const [periodo, setPeriodo] = useState<string>(() => periodoDeNombre(nombre)); // 'YYYY-MM' (deducido del nombre)
   const [match, setMatch] = useState<MatchResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);

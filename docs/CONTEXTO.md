@@ -1153,3 +1153,13 @@ A raíz del susto anterior, el importador **valida y avisa** en vez de tragar en
   ámbar (avisos: columnas no reconocidas, sin sección, meses ya cargados). Si `bloqueado`, el botón
   **«Importar» queda deshabilitado** (`saveDisabled`). Las filas de la muestra sin periodo se marcan (⛔).
   Estilos `.import-bloqueo` / `.import-aviso` en `styles.css`.
+
+---
+
+## Sesión 08/07/2026 (equipo "ferna") — retoques de UI
+
+### Machear Premium: auto-rellenar "Mes del Premium" desde el nombre del fichero
+El `<input type="month">` arrancaba vacío y el navegador pintaba un feo "-------- de ----". Ahora
+`PremiumMatch.tsx` **deduce el `AAAA-MM` del nombre del fichero** (`periodoDeNombre`, meses español
+completo/abreviado; coge el año pegado al mes → ignora el YOA). Ej.: "Premium Bordereaux **abril 2026**
+YOA 2024.xlsx" → `2026-04`. Editable a mano; si el nombre no trae mes, queda vacío como antes.
