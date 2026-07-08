@@ -73,6 +73,7 @@ function EvolucionProgramaChart({ series, actualId, storageKey }: { series: Evol
   useEffect(() => {
     try { localStorage.setItem(storageKey, JSON.stringify([...ocultas])); } catch { /* ignore */ }
   }, [ocultas, storageKey]);
+  const [hoverMes, setHoverMes] = useState<number | null>(null);   // mes (1..maxMes) bajo el cursor
   const visibles = series.filter((s) => !ocultas.has(s.id));
   const maxMes = Math.max(12, ...visibles.map((s) => s.puntos.length));
   const maxY = Math.max(1, ...visibles.flatMap((s) => s.puntos.map((p) => p.acumulado)));
@@ -121,7 +122,8 @@ function EvolucionProgramaChart({ series, actualId, storageKey }: { series: Evol
     <div style={{ marginTop: 20 }}>
       <h4 style={{ margin: "0 0 8px" }}>Evolución del programa por año (prima acumulada, GWP our line)</h4>
       <div style={{ display: "flex", gap: 16, flexWrap: "wrap", alignItems: "flex-start" }}>
-        <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", maxWidth: W, height: "auto", flex: "1 1 480px" }}>
+        <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", maxWidth: W, height: "auto", flex: "1 1 480px" }}
+             onMouseLeave={() => setHoverMes(null)}>
           {/* rejilla + eje Y */}
           {Array.from({ length: yTicks + 1 }, (_, i) => {
             const v = (maxY / yTicks) * i;
@@ -158,6 +160,47 @@ function EvolucionProgramaChart({ series, actualId, storageKey }: { series: Evol
               </g>
             );
           })}
+          {/* bandas invisibles por mes: fijan el mes bajo el cursor */}
+          {Array.from({ length: maxMes }, (_, i) => {
+            const mes = i + 1;
+            const band = maxMes <= 1 ? iw : iw / (maxMes - 1);
+            return (
+              <rect key={i} x={x(mes) - band / 2} y={MT} width={band} height={ih}
+                fill="transparent" pointerEvents="all" onMouseEnter={() => setHoverMes(mes)} />
+            );
+          })}
+          {/* tooltip del mes: guía vertical + cifra de cada año visible en ese mes */}
+          {hoverMes != null && visibles.length > 0 && (() => {
+            const filas = visibles.map((s) => ({ s, i: series.indexOf(s), v: valorEnMes(s, hoverMes) }));
+            const lh = 16, headerH = 18, padX = 8, bw = 148;
+            const bh = headerH + filas.length * lh + 6;
+            const px = x(hoverMes);
+            const boxX = px > ML + iw / 2 ? px - bw - 10 : px + 10;   // al lado opuesto para no salirse
+            const boxY = MT + 2;
+            return (
+              <g pointerEvents="none">
+                <line x1={px} y1={MT} x2={px} y2={MT + ih} stroke="#9ca3af" strokeWidth={1} strokeDasharray="3 3" />
+                {filas.map(({ s, i, v }) => (
+                  <circle key={s.id} cx={px} cy={y(v)} r={3.6} fill="#fff" stroke={colorDe(s, i)} strokeWidth={2} />
+                ))}
+                <rect x={boxX} y={boxY} width={bw} height={bh} rx={5} fill="#ffffff" stroke="#e5e7eb" strokeWidth={1} />
+                <text x={boxX + padX} y={boxY + 13} fontSize={11} fontWeight={700} fill="#374151">
+                  {etiquetaMes(hoverMes - 1)}
+                </text>
+                {filas.map(({ s, i, v }, k) => {
+                  const ty = boxY + headerH + k * lh + 8;
+                  return (
+                    <g key={s.id}>
+                      <rect x={boxX + padX} y={ty - 8} width={8} height={8} rx={2} fill={colorDe(s, i)} />
+                      <text x={boxX + padX + 13} y={ty} fontSize={11} fill="#374151"
+                            fontWeight={s.id === actualId ? 700 : 400}>{anio(s)}</text>
+                      <text x={boxX + bw - padX} y={ty} fontSize={11} textAnchor="end" fontWeight={600} fill="#111827">{fmtMiles(v)}</text>
+                    </g>
+                  );
+                })}
+              </g>
+            );
+          })()}
         </svg>
         {/* selector de años: casilla por anualidad + Todos/Ninguno */}
         <div style={{ minWidth: 150, fontSize: 12 }}>
