@@ -959,6 +959,7 @@ export interface ExcelPreview {
   hojas: string[];
   hoja: string;
   columnas: string[];
+  n_filas: number;
   muestra: Record<string, string>[];
   mapeo: { certificado: string | null; importe: string | null };
 }

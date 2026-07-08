@@ -148,8 +148,8 @@ export default function PremiumMatch({
 
           {!match ? (
             <div className="hint" style={{ marginTop: 8 }}>
-              {prev.columnas.length} columnas detectadas. Pulsa <b>Machear</b> para casar por Certificado
-              (el importe es una comprobación; si no cuadra, se marca para revisar).
+              {prev.columnas.length} columnas y <b>{prev.n_filas}</b> líneas detectadas en «{prev.hoja}».
+              Pulsa <b>Machear</b> para casar por Certificado (el importe es una comprobación; si no cuadra, se marca para revisar).
             </div>
           ) : (
             <>

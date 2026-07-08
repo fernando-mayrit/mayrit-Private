@@ -1170,3 +1170,8 @@ tax (Our Line)") desbordaban su celda y, con el panel en `overflow:hidden`, se *
 `.field` de `.campos-grid` no encogían (`min-width:0`) y los `<select>` no tenían `width:100%`. Se amplió
 el modificador **`.campos-fill`** para cubrir también `select`/`textarea`, y se aplicó (`campos-grid
 campos-fill`) en `PremiumMatch.tsx` y `RiskExcelImport.tsx`.
+
+### Machear Premium: mostrar también las LÍNEAS de la hoja
+El preview solo decía "N columnas detectadas". Ahora el endpoint `premium/excel-preview`
+(`routers/recibos.py`) devuelve **`n_filas`** (cuenta todas las filas de datos no vacías tras la
+cabecera, no solo la muestra de 3) y el diálogo muestra "N columnas y **M líneas** detectadas en «hoja»".

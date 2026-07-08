@@ -1346,21 +1346,24 @@ async def excel_preview(binder_id: int, file: UploadFile = File(...), hoja: str 
     ws = wb[hoja]
     hdr_i, cols = _cabecera(ws)
     columnas = [c for c in cols if c]
-    # Muestra: hasta 3 filas de datos tras la cabecera
+    # Cuenta TODAS las filas de datos (no vacías) tras la cabecera; muestra las 3 primeras.
+    n_filas = 0
     muestra = []
     for i, row in enumerate(ws.iter_rows(values_only=True)):
         if i <= hdr_i:
             continue
         fila = {cols[j]: ("" if v is None else str(v)) for j, v in enumerate(row) if j < len(cols) and cols[j]}
-        if any(fila.values()):
+        if not any(fila.values()):
+            continue
+        n_filas += 1
+        if len(muestra) < 3:
             muestra.append(fila)
-        if len(muestra) >= 3:
-            break
     prod = binder.productor
     return {
         "hojas": wb.sheetnames,
         "hoja": hoja,
         "columnas": columnas,
+        "n_filas": n_filas,
         "muestra": muestra,
         "mapeo": {
             "certificado": _sugerir(columnas, prod.premium_col_certificado if prod else None, ["certificate", "certificado", "cert ref", "policy", "poliza"]),
