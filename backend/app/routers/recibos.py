@@ -1425,6 +1425,7 @@ class MatchRow(BaseModel):
     estado: str                 # 'match' | 'importe_distinto' | 'no_encontrada'
     linea_id: int | None = None
     importe_risk: Decimal | None = None
+    risk_bdx: str | None = None  # periodo 'YYYY-MM' del Risk de la línea macheada (en qué Risk está)
 
 
 def _a_decimal(v) -> Decimal | None:
@@ -1464,7 +1465,7 @@ async def match_excel(binder_id: int, file: UploadFile | None = File(None), hoja
     risk = db.scalars(
         select(BdxLinea).join(Bdx, BdxLinea.bdx_id == Bdx.id).where(Bdx.binder_id == binder_id)
         .options(load_only(
-            BdxLinea.certificate_ref, BdxLinea.net_premium_to_broker,
+            BdxLinea.certificate_ref, BdxLinea.net_premium_to_broker, BdxLinea.reporting_period_start,
             BdxLinea.total_gwp_our_line, BdxLinea.total_taxes_levies,
             BdxLinea.commission_coverholder_amount, BdxLinea.brokerage_amount,
             BdxLinea.final_net_premium_uw,
@@ -1502,9 +1503,10 @@ async def match_excel(binder_id: int, file: UploadFile | None = File(None), hoja
             if best_diff is None or d < best_diff:
                 best, best_diff = l, d
         risk_amt = _q2(best.net_premium_to_broker or 0)
+        risk_bdx = best.reporting_period_start.strftime("%Y-%m") if best.reporting_period_start else None
         ok_importe = imp is None or (best_diff is not None and best_diff <= max(Decimal("0.02"), abs(imp) * Decimal("0.01")))
         estado = "match" if ok_importe else "importe_distinto"
-        filas.append(MatchRow(certificate_ref=cert, importe_excel=imp, estado=estado, linea_id=best.id, importe_risk=risk_amt))
+        filas.append(MatchRow(certificate_ref=cert, importe_excel=imp, estado=estado, linea_id=best.id, importe_risk=risk_amt, risk_bdx=risk_bdx))
         if estado == "match":
             matched_ids.append(best.id)
 

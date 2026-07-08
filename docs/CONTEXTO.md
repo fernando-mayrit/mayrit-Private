@@ -1224,6 +1224,11 @@ no_encontrada), el listado muestra **solo las filas que NO cuadran** y los total
 Σ Excel − Σ Risk**. Si todo cuadra, se muestra igual que antes. Además el **encabezado (y el pie de
 totales) quedan fijos** al hacer scroll del listado (`.match-tabla thead/tfoot` sticky en `styles.css`,
 mismo patrón que `.tabla-risk-preview`). El resto del modal no cambia.
+- **Encabezados y columna Risk Bdx (08/07):** las columnas de importe pasan a llamarse **Premium**
+  (lo que se sube) y **Risk** (para saber de dónde viene cada cantidad), y se añade una columna
+  **Risk Bdx** a la derecha del Certificado con el periodo del Risk de la línea macheada (para localizar
+  en qué Risk está la que descuadra). Backend: `MatchRow.risk_bdx` (de `reporting_period_start` de la
+  línea; añadido a `load_only`).
 
 ### Listados (TablaDatos): redimensionar columnas iba lentísimo — arreglado
 Causa: (1) la tabla usaba `table-layout: auto` → el navegador re-medía TODO el contenido en cada cambio;

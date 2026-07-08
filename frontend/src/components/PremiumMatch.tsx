@@ -202,12 +202,13 @@ export default function PremiumMatch({
               <div className="tabla-scroll" style={{ maxHeight: "42vh" }}>
                 <table className="compacto match-tabla">
                   <thead>
-                    <tr><th>Certificado</th><th className="num">Importe (Excel)</th><th className="num">Net Prem. Lloyd's (Risk)</th><th>Estado</th></tr>
+                    <tr><th>Certificado</th><th>Risk Bdx</th><th className="num">Premium</th><th className="num">Risk</th><th>Estado</th></tr>
                   </thead>
                   <tbody>
                     {filasVista.map((f, i) => (
                       <tr key={i}>
                         <td>{f.certificate_ref}</td>
+                        <td>{f.risk_bdx ? mesAnyo(f.risk_bdx) : "—"}</td>
                         <td className="num">{eur(f.importe_excel)}</td>
                         <td className="num">{eur(f.importe_risk)}</td>
                         <td><span className={`pill ${pill(f.estado)}`}>{txt(f.estado)}</span></td>
@@ -216,7 +217,7 @@ export default function PremiumMatch({
                   </tbody>
                   <tfoot>
                     <tr className="match-total">
-                      <td><b>{todoMachea ? `Total (${filasVista.length})` : `No cuadran (${filasVista.length})`}</b></td>
+                      <td colSpan={2}><b>{todoMachea ? `Total (${filasVista.length})` : `No cuadran (${filasVista.length})`}</b></td>
                       <td className="num"><b>{eur(sumExcel)}</b></td>
                       <td className="num"><b>{eur(sumRisk)}</b></td>
                       <td className="num">{!todoMachea && <b>Δ {eur(sumExcel - sumRisk)}</b>}</td>
