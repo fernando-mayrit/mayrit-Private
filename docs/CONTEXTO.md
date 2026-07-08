@@ -1175,3 +1175,8 @@ campos-fill`) en `PremiumMatch.tsx` y `RiskExcelImport.tsx`.
 El preview solo decía "N columnas detectadas". Ahora el endpoint `premium/excel-preview`
 (`routers/recibos.py`) devuelve **`n_filas`** (cuenta todas las filas de datos no vacías tras la
 cabecera, no solo la muestra de 3) y el diálogo muestra "N columnas y **M líneas** detectadas en «hoja»".
+
+### Machear Premium: mostrar el periodo como "Junio 2026" (no "2026-06")
+El resultado mostraba el periodo en ISO `2026-06` (induce a error). Ahora usa el helper `mesAnyo`
+(formato único de la app) → **"Junio 2026"** en el resumen y en la caja del Premium. El `input
+type=month` sigue con el valor ISO internamente (el navegador ya lo muestra localizado).

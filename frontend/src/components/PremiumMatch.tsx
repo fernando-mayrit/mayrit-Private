@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { recibosApi, bdxApi, type ExcelPreview, type MatchResult } from "../api";
-import { fmtMiles } from "../format";
+import { fmtMiles, mesAnyo } from "../format";
 import FormPanel from "./FormPanel";
 
 // Macheo automático de un Premium (Excel) con las líneas Risk del binder.
@@ -157,7 +157,7 @@ export default function PremiumMatch({
                 <b>{match.resumen.match}</b> macheadas ·{" "}
                 <b>{match.resumen.importe_distinto}</b> con importe distinto ·{" "}
                 <b>{match.resumen.no_encontrada}</b> no encontradas (de {match.resumen.total}).
-                Al aplicar se incluyen en el Premium <b>{match.periodo}</b> las <b>{match.matched_ids.length}</b> OK.
+                Al aplicar se incluyen en el Premium <b>{mesAnyo(match.periodo)}</b> las <b>{match.matched_ids.length}</b> OK.
               </div>
               <div className="tabla-scroll" style={{ maxHeight: "42vh" }}>
                 <table className="compacto">
@@ -186,7 +186,7 @@ export default function PremiumMatch({
               </div>
               {/* Sumatorio del Premium que se está subiendo (líneas macheadas), con la economía del binder. */}
               <div className="match-premium">
-                <span>Premium {match.periodo} ({match.matched_ids.length} líneas)</span>
+                <span>Premium {mesAnyo(match.periodo)} ({match.matched_ids.length} líneas)</span>
                 <span>A Cobrar <b>{eur(match.premium.cobrar)}</b></span>
                 <span>A Traspasar <b>{eur(match.premium.traspasar)}</b></span>
                 <span>A Liquidar <b>{eur(match.premium.liquidar)}</b></span>
