@@ -1264,6 +1264,7 @@ export default function BinderDetalle({ binder }: { binder: Binder }) {
                   <th>🔁 Traspaso</th>
                   <th>🏦 Liquidación</th>
                   <th>📝 Nota</th>
+                  <th>⬇️ Premium Bdx</th>
                 </tr>
               </thead>
               <tbody>
@@ -1273,12 +1274,7 @@ export default function BinderDetalle({ binder }: { binder: Binder }) {
                   return (
                     <Fragment key={p.periodo}>
                     <tr>
-                      <td style={{ whiteSpace: "nowrap" }}>
-                        {mesLargo(p.periodo)}
-                        <button className="btn-link" disabled={lpanBusy} style={{ marginLeft: 6 }}
-                          title="Descargar el Premium Bdx de este mes (Excel plano, sin agrupar)"
-                          onClick={() => descargarBdxExcel(p.periodo, false)}>⬇️</button>
-                      </td>
+                      <td>{mesLargo(p.periodo)}</td>
                       <td className="num">{p.num_lineas}</td>
                       <td className="num">{imp(n(p.prima_lloyds))}</td>
                       <td className="num">{imp(n(p.comision))}</td>
@@ -1293,10 +1289,15 @@ export default function BinderDetalle({ binder }: { binder: Binder }) {
                           {p.nota && <span className="hint" style={{ color: "inherit" }}>{p.nota.length > 28 ? p.nota.slice(0, 28) + "…" : p.nota}</span>}
                         </button>
                       </td>
+                      <td>
+                        <button className="btn-link" disabled={lpanBusy} style={{ whiteSpace: "nowrap" }}
+                          title="Descargar el Premium Bdx de este mes (Excel plano, sin agrupar)"
+                          onClick={() => descargarBdxExcel(p.periodo, false)}>⬇️ Excel</button>
+                      </td>
                     </tr>
                     {editando && (
                       <tr>
-                        <td colSpan={9} style={{ background: "var(--fondo-suave, #f7f8fa)" }}>
+                        <td colSpan={10} style={{ background: "var(--fondo-suave, #f7f8fa)" }}>
                           <div style={{ display: "flex", gap: 8, alignItems: "flex-start", padding: "6px 4px" }}>
                             <textarea rows={2} style={{ flex: 1 }} value={notaText} autoFocus
                               placeholder="Nota del mes de Premium (p. ej. riesgos no liquidados al mercado)"
@@ -1315,14 +1316,14 @@ export default function BinderDetalle({ binder }: { binder: Binder }) {
                   <td className="num">{premLineas}</td>
                   <td className="num">{imp(premLloyds)}</td>
                   <td className="num">{imp(premComision)}</td>
-                  <td colSpan={5}></td>
+                  <td colSpan={6}></td>
                 </tr>
                 <tr className="hint">
                   <td>Total Risk</td>
                   <td className="num">{riskLineas}</td>
                   <td className="num">{imp(riskLloyds)}</td>
                   <td className="num">{imp(riskComision)}</td>
-                  <td colSpan={5}>
+                  <td colSpan={6}>
                     {premLineas === riskLineas
                       ? "✓ todo el Risk macheado"
                       : `faltan ${riskLineas - premLineas} línea(s) por machear`}

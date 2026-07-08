@@ -1211,6 +1211,7 @@ Un solo endpoint `GET /binders/{id}/lpan/bdx-excel?periodo=&agrupar=` (formato L
   visible **solo cuando los LPAN están preparados** (`lpanPreparado`: todo risk code con prima tiene su
   LPAN generado / o exento / histórico). Nunca antes.
 - **`agrupar=false` → Premium Bdx** (fichero "Premium Bdx {UMR} {mes}.xlsx"): las mismas líneas pero
-  PLANAS, sin agrupar ni subtotales. Botón **"⬇️"** junto al mes en la tabla **Premium BDX (cobro)**.
+  PLANAS, sin agrupar ni subtotales. Botón **"⬇️ Excel"** en una **columna propia a la derecha del todo
+  (tras Nota)** en la tabla **Premium BDX (cobro)**.
 `lpanApi.bdxExcel(binderId, periodo, agrupar)` y `descargarBdxExcel(periodo, agrupar)` en `BinderDetalle`.
 (Antes había un único botón "Excel BDX"/"Premium" mal ubicado; esto lo separa en las dos descargas reales.)
