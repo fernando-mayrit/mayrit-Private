@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { tareasApi, crud, type Tarea, type TareaOcurrencia, type TareaPasoEstado, type TareaAgendaItem } from "../api";
 import type { Binder } from "../types";
-import { fmtFechaES } from "../format";
+import { fmtFechaES, mesAnyo } from "../format";
 import FormPanel from "./FormPanel";
 
 // Tareas recurrentes manuales. Dos modos (mismos datos):
@@ -382,11 +382,7 @@ export default function TareasBinder({ binderId }: { binderId?: number }) {
         })),
     }));
   }, [agenda]);
-  const mesLabel = (ym: string) => {
-    const [y, mm] = ym.split("-").map(Number);
-    const s = new Date(y, mm - 1, 1).toLocaleDateString("es-ES", { month: "long", year: "numeric" });
-    return s.charAt(0).toUpperCase() + s.slice(1);
-  };
+  const mesLabel = (ym: string) => mesAnyo(ym);   // "Mayo 2026" (formato único, sin "de")
   async function toggleHechaAgenda(a: TareaAgendaItem) {
     setBusyOc(a.tarea_id + a.fecha);
     try {
@@ -426,8 +422,8 @@ export default function TareasBinder({ binderId }: { binderId?: number }) {
               <span className="hint" title="Se desbloquea al completar el paso anterior">· 🔒 bloqueado</span>
             )}
             {esAuto && (
-              <span className="hint" title={`Se marca solo: ${reglaLabel(ps.regla_auto)}${ps.periodo ? ` · periodo ${ps.periodo}` : ""}`}>
-                · 🔒 auto ({reglaLabel(ps.regla_auto)}{ps.periodo ? ` ${ps.periodo}` : ""}) {ps.hecho ? "✓" : "pendiente"}
+              <span className="hint" title={`Se marca solo: ${reglaLabel(ps.regla_auto)}${ps.periodo ? ` · ${mesAnyo(ps.periodo)}` : ""}`}>
+                · 🔒 auto ({reglaLabel(ps.regla_auto)}{ps.periodo ? ` ${mesAnyo(ps.periodo)}` : ""}) {ps.hecho ? "✓" : "pendiente"}
               </span>
             )}
             {!esAuto && ps.hecho && ps.fecha_hecha && <span className="hint">· {fmtFechaES(ps.fecha_hecha)}</span>}
