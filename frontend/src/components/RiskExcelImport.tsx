@@ -73,7 +73,7 @@ export default function RiskExcelImport({
         </div>
       ) : (
         <>
-          <div className="campos-grid" style={{ gridTemplateColumns: "1fr 1fr", marginBottom: 10 }}>
+          <div className="campos-grid campos-fill" style={{ gridTemplateColumns: "1fr 1fr", marginBottom: 10 }}>
             <div className="field">
               <label>Hoja</label>
               <select value={prev.hoja} onChange={(e) => cargar(e.target.value)} disabled={busy}>

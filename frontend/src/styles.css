@@ -978,7 +978,7 @@ tr.fila-inactiva td { opacity: 0.55; }
 /* Filas cuyos campos rellenan su celda y pueden encogerse (sin scroll horizontal, anchos iguales). */
 .campos-fill { min-width: 0; }
 .campos-fill > .field { min-width: 0; }
-.campos-fill > .field input, .campos-fill > .field .num-input { width: 100%; min-width: 0; max-width: none; box-sizing: border-box; }
+.campos-fill > .field input, .campos-fill > .field select, .campos-fill > .field textarea, .campos-fill > .field .num-input { width: 100%; min-width: 0; max-width: none; box-sizing: border-box; }
 /* Override de mayor especificidad: vence los topes max-width de .recibo-modal (200/150px). */
 .recibo-modal .campos-fill > .field input,
 .recibo-modal .campos-fill > .field input[type="date"],

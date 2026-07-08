@@ -113,7 +113,7 @@ export default function PremiumMatch({
         <div className="loading">Leyendo Excel…</div>
       ) : (
         <>
-          <div className="campos-grid" style={{ gridTemplateColumns: "1fr 1fr" }}>
+          <div className="campos-grid campos-fill" style={{ gridTemplateColumns: "1fr 1fr" }}>
             <div className="field">
               <label>Hoja</label>
               <select value={hoja} onChange={(e) => cargarPreview(e.target.value)}>

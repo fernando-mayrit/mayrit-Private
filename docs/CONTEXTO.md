@@ -1163,3 +1163,10 @@ El `<input type="month">` arrancaba vacío y el navegador pintaba un feo "------
 `PremiumMatch.tsx` **deduce el `AAAA-MM` del nombre del fichero** (`periodoDeNombre`, meses español
 completo/abreviado; coge el año pegado al mes → ignora el YOA). Ej.: "Premium Bordereaux **abril 2026**
 YOA 2024.xlsx" → `2026-04`. Editable a mano; si el nombre no trae mes, queda vacío como antes.
+
+### Cajas de los diálogos Excel se salían (desborde de grid)
+En «Machear Premium» y «Subir Risk», los `<select>` con texto largo (p. ej. "Gross Premium including
+tax (Our Line)") desbordaban su celda y, con el panel en `overflow:hidden`, se **cortaban**. Causa: los
+`.field` de `.campos-grid` no encogían (`min-width:0`) y los `<select>` no tenían `width:100%`. Se amplió
+el modificador **`.campos-fill`** para cubrir también `select`/`textarea`, y se aplicó (`campos-grid
+campos-fill`) en `PremiumMatch.tsx` y `RiskExcelImport.tsx`.
