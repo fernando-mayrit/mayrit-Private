@@ -975,7 +975,8 @@ export interface MatchRow {
   estado: "match" | "importe_distinto" | "no_encontrada";
   linea_id: number | null;
   importe_risk: string | null;
-  risk_bdx: string | null;   // periodo 'YYYY-MM' del Risk de la línea macheada
+  risk_bdx: string | null;   // periodo(s) 'YYYY-MM' del Risk ('a / b' si son varias líneas)
+  risk_lineas: number;       // nº de líneas del Risk que representa esta fila (>1 = macheo por suma)
 }
 export interface MatchResult {
   periodo: string;

@@ -1229,6 +1229,12 @@ mismo patrón que `.tabla-risk-preview`). El resto del modal no cambia.
   **Risk Bdx** a la derecha del Certificado con el periodo del Risk de la línea macheada (para localizar
   en qué Risk está la que descuadra). Backend: `MatchRow.risk_bdx` (de `reporting_period_start` de la
   línea; añadido a `load_only`).
+- **Macheo por SUMA de líneas del Risk (08/07):** un único apunte del Premium puede liquidar VARIAS
+  líneas del Risk con el mismo Certificate (endosos/ajustes). `match_excel` ahora, además de la línea
+  individual más cercana, prueba la **suma de todas las líneas del certificado**; si cuadra con el
+  importe del Premium, machea **todas** (todas van a `matched_ids` → se incluyen en el Premium).
+  Prioriza la suma cuando cuadra. `MatchRow.risk_lineas` (nº de líneas) y `risk_bdx` con los periodos
+  ('a / b' si varias); el frontend muestra "· N líneas" y formatea cada periodo con `mesAnyo`.
 
 ### Listados (TablaDatos): redimensionar columnas iba lentísimo — arreglado
 Causa: (1) la tabla usaba `table-layout: auto` → el navegador re-medía TODO el contenido en cada cambio;

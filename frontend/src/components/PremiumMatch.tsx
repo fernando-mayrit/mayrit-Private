@@ -208,7 +208,10 @@ export default function PremiumMatch({
                     {filasVista.map((f, i) => (
                       <tr key={i}>
                         <td>{f.certificate_ref}</td>
-                        <td>{f.risk_bdx ? mesAnyo(f.risk_bdx) : "—"}</td>
+                        <td title={f.risk_lineas > 1 ? `${f.risk_lineas} líneas del Risk sumadas` : undefined}>
+                          {f.risk_bdx ? f.risk_bdx.split(" / ").map((p) => mesAnyo(p)).join(" / ") : "—"}
+                          {f.risk_lineas > 1 && <span className="hint"> · {f.risk_lineas} líneas</span>}
+                        </td>
                         <td className="num">{eur(f.importe_excel)}</td>
                         <td className="num">{eur(f.importe_risk)}</td>
                         <td><span className={`pill ${pill(f.estado)}`}>{txt(f.estado)}</span></td>
