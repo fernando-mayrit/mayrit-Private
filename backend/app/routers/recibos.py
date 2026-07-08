@@ -1367,8 +1367,9 @@ async def excel_preview(binder_id: int, file: UploadFile = File(...), hoja: str 
         "muestra": muestra,
         "mapeo": {
             "certificado": _sugerir(columnas, prod.premium_col_certificado if prod else None, ["certificate", "certificado", "cert ref", "policy", "poliza"]),
-            # Se compara contra el Net Premium to Lloyd's Broker del Risk → se sugiere esa misma columna.
-            "importe": _sugerir(columnas, prod.premium_col_importe if prod else None, ["net premium to lloyd", "net premium to broker", "net premium to pay", "net to broker", "our line", "gross written", "gwp", "importe", "premium"]),
+            # Se compara contra el Net Premium to Lloyd's Broker del Risk → se sugiere SIEMPRE esa misma
+            # columna del Excel (ignorando la recordada, que podía ser otra p. ej. "Gross ... Our Line").
+            "importe": _sugerir(columnas, None, ["net premium to lloyd", "net premium to broker", "net premium to pay", "net to broker", "net premium"]),
         },
     }
 

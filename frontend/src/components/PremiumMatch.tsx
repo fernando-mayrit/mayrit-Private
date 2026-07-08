@@ -159,6 +159,10 @@ export default function PremiumMatch({
                 <b>{match.resumen.importe_distinto}</b> con importe distinto ·{" "}
                 <b>{match.resumen.no_encontrada}</b> no encontradas (de {match.resumen.total}).
                 Al aplicar se incluyen en el Premium <b>{mesAnyo(match.periodo)}</b> las <b>{match.matched_ids.length}</b> OK.
+                <br />Comparando «<b>{importe || "— ninguna —"}</b>» (Excel) ↔ <b>Net Premium to Lloyd's Broker</b> (Risk).
+                {match.resumen.importe_distinto > 0 && !match.resumen.match && (
+                  <span> · ¿La columna del Excel es la correcta? Debe ser la de <b>Net Premium to Lloyd's Broker</b>.</span>
+                )}
               </div>
               <div className="tabla-scroll" style={{ maxHeight: "42vh" }}>
                 <table className="compacto">

@@ -1188,5 +1188,8 @@ Ahora la comprobación es SIEMPRE contra **`net_premium_to_broker`** (Net Premiu
 es el importe que cuenta para conciliar el Premium; la columna «Importe Risk» pasa a **«Net Prem. Lloyd's
 (Risk)»**. La sugerencia automática de la columna Importe del Excel prioriza esa columna
 (`_sugerir` con keywords "net premium to lloyd/broker/pay" primero). El macheo de líneas sigue siendo por
-Certificate Ref; el importe es solo comprobación. (Nota: si una agencia tenía recordada otra columna,
-se re-guarda al elegir la de net en la próxima subida.)
+Certificate Ref; el importe es solo comprobación.
+- **Corrección (mismo día):** la columna Importe del Excel se **sugiere SIEMPRE** la de Net Premium
+  (ignora la recordada, que en Iberian era "Gross ... Our Line" → comparaba gross-Excel vs net-Risk y
+  nunca cuadraba, con 0 macheadas → A Cobrar/Traspasar/Liquidar a 0). El resultado ahora muestra
+  explícitamente «columna Excel ↔ Net Premium to Lloyd's Broker (Risk)» y avisa si ninguna cuadra.
