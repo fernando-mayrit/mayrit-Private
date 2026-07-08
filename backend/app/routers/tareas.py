@@ -52,10 +52,17 @@ def _ocurrencias(t: Tarea, binder: Binder) -> list[dt.date]:
     entregas = nº de periodos de cobertura del binder; las fechas NO se cortan en el vencimiento —
     el binder vencido sigue 'vivo' con entregas de run-off DESPUÉS del vto. Si la tarea tiene una
     fecha_fin explícita (y coherente, posterior al inicio), se usa como tope."""
+    paso = _paso(t)
     inicio = t.fecha_inicio or binder.fecha_efecto
+    # Tareas AUTO: la fecha de inicio se DERIVA siempre del binder (efecto + intervalo + plazo), nunca
+    # del fecha_inicio almacenado — que puede quedar desfasado o ser reescrito por otros procesos. Así
+    # las entregas y sus periodos salen siempre bien, sin depender del estado guardado (robusto).
+    if t.origen == "auto" and binder and binder.fecha_efecto and paso > 0:
+        attr = _CAT_PLAZO.get(t.categoria)
+        plazo = int(getattr(binder, attr, 0) or 0) if attr else 0
+        inicio = _add_months(binder.fecha_efecto, paso) + dt.timedelta(days=plazo)
     if not inicio:
         return []
-    paso = _paso(t)
     if paso <= 0:
         return [inicio]
     # Tope explícito por fecha_fin (solo si es coherente: posterior o igual al inicio).
@@ -126,18 +133,15 @@ def _periodos_datos(db: Session, binder_ids: set[int]) -> dict[str, dict[int, se
 _CAT_PLAZO = {"Risk": "risk_bdx_plazo", "Premium": "premium_bdx_plazo", "Claims": "claims_bdx_plazo"}
 
 
-def _periodo_de(binder: Binder, t: Tarea, f: dt.date, paso_meses: int) -> str | None:
-    """Periodo (YYYY-MM) que CIERRA la entrega con fecha límite `f`. Se deriva de la PROPIA fecha de la
-    entrega (misma ancla que `_ocurrencias`), no del efecto del binder: fin de periodo = f − plazo, y el
-    periodo es ese mes retrocedido `paso_meses` (la entrega de marzo cierra el dato de enero, etc.). Así
-    la fecha de la entrega y el periodo comprobado NO pueden desincronizarse aunque se edite el
-    `fecha_inicio` de la tarea o el efecto/plazo del binder (bug de anclaje doble, corregido 2026-07-07)."""
-    if not binder or not f or paso_meses <= 0:
+def _periodo_de(binder: Binder, k: int, paso_meses: int) -> str | None:
+    """Periodo (YYYY-MM) que CIERRA la k-ésima entrega = efecto + k·intervalo. Exacto y sin depender de
+    días de plazo (evita colapsos de mes cerca de febrero). Válido porque `_ocurrencias` ancla también
+    las entregas AUTO al efecto del binder (misma base k), así fecha de entrega y periodo no pueden
+    desincronizarse. El desfase real de presentación (fin de periodo + plazo) ya está en la FECHA de la
+    entrega, no en el periodo que comprueba."""
+    if not binder or not binder.fecha_efecto or paso_meses <= 0:
         return None
-    attr = _CAT_PLAZO.get(t.categoria)
-    plazo = int(getattr(binder, attr, 0) or 0) if attr else 0
-    base = (f - dt.timedelta(days=plazo)).replace(day=1)
-    return _add_months(base, -paso_meses).strftime("%Y-%m")
+    return _add_months(binder.fecha_efecto, k * paso_meses).strftime("%Y-%m")
 
 
 def _auto_ok(paso: TareaPaso, periodo: str | None, datos: dict, binder_id: int) -> bool:
@@ -164,7 +168,7 @@ def _fechas_hechas(t: Tarea, binder: Binder | None, datos: dict) -> set[dt.date]
     paso = _paso(t)
     done: set[dt.date] = set()
     for k, f in enumerate(ocs):
-        periodo = _periodo_de(binder, t, f, paso)
+        periodo = _periodo_de(binder, k, paso)
         if all(p.id in manual_pp[f] or _auto_ok(p, periodo, datos, binder.id) for p in t.pasos):
             done.add(f)
     return done
@@ -326,7 +330,7 @@ def _pasos_de_ocurrencia(t: Tarea, binder: Binder | None, f: dt.date, k: int,
     """Estado de los pasos de UNA ocurrencia (fecha f, índice k) + si la entrega está completa.
     `manual` = {(paso_id, fecha): TareaPasoHecho}. Un paso está hecho si está marcado a mano o si su
     regla auto se cumple para el periodo de esa entrega."""
-    periodo = _periodo_de(binder, t, f, _paso(t)) if binder else None
+    periodo = _periodo_de(binder, k, _paso(t)) if binder else None
     pasos: list[PasoEstado] = []
     completa = True
     # Secuencial: un paso está BLOQUEADO si algún paso anterior (t.pasos ya viene ordenado por 'orden')
