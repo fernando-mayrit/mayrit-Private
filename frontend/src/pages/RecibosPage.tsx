@@ -467,6 +467,7 @@ export default function RecibosPage() {
           columnas={columnas}
           defaultKeys={DEFAULT_KEYS}
           storageKey="mayrit.recibos.tabla.v8"
+          rowActionWidth={gestionMode ? 220 : undefined}
           rowAction={(r) => {
             // Fuera del modo gestión (o en recibos de binder, que van por Premium BDX): solo Editar.
             if (!gestionMode || r.binder_id != null) {

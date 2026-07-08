@@ -46,6 +46,7 @@ export default function TablaDatos<T extends { id: number }>({
   onRowClick,
   acciones,
   rowAction,
+  rowActionWidth,
   rowClass,
   defaultSort,
   resetSignal,
@@ -60,6 +61,7 @@ export default function TablaDatos<T extends { id: number }>({
   onRowClick?: (r: T) => void;
   acciones?: ReactNode;
   rowAction?: (r: T) => ReactNode;        // columna fija a la derecha (p. ej. botón "Editar")
+  rowActionWidth?: number;                // ancho px de esa columna (por defecto 76; súbelo si hay varios botones)
   rowClass?: (r: T) => string | undefined; // clase CSS por fila (p. ej. atenuar inactivos)
   defaultSort?: { key: string; dir: 1 | -1 }; // orden inicial si no hay uno guardado
   resetSignal?: number;   // al cambiar, limpia los filtros por columna
@@ -100,6 +102,9 @@ export default function TablaDatos<T extends { id: number }>({
   const [dragKey, setDragKey] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const filtroRef = useRef<HTMLDivElement | null>(null);
+  // Refs a los <col> del <colgroup>: permiten cambiar el ancho de una columna por DOM al arrastrar,
+  // SIN re-renderizar las filas (lo que hacía lentísimo el redimensionado en listados grandes).
+  const colRefs = useRef<Record<string, HTMLTableColElement | null>>({});
   // Solo persistimos columnas/anchos tras un cambio REAL del usuario, no en el primer render
   // (así una clave de versión nueva siempre arranca con los defaults actuales y no se "auto-rellena").
   const colsFirst = useRef(true);
@@ -131,6 +136,10 @@ export default function TablaDatos<T extends { id: number }>({
     try { localStorage.setItem(WIDTHS_KEY, JSON.stringify(anchos)); } catch { /* */ }
   }, [anchos]);
   const [resizingKey, setResizingKey] = useState<string | null>(null);
+  // Ancho efectivo de una columna (px). Con table-layout: fixed TODAS necesitan ancho, así que las
+  // que no lo definan reciben un valor por defecto (más estrecho para números).
+  const anchoDe = (c: Col<T>) =>
+    anchos[c.key] ?? c.width ?? (c.tipo === "num" || c.tipo === "pct" || c.tipo === "int" ? 90 : 140);
 
   useEffect(() => {
     if (!menu && !filtro) return;
@@ -265,7 +274,13 @@ export default function TablaDatos<T extends { id: number }>({
       </div>
 
       <div className="tabla-scroll bdx-scroll">
-        <table className="compacto bdx-tabla">
+        <table className="compacto bdx-tabla tabla-datos">
+          <colgroup>
+            {cols.map((c) => (
+              <col key={c.key} ref={(el) => { colRefs.current[c.key] = el; }} style={{ width: anchoDe(c) }} />
+            ))}
+            {rowAction && <col style={{ width: rowActionWidth ?? 76 }} />}
+          </colgroup>
           <thead>
             <tr
               onContextMenu={(e) => { e.preventDefault(); setFiltro(null); setMenu({ x: e.clientX, y: e.clientY }); }}
@@ -275,12 +290,11 @@ export default function TablaDatos<T extends { id: number }>({
                 const activo = sort?.key === c.key;
                 const numCol = c.tipo === "num" || c.tipo === "pct" || c.tipo === "int";
                 const filtrada = !!filtros[c.key];
-                const w = anchos[c.key] ?? c.width;
                 return (
                   <th
                     key={c.key}
                     className={(numCol ? "num " : "") + "col-arrastrable" + (dragKey === c.key ? " arrastrando" : "")}
-                    style={{ whiteSpace: "nowrap", ...(w ? { width: w, maxWidth: w, minWidth: w } : {}) }}
+                    style={{ whiteSpace: "nowrap" }}
                     draggable={!resizingKey}
                     onDragStart={(e) => { setDragKey(c.key); e.dataTransfer.effectAllowed = "move"; }}
                     onDragOver={(e) => e.preventDefault()}
@@ -304,13 +318,19 @@ export default function TablaDatos<T extends { id: number }>({
                         e.preventDefault();
                         e.stopPropagation();
                         const th = (e.currentTarget as HTMLElement).closest("th");
+                        const col = colRefs.current[c.key];
                         const startX = e.clientX;
-                        const startW = anchos[c.key] ?? th?.offsetWidth ?? 120;
+                        const startW = th?.offsetWidth ?? anchos[c.key] ?? c.width ?? 120;
+                        let lastW = startW;
                         setResizingKey(c.key);
-                        const onMove = (ev: MouseEvent) =>
-                          setAnchos((a) => ({ ...a, [c.key]: Math.max(60, Math.round(startW + (ev.clientX - startX))) }));
+                        // Durante el arrastre solo tocamos el <col> por DOM → 0 re-renders de filas.
+                        const onMove = (ev: MouseEvent) => {
+                          lastW = Math.max(60, Math.round(startW + (ev.clientX - startX)));
+                          if (col) col.style.width = `${lastW}px`;
+                        };
                         const onUp = () => {
                           setResizingKey(null);
+                          setAnchos((a) => ({ ...a, [c.key]: lastW }));   // se persiste al soltar (un solo render)
                           document.removeEventListener("mousemove", onMove);
                           document.removeEventListener("mouseup", onUp);
                         };
@@ -333,15 +353,13 @@ export default function TablaDatos<T extends { id: number }>({
               >
                 {cols.map((c) => {
                   const numCol = c.tipo === "num" || c.tipo === "pct" || c.tipo === "int";
-                  const w = anchos[c.key] ?? c.width;
                   return (
                     <td
                       key={c.key}
                       className={numCol ? "num" : c.tipo === "bool" ? "celda-centro" : undefined}
-                      style={w ? { width: w, maxWidth: w, minWidth: w } : undefined}
-                      title={w && !c.render ? fmtValor(r, c) : undefined}
+                      title={c.render ? undefined : fmtValor(r, c)}
                     >
-                      {w ? <span className="celda-recorte">{celda(r, c)}</span> : celda(r, c)}
+                      {c.render || c.tipo === "bool" ? celda(r, c) : <span className="celda-recorte">{celda(r, c)}</span>}
                     </td>
                   );
                 })}

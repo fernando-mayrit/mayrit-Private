@@ -1224,3 +1224,15 @@ no_encontrada), el listado muestra **solo las filas que NO cuadran** y los total
 Σ Excel − Σ Risk**. Si todo cuadra, se muestra igual que antes. Además el **encabezado (y el pie de
 totales) quedan fijos** al hacer scroll del listado (`.match-tabla thead/tfoot` sticky en `styles.css`,
 mismo patrón que `.tabla-risk-preview`). El resto del modal no cambia.
+
+### Listados (TablaDatos): redimensionar columnas iba lentísimo — arreglado
+Causa: (1) la tabla usaba `table-layout: auto` → el navegador re-medía TODO el contenido en cada cambio;
+(2) al arrastrar el borde, cada `mousemove` hacía `setAnchos` → **re-render de TODAS las filas** (los
+listados pintan miles sin virtualizar). Arreglo en `TablaDatos.tsx` + `styles.css`:
+- **`<colgroup>` con un `<col>` por columna** (ancho por `anchoDe`: `anchos ?? c.width ?? 90/140`).
+- **`table-layout: fixed`** SOLO en el listado genérico (clase nueva **`.tabla-datos`**, no en `.bdx-tabla`
+  que la usan muchas tablas): `width: max-content` (scroll horizontal) + `min-width: 100%`.
+- **Redimensionar por DOM:** durante el arrastre solo se cambia `col.style.width` (0 re-renders); el
+  estado (`setAnchos`) se guarda **al soltar**. Se quitaron los anchos inline de `th`/`td`.
+- Prop nuevo **`rowActionWidth`** (la columna de acción necesita ancho fijo con layout fixed; Recibos en
+  modo gestión pasa 220 por los varios botones; por defecto 76).
