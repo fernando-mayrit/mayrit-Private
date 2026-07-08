@@ -1203,3 +1203,9 @@ openpyxl ~84 ms/parseo + BD ~50 ms; el coste real es re-subir el fichero por la 
   (10 min, en memoria; el backend corre **1 worker** gunicorn → `startup.sh` sin `--workers`) y lo
   reutiliza en cambio de hoja y en machear. `excel_preview`/`match_excel` aceptan `file` **o** `token`;
   el front (`PremiumMatch`, `api.ts`) guarda el token y reintenta subiendo el fichero si caduca (409).
+
+### Descargar el Premium Bordereaux por mes: hacerlo visible siempre
+Ya existía (`GET /binders/{id}/lpan/bdx-excel?periodo=` → "Premium Bordereaux {UMR} {mes}.xlsx", formato
+Lloyd's 61 col agrupado), pero en `BinderDetalle` el botón estaba en el bloque LPAN, se llamaba
+"⬇️ Excel BDX" y **solo salía en meses NO completados** → no se encontraba en los meses ya cerrados.
+Ahora el botón sale en **todos los meses** y se llama **"⬇️ Premium (Excel)"**.

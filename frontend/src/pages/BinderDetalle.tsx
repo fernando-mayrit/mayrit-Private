@@ -1728,13 +1728,11 @@ export default function BinderDetalle({ binder }: { binder: Binder }) {
                     <span className="nav-chevron">{abierto ? "▾" : "▸"}</span>
                     {p.periodo_label}{completo ? " ✓" : ""}
                   </h4>
-                  {!completo && (
-                    <button className="btn-secondary btn-sm" disabled={lpanBusy}
-                       title="Descargar el BDX a procesar de este mes (elige carpeta)"
-                       onClick={() => descargarBdxExcel(p.periodo)}>
-                      ⬇️ Excel BDX
-                    </button>
-                  )}
+                  <button className="btn-secondary btn-sm" disabled={lpanBusy}
+                     title="Descargar el Premium Bordereaux de este mes (formato Lloyd's, elige carpeta)"
+                     onClick={() => descargarBdxExcel(p.periodo)}>
+                    ⬇️ Premium (Excel)
+                  </button>
                 </div>
                 {abierto && p.secciones.map((s) => (
                   <div key={s.section} style={{ marginBottom: 8 }}>
