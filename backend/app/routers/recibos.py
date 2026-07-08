@@ -1491,50 +1491,50 @@ async def match_excel(binder_id: int, file: UploadFile | None = File(None), hoja
         if not cands:
             filas.append(MatchRow(certificate_ref=cert, importe_excel=imp, estado="no_encontrada"))
             continue
-        # La comparación se hace contra el "Net Premium to Lloyd's Broker" del Risk
-        # (net_premium_to_broker), que es el importe que DE VERDAD cuenta para conciliar el Premium.
-        # (a) Línea individual más cercana al importe del Premium.
-        best = cands[0]
-        best_diff = None
-        for l in cands:
-            amt = l.net_premium_to_broker
-            if amt is None:
-                continue
-            d = abs(Decimal(amt) - (imp if imp is not None else Decimal(amt)))
-            if best_diff is None or d < best_diff:
-                best, best_diff = l, d
-        # (b) SUMA de TODAS las líneas del mismo certificado: un único apunte del Premium puede estar
-        # liquidando VARIAS líneas del Risk (endosos/ajustes con el mismo Certificate). Si la suma
-        # cuadra con el Premium, se machean TODAS esas líneas.
-        suma = _q2(sum((l.net_premium_to_broker or D0) for l in cands))
-        tol = max(Decimal("0.02"), abs(imp) * Decimal("0.01")) if imp is not None else D0
-        diff_suma = abs(imp - suma) if imp is not None else None
-        sum_ok = imp is not None and len(cands) > 1 and diff_suma is not None and diff_suma <= tol
-        single_ok = imp is None or (best_diff is not None and best_diff <= tol)
-
+        # La comparación se hace contra el "Net Premium to Lloyd's Broker" del Risk. Un único apunte
+        # del Premium puede liquidar VARIAS líneas del Risk del mismo certificado (endosos/ajustes,
+        # alguno negativo), o solo algunas → se busca el SUBCONJUNTO de líneas cuyo net sume ~ el
+        # importe del Premium (subset-sum; cubre 1 línea, todas, o cualquier combinación).
         def periodos(ls):
             ps = sorted({l.reporting_period_start.strftime("%Y-%m") for l in ls if l.reporting_period_start})
             return " / ".join(ps) if ps else None
-        def per_best():
-            return best.reporting_period_start.strftime("%Y-%m") if best.reporting_period_start else None
 
-        # Prioriza la SUMA cuando cuadra (es el caso de "un apunte liquida varias líneas"); si no,
-        # la línea individual; si nada cuadra, importe distinto (mostrando lo más cercano).
-        prefiere_suma = sum_ok and (not single_ok or (best_diff is not None and diff_suma <= best_diff))
-        if prefiere_suma:
-            filas.append(MatchRow(certificate_ref=cert, importe_excel=imp, estado="match", linea_id=best.id,
-                                  importe_risk=suma, risk_bdx=periodos(cands), risk_lineas=len(cands)))
-            matched_ids.extend(l.id for l in cands)
-        elif single_ok:
-            filas.append(MatchRow(certificate_ref=cert, importe_excel=imp, estado="match", linea_id=best.id,
-                                  importe_risk=_q2(best.net_premium_to_broker or 0), risk_bdx=per_best(), risk_lineas=1))
-            matched_ids.append(best.id)
-        elif len(cands) > 1 and diff_suma is not None and best_diff is not None and diff_suma < best_diff:
-            filas.append(MatchRow(certificate_ref=cert, importe_excel=imp, estado="importe_distinto", linea_id=best.id,
-                                  importe_risk=suma, risk_bdx=periodos(cands), risk_lineas=len(cands)))
+        if imp is None:
+            # Sin columna de importe no hay cuadre posible: machea la primera línea del certificado.
+            l0 = cands[0]
+            filas.append(MatchRow(certificate_ref=cert, importe_excel=imp, estado="match", linea_id=l0.id,
+                                  importe_risk=_q2(l0.net_premium_to_broker or D0), risk_bdx=periodos([l0]), risk_lineas=1))
+            matched_ids.append(l0.id)
+            continue
+
+        tol = max(Decimal("0.02"), abs(imp) * Decimal("0.01"))
+        netos = [(l, l.net_premium_to_broker or D0) for l in cands]
+        n = len(netos)
+        if n <= 16:
+            # Prueba TODAS las combinaciones; se queda con la de menor diferencia y, a igualdad, más líneas.
+            mejor_mask, mejor_diff, mejor_cnt = 1, None, 0
+            for mask in range(1, 1 << n):
+                s = D0
+                cnt = 0
+                for i in range(n):
+                    if mask >> i & 1:
+                        s += netos[i][1]
+                        cnt += 1
+                d = abs(imp - s)
+                if mejor_diff is None or d < mejor_diff or (d == mejor_diff and cnt > mejor_cnt):
+                    mejor_mask, mejor_diff, mejor_cnt = mask, d, cnt
+            elegido = [netos[i][0] for i in range(n) if mejor_mask >> i & 1]
         else:
-            filas.append(MatchRow(certificate_ref=cert, importe_excel=imp, estado="importe_distinto", linea_id=best.id,
-                                  importe_risk=_q2(best.net_premium_to_broker or 0), risk_bdx=per_best(), risk_lineas=1))
+            # Demasiadas líneas para probar todas las combinaciones: línea más cercana vs suma total.
+            best = min(netos, key=lambda x: abs(imp - x[1]))[0]
+            elegido = list(cands) if abs(imp - sum((x[1] for x in netos), D0)) <= abs(imp - (best.net_premium_to_broker or D0)) else [best]
+
+        suma_el = _q2(sum((l.net_premium_to_broker or D0) for l in elegido))
+        estado = "match" if abs(imp - suma_el) <= tol else "importe_distinto"
+        filas.append(MatchRow(certificate_ref=cert, importe_excel=imp, estado=estado, linea_id=elegido[0].id,
+                              importe_risk=suma_el, risk_bdx=periodos(elegido), risk_lineas=len(elegido)))
+        if estado == "match":
+            matched_ids.extend(l.id for l in elegido)
 
     # Recordar el mapeo en la agencia
     if binder.productor:

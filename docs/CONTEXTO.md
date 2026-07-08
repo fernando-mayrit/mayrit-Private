@@ -1229,12 +1229,16 @@ mismo patrón que `.tabla-risk-preview`). El resto del modal no cambia.
   **Risk Bdx** a la derecha del Certificado con el periodo del Risk de la línea macheada (para localizar
   en qué Risk está la que descuadra). Backend: `MatchRow.risk_bdx` (de `reporting_period_start` de la
   línea; añadido a `load_only`).
-- **Macheo por SUMA de líneas del Risk (08/07):** un único apunte del Premium puede liquidar VARIAS
-  líneas del Risk con el mismo Certificate (endosos/ajustes). `match_excel` ahora, además de la línea
-  individual más cercana, prueba la **suma de todas las líneas del certificado**; si cuadra con el
-  importe del Premium, machea **todas** (todas van a `matched_ids` → se incluyen en el Premium).
-  Prioriza la suma cuando cuadra. `MatchRow.risk_lineas` (nº de líneas) y `risk_bdx` con los periodos
-  ('a / b' si varias); el frontend muestra "· N líneas" y formatea cada periodo con `mesAnyo`.
+- **Macheo por SUBCONJUNTO de líneas del Risk (08/07):** un único apunte del Premium puede liquidar
+  VARIAS líneas del Risk con el mismo Certificate (endosos/ajustes, alguno **negativo**), o solo
+  **algunas** (no siempre todas). `match_excel` hace **subset-sum**: prueba todas las combinaciones de
+  las líneas del certificado (hasta 16 líneas; por encima, línea más cercana vs suma total) y se queda
+  con la que sume ~ el importe del Premium (a igualdad de diferencia, la de más líneas). Si cuadra,
+  machea ese subconjunto (todas sus líneas van a `matched_ids`). `MatchRow.risk_lineas` (nº de líneas)
+  y `risk_bdx` con los periodos ('a / b' si varias); el frontend muestra "· N líneas" y formatea cada
+  periodo con `mesAnyo`. **Verificado con datos reales del PI2725**: 3 de 4 certificados que antes salían
+  "Importe ≠" ahora machean por combinación (p. ej. 469,11 = 121,49+347,62; 1.138,71 = 1.323,29−184,57);
+  el 4º (899,65) no casa ninguna combinación → diferencia real, se sigue marcando.
 
 ### Listados (TablaDatos): redimensionar columnas iba lentísimo — arreglado
 Causa: (1) la tabla usaba `table-layout: auto` → el navegador re-medía TODO el contenido en cada cambio;
