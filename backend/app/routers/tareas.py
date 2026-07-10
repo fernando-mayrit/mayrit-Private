@@ -47,33 +47,44 @@ def _paso(t: Tarea) -> int:
     return PASO_MESES.get(t.frecuencia, 0)
 
 
-# Suelo de entregas para la vista GLOBAL "Por mes" (endpoint /tareas/agenda): esa vista aplana las
-# entregas de TODOS los binders por mes y se saturaba con años viejos (2018-2025) de binders en vigor
-# desde hace tiempo. Se aplica SOLO ahí. La vista de CADA binder muestra siempre sus propias entregas
-# (un binder de cobertura 2025 tiene sus meses en 2025, y deben verse aunque sean anteriores al suelo).
+# Las tareas AUTO (Risk/Premium/Claims) arrancan sus entregas el 01/07/2026 para TODOS los binders (con
+# independencia del efecto/YOA) y RUEDAN mes a mes hacia delante: se genera hasta hoy + `_LOOKAHEAD_MESES`
+# (las siguientes se ocultan hasta su fecha, vía _debida). No hay entregas anteriores al suelo: no se van a
+# cumplir retroactivamente. No se atan a la cobertura del binder (un binder de 2025 en vigor sigue teniendo
+# su checklist mensual desde jul-2026). También se filtra el suelo en la agenda global por si acaso.
 SUELO_ENTREGAS = dt.date(2026, 7, 1)
+_LOOKAHEAD_MESES = 2   # cuántos meses por delante del actual se generan (los futuros salen al llegar su fecha)
 
 
 def _ocurrencias(t: Tarea, binder: Binder) -> list[dt.date]:
-    """Fechas de las entregas: desde fecha_inicio (o efecto del binder), cada `paso` meses. El nº de
-    entregas = nº de periodos de cobertura del binder; las fechas NO se cortan en el vencimiento —
-    el binder vencido sigue 'vivo' con entregas de run-off DESPUÉS del vto. Si la tarea tiene una
-    fecha_fin explícita (y coherente, posterior al inicio), se usa como tope."""
+    """Fechas (límite) de las entregas de la tarea.
+
+    - AUTO (Risk/Premium/Claims): mensuales (o su intervalo) DESDE el 01/07/2026 —o su arranque natural
+      `efecto+intervalo+plazo` si es POSTERIOR (binders futuros)—, rodando hasta hoy + margen. No se atan a
+      la cobertura del binder ni al `fecha_inicio` guardado.
+    - Manuales: desde `fecha_inicio` (o efecto) hasta `fecha_fin`/vencimiento (con run-off tras el vto)."""
     paso = _paso(t)
-    inicio = t.fecha_inicio or binder.fecha_efecto
-    # Tareas AUTO: la fecha de inicio se DERIVA siempre del binder (efecto + intervalo + plazo), nunca
-    # del fecha_inicio almacenado — que puede quedar desfasado o ser reescrito por otros procesos. Así
-    # las entregas y sus periodos salen siempre bien, sin depender del estado guardado (robusto).
     if t.origen == "auto" and binder and binder.fecha_efecto and paso > 0:
         attr = _CAT_PLAZO.get(t.categoria)
         plazo = int(getattr(binder, attr, 0) or 0) if attr else 0
-        inicio = _add_months(binder.fecha_efecto, paso) + dt.timedelta(days=plazo)
+        natural = _add_months(binder.fecha_efecto, paso) + dt.timedelta(days=plazo)
+        inicio = max(SUELO_ENTREGAS, natural)          # nunca antes de jul-2026; respeta binders futuros
+        tope = _add_months(dt.date.today(), _LOOKAHEAD_MESES)
+        out, k = [], 0
+        while k < 600:
+            f = _add_months(inicio, k * paso)
+            if f > tope:
+                break
+            out.append(f)
+            k += 1
+        return out
+    # ── Tareas manuales ──
+    inicio = t.fecha_inicio or (binder.fecha_efecto if binder else None)
     if not inicio:
         return []
     if paso <= 0:
         return [inicio]
-    # Tope explícito por fecha_fin (solo si es coherente: posterior o igual al inicio).
-    if t.fecha_fin and t.fecha_fin >= inicio:
+    if t.fecha_fin and t.fecha_fin >= inicio:          # tope explícito por fecha_fin
         out, k = [], 0
         while k < 1200:
             f = _add_months(inicio, k * paso)
@@ -82,8 +93,7 @@ def _ocurrencias(t: Tarea, binder: Binder) -> list[dt.date]:
             out.append(f)
             k += 1
         return out
-    # Sin fin explícito: una entrega por cada periodo de cobertura (las del run-off caen tras el vto).
-    ef, venc = binder.fecha_efecto, binder.fecha_vencimiento
+    ef, venc = (binder.fecha_efecto, binder.fecha_vencimiento) if binder else (None, None)
     if not ef or not venc:
         return [_add_months(inicio, k * paso) for k in range(120)]
     n = 0
@@ -140,15 +150,17 @@ def _periodos_datos(db: Session, binder_ids: set[int]) -> dict[str, dict[int, se
 _CAT_PLAZO = {"Risk": "risk_bdx_plazo", "Premium": "premium_bdx_plazo", "Claims": "claims_bdx_plazo"}
 
 
-def _periodo_de(binder: Binder, k: int, paso_meses: int) -> str | None:
-    """Periodo (YYYY-MM) que CIERRA la k-ésima entrega = efecto + k·intervalo. Exacto y sin depender de
-    días de plazo (evita colapsos de mes cerca de febrero). Válido porque `_ocurrencias` ancla también
-    las entregas AUTO al efecto del binder (misma base k), así fecha de entrega y periodo no pueden
-    desincronizarse. El desfase real de presentación (fin de periodo + plazo) ya está en la FECHA de la
-    entrega, no en el periodo que comprueba."""
-    if not binder or not binder.fecha_efecto or paso_meses <= 0:
+def _periodo_de(binder: Binder, t: Tarea, f: dt.date, paso_meses: int) -> str | None:
+    """Periodo (YYYY-MM) que comprueba la entrega con fecha límite `f`: el mes de `f` retrocedido
+    `intervalo + plazo` (el plazo en meses, redondeado). Se deriva del MES de la propia entrega, no del
+    efecto — coherente con el arranque rodante desde 01/07/2026. El auto-marcado busca el dato de ese
+    periodo. Cálculo por meses (no resta de días) para no colapsar dos entregas en el mismo mes."""
+    if not binder or not f or paso_meses <= 0:
         return None
-    return _add_months(binder.fecha_efecto, k * paso_meses).strftime("%Y-%m")
+    attr = _CAT_PLAZO.get(t.categoria)
+    plazo = int(getattr(binder, attr, 0) or 0) if attr else 0
+    lag = paso_meses + round(plazo / 30)
+    return _add_months(f.replace(day=1), -lag).strftime("%Y-%m")
 
 
 def _auto_ok(paso: TareaPaso, periodo: str | None, datos: dict, binder_id: int) -> bool:
@@ -175,7 +187,7 @@ def _fechas_hechas(t: Tarea, binder: Binder | None, datos: dict) -> set[dt.date]
     paso = _paso(t)
     done: set[dt.date] = set()
     for k, f in enumerate(ocs):
-        periodo = _periodo_de(binder, k, paso)
+        periodo = _periodo_de(binder, t, f, paso)
         if all(p.id in manual_pp[f] or _auto_ok(p, periodo, datos, binder.id) for p in t.pasos):
             done.add(f)
     return done
@@ -337,7 +349,7 @@ def _pasos_de_ocurrencia(t: Tarea, binder: Binder | None, f: dt.date, k: int,
     """Estado de los pasos de UNA ocurrencia (fecha f, índice k) + si la entrega está completa.
     `manual` = {(paso_id, fecha): TareaPasoHecho}. Un paso está hecho si está marcado a mano o si su
     regla auto se cumple para el periodo de esa entrega."""
-    periodo = _periodo_de(binder, k, _paso(t)) if binder else None
+    periodo = _periodo_de(binder, t, f, _paso(t)) if binder else None
     pasos: list[PasoEstado] = []
     completa = True
     # Bloqueo por GRUPOS: los pasos con el MISMO `orden` forman un grupo paralelo (no se bloquean entre
