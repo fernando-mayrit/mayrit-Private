@@ -21,44 +21,10 @@ const COMPONENTES: any = {
   },
 };
 
-// Divide el cuerpo en tramos normales y "plegables". Convención: un bloque entre una línea que empieza
-// por `:::plegable Título` y una línea `:::` se muestra colapsado (<details>). No afecta a las secciones
-// que no usan `:::plegable` (el resto del Manual queda igual).
-type Tramo = { plegable: boolean; titulo?: string; texto: string };
-function dividirPlegables(texto: string): Tramo[] {
-  const lineas = texto.split("\n");
-  const out: Tramo[] = [];
-  let buf: string[] = [];
-  let dentro = false;
-  let titulo = "";
-  const volcar = (plegable: boolean, t?: string) => {
-    if (buf.join("\n").trim()) out.push({ plegable, titulo: t, texto: buf.join("\n") });
-    buf = [];
-  };
-  for (const l of lineas) {
-    const m = l.match(/^:::plegable[ \t]*(.*)$/);
-    if (!dentro && m) { volcar(false); dentro = true; titulo = m[1].trim() || "Ver detalle"; continue; }
-    if (dentro && l.trim() === ":::") { volcar(true, titulo); dentro = false; continue; }
-    buf.push(l);
-  }
-  volcar(dentro, dentro ? titulo : undefined);   // si quedó sin cerrar, se pliega igual
-  return out;
-}
-
 function Markdown({ texto }: { texto: string }) {
-  const tramos = dividirPlegables(texto);
   return (
     <div className="manual-md">
-      {tramos.map((tr, i) => tr.plegable ? (
-        <details key={i} className="manual-plegable">
-          <summary>{tr.titulo}</summary>
-          <div className="manual-plegable-cuerpo">
-            <ReactMarkdown remarkPlugins={[remarkGfm]} components={COMPONENTES}>{tr.texto}</ReactMarkdown>
-          </div>
-        </details>
-      ) : (
-        <ReactMarkdown key={i} remarkPlugins={[remarkGfm]} components={COMPONENTES}>{tr.texto}</ReactMarkdown>
-      ))}
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={COMPONENTES}>{texto}</ReactMarkdown>
     </div>
   );
 }
