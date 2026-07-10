@@ -47,6 +47,13 @@ def _paso(t: Tarea) -> int:
     return PASO_MESES.get(t.frecuencia, 0)
 
 
+# Suelo de entregas: no se muestran/cuentan entregas con fecha anterior a esta (el seguimiento de tareas
+# arrancó en julio 2026; los binders en vigor desde antes generaban meses viejos retroactivos que sobran).
+# `_ocurrencias` devuelve la lista COMPLETA (para conservar el índice k del periodo); el suelo se aplica en
+# los puntos de presentación/conteo.
+SUELO_ENTREGAS = dt.date(2026, 7, 1)
+
+
 def _ocurrencias(t: Tarea, binder: Binder) -> list[dt.date]:
     """Fechas de las entregas: desde fecha_inicio (o efecto del binder), cada `paso` meses. El nº de
     entregas = nº de periodos de cobertura del binder; las fechas NO se cortan en el vencimiento —
@@ -160,7 +167,7 @@ def _fechas_hechas(t: Tarea, binder: Binder | None, datos: dict) -> set[dt.date]
     ocs = _ocurrencias(t, binder)
     if not t.pasos:
         manual = {h.fecha_ocurrencia for h in t.hechas}
-        return {f for f in ocs if f in manual}
+        return {f for f in ocs if f in manual and f >= SUELO_ENTREGAS}
     manual_pp: dict[dt.date, set[int]] = defaultdict(set)
     for p in t.pasos:
         for ph in p.hechos:
@@ -168,6 +175,8 @@ def _fechas_hechas(t: Tarea, binder: Binder | None, datos: dict) -> set[dt.date]
     paso = _paso(t)
     done: set[dt.date] = set()
     for k, f in enumerate(ocs):
+        if f < SUELO_ENTREGAS:            # suelo: se ignoran entregas anteriores (k se conserva)
+            continue
         periodo = _periodo_de(binder, k, paso)
         if all(p.id in manual_pp[f] or _auto_ok(p, periodo, datos, binder.id) for p in t.pasos):
             done.add(f)
@@ -188,7 +197,8 @@ def pendientes_para_cierre(db: Session, binder: Binder, categorias: set[str], re
         if not relevante:
             continue
         done = _fechas_hechas(t, binder, datos)
-        if any(f not in done and _debida(t, f, hoy, False) for f in _ocurrencias(t, binder)):
+        if any(f not in done and _debida(t, f, hoy, False)
+               for f in _ocurrencias(t, binder) if f >= SUELO_ENTREGAS):
             out.append(t.titulo)
     return out
 
@@ -297,7 +307,7 @@ def _serializar(db: Session, t: Tarea, datos: dict | None = None) -> TareaRead:
     hoy = dt.date.today()
     # Una entrega solo "existe" cuando su plazo (con su aviso) ha llegado. Las futuras NO cuentan,
     # aunque el dato del periodo ya esté cargado (auto-marcado): aparecen al cumplirse su fecha.
-    activas = [f for f in ocs if _debida(t, f, hoy, False)]
+    activas = [f for f in ocs if f >= SUELO_ENTREGAS and _debida(t, f, hoy, False)]
     d.n_ocurrencias = len(activas)
     d.n_hechas = len([f for f in activas if f in hechas])
     d.n_pasos = len(t.pasos)
@@ -399,6 +409,8 @@ def agenda(binder_id: int | None = None, solo_pendientes: bool = False, db: Sess
         manual = {(ph.paso_id, ph.fecha_ocurrencia): ph for p in t.pasos for ph in p.hechos}
         done = _fechas_hechas(t, binder, datos)
         for k, f in enumerate(_ocurrencias(t, binder)):
+            if f < SUELO_ENTREGAS:
+                continue
             h = hechas.get(f)
             if not _debida(t, f, hoy, False):
                 estado = "futura"      # su plazo aún no ha llegado (aunque el dato ya exista)
@@ -609,6 +621,8 @@ def ocurrencias(tarea_id: int, incluir_futuras: bool = False, db: Session = Depe
     hoy = dt.date.today()
     out: list[OcurrenciaOut] = []
     for k, f in enumerate(_ocurrencias(t, binder) if binder else []):
+        if f < SUELO_ENTREGAS:
+            continue
         pasos, completa = _pasos_de_ocurrencia(t, binder, f, k, datos, manual)
         h = hechas.get(f)
         hecha = completa if t.pasos else (h is not None)
