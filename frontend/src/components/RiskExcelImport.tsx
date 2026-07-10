@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { bdxApi, type RiskExcelPreview, type RiskExcelImportResult, type BdxCampo } from "../api";
+import { bdxApi, type RiskExcelPreview, type RiskExcelImportResult, type BdxCampo, type BdxAlias } from "../api";
 import { fmtMiles, mesAnyo } from "../format";
 import FormPanel from "./FormPanel";
 
@@ -22,6 +22,8 @@ export default function RiskExcelImport({
   const [error, setError] = useState<string | null>(null);
   const [campos, setCampos] = useState<BdxCampo[]>([]);   // campos a los que asignar una columna
   const [asignando, setAsignando] = useState<string | null>(null);   // columna en curso
+  const [aliases, setAliases] = useState<BdxAlias[]>([]);   // mapeo guardado del programa
+  const etiquetaCampo = (campo: string) => campos.find((c) => c.campo === campo)?.label ?? campo;
 
   async function cargar(hoja?: string) {
     setBusy(true); setError(null);
@@ -29,10 +31,12 @@ export default function RiskExcelImport({
     catch (e) { setError((e as Error).message); }
     finally { setBusy(false); }
   }
+  const cargarAliases = () => bdxApi.bdxAliasList(binderId, "risk").then(setAliases).catch(() => {});
 
   useEffect(() => {
     cargar();
     bdxApi.bdxCampos("risk").then(setCampos).catch(() => {});
+    cargarAliases();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -43,6 +47,17 @@ export default function RiskExcelImport({
     try {
       await bdxApi.bdxAliasCrear(binderId, { tipo: "risk", campo, alias_columna: columna });
       await cargar(prev?.hoja);
+      await cargarAliases();
+    } catch (e) { setError((e as Error).message); }
+    finally { setAsignando(null); }
+  }
+  // Quita un alias guardado: la columna vuelve a «Extra» si el mapeo base no la reconoce.
+  async function quitar(alias: BdxAlias) {
+    setAsignando(alias.alias_columna); setError(null);
+    try {
+      await bdxApi.bdxAliasBorrar(alias.id);
+      await cargar(prev?.hoja);
+      await cargarAliases();
     } catch (e) { setError((e as Error).message); }
     finally { setAsignando(null); }
   }
@@ -198,6 +213,27 @@ export default function RiskExcelImport({
                       <option value="">{asignando === col ? "Guardando…" : "Dejar en «Extra»"}</option>
                       {campos.map((c) => <option key={c.campo} value={c.campo}>{c.label}</option>)}
                     </select>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {aliases.length > 0 && (
+            <div className="hint" style={{ marginTop: 8 }}>
+              <b>Mapeo guardado de este programa</b> — se aplica a todos sus binders. Quita (✕) el que ya no
+              quieras (la columna volverá a «Extra» si el mapeo base no la reconoce).
+              <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 6 }}>
+                {aliases.map((a) => (
+                  <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    <span style={{ flex: "1 1 200px", minWidth: 0, wordBreak: "break-word" }}>{a.alias_columna}</span>
+                    <span aria-hidden>→</span>
+                    <span style={{ flex: "1 1 180px", minWidth: 0 }}>
+                      <b>{etiquetaCampo(a.campo)}</b>{a.es_global && <span className="hint"> · global</span>}
+                    </span>
+                    {!a.es_global && (
+                      <button type="button" className="btn-link btn-sm" title="Quitar (vuelve a «Extra»)"
+                              disabled={busy || asignando === a.alias_columna} onClick={() => quitar(a)}>✕</button>
+                    )}
                   </div>
                 ))}
               </div>
