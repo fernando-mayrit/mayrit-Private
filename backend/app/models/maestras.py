@@ -533,6 +533,25 @@ class BdxLinea(Base):
     bdx: Mapped["Bdx"] = relationship(back_populates="lineas")
 
 
+class BdxAlias(Base):
+    """Alias de columna de BDX definido por el usuario (mapeo editable desde la app). Dice que el título
+    de columna `alias_columna` del Excel debe leerse como el campo interno `campo`, para un `tipo` de BDX
+    (risk/premium/claims) y opcionalmente un `programa` (NULL = vale para todos, fallback global). Se
+    fusiona con el MAPEO base de código al importar, así los programas con plantillas raras se domestican
+    desde la UI sin tocar código ni desplegar. La columna sin asignar sigue yendo a `extra` (no se pierde)."""
+
+    __tablename__ = "bdx_alias"
+    __table_args__ = (UniqueConstraint("programa_id", "tipo", "alias_columna", name="uq_bdx_alias"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    programa_id: Mapped[int | None] = mapped_column(
+        ForeignKey("programas.id", ondelete="CASCADE"), index=True)   # NULL = alias global
+    tipo: Mapped[str] = mapped_column(String(10))            # risk | premium | claims
+    campo: Mapped[str] = mapped_column(String(60))           # campo interno destino (clave del MAPEO)
+    alias_columna: Mapped[str] = mapped_column(String(200))  # título de columna del Excel tal cual
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class BdxBloqueo(Base):
     """Bloqueo de un periodo (mes) de un BDX de un binder.
 

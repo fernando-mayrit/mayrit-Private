@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { bdxApi, type RiskExcelPreview, type RiskExcelImportResult } from "../api";
+import { bdxApi, type RiskExcelPreview, type RiskExcelImportResult, type BdxCampo } from "../api";
 import { fmtMiles, mesAnyo } from "../format";
 import FormPanel from "./FormPanel";
 
@@ -20,6 +20,8 @@ export default function RiskExcelImport({
   const [res, setRes] = useState<RiskExcelImportResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [campos, setCampos] = useState<BdxCampo[]>([]);   // campos a los que asignar una columna
+  const [asignando, setAsignando] = useState<string | null>(null);   // columna en curso
 
   async function cargar(hoja?: string) {
     setBusy(true); setError(null);
@@ -30,8 +32,20 @@ export default function RiskExcelImport({
 
   useEffect(() => {
     cargar();
+    bdxApi.bdxCampos("risk").then(setCampos).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Asigna una columna sin mapear a un campo (guardado por programa) y recarga el preview → ya cae en su campo.
+  async function asignar(columna: string, campo: string) {
+    if (!campo) return;
+    setAsignando(columna); setError(null);
+    try {
+      await bdxApi.bdxAliasCrear(binderId, { tipo: "risk", campo, alias_columna: columna });
+      await cargar(prev?.hoja);
+    } catch (e) { setError((e as Error).message); }
+    finally { setAsignando(null); }
+  }
 
   async function importar() {
     if (!prev) return;
@@ -169,10 +183,24 @@ export default function RiskExcelImport({
             </table>
           </div>
           {prev.sin_mapear.length > 0 && (
-            <div className="hint" style={{ marginTop: 8 }}>
-              <b>No reconocidas</b> (se guardan íntegras en «Extra», no se pierde nada): {prev.sin_mapear.join(", ")}.
-              <br />Si alguna de estas es el <b>Certificado</b>, la <b>comisión</b> u otro dato clave para el cálculo,
-              dímelo y la mapeo a su campo.
+            <div className="import-aviso" style={{ marginTop: 8 }}>
+              <b>Columnas no reconocidas</b> — se guardan íntegras en «Extra» (no se pierde nada). Si alguna es
+              un dato que quieres en su campo, <b>asígnala</b> aquí: se recuerda para <b>todos los binders de
+              este programa</b> y las próximas subidas la reconocerán sola.
+              <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8 }}>
+                {prev.sin_mapear.map((col) => (
+                  <div key={col} style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    <span style={{ flex: "1 1 220px", minWidth: 0, wordBreak: "break-word" }}>{col}</span>
+                    <span aria-hidden>→</span>
+                    <select defaultValue="" disabled={asignando === col || busy}
+                            onChange={(e) => asignar(col, e.target.value)}
+                            style={{ flex: "1 1 240px", minWidth: 0 }}>
+                      <option value="">{asignando === col ? "Guardando…" : "Dejar en «Extra»"}</option>
+                      {campos.map((c) => <option key={c.campo} value={c.campo}>{c.label}</option>)}
+                    </select>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </>

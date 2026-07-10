@@ -803,7 +803,16 @@ export const bdxApi = {
     if (hoja) fd.append("hoja", hoja);
     return requestForm<RiskExcelImportResult>(`/binders/${binderId}/bdx/risk-excel-import`, fd);
   },
+  // Mapeo editable de columnas (alias por programa)
+  bdxCampos: (tipo = "risk") => request<BdxCampo[]>(`/bdx/campos?tipo=${tipo}`),
+  bdxAliasList: (binderId: number, tipo = "risk") => request<BdxAlias[]>(`/binders/${binderId}/bdx/alias?tipo=${tipo}`),
+  bdxAliasCrear: (binderId: number, body: { tipo?: string; campo: string; alias_columna: string }) =>
+    request<BdxAlias>(`/binders/${binderId}/bdx/alias`, { method: "POST", body: JSON.stringify(body) }),
+  bdxAliasBorrar: (aliasId: number) => request<void>(`/bdx/alias/${aliasId}`, { method: "DELETE" }),
 };
+
+export interface BdxCampo { campo: string; label: string }
+export interface BdxAlias { id: number; campo: string; alias_columna: string; programa_id: number | null; es_global: boolean }
 
 export interface RiskExcelPreview {
   hojas: string[];

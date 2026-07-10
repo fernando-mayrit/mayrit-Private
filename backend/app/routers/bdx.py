@@ -11,8 +11,8 @@ from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
 
 from ..db import get_db
-from .. import bdx_import
-from ..models.maestras import Binder, Bdx, BdxBloqueo, BdxLinea
+from .. import bdx_import, sharepoint
+from ..models.maestras import Binder, Bdx, BdxBloqueo, BdxLinea, BdxAlias
 from ..schemas import maestras as sch
 
 router = APIRouter(tags=["BDX"])
@@ -114,6 +114,64 @@ async def risk_excel_import(binder_id: int, file: UploadFile = File(...), hoja: 
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=400, detail=f"No se pudo importar el Excel: {e}")
+
+
+# ── Mapeo editable de columnas de BDX (alias por programa) ──
+class AliasIn(BaseModel):
+    tipo: str = "risk"          # risk | premium | claims
+    campo: str                  # campo interno destino (clave del MAPEO)
+    alias_columna: str          # título de la columna del Excel
+
+
+@router.get("/bdx/campos")
+def bdx_campos(tipo: str = "risk"):
+    """Campos internos a los que se puede asignar una columna sin mapear (para el desplegable)."""
+    return bdx_import.campos_mapeables(tipo)
+
+
+@router.get("/binders/{binder_id}/bdx/alias")
+def bdx_alias_list(binder_id: int, tipo: str = "risk", db: Session = Depends(get_db)):
+    """Alias (mapeo editable) que aplican a este binder: los de su programa + los globales."""
+    b = db.get(Binder, binder_id)
+    if b is None:
+        raise HTTPException(status_code=404, detail=f"Binder {binder_id} no encontrado")
+    filas = db.scalars(select(BdxAlias).where(
+        BdxAlias.tipo == tipo,
+        (BdxAlias.programa_id.is_(None)) | (BdxAlias.programa_id == b.programa_id),
+    )).all()
+    return [{"id": a.id, "campo": a.campo, "alias_columna": a.alias_columna,
+             "programa_id": a.programa_id, "es_global": a.programa_id is None} for a in filas]
+
+
+@router.post("/binders/{binder_id}/bdx/alias", status_code=201)
+def bdx_alias_crear(binder_id: int, payload: AliasIn, db: Session = Depends(get_db)):
+    """Asigna (o reasigna) una columna del Excel a un campo, guardado a nivel de PROGRAMA del binder."""
+    b = db.get(Binder, binder_id)
+    if b is None:
+        raise HTTPException(status_code=404, detail=f"Binder {binder_id} no encontrado")
+    if b.programa_id is None:
+        raise HTTPException(status_code=422, detail="El binder no tiene programa: no se puede guardar el alias por programa.")
+    if payload.campo not in sharepoint.MAPEO:
+        raise HTTPException(status_code=422, detail=f"Campo desconocido: {payload.campo}")
+    ex = db.scalar(select(BdxAlias).where(
+        BdxAlias.programa_id == b.programa_id, BdxAlias.tipo == payload.tipo,
+        BdxAlias.alias_columna == payload.alias_columna))
+    if ex:
+        ex.campo = payload.campo            # reasignar la misma columna a otro campo
+    else:
+        ex = BdxAlias(programa_id=b.programa_id, tipo=payload.tipo,
+                      campo=payload.campo, alias_columna=payload.alias_columna)
+        db.add(ex)
+    db.commit(); db.refresh(ex)
+    return {"id": ex.id, "campo": ex.campo, "alias_columna": ex.alias_columna, "programa_id": ex.programa_id}
+
+
+@router.delete("/bdx/alias/{alias_id}", status_code=204)
+def bdx_alias_borrar(alias_id: int, db: Session = Depends(get_db)):
+    """Quita un alias (la columna volverá a ir a «Extra» si no la reconoce el MAPEO base)."""
+    a = db.get(BdxAlias, alias_id)
+    if a is not None:
+        db.delete(a); db.commit()
 
 
 def _cab(b: Bdx, num: int | None = None) -> dict:

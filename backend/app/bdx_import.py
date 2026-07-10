@@ -22,7 +22,7 @@ from sqlalchemy import Boolean, Date, Integer, Numeric, select
 from sqlalchemy.orm import Session
 
 from . import sharepoint
-from .models.maestras import Bdx, Binder, BdxLinea
+from .models.maestras import Bdx, Binder, BdxLinea, BdxAlias
 
 # Porcentajes que en el origen vienen como fracción (0,8) y guardamos como entero (80).
 PCT_FIELDS = {
@@ -240,16 +240,53 @@ def _norm_col(h: str | None) -> str:
     return sharepoint._norm((h or "").replace("(", " ").replace(")", " ")).lower()
 
 
-def _resolver_columnas(headers: list[str]) -> dict[str, int]:
-    """Para cada campo del MAPEO, el índice de la columna del Excel cuyo título casa (con alias)."""
+# Campos internos que NO son destino de mapeo (control de cobro/pago o clave de origen, no vienen del BDX).
+_CAMPOS_INTERNOS = {
+    "incluido_en_premium", "premium_bdx", "prima_cobrada", "ingresado", "premium_payment_date",
+    "traspaso", "traspasado", "fecha_traspaso", "liquidado", "liquidado_uw", "fecha_liquidacion",
+    "recibo", "notas", "sp_old_id",
+}
+
+
+def campos_mapeables(tipo: str = "risk") -> list[dict]:
+    """Campos internos a los que el usuario puede asignar una columna sin mapear, con su etiqueta (el
+    nombre canónico de columna del MAPEO, que es el que reconoce en el bordereau)."""
+    out = []
+    for campo, alias in sharepoint.MAPEO.items():
+        if campo in _CAMPOS_INTERNOS:
+            continue
+        label = alias[0] if isinstance(alias, list) else alias
+        out.append({"campo": campo, "label": label})
+    return out
+
+
+def cargar_alias(db: Session, programa_id: int | None, tipo: str) -> dict[str, list[str]]:
+    """Alias de columna definidos por el usuario para un `tipo` de BDX: {campo: [titulo_columna, ...]}.
+    Incluye los GLOBALES (programa NULL) y los del programa dado. Se fusionan con el MAPEO de código."""
+    filas = db.scalars(select(BdxAlias).where(
+        BdxAlias.tipo == tipo,
+        (BdxAlias.programa_id.is_(None)) | (BdxAlias.programa_id == programa_id),
+    )).all()
+    out: dict[str, list[str]] = {}
+    for a in filas:
+        out.setdefault(a.campo, []).append(a.alias_columna)
+    return out
+
+
+def _resolver_columnas(headers: list[str], alias_extra: dict[str, list[str]] | None = None) -> dict[str, int]:
+    """Para cada campo del MAPEO, el índice de la columna del Excel cuyo título casa. Se prueban PRIMERO
+    los alias de usuario (`alias_extra`, mapeo editable por programa) y luego los alias de código, así lo
+    que el usuario asigna a mano tiene prioridad."""
     norm = {}
     for i, h in enumerate(headers):
         k = _norm_col(h)
         if k:
             norm.setdefault(k, i)
     out: dict[str, int] = {}
+    ax = alias_extra or {}
     for campo, alias in sharepoint.MAPEO.items():
-        for nm in (alias if isinstance(alias, list) else [alias]):
+        base = alias if isinstance(alias, list) else [alias]
+        for nm in list(ax.get(campo, [])) + base:      # alias de usuario primero
             i = norm.get(_norm_col(nm))
             if i is not None:
                 out[campo] = i
@@ -257,9 +294,11 @@ def _resolver_columnas(headers: list[str]) -> dict[str, int]:
     return out
 
 
-def parse_risk_excel(content: bytes, hoja: str | None = None) -> tuple[list[dict], dict]:
+def parse_risk_excel(content: bytes, hoja: str | None = None,
+                     alias_extra: dict[str, list[str]] | None = None) -> tuple[list[dict], dict]:
     """Lee el Excel (la hoja indicada, o la primera), detecta la cabecera y devuelve (filas, meta). Cada
-    fila es un dict {campo_interno: valor_crudo} con las columnas reconocidas del MAPEO."""
+    fila es un dict {campo_interno: valor_crudo} con las columnas reconocidas del MAPEO + `alias_extra`
+    (mapeo editable por programa). Lo NO reconocido se conserva en `_raw` → luego en `extra`."""
     wb = openpyxl.load_workbook(io.BytesIO(content), read_only=True, data_only=True)
     sheet = hoja if (hoja and hoja in wb.sheetnames) else wb.sheetnames[0]
     ws = wb[sheet]
@@ -271,7 +310,7 @@ def parse_risk_excel(content: bytes, hoja: str | None = None) -> tuple[list[dict
         if n > best_n:
             best_i, best_n = i, n
     headers = [str(v).strip() if v is not None else "" for v in (rows[best_i] if rows else [])]
-    colmap = _resolver_columnas(headers)
+    colmap = _resolver_columnas(headers, alias_extra)
     filas: list[dict] = []
     for r in rows[best_i + 1:]:
         if not any(v not in (None, "") for v in r):
@@ -379,7 +418,7 @@ def _bloqueantes(meta: dict, coerced: list[dict]) -> list[str]:
 def preview_risk_excel(db: Session, binder: Binder, content: bytes, hoja: str | None = None) -> dict:
     """Coacciona las filas y devuelve un resumen (sin escribir): hojas, nº líneas, periodos, totales,
     reparto por sección (con asignación por risk code) y los meses que ya están cargados en el Risk."""
-    filas, meta = parse_risk_excel(content, hoja)
+    filas, meta = parse_risk_excel(content, hoja, cargar_alias(db, binder.programa_id, "risk"))
     cols = {c.name: c.type for c in BdxLinea.__table__.columns}
     coerced = [_coerce_fila(cols, f) for f in filas]
     periodos = sorted({d["reporting_period_start"].strftime("%Y-%m") for d in coerced if d.get("reporting_period_start")})
@@ -446,7 +485,7 @@ def importar_risk_excel(db: Session, binder: Binder, content: bytes, hoja: str |
     duplicados legítimos de pagos fraccionados). Asigna la sección por risk code cuando falta. La única
     protección es a nivel de mes: si un Reporting ya estaba cargado en el Risk, ese mes se omite entero
     para no recargarlo por error."""
-    filas, meta = parse_risk_excel(content, hoja)
+    filas, meta = parse_risk_excel(content, hoja, cargar_alias(db, binder.programa_id, "risk"))
     mapeadas = meta.get("mapeadas", {})
     cols = {c.name: c.type for c in BdxLinea.__table__.columns}
     bdx = db.scalars(select(Bdx).where(Bdx.binder_id == binder.id, Bdx.tipo == "Risk")).first()
