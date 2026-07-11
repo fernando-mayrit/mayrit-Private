@@ -6,6 +6,45 @@
 > otro equipo y no se commitearon, **se perdieron** (la memoria de Claude es local de cada equipo).
 > **REGLA: las tareas compartidas van SIEMPRE aquí, en CONTEXTO.md + commit & push.**
 
+### 📌 AL DÍA (2026-07-12) — lista viva de pendientes y mejoras
+
+**Pendientes ahora:**
+- **⚠ PRIORITARIO — Triangulación: doble conteo del `to_pay`.** La siniestralidad de Triangulación sale
+  INFLADA (los snapshots cuentan pagado+reservas sin restar `to_pay`) y no cuadra con el módulo de
+  Siniestros. Decidir con Fernando si aplicar `− to_pay` (afecta IBNR/Ultimate de TODA la app).
+- **Triangulación por programa** — hoy básico, ampliar.
+- **LPAN en Pólizas OM** — el LPAN solo existe por binder/BDX; falta el flujo para pólizas Open Market
+  (Lpan ya tiene `poliza_id`, 64 ligados; falta decidir alcance ver/generar/asociar).
+- **Helix MA0222HEL** — snapshots de Claims en pausa por un cambio de esquema de columnas que no reconcilia.
+- **Power BI — Ingresos** — pipeline montado (tabla `ppto_ingresos` + vista + Excel sembrado + cargador);
+  falta que Fernando rellene/cargue y crear el usuario de BD `mayrit_bi`.
+- **Paginación** de `GET /recibos` y `/siniestros` — mejora de rendimiento NO urgente (cuando crezcan).
+- **Afinar conciliación bancaria** con el uso: ventana/umbral de la Fase B; categorización que aprenda del
+  texto del banco (regla concepto→categoría, estilo `bdx_alias`).
+- **Operativo:** renovar el **secreto de Entra** (~jun 2028) o el login dejará de funcionar.
+- **Menor:** subir la retención de backups de **Azure a 35 días**.
+
+**Cerrado recientemente (2026-07):** conciliación bancaria **Fase A** (importar extracto Norma 43, validado
+Sabadell+Bankinter) **y Fase B** (conciliar apuntes de seguros con transferencias: proponer→revisar→
+confirmar) · **mapeo editable de columnas de BDX** por programa (Risk) · arreglos del **módulo Tareas**
+(desfase de periodo, orden secuencial, pasos en paralelo, arranque rodante 01/07/2026) · **backup a NAS** ·
+**5 recibos duplicados** resueltos · **reconciliación de Alembic** (repo↔prod, un solo head).
+
+**Mejoras / módulos propuestos (brainstorm 2026-07-11) — para valorar:**
+- **Verifactu / SII (facturación electrónica)** — le interesó a Fernando. Paso 0: confirmar con la asesoría
+  QUÉ obliga y sobre qué documentos (ojo: la mediación de seguros está exenta de IVA y las primas van por
+  recibos, no facturas → Verifactu pega sobre todo en las **facturas de Consultoría/Fees**).
+- **Renovaciones (pipeline de binders a renovar):** aviso 90/60/30 días, comparativa de términos año a año
+  (capacidad/comisión/GWP/siniestralidad), estado (en negociación/renovado/no renovado), enlace binder↔
+  sucesor. Aparcado; se puede montar como vista ligera sobre lo que ya hay.
+- **Gestión documental por binder/póliza:** repositorio central y buscable (slip, contrato, wordings,
+  LPANs, endosos, correspondencia) con versión. El gran "quality of life".
+- **Búsqueda global** y **alertas más inteligentes** (renovaciones, límites, vencimientos regulatorios).
+- **Descartados:** CRM/directorio; **cribado de sanciones** (solo aplica a agencias de suscripción, no a
+  Mayrit como corredor — sí planificado en Alea).
+
+---
+
 **Despliegue (HECHO):** app en **Azure App Service** con **despliegue automático por push**
 (`.github/workflows/main_mayrit.yml`; el backend sirve el frontend desde `backend/static`).
 URLs: `https://app.mayritbroker.com` (dominio propio; DNS en **DonDominio** → pestaña *Zona DNS*) y
@@ -1298,3 +1337,54 @@ en tareas secuenciales); el `orden` se calcula de los flags al guardar y se deri
 Al pasar el cursor por un mes: guía vertical + recuadro con la **prima acumulada de cada año visible** en
 ese mes (resalta el punto de cada línea y el año actual en negrita). Respeta la selección de años. Todo en
 SVG con bandas de hover invisibles por mes (`EvolucionProgramaChart` en `BinderDetalle.tsx`).
+
+## Sesión 11-12/07/2026 (equipo "ferna") — Conciliación bancaria (Norma 43), mapeo editable BDX, Tareas y reconciliación Alembic
+
+### Conciliación bancaria — módulo nuevo (automatiza la contabilidad de los viernes)
+Objetivo: dejar de teclear el extracto a mano cada semana. Dos fases, principio "NADA silencioso"
+(proponer → revisar → confirmar).
+- **Fase A — Importar extracto Norma 43 (Cuaderno 43 AEB).** Parser `backend/app/norma43.py` (registros
+  11/22/23/33/88; varias cuentas por fichero; importe con signo debe/haber; descripción de los conceptos
+  complementarios). Posiciones validadas contra extractos REALES de **Sabadell** y **Bankinter** con triple
+  cuadre (saldo_ini+Σmov=saldo_fin, totales debe/haber del footer, nº apuntes). Botón "⬆️ Importar extracto"
+  en Contabilidad → `ImportarExtracto.tsx`: preview (parsea, propone categoría en **cascada Grupo→Concepto**,
+  marca Nuevo/Ya importado/Posible duplicado) → alta en bloque. Dedup por **huella** (`movimientos_bancarios.
+  ref_extracto`, hash del apunte) para lo importado con el sistema nuevo; heurístico fecha+importe para lo
+  antiguo sin huella.
+- **Fase B — Conciliar** (`GET/POST /contabilidad/conciliar/preview|aplicar`, `ConciliarExtracto.tsx`, botón
+  "🔗 Conciliar"). Por cada apunte de SEGUROS sin conciliar propone las Transferencias del ledger que cuadran
+  (subtipo+ámbito+ventana ±días, excluyendo ya-usadas), con suma/residual y confianza (exacta/revisar/sin
+  candidatas). Persiste SOLO lo confirmado (`transferencia_ids`); `_read.conciliado` ahora = bool(transferencia_ids).
+  Realidad: los grupos grandes NO cuadran 1:1 (fees/pagos partidos) → "revisar" con residual, nunca auto-enlace.
+- Regla de arquitectura (decidida): **recibos → transferencias (esperado)**, **extracto → banco (real)**,
+  **Fase B → confirmar y detectar descuadres**. NO generar transferencias desde el banco (perdería el contexto
+  binder/recibo/periodo y el control esperado-vs-real).
+- Fix de datos: la cuenta Sabadell 0001407544 tenía 3 nombres (CuentaBancaria "Sabadell Siniestros" vacía vs
+  1.447 movimientos bajo "Sabadell Clientes") → el dedup miraba la cuenta equivocada. Renombrada la
+  CuentaBancaria a "Sabadell Clientes".
+
+### Mapeo editable de columnas de BDX (Risk) — `bdx_alias`
+Tabla `bdx_alias` (por programa + global). En "Subir Risk", cada columna no reconocida trae un desplegable
+"→ asignar a campo"; se guarda por programa y las próximas subidas la reconocen solas. Lo no asignado sigue en
+`extra` (cero pérdida). Panel para ver/quitar los alias del programa. Endpoints `/bdx/campos` y `/bdx/alias`.
+Premium/Claims NO lo necesitan (solo comparan, no ingestan).
+
+### Módulo Tareas — varios arreglos
+- Bug de **periodo** (auto-marcado "antes de tiempo") y de **orden** en secuenciales: corregidos.
+- **Pasos en paralelo** dentro de una tarea secuencial (grupos por `orden`; toggle "⇄ en paralelo con el
+  anterior"), sin cambio de esquema.
+- **Arranque rodante 01/07/2026**: las tareas AUTO generan entregas mensuales desde el 01/07/2026 (o su
+  arranque natural si es posterior), rodando hacia delante; no se atan a la cobertura del binder ni a
+  `fecha_inicio`; nada retroactivo. `_periodo_de` deriva el periodo del mes de la entrega.
+- Periodos en UI como "Mayo 2026" (helper `mesAnyo`), nunca "2026-05".
+
+### Reconciliación de Alembic (repo ↔ producción)
+El repo tenía DOS heads colgando de `dgsfp_ag_0003` (`manual_secciones_0001`, donde apuntaba prod, y
+`conta_ref_extracto_0001` = bdx_alias + ref_extracto). Migración de **merge** `merge_reconcilia_0001` (une
+ambas, sin ops) + `alembic stamp` de prod a ese head. Verificado que prod tenía el esquema de ambas ramas.
+Ahora repo y prod comparten un único head y `alembic upgrade` vuelve a funcionar limpio.
+
+### Otros
+- Gráfico de evolución del binder: **tooltip por mes** (prima acumulada de cada año). Ya estaba, aquí solo se
+  menciona por continuidad.
+- **Backup a NAS** confirmado hecho (alea+mayrit). **5 recibos duplicados** resueltos (0 duplicados de binder).
