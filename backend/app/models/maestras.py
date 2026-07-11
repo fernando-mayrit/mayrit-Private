@@ -1222,6 +1222,10 @@ class MovimientoBancario(Base):
     factura: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)  # 'Justificante'
     codigo: Mapped[str | None] = mapped_column(Text)   # Id + cuenta contable + concepto concatenados (largo)
 
+    # Huella del apunte en el extracto del banco (Norma 43): hash estable de cuenta+fecha+importe+
+    # documento+referencias+descripción. Permite deduplicar al reimportar extractos que solapan.
+    ref_extracto: Mapped[str | None] = mapped_column(String(64), index=True)
+
     # Conciliación (Fase 2): movimiento del ledger de Transferencias que cuadra con este apunte.
     transferencia_id: Mapped[int | None] = mapped_column(ForeignKey("transferencias.id", ondelete="SET NULL"), index=True)
     # Justificante: TRANSFERENCIAS (ledger) que componen este apunte bancario (lista de

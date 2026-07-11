@@ -6,17 +6,20 @@ gasto/ingreso, saldo. La conciliación con el ledger de Transferencias es la Fas
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
 import io
-from collections import defaultdict
+import re
+from collections import Counter, defaultdict
 from decimal import Decimal
 from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
+from .. import norma43
 from ..db import get_db
 from ..models.maestras import (
     Bdx, BdxLinea, Binder, ContaCategoria, CuentaBancaria, MovimientoBancario, Productor, Recibo, Transferencia,
@@ -247,6 +250,233 @@ def crear(payload: MovimientoCrear, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(m)
     return _read(m)
+
+
+# ── Importar extracto bancario (Norma 43) ─────────────────────────────────────────────────────
+def _huella(cuenta: str, m: dict) -> str:
+    """Hash estable de un movimiento del extracto (para deduplicar reimportaciones que solapan)."""
+    base = f"{cuenta}|{m.get('fecha')}|{m.get('importe')}|{m.get('documento','')}|{m.get('referencia1','')}|{m.get('referencia2','')}|{m.get('descripcion','')}"
+    return hashlib.md5(base.encode("utf-8")).hexdigest()
+
+
+def _solo_digitos(s: str | None) -> str:
+    return re.sub(r"\D", "", s or "")
+
+
+def _cuenta_sugerida(db: Session, banco: str, oficina: str, cuenta_n43: str) -> str | None:
+    """Mapea la cuenta del extracto (banco+oficina+nº) a una CuentaBancaria por su IBAN. Devuelve el
+    NOMBRE de la cuenta si hay una única coincidencia; None si es ambigua o no hay."""
+    bo = _solo_digitos(banco) + _solo_digitos(oficina)
+    cn = _solo_digitos(cuenta_n43)
+    if not (bo and cn):
+        return None
+    matches = []
+    for c in db.scalars(select(CuentaBancaria).where(CuentaBancaria.iban.is_not(None))).all():
+        ib = _solo_digitos(c.iban)
+        if bo in ib and cn in ib:
+            matches.append(c.nombre)
+    return matches[0] if len(matches) == 1 else None
+
+
+# Prefijos de "tipo de operación" del extracto: se quitan para quedarnos con el PAGADOR/comercio, que es
+# lo que identifica la categoría (si no, todas las "TRANSFERENC. A ..." caerían en el mismo saco).
+_PREFIJOS_OP = ("COMPRA TARJETA", "COMPRA TARJ", "COMPRA", "TRANSFERENC. A", "TRANSFERENCIA A", "TRANSFERENC.",
+                "TRANSFERENCIA", "CARGO RECIBO", "ADEUDO RECIBO", "ADEUDO", "RECIBO", "PAGO ", "ABONO ", "BIZUM")
+
+
+def _firma_desc(s: str | None) -> str:
+    """Firma centrada en el PAGADOR/comercio: quita la máscara de tarjeta, el prefijo de tipo de operación
+    y todo lo que no sean letras. Así 'TRANSFERENC. A IBERIAN INSURANCE' → 'IBERIAN INSURANCE'."""
+    s = (s or "").upper()
+    s = re.sub(r"\bTARJ\.?\s*\d[\dX]*", " ", s)          # máscara de tarjeta (5540XXXX...)
+    s = re.sub(r"\s+", " ", s).strip()
+    for p in _PREFIJOS_OP:
+        if s.startswith(p):
+            s = s[len(p):]
+            break
+    s = re.sub(r"[^A-ZÁÉÍÓÚÑ ]", " ", s)                  # solo letras
+    return re.sub(r"\s+", " ", s).strip()[:25]
+
+
+def _historial_categorias(db: Session, cuenta: str | None) -> dict[str, tuple]:
+    """De los movimientos ya categorizados de la cuenta, la categoría (concepto,grupo,tipo) MÁS habitual
+    por firma de PAGADOR. Sirve para proponer la categoría de los nuevos (aprende del histórico)."""
+    if not cuenta:
+        return {}
+    por_clave: dict[str, Counter] = defaultdict(Counter)
+    for concepto, grupo, tipo, desc in db.execute(
+        select(MovimientoBancario.concepto, MovimientoBancario.grupo, MovimientoBancario.tipo, MovimientoBancario.descripcion)
+        .where(MovimientoBancario.cuenta == cuenta, MovimientoBancario.concepto.is_not(None))
+    ).all():
+        clave = _firma_desc(desc)
+        if len(clave) >= 4:
+            por_clave[clave][(concepto, grupo, tipo)] += 1
+    return {k: c.most_common(1)[0][0] for k, c in por_clave.items()}
+
+
+def _sugerir_categoria(historial: dict, descripcion: str | None) -> tuple:
+    """Propone (concepto,grupo,tipo) SOLO con match fuerte del pagador (exacto o prefijo largo en común).
+    Mejor dejar en blanco que proponer mal: el usuario ajusta y así aprende para la próxima."""
+    clave = _firma_desc(descripcion)
+    if len(clave) < 4:
+        return (None, None, None)
+    if clave in historial:
+        return historial[clave]
+    for k, v in historial.items():                        # mismo pagador con variación menor (≥10 char)
+        n = min(len(k), len(clave))
+        if n >= 10 and k[:n] == clave[:n]:
+            return v
+    return (None, None, None)
+
+
+class MovImportado(BaseModel):
+    fecha: dt.date | None
+    fecha_valor: dt.date | None
+    importe: Decimal                 # con signo (negativo = gasto)
+    tipo: str                        # Gasto | Ingreso
+    descripcion: str
+    concepto: str | None = None      # propuesto (aprendido del histórico)
+    grupo: str | None = None
+    tarjeta: bool = False
+    saldo: Decimal | None = None     # saldo corriente del banco tras el movimiento
+    huella: str
+    estado: str                      # nuevo | importado | posible
+    dup_id: int | None = None        # id del apunte existente si 'importado'/'posible'
+
+
+class ImportPreview(BaseModel):
+    cuenta_sugerida: str | None
+    cuentas: list[str]
+    banco: str
+    cuenta_banco: str
+    nombre_banco: str
+    periodo_ini: dt.date | None
+    periodo_fin: dt.date | None
+    saldo_ini: Decimal | None
+    saldo_fin: Decimal | None
+    cuadra: bool
+    n_nuevos: int
+    n_importados: int
+    n_posibles: int
+    movimientos: list[MovImportado]
+
+
+@router.post("/importar/preview", response_model=ImportPreview)
+async def importar_preview(file: UploadFile = File(...), cuenta: str | None = Form(None), db: Session = Depends(get_db)):
+    """Parsea un extracto Norma 43 y devuelve sus movimientos con categoría propuesta y estado de
+    duplicado (nuevo / ya importado / posible), sin escribir nada."""
+    contenido = await file.read()
+    if not contenido:
+        raise HTTPException(status_code=400, detail="El fichero está vacío.")
+    try:
+        cuentas_n43 = norma43.parse_norma43(contenido)
+    except norma43.Norma43Error as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail=f"No se pudo leer el Norma 43: {e}")
+    c = cuentas_n43[0]   # lo normal es una cuenta por fichero
+    cuenta_app = cuenta or _cuenta_sugerida(db, c["banco"], c["oficina"], c["cuenta"])
+
+    suma = sum((m["importe"] for m in c["movimientos"]), Decimal(0))
+    cuadra = (c["saldo_inicial"] is not None and c["saldo_final"] is not None
+              and c["saldo_inicial"] + suma == c["saldo_final"])
+
+    historial = _historial_categorias(db, cuenta_app)
+    huellas_exist: set[str] = set()
+    posibles: dict[tuple, int] = {}
+    if cuenta_app:
+        huellas_exist = {h for (h,) in db.execute(select(MovimientoBancario.ref_extracto)
+            .where(MovimientoBancario.cuenta == cuenta_app, MovimientoBancario.ref_extracto.is_not(None))).all()}
+        for mid, f, g, i in db.execute(select(MovimientoBancario.id, MovimientoBancario.fecha, MovimientoBancario.gasto, MovimientoBancario.ingreso)
+            .where(MovimientoBancario.cuenta == cuenta_app, MovimientoBancario.ref_extracto.is_(None))).all():
+            posibles[(f, (i or Decimal(0)) - (g or Decimal(0)))] = mid
+
+    saldo = c["saldo_inicial"] or Decimal(0)
+    movs: list[MovImportado] = []
+    n_nuevos = n_imp = n_pos = 0
+    for m in c["movimientos"]:
+        saldo = saldo + m["importe"]
+        h = _huella(cuenta_app or "", m)
+        concepto, grupo, _tc = _sugerir_categoria(historial, m["descripcion"])
+        estado, dup_id = "nuevo", None
+        if h in huellas_exist:
+            estado, n_imp = "importado", n_imp + 1
+        elif (m["fecha"], m["importe"]) in posibles:
+            estado, dup_id, n_pos = "posible", posibles[(m["fecha"], m["importe"])], n_pos + 1
+        else:
+            n_nuevos += 1
+        movs.append(MovImportado(
+            fecha=m["fecha"], fecha_valor=m["fecha_valor"], importe=m["importe"],
+            tipo=("Gasto" if m["importe"] < 0 else "Ingreso"), descripcion=m["descripcion"],
+            concepto=concepto, grupo=grupo, tarjeta="COMPRA TARJ" in (m["descripcion"] or "").upper(),
+            saldo=saldo, huella=h, estado=estado, dup_id=dup_id,
+        ))
+    nombres = [x.nombre for x in db.scalars(select(CuentaBancaria).where(CuentaBancaria.activa.is_(True)).order_by(CuentaBancaria.nombre)).all()]
+    return ImportPreview(
+        cuenta_sugerida=cuenta_app, cuentas=nombres,
+        banco=c["banco"], cuenta_banco=c["cuenta"], nombre_banco=c["nombre"],
+        periodo_ini=c["fecha_inicial"], periodo_fin=c["fecha_final"],
+        saldo_ini=c["saldo_inicial"], saldo_fin=c["saldo_final"], cuadra=cuadra,
+        n_nuevos=n_nuevos, n_importados=n_imp, n_posibles=n_pos, movimientos=movs,
+    )
+
+
+class MovAAlta(BaseModel):
+    fecha: dt.date
+    devengo: dt.date | None = None
+    tipo: str
+    grupo: str | None = None
+    concepto: str | None = None
+    importe: Decimal                 # con signo
+    saldo: Decimal | None = None
+    descripcion: str | None = None
+    tarjeta: bool = False
+    huella: str | None = None
+
+
+class ImportAplicar(BaseModel):
+    cuenta: str
+    movimientos: list[MovAAlta]
+
+
+@router.post("/importar/aplicar")
+def importar_aplicar(payload: ImportAplicar, db: Session = Depends(get_db)):
+    """Da de alta en bloque los movimientos elegidos del extracto (calcula iden por cuenta+año, guarda el
+    saldo del banco, la cuenta contable por concepto y la huella para deduplicar). Salta los ya importados."""
+    if not payload.cuenta:
+        raise HTTPException(status_code=400, detail="Falta la cuenta de destino.")
+    huellas_exist = {h for (h,) in db.execute(select(MovimientoBancario.ref_extracto)
+        .where(MovimientoBancario.cuenta == payload.cuenta, MovimientoBancario.ref_extracto.is_not(None))).all()}
+    idens: dict[int, int] = {}
+    creados = saltados = 0
+    for m in payload.movimientos:
+        if m.huella and m.huella in huellas_exist:
+            saltados += 1
+            continue
+        anio = m.fecha.year
+        if anio not in idens:
+            idens[anio] = db.scalar(select(func.max(MovimientoBancario.iden))
+                .where(MovimientoBancario.cuenta == payload.cuenta, MovimientoBancario.anio == anio)) or 0
+        idens[anio] += 1
+        iden = idens[anio]
+        dev = m.devengo or m.fecha
+        identificador = f"{iden:03d}.{dev.month:02d}"
+        es_gasto = m.tipo == "Gasto"
+        imp = abs(Decimal(m.importe or 0))
+        pgc = db.scalar(select(ContaCategoria.cuenta_contable).where(ContaCategoria.concepto == m.concepto)) if m.concepto else None
+        codigo = f"{identificador}. {pgc or ''}. {m.concepto or ''}".strip()
+        db.add(MovimientoBancario(
+            cuenta=payload.cuenta, iden=iden, identificador=identificador, fecha=m.fecha, anio=anio, devengo=dev,
+            concepto=m.concepto, grupo=m.grupo, tipo=m.tipo,
+            gasto=(imp if es_gasto else Decimal(0)), ingreso=(Decimal(0) if es_gasto else imp), saldo=m.saldo,
+            descripcion=m.descripcion, codigo=codigo, tarjeta=m.tarjeta, ref_extracto=m.huella,
+            sp_lista=None, sp_old_id=None,
+        ))
+        if m.huella:
+            huellas_exist.add(m.huella)
+        creados += 1
+    db.commit()
+    return {"creados": creados, "saltados": saltados}
 
 
 class MovimientoUpdate(BaseModel):
