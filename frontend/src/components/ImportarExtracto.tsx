@@ -23,13 +23,16 @@ export default function ImportarExtracto({
   const [error, setError] = useState<string | null>(null);
   const [res, setRes] = useState<{ creados: number; saltados: number } | null>(null);
 
-  // Grupo por concepto (para autocompletar al elegir categoría en una fila).
-  const grupoDe = useMemo(() => {
-    const m = new Map<string, string | null>();
-    for (const c of cats) m.set(c.concepto, c.grupo ?? null);
+  // Cascada por tipo (Gasto/Ingreso, que lo fija el signo del importe): Grupo → Concepto, como en el alta.
+  const gruposPorTipo = useMemo(() => {
+    const m = new Map<string, string[]>();
+    for (const t of ["Gasto", "Ingreso"]) {
+      m.set(t, [...new Set(cats.filter((c) => c.tipo === t).map((c) => c.grupo).filter(Boolean) as string[])].sort((a, b) => a.localeCompare(b)));
+    }
     return m;
   }, [cats]);
-  const conceptos = useMemo(() => [...new Set(cats.map((c) => c.concepto))].sort((a, b) => a.localeCompare(b)), [cats]);
+  const conceptosDe = (tipo: string, grupo: string | null) =>
+    cats.filter((c) => c.tipo === tipo && c.grupo === grupo).map((c) => c.concepto).sort((a, b) => a.localeCompare(b));
 
   async function cargar(ctaForzada?: string) {
     setBusy(true); setError(null);
@@ -143,11 +146,13 @@ export default function ImportarExtracto({
               <thead><tr>
                 <th style={{ width: 28 }} />
                 <th>Fecha</th><th>Estado</th><th className="num">Importe</th>
-                <th>Categoría (concepto)</th><th>Descripción</th>
+                <th>Categoría (grupo · concepto)</th><th>Descripción</th>
               </tr></thead>
               <tbody>
                 {prev.movimientos.map((m, i) => {
                   const esGasto = Number(m.importe) < 0;
+                  const tipo = esGasto ? "Gasto" : "Ingreso";
+                  const dis = !filas[i].incluir;
                   return (
                     <tr key={i} style={{ opacity: filas[i].incluir ? 1 : 0.5 }}>
                       <td><input type="checkbox" checked={filas[i].incluir} onChange={(e) => setFila(i, { incluir: e.target.checked })} /></td>
@@ -156,16 +161,23 @@ export default function ImportarExtracto({
                       <td className="num" style={{ color: esGasto ? "#b00" : "#0a0", whiteSpace: "nowrap" }}>
                         {esGasto ? "−" : "+"}{fmtMiles(Math.abs(Number(m.importe)))}
                       </td>
-                      <td>
-                        <select value={filas[i].concepto ?? ""} disabled={!filas[i].incluir}
-                          onChange={(e) => setFila(i, { concepto: e.target.value || null, grupo: e.target.value ? (grupoDe.get(e.target.value) ?? null) : null })}
-                          style={{ fontSize: 12, maxWidth: 200 }}>
-                          <option value="">— sin categoría —</option>
-                          {conceptos.map((c) => <option key={c} value={c}>{c}</option>)}
-                        </select>
-                        {filas[i].grupo && <span className="hint" style={{ marginLeft: 4 }}>{filas[i].grupo}</span>}
+                      <td style={{ minWidth: 250 }}>
+                        <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                          <select value={filas[i].grupo ?? ""} disabled={dis} title="Grupo"
+                            onChange={(e) => setFila(i, { grupo: e.target.value || null, concepto: null })}
+                            style={{ fontSize: 12, flex: "1 1 110px", minWidth: 0 }}>
+                            <option value="">— grupo ({tipo}) —</option>
+                            {(gruposPorTipo.get(tipo) ?? []).map((g) => <option key={g} value={g}>{g}</option>)}
+                          </select>
+                          <select value={filas[i].concepto ?? ""} disabled={dis || !filas[i].grupo} title="Concepto"
+                            onChange={(e) => setFila(i, { concepto: e.target.value || null })}
+                            style={{ fontSize: 12, flex: "1 1 130px", minWidth: 0 }}>
+                            <option value="">— concepto —</option>
+                            {conceptosDe(tipo, filas[i].grupo).map((c) => <option key={c} value={c}>{c}</option>)}
+                          </select>
+                        </div>
                       </td>
-                      <td style={{ maxWidth: 260, wordBreak: "break-word" }}>{m.descripcion}{m.tarjeta && <span className="hint"> · 💳</span>}</td>
+                      <td style={{ maxWidth: 240, wordBreak: "break-word" }}>{m.descripcion}{m.tarjeta && <span className="hint"> · 💳</span>}</td>
                     </tr>
                   );
                 })}
