@@ -704,6 +704,144 @@ def transferencias_justificante(
     return _filas_recibo(trs, cov, _desglose_recibos(db, trs))
 
 
+# ── Conciliación automática (Fase B): proponer las transferencias que cuadran cada apunte de seguros ──
+def _ambito_de(concepto: str | None) -> str | None:
+    """Ámbito de seguros del apunte (Primas/Siniestros/Comisiones/Honorarios), o None si NO es de seguros.
+    'Comisiones Bancarias' se excluye (es una comisión del banco, no de mediación)."""
+    c = (concepto or "").lower()
+    if "bancari" in c:
+        return None
+    if "prima" in c:
+        return "Primas"
+    if "siniestro" in c:
+        return "Siniestros"
+    if "comision" in c or "comisión" in c:
+        return "Comisiones"
+    if "honorario" in c:
+        return "Honorarios"
+    return None
+
+
+def _preseleccion(cands: list[tuple[int, Decimal, dt.date | None]], objetivo: Decimal,
+                  fecha_apunte: dt.date | None, tol: Decimal = Decimal("0.01")) -> tuple[list[int], str]:
+    """Sugiere qué transferencias marcar y con qué confianza. NUNCA inventa: si nada suma exacto, marca las
+    de la misma fecha (o todas) como 'revisar' con su residual, para que el usuario decida."""
+    from itertools import combinations
+    if not cands:
+        return [], "sin_candidatas"
+    for i, imp, _f in cands:                                   # 1) una sola exacta
+        if abs(imp - objetivo) <= tol:
+            return [i], "exacta"
+    if abs(sum(imp for _, imp, _ in cands) - objetivo) <= tol:  # 2) todas suman exacto
+        return [i for i, _, _ in cands], "exacta"
+    mismo = [(i, imp) for i, imp, f in cands if f == fecha_apunte]
+    if mismo and abs(sum(imp for _, imp in mismo) - objetivo) <= tol:   # 3) las de misma fecha, exacto
+        return [i for i, _ in mismo], "exacta"
+    if 1 < len(cands) <= 16:                                    # 4) subconjunto exacto (pequeño)
+        idx = [(i, imp) for i, imp, _ in cands]
+        for r in range(2, len(idx) + 1):
+            for combo in combinations(idx, r):
+                if abs(sum(imp for _, imp in combo) - objetivo) <= tol:
+                    return sorted(i for i, _ in combo), "exacta"
+    return ([i for i, _ in mismo] if mismo else [i for i, _, _ in cands]), "revisar"   # 5) fuzzy → revisar
+
+
+class ConcApunte(BaseModel):
+    mid: int
+    fecha: dt.date | None
+    importe: Decimal
+    concepto: str | None
+    cuenta: str
+    clase: str
+    ambito: str | None
+    filas: list[ReciboJustif]        # candidatas (por recibo), como el justificante
+    preseleccion: list[int]          # transferencia_ids sugeridas
+    suma_pre: Decimal
+    residual: Decimal                # importe − suma sugerida
+    confianza: str                   # exacta | revisar | sin_candidatas
+
+
+class ConcPreview(BaseModel):
+    cuenta: str | None
+    dias: int
+    n_exactas: int
+    n_revisar: int
+    n_sin: int
+    apuntes: list[ConcApunte]
+
+
+@router.get("/conciliar/preview", response_model=ConcPreview)
+def conciliar_preview(cuenta: str, dias: int = 7, desde: dt.date | None = None, db: Session = Depends(get_db)):
+    """Propone (SIN escribir nada) las transferencias que cuadran cada apunte de SEGUROS aún no conciliado
+    de la cuenta. Ventana de ±`dias` (la fecha valor del banco ≠ la contable). Etiqueta cada uno:
+    exacta / revisar (con residual) / sin candidatas."""
+    q = select(MovimientoBancario).where(MovimientoBancario.cuenta == cuenta)
+    if desde:
+        q = q.where(MovimientoBancario.fecha >= desde)
+    apuntes = db.scalars(q.order_by(MovimientoBancario.fecha.desc())).all()
+    usadas = _transferencias_ya_justificadas(db, None)
+    out: list[ConcApunte] = []
+    n_ex = n_rev = n_sin = 0
+    for m in apuntes:
+        if m.transferencia_ids:               # ya conciliado
+            continue
+        amb = _ambito_de(m.concepto)
+        if not amb:                           # no es de seguros → no se toca
+            continue
+        clase = _clase_de_concepto(m.concepto)
+        subs = _CLASE_SUBTIPOS[clase]
+        objetivo = Decimal(m.ingreso or 0) if (m.ingreso or 0) else Decimal(m.gasto or 0)
+        f = m.fecha
+        qtr = select(Transferencia).where(Transferencia.subtipo.in_(subs), Transferencia.tipo == amb)
+        if f:
+            qtr = qtr.where(Transferencia.fecha >= f - dt.timedelta(days=dias),
+                            Transferencia.fecha <= f + dt.timedelta(days=dias))
+        cand_tr = [t for t in db.scalars(qtr.order_by(Transferencia.fecha, Transferencia.numero_poliza)).all()
+                   if t.id not in usadas]
+        pre, conf = _preseleccion([(t.id, Decimal(t.importe or 0), t.fecha) for t in cand_tr], objetivo, f)
+        suma = sum((Decimal(t.importe or 0) for t in cand_tr if t.id in pre), Decimal(0))
+        cov = _coverholders(db, {t.numero_poliza for t in cand_tr if t.numero_poliza})
+        filas = _filas_recibo(cand_tr, cov, _desglose_recibos(db, cand_tr))
+        out.append(ConcApunte(
+            mid=m.id, fecha=f, importe=objetivo, concepto=m.concepto, cuenta=m.cuenta,
+            clase=clase, ambito=amb, filas=filas, preseleccion=pre,
+            suma_pre=suma, residual=objetivo - suma, confianza=conf,
+        ))
+        n_ex += conf == "exacta"; n_rev += conf == "revisar"; n_sin += conf == "sin_candidatas"
+    return ConcPreview(cuenta=cuenta, dias=dias, n_exactas=n_ex, n_revisar=n_rev, n_sin=n_sin, apuntes=out)
+
+
+class ConcItem(BaseModel):
+    mid: int
+    transferencia_ids: list[int]
+
+
+class ConcAplicar(BaseModel):
+    items: list[ConcItem]
+
+
+@router.post("/conciliar/aplicar")
+def conciliar_aplicar(payload: ConcAplicar, db: Session = Depends(get_db)):
+    """Persiste SOLO lo que el usuario confirma: marca cada apunte con sus transferencias. No toca nada más.
+    Evita usar una transferencia ya asignada a otro apunte (aviso, no escribe esa)."""
+    usadas = _transferencias_ya_justificadas(db, None)
+    conciliados = 0
+    conflictos: list[int] = []
+    for it in payload.items:
+        m = db.get(MovimientoBancario, it.mid)
+        if m is None or not it.transferencia_ids:
+            continue
+        chocan = [tid for tid in it.transferencia_ids if tid in usadas]
+        if chocan:
+            conflictos.append(it.mid)
+            continue
+        m.transferencia_ids = it.transferencia_ids
+        usadas.update(it.transferencia_ids)
+        conciliados += 1
+    db.commit()
+    return {"conciliados": conciliados, "conflictos": conflictos}
+
+
 def _build_justificante_pdf(m: MovimientoBancario, filas: list[ReciboJustif], clase: str) -> bytes:
     from reportlab.lib import colors
     from reportlab.lib.pagesizes import A4
