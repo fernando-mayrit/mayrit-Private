@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { contabilidadApi, type MovimientoBancario, type MovimientosListados, type OpcionesConta, type ContaFiltros, type ContaCategoria } from "../api";
 import { fmtMiles } from "../format";
 import PageHeader from "../components/PageHeader";
 import TablaDatos, { type Col } from "../components/TablaDatos";
 import AltaMovimiento from "../components/AltaMovimiento";
+import ImportarExtracto from "../components/ImportarExtracto";
 
 // Contabilidad — libro de banco categorizado (espejo de las listas 'Contabilidad - *' de SharePoint).
 // Regla clave: SIEMPRE se ve UNA sola cuenta a la vez (nunca se mezclan). 'Movimiento Fondos'
@@ -47,6 +48,8 @@ export default function ContabilidadPage() {
   const [cats, setCats] = useState<ContaCategoria[]>([]);
   const [alta, setAlta] = useState(false);
   const [editando, setEditando] = useState<MovimientoBancario | null>(null);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const importInputRef = useRef<HTMLInputElement>(null);
   const [anio, setAnio] = useState<number | "">(new Date().getFullYear());   // por defecto, año en curso
   const [grupo, setGrupo] = useState("");
   const [tipo, setTipo] = useState("");
@@ -155,7 +158,13 @@ export default function ContabilidadPage() {
               </select>
               <input type="search" placeholder="Buscar concepto, descripción, código…" value={q} onChange={(e) => setQ(e.target.value)} style={{ flex: "1 1 200px", minWidth: 170 }} />
             </div>
-            <button className="btn-primary btn-sm" onClick={() => setAlta(true)} disabled={!cuenta}>＋ Alta de movimiento</button>
+            <div className="toolbar" style={{ gap: 8 }}>
+              <button className="btn-primary btn-sm" onClick={() => setAlta(true)} disabled={!cuenta}>＋ Alta de movimiento</button>
+              <button className="btn-secondary btn-sm" onClick={() => importInputRef.current?.click()} disabled={cuenta === FONDOS}
+                title="Subir un extracto del banco en Norma 43 (Cuaderno 43) y darlo de alta en bloque">⬆️ Importar extracto</button>
+              <input ref={importInputRef} type="file" accept=".n43,.q43,.aeb,.txt" style={{ display: "none" }}
+                onChange={(e) => { const f = e.target.files?.[0]; if (f) setImportFile(f); e.target.value = ""; }} />
+            </div>
           </div>
           <div className="bdx-totales">
             <div className="tot-col">
@@ -195,6 +204,16 @@ export default function ContabilidadPage() {
           movimiento={editando}
           onClose={() => { setAlta(false); setEditando(null); }}
           onSaved={() => { setAlta(false); setEditando(null); cargar(); contabilidadApi.opciones().then(setOpciones).catch(() => {}); }}
+        />
+      )}
+
+      {importFile && (
+        <ImportarExtracto
+          file={importFile}
+          cuentaActual={cuenta}
+          cats={cats}
+          onClose={() => setImportFile(null)}
+          onSaved={() => { setImportFile(null); cargar(); contabilidadApi.opciones().then(setOpciones).catch(() => {}); }}
         />
       )}
     </div>

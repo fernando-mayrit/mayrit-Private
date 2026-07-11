@@ -592,7 +592,59 @@ export const contabilidadApi = {
     const m = /filename\*=UTF-8''([^;]+)/i.exec(cd);
     return { blob: await res.blob(), filename: m ? decodeURIComponent(m[1]) : `justificante_${mid}.pdf` };
   },
+  // Importar extracto Norma 43: preview (parsea + propone categoría + dedup) y alta en bloque.
+  importarPreview: (file: File, cuenta?: string) => {
+    const fd = new FormData(); fd.append("file", file);
+    if (cuenta) fd.append("cuenta", cuenta);
+    return requestForm<ImportPreview>("/contabilidad/importar/preview", fd);
+  },
+  importarAplicar: (payload: ImportAplicar) =>
+    request<{ creados: number; saltados: number }>("/contabilidad/importar/aplicar", { method: "POST", body: JSON.stringify(payload) }),
 };
+
+export interface MovImportado {
+  fecha: string | null;
+  fecha_valor: string | null;
+  importe: number;
+  tipo: string;
+  descripcion: string;
+  concepto: string | null;
+  grupo: string | null;
+  tarjeta: boolean;
+  saldo: number | null;
+  huella: string;
+  estado: "nuevo" | "importado" | "posible";
+  dup_id: number | null;
+}
+export interface ImportPreview {
+  cuenta_sugerida: string | null;
+  cuentas: string[];
+  banco: string;
+  cuenta_banco: string;
+  nombre_banco: string;
+  periodo_ini: string | null;
+  periodo_fin: string | null;
+  saldo_ini: number | null;
+  saldo_fin: number | null;
+  cuadra: boolean;
+  n_nuevos: number;
+  n_importados: number;
+  n_posibles: number;
+  movimientos: MovImportado[];
+}
+export interface MovAAlta {
+  fecha: string;
+  devengo?: string | null;
+  tipo: string;
+  grupo?: string | null;
+  concepto?: string | null;
+  importe: number;
+  saldo?: number | null;
+  descripcion?: string | null;
+  tarjeta?: boolean;
+  huella?: string | null;
+}
+export interface ImportAplicar { cuenta: string; movimientos: MovAAlta[] }
 
 // ── Tareas recurrentes manuales por binder ──
 export interface Tarea {
