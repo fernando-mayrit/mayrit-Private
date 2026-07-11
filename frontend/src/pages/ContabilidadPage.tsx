@@ -5,6 +5,7 @@ import PageHeader from "../components/PageHeader";
 import TablaDatos, { type Col } from "../components/TablaDatos";
 import AltaMovimiento from "../components/AltaMovimiento";
 import ImportarExtracto from "../components/ImportarExtracto";
+import ConciliarExtracto from "../components/ConciliarExtracto";
 
 // Contabilidad — libro de banco categorizado (espejo de las listas 'Contabilidad - *' de SharePoint).
 // Regla clave: SIEMPRE se ve UNA sola cuenta a la vez (nunca se mezclan). 'Movimiento Fondos'
@@ -49,6 +50,7 @@ export default function ContabilidadPage() {
   const [alta, setAlta] = useState(false);
   const [editando, setEditando] = useState<MovimientoBancario | null>(null);
   const [importFile, setImportFile] = useState<File | null>(null);
+  const [conciliar, setConciliar] = useState(false);
   const importInputRef = useRef<HTMLInputElement>(null);
   const [anio, setAnio] = useState<number | "">(new Date().getFullYear());   // por defecto, año en curso
   const [grupo, setGrupo] = useState("");
@@ -162,6 +164,8 @@ export default function ContabilidadPage() {
               <button className="btn-primary btn-sm" onClick={() => setAlta(true)} disabled={!cuenta}>＋ Alta de movimiento</button>
               <button className="btn-secondary btn-sm" onClick={() => importInputRef.current?.click()} disabled={cuenta === FONDOS}
                 title="Subir un extracto del banco en Norma 43 (Cuaderno 43) y darlo de alta en bloque">⬆️ Importar extracto</button>
+              <button className="btn-secondary btn-sm" onClick={() => setConciliar(true)} disabled={!cuenta || cuenta === FONDOS}
+                title="Cruzar los apuntes de seguros con las transferencias que los cuadran (propone, tú confirmas)">🔗 Conciliar</button>
               <input ref={importInputRef} type="file" accept=".n43,.q43,.aeb,.txt" style={{ display: "none" }}
                 onChange={(e) => { const f = e.target.files?.[0]; if (f) setImportFile(f); e.target.value = ""; }} />
             </div>
@@ -214,6 +218,14 @@ export default function ContabilidadPage() {
           cats={cats}
           onClose={() => setImportFile(null)}
           onSaved={() => { setImportFile(null); cargar(); contabilidadApi.opciones().then(setOpciones).catch(() => {}); }}
+        />
+      )}
+
+      {conciliar && cuenta && (
+        <ConciliarExtracto
+          cuenta={cuenta}
+          onClose={() => setConciliar(false)}
+          onSaved={() => { setConciliar(false); cargar(); }}
         />
       )}
     </div>

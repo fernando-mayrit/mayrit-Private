@@ -600,7 +600,38 @@ export const contabilidadApi = {
   },
   importarAplicar: (payload: ImportAplicar) =>
     request<{ creados: number; saltados: number }>("/contabilidad/importar/aplicar", { method: "POST", body: JSON.stringify(payload) }),
+  // Conciliación (Fase B): propone las transferencias que cuadran cada apunte de seguros; aplica lo confirmado.
+  conciliarPreview: (cuenta: string, dias = 7, desde?: string) => {
+    const qs = new URLSearchParams({ cuenta, dias: String(dias) });
+    if (desde) qs.set("desde", desde);
+    return request<ConcPreview>(`/contabilidad/conciliar/preview?${qs.toString()}`);
+  },
+  conciliarAplicar: (items: { mid: number; transferencia_ids: number[] }[]) =>
+    request<{ conciliados: number; conflictos: number[] }>("/contabilidad/conciliar/aplicar", { method: "POST", body: JSON.stringify({ items }) }),
 };
+
+export interface ConcApunte {
+  mid: number;
+  fecha: string | null;
+  importe: number | string;
+  concepto: string | null;
+  cuenta: string;
+  clase: string;
+  ambito: string | null;
+  filas: ReciboJustif[];
+  preseleccion: number[];
+  suma_pre: number | string;
+  residual: number | string;
+  confianza: "exacta" | "revisar" | "sin_candidatas";
+}
+export interface ConcPreview {
+  cuenta: string | null;
+  dias: number;
+  n_exactas: number;
+  n_revisar: number;
+  n_sin: number;
+  apuntes: ConcApunte[];
+}
 
 export interface MovImportado {
   fecha: string | null;

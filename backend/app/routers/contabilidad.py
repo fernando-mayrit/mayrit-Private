@@ -142,7 +142,7 @@ def listar(
 
 def _read(m: MovimientoBancario) -> MovimientoRead:
     out = MovimientoRead.model_validate(m)
-    out.conciliado = m.transferencia_id is not None
+    out.conciliado = bool(m.transferencia_ids) or (m.transferencia_id is not None)
     return out
 
 
