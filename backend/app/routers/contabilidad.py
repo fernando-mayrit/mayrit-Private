@@ -581,11 +581,16 @@ def _coverholders(db: Session, umrs: set[str]) -> dict[str, str]:
 def _desglose_recibos(db: Session, trs: list[Transferencia]) -> dict[int, list[tuple[str | None, Decimal]]]:
     """tid → [(recibo|None, importe_individual)]: el DESGLOSE POR RECIBO de cada transferencia.
 
-    Conjunto de recibos: 1) recibo_num / recibo_id directos; si no, 2) por (binder, mes de premium_bdx)
-    == periodo de la transferencia (preciso), con respaldo por la FECHA de pago/liq./traspaso.
-    Importe por recibo (solo cuando hay varios): Σ de la columna del subtipo (ingresado / liquidado_uw
-    / traspasado) de las líneas de ese recibo en la fecha de la transferencia. Con un solo recibo se usa
-    el importe de la transferencia (evita el ruido de redondeo)."""
+    Conjunto de recibos: 1) recibo_num / recibo_id directos; si no, 2) desglose PRECISO por
+    (subtipo, binder, mes de premium_bdx, recibo): importe por recibo = Σ de la columna del subtipo
+    (ingresado / liquidado_uw / traspasado) de las líneas de ese recibo en ese mes de premium que
+    participaron en el flujo (su fecha de cobro/liq./traspaso está puesta). Como el importe de la
+    transferencia del binder es esa MISMA suma sobre todo el binder+mes, la Σ de los recibos cuadra
+    con la transferencia. Reproduce el justificante hecho a mano (una fila por recibo × mes de
+    premium), tanto para Primas como para Comisiones/Honorarios (traspaso/liquidación de comisión).
+    Respaldo SOLO para Primas con datos antiguos sin fecha de flujo por línea: por (binder, mes) o
+    por la fecha del movimiento. Con un solo recibo se usa el importe de la transferencia (evita el
+    ruido de redondeo)."""
     umrs = {t.numero_poliza for t in trs if t.numero_poliza and t.binder_id is None}
     umr2bid = ({u: i for (u, i) in db.execute(select(Binder.umr, Binder.id).where(Binder.umr.in_(umrs))).all()}
                if umrs else {})
@@ -596,19 +601,33 @@ def _desglose_recibos(db: Session, trs: list[Transferencia]) -> dict[int, list[t
     bids = {bid_de(t) for t in trs}
     bids.discard(None)
 
+    _SUBCOLS = (("Cobro", BdxLinea.premium_payment_date, BdxLinea.ingresado),
+                ("Liquidación", BdxLinea.fecha_liquidacion, BdxLinea.liquidado_uw),
+                ("Traspaso", BdxLinea.fecha_traspaso, BdxLinea.traspasado))
+    # Desglose preciso por (subtipo, binder, mes de premium): {recibo: importe}.
+    por_premio_flow: dict[tuple[str, int, str], dict[str, Decimal]] = defaultdict(dict)
+    # Respaldo (Primas con datos antiguos sin fecha de flujo): set por (binder, mes) y por fecha.
     por_premio: dict[tuple[int, str], set[str]] = defaultdict(set)
     por_fecha_set: dict[tuple[str, int, dt.date], set[str]] = defaultdict(set)
     por_fecha_amt: dict[tuple[str, int, dt.date, str], Decimal] = {}
     if bids:
+        mes_expr = func.to_char(BdxLinea.premium_bdx, "YYYY-MM")  # una sola expresión (mismo bind en SELECT y GROUP BY)
+        for sub, fcol, acol in _SUBCOLS:
+            for (b, pmes, num, amt) in db.execute(
+                select(Bdx.binder_id, mes_expr, Recibo.numero, func.sum(acol))
+                .join(Bdx, Bdx.id == BdxLinea.bdx_id).join(Recibo, Recibo.id == BdxLinea.recibo_id)
+                .where(Bdx.binder_id.in_(bids), fcol.is_not(None), BdxLinea.premium_bdx.is_not(None),
+                       Recibo.numero.is_not(None))
+                .group_by(Bdx.binder_id, mes_expr, Recibo.numero)
+            ).all():
+                por_premio_flow[(sub, b, pmes)][num] = Decimal(amt or 0)
         for (b, pbdx, num) in db.execute(
             select(Bdx.binder_id, BdxLinea.premium_bdx, Recibo.numero)
             .join(Bdx, Bdx.id == BdxLinea.bdx_id).join(Recibo, Recibo.id == BdxLinea.recibo_id)
             .where(Bdx.binder_id.in_(bids), BdxLinea.premium_bdx.is_not(None), Recibo.numero.is_not(None))
         ).all():
             por_premio[(b, pbdx.strftime("%Y-%m"))].add(num)
-        for sub, dcol, acol in (("Cobro", BdxLinea.premium_payment_date, BdxLinea.ingresado),
-                                ("Liquidación", BdxLinea.fecha_liquidacion, BdxLinea.liquidado_uw),
-                                ("Traspaso", BdxLinea.fecha_traspaso, BdxLinea.traspasado)):
+        for sub, dcol, acol in _SUBCOLS:
             for (b, f, num, amt) in db.execute(
                 select(Bdx.binder_id, dcol, Recibo.numero, func.sum(acol))
                 .join(Bdx, Bdx.id == BdxLinea.bdx_id).join(Recibo, Recibo.id == BdxLinea.recibo_id)
@@ -630,17 +649,23 @@ def _desglose_recibos(db: Session, trs: list[Transferencia]) -> dict[int, list[t
         if t.recibo_id and t.recibo_id in rec_por_id:
             out[t.id] = [(rec_por_id[t.recibo_id], imp_t)]
             continue
-        # El desglose por recibo SOLO aplica a Primas: Siniestros/Comisiones/Honorarios no tienen
-        # recibo de prima → una sola fila con el importe de la transferencia (si no, salen recibos
-        # de prima ajenos con importe 0 y la suma no cuadra).
+        b = bid_de(t)
+        sub = _sub(t)
+        pmes = t.periodo.strftime("%Y-%m") if t.periodo else None
+        # 1) Desglose preciso por recibo × mes de premium (flujo filtrado). Vale para Primas y para
+        #    Comisiones/Honorarios; la Σ cuadra con el importe de la transferencia.
+        flow = por_premio_flow.get((sub, b, pmes)) if (b and pmes) else None
+        if flow:
+            out[t.id] = [(next(iter(flow)), imp_t)] if len(flow) == 1 else sorted(flow.items())
+            continue
+        # 2) Respaldo SOLO para Primas (datos antiguos sin fecha de flujo por línea). Siniestros/
+        #    Comisiones/Honorarios sin flujo → una fila sin recibo (no inventar recibos ajenos).
         if (t.tipo or "") != "Primas":
             out[t.id] = [(None, imp_t)]
             continue
-        b = bid_de(t)
-        sub = _sub(t)
         recibos: set[str] = set()
-        if b and t.periodo:
-            recibos = set(por_premio.get((b, t.periodo.strftime("%Y-%m")), set()))
+        if b and pmes:
+            recibos = set(por_premio.get((b, pmes), set()))
         if not recibos and b and t.fecha:
             recibos = set(por_fecha_set.get((sub, b, t.fecha), set()))
         if not recibos:
