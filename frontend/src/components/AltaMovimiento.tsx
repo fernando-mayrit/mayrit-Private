@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { contabilidadApi, type ContaCategoria, type BaseAlta, type MovimientoBancario, type ReciboJustif, type AjusteJustif } from "../api";
+import { contabilidadApi, type ContaCategoria, type BaseAlta, type MovimientoBancario, type ReciboJustif, type AjusteJustif, type EspejoCandidato } from "../api";
 import { fmtMiles, fmtFechaES } from "../format";
 import FormPanel from "./FormPanel";
 import NumberInput from "./NumberInput";
@@ -45,10 +45,16 @@ export default function AltaMovimiento({ cuenta, cats, movimiento, onClose, onSa
   const [genJustif, setGenJustif] = useState(false);
   // Líneas MANUALES de ajuste del justificante (compensaciones con siniestros, etc.). Suman al cuadre.
   const [ajustes, setAjustes] = useState<AjusteJustif[]>(movimiento?.ajustes_justif ?? []);
+  // Justificante ESPEJO: este apunte es la otra pata de un traspaso entre cuentas (p. ej. el "Ingreso
+  // Comisiones" que ENTRA en la sociedad = el "Traspaso Comisiones" que SALE de la cuenta de clientes).
+  // Se justifica con las MISMAS transferencias que el apunte apuntado (espejoMid).
+  const [espejoMid, setEspejoMid] = useState<number | null>(movimiento?.espejo_mid ?? null);
+  const [espejoCands, setEspejoCands] = useState<EspejoCandidato[]>([]);
+  const [espejoFilas, setEspejoFilas] = useState<ReciboJustif[]>([]);
 
   // ¿Hay cambios sin guardar? Compara los campos editables con su estado al abrir; así el aviso de
   // "Cambios sin guardar" solo salta si de verdad se tocó algo (antes `dirty` iba fijo a true).
-  const snapshot = JSON.stringify({ fecha, devengo, tipo, grupo, concepto, importe, saldo, descripcion, movBanc, factura, tarjeta, transfIds, ajustes });
+  const snapshot = JSON.stringify({ fecha, devengo, tipo, grupo, concepto, importe, saldo, descripcion, movBanc, factura, tarjeta, transfIds, ajustes, espejoMid });
   const [inicialSnap] = useState(snapshot);
   const dirty = snapshot !== inicialSnap;
 
@@ -80,6 +86,22 @@ export default function AltaMovimiento({ cuenta, cats, movimiento, onClose, onSa
     return () => { vivo = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [claseJustif, ambitoJustif, fechaFiltro]);
+  // Al editar, busca apuntes que podrían ser la otra pata de un traspaso (para ofrecer el espejo).
+  useEffect(() => {
+    if (!edicion || !movimiento) return;
+    let vivo = true;
+    contabilidadApi.espejoCandidatos(movimiento.id).then((r) => { if (vivo) setEspejoCands(r); }).catch(() => {});
+    return () => { vivo = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  // Vista previa de las filas heredadas del apunte espejado (su desglose por recibo).
+  useEffect(() => {
+    if (!espejoMid) { setEspejoFilas([]); return; }
+    let vivo = true;
+    contabilidadApi.justificanteFilas(espejoMid).then((r) => { if (vivo) setEspejoFilas(r); }).catch(() => { if (vivo) setEspejoFilas([]); });
+    return () => { vivo = false; };
+  }, [espejoMid]);
+
   const sumaSel = useMemo(() => transfIds.reduce((a, id) => a + (impById.get(id) ?? 0), 0), [transfIds, impById]);
   const sumaAjustes = useMemo(() => ajustes.reduce((a, x) => a + num(x.importe), 0), [ajustes]);
   const restante = num(importe) - sumaSel - sumaAjustes;
@@ -94,7 +116,8 @@ export default function AltaMovimiento({ cuenta, cats, movimiento, onClose, onSa
     if (!movimiento) return;
     setGenJustif(true); setError(null);
     try {
-      await contabilidadApi.actualizar(movimiento.id, { transferencia_ids: transfIds, ajustes_justif: ajustes.filter((a) => (a.texto || "").trim() || num(a.importe) !== 0) });  // persistir selección + ajustes
+      if (espejoMid) await contabilidadApi.actualizar(movimiento.id, { espejo_mid: espejoMid });   // justificar por espejo
+      else await contabilidadApi.actualizar(movimiento.id, { transferencia_ids: transfIds, ajustes_justif: ajustes.filter((a) => (a.texto || "").trim() || num(a.importe) !== 0) });  // persistir selección + ajustes
       const { blob, filename } = await contabilidadApi.justificantePdf(movimiento.id);
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a"); a.href = url; a.download = filename; a.click();
@@ -141,8 +164,9 @@ export default function AltaMovimiento({ cuenta, cats, movimiento, onClose, onSa
         fecha, devengo: devengo ? `${devengo}-01` : null, tipo, grupo: grupo || null, concepto,
         importe: num(importe), saldo: saldo !== "" ? num(saldo) : null, descripcion: descripcion || null,
         movimiento_bancario: movBanc, factura, tarjeta,
-        transferencia_ids: claseJustif ? transfIds : null,
-        ajustes_justif: claseJustif ? ajustes.filter((a) => (a.texto || "").trim() || num(a.importe) !== 0) : null,
+        espejo_mid: espejoMid,
+        transferencia_ids: espejoMid ? null : (claseJustif ? transfIds : null),
+        ajustes_justif: espejoMid ? null : (claseJustif ? ajustes.filter((a) => (a.texto || "").trim() || num(a.importe) !== 0) : null),
       };
       if (edicion && movimiento) await contabilidadApi.actualizar(movimiento.id, datos);
       else await contabilidadApi.crear({ cuenta, ...datos });
@@ -263,17 +287,63 @@ export default function AltaMovimiento({ cuenta, cats, movimiento, onClose, onSa
 
       {/* Justificante: recibos que componen este apunte (solo al EDITAR un apunte de seguros ya
           existente; en el alta no aplica, el movimiento aún no está guardado). */}
-      {claseJustif && verResto && edicion && (
+      {edicion && verResto && (claseJustif || espejoCands.length > 0 || espejoMid) && (
         <div className="justif-sec">
           <div className="justif-head">
             <b>Justificante</b>
-            <span className="hint">transferencias que componen este {claseJustif === "liquidacion" ? "pago" : claseJustif === "traspaso" ? "traspaso" : "cobro"}</span>
-            <span className={"justif-restante" + (Math.abs(restante) < 0.01 && (transfIds.length > 0 || ajustes.length > 0) ? " ok" : "")}>
-              {Math.abs(restante) < 0.01 && (transfIds.length > 0 || ajustes.length > 0)
-                ? <>✓ Cuadra · {fmtMiles(sumaSel + sumaAjustes)} €</>
-                : <>Restante para cuadrar: <b>{fmtMiles(restante)} €</b> <span className="hint">(sel. {fmtMiles(sumaSel + sumaAjustes)} de {fmtMiles(num(importe))} €)</span></>}
-            </span>
+            {espejoMid
+              ? <span className="hint">este apunte es la otra pata de un traspaso: se justifica igual que otro apunte</span>
+              : <span className="hint">{claseJustif ? <>transferencias que componen este {claseJustif === "liquidacion" ? "pago" : claseJustif === "traspaso" ? "traspaso" : "cobro"}</> : "traspaso entre cuentas propias"}</span>}
+            {!espejoMid && claseJustif && (
+              <span className={"justif-restante" + (Math.abs(restante) < 0.01 && (transfIds.length > 0 || ajustes.length > 0) ? " ok" : "")}>
+                {Math.abs(restante) < 0.01 && (transfIds.length > 0 || ajustes.length > 0)
+                  ? <>✓ Cuadra · {fmtMiles(sumaSel + sumaAjustes)} €</>
+                  : <>Restante para cuadrar: <b>{fmtMiles(restante)} €</b> <span className="hint">(sel. {fmtMiles(sumaSel + sumaAjustes)} de {fmtMiles(num(importe))} €)</span></>}
+              </span>
+            )}
           </div>
+
+          {/* ESPEJO: justificar como la otra pata de un traspaso entre cuentas (mismo dinero que otro
+              apunte ya justificado). Útil p. ej. para el "Ingreso Comisiones" que entra en la sociedad. */}
+          {(espejoCands.length > 0 || espejoMid) && (
+            <div className="justif-espejo" style={{ marginBottom: 8, padding: 8, background: "#f6f6f6", borderRadius: 6 }}>
+              <label className="hint" style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                <span>🔗 Justificar como <b>otra pata de un traspaso</b> (mismo dinero que otro apunte):</span>
+                <select value={espejoMid ?? ""} onChange={(e) => setEspejoMid(e.target.value ? Number(e.target.value) : null)}>
+                  <option value="">— No (justificar con transferencias propias) —</option>
+                  {espejoCands.map((c) => (
+                    <option key={c.mid} value={c.mid}>{c.identificador} · {c.cuenta} · {fmtMiles(c.importe)} € · {c.concepto}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          )}
+
+          {espejoMid ? (
+            /* Vista previa de las filas heredadas del apunte espejado (solo lectura). */
+            <>
+              <div className="hint" style={{ marginBottom: 4 }}>{espejoFilas.length} fila(s) heredadas del apunte espejado. El PDF sale idéntico al de aquel.</div>
+              <div className="justif-lista">
+                <div className="justif-row justif-cab">
+                  <span /><span>Recibo</span><span>Premium Bdx</span>
+                  <span className="jr-imp">Importe</span><span>Referencia</span><span>Cliente</span>
+                </div>
+                {espejoFilas.map((c, i) => (
+                  <div key={i} className={"justif-row" + (i > 0 && espejoFilas[i - 1].transferencia_id === c.transferencia_id ? " jr-cont" : "")}>
+                    <span />
+                    <span className="jr-num">{c.recibo ?? "—"}</span>
+                    <span className="jr-fec">{c.premium_bdx ? fmtFechaES(c.premium_bdx) : ""}</span>
+                    <span className="jr-imp">{fmtMiles(c.importe)} €</span>
+                    <span className="jr-ref">{c.referencia}</span>
+                    <span className="jr-cli">{c.cliente ?? c.mercado}</span>
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : !claseJustif ? (
+            <div className="hint" style={{ padding: 8 }}>Este concepto no reconoce recibos directamente. Si es la otra pata de un traspaso entre cuentas, selecciónalo arriba.</div>
+          ) : (
+          <>
           <div className="justif-filtros">
             <button type="button" className="btn-link btn-sm" onClick={marcarTodos} disabled={candidatos.length === 0}>Marcar todos</button>
             <button type="button" className="btn-link btn-sm" onClick={quitarTodos} disabled={transfIds.length === 0}>Quitar</button>
@@ -319,9 +389,11 @@ export default function AltaMovimiento({ cuenta, cats, movimiento, onClose, onSa
             ))}
             <button type="button" className="btn-secondary btn-sm" onClick={addAjuste}>＋ Añadir ajuste</button>
           </div>
+          </>
+          )}
 
           {edicion && (
-            <button className="btn-secondary btn-sm" onClick={generarJustificante} disabled={genJustif || transfIds.length === 0}>
+            <button className="btn-secondary btn-sm" onClick={generarJustificante} disabled={genJustif || (espejoMid ? false : transfIds.length === 0)}>
               {genJustif ? "Generando…" : "📄 Generar justificante (PDF)"}
             </button>
           )}

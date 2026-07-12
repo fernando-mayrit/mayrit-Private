@@ -1236,6 +1236,11 @@ class MovimientoBancario(Base):
     # apunte cuando además de recibos hay compensaciones (p. ej. siniestros compensados con primas,
     # devolución de fees). Suman al cuadre y salen en el PDF. En Bankinter es habitual.
     ajustes_justif: Mapped[list[dict] | None] = mapped_column(JSONB)
+    # Justificante ESPEJO: este apunte es la otra pata de un traspaso entre cuentas propias (p. ej.
+    # el "Ingreso Comisiones" que ENTRA en la cuenta de la sociedad es el mismo dinero que el
+    # "Traspaso Comisiones" que SALE de la cuenta de clientes). Se justifica con las MISMAS
+    # transferencias y ajustes que el apunte apuntado; el PDF sale idéntico. Excluye transferencia_ids.
+    espejo_mid: Mapped[int | None] = mapped_column(ForeignKey("movimientos_bancarios.id", ondelete="SET NULL"), index=True)
 
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

@@ -507,6 +507,16 @@ export interface MovimientoBancario {
   conciliado: boolean;
   transferencia_ids?: number[] | null;
   ajustes_justif?: AjusteJustif[] | null;
+  espejo_mid?: number | null;
+}
+export interface EspejoCandidato {
+  mid: number;
+  identificador?: string | null;
+  cuenta?: string | null;
+  fecha?: string | null;
+  concepto?: string | null;
+  importe: number | string;
+  n_transferencias: number;
 }
 export interface ContaCategoria { concepto: string; grupo: string | null; tipo: string | null; cuenta_contable: string | null }
 // Fila POR RECIBO del justificante. Varias filas pueden compartir transferencia_id (un cobro que
@@ -573,8 +583,13 @@ export const contabilidadApi = {
   categorias: () => request<ContaCategoria[]>("/contabilidad/categorias"),
   base: (cuenta: string, anio: number) => request<BaseAlta>(`/contabilidad/base?cuenta=${encodeURIComponent(cuenta)}&anio=${anio}`),
   crear: (d: MovimientoCrear) => request<MovimientoBancario>("/contabilidad", { method: "POST", body: JSON.stringify(d) }),
-  actualizar: (id: number, d: Partial<{ fecha: string; devengo: string | null; tipo: string; grupo: string | null; concepto: string | null; importe: number; saldo: number | null; descripcion: string | null; factura: boolean; tarjeta: boolean; movimiento_bancario: boolean; transferencia_ids: number[] | null; ajustes_justif: AjusteJustif[] | null }>) =>
+  actualizar: (id: number, d: Partial<{ fecha: string; devengo: string | null; tipo: string; grupo: string | null; concepto: string | null; importe: number; saldo: number | null; descripcion: string | null; factura: boolean; tarjeta: boolean; movimiento_bancario: boolean; transferencia_ids: number[] | null; ajustes_justif: AjusteJustif[] | null; espejo_mid: number | null }>) =>
     request<MovimientoBancario>(`/contabilidad/${id}`, { method: "PUT", body: JSON.stringify(d) }),
+  // Apuntes YA justificados que podrían ser la OTRA pata de un traspaso entre cuentas (mismo importe,
+  // otra cuenta, fecha cercana) — para justificar por ESPEJO sin reseleccionar transferencias.
+  espejoCandidatos: (mid: number) => request<EspejoCandidato[]>(`/contabilidad/${mid}/espejo-candidatos`),
+  // Filas por recibo del justificante de un apunte (resolviendo el espejo). Para la vista previa.
+  justificanteFilas: (mid: number) => request<ReciboJustif[]>(`/contabilidad/${mid}/justificante`),
   // Transferencias candidatas para el justificante (clase: cobro | liquidacion | traspaso), filtradas
   // por la fecha del movimiento (±dias de ventana) y ocultando las ya usadas en otro apunte.
   transferenciasJustificante: (clase: string, opts: { fecha?: string; ambito?: string; excluirMid?: number; dias?: number } = {}) => {

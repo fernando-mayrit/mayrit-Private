@@ -51,6 +51,7 @@ class MovimientoRead(BaseModel):
     conciliado: bool = False
     transferencia_ids: list[int] | None = None
     ajustes_justif: list[dict] | None = None
+    espejo_mid: int | None = None
 
     class Config:
         from_attributes = True
@@ -143,7 +144,7 @@ def listar(
 
 def _read(m: MovimientoBancario) -> MovimientoRead:
     out = MovimientoRead.model_validate(m)
-    out.conciliado = bool(m.transferencia_ids) or (m.transferencia_id is not None)
+    out.conciliado = bool(m.transferencia_ids) or (m.transferencia_id is not None) or (m.espejo_mid is not None)
     return out
 
 
@@ -494,6 +495,7 @@ class MovimientoUpdate(BaseModel):
     movimiento_bancario: bool | None = None
     transferencia_ids: list[int] | None = None   # transferencias que componen el apunte (justificante)
     ajustes_justif: list[dict] | None = None      # líneas manuales de ajuste del justificante ({texto, importe})
+    espejo_mid: int | None = None                 # otra pata de un traspaso: justificar igual que otro apunte
 
 
 @router.put("/{mid}", response_model=MovimientoRead)
@@ -504,9 +506,18 @@ def actualizar(mid: int, payload: MovimientoUpdate, db: Session = Depends(get_db
     if m is None:
         raise HTTPException(status_code=404, detail=f"Movimiento {mid} no encontrado")
     datos = payload.model_dump(exclude_unset=True)
-    for k in ("grupo", "concepto", "saldo", "descripcion", "factura", "tarjeta", "movimiento_bancario", "transferencia_ids", "ajustes_justif"):
+    for k in ("grupo", "concepto", "saldo", "descripcion", "factura", "tarjeta", "movimiento_bancario", "transferencia_ids", "ajustes_justif", "espejo_mid"):
         if k in datos:
             setattr(m, k, datos[k])
+    # Justificante ESPEJO y justificante propio son excluyentes (un apunte se justifica con sus
+    # transferencias O como espejo de otro, no las dos cosas).
+    if datos.get("espejo_mid"):
+        if datos["espejo_mid"] == m.id:
+            raise HTTPException(status_code=400, detail="Un apunte no puede ser espejo de sí mismo.")
+        m.transferencia_ids = None
+        m.ajustes_justif = None
+    elif datos.get("transferencia_ids"):
+        m.espejo_mid = None
     if datos.get("fecha"):
         m.fecha = datos["fecha"]
         m.anio = datos["fecha"].year
@@ -875,7 +886,8 @@ def conciliar_aplicar(payload: ConcAplicar, db: Session = Depends(get_db)):
     return {"conciliados": conciliados, "conflictos": conflictos}
 
 
-def _build_justificante_pdf(m: MovimientoBancario, filas: list[ReciboJustif], clase: str) -> bytes:
+def _build_justificante_pdf(m: MovimientoBancario, filas: list[ReciboJustif], clase: str,
+                            ajustes: list[dict] | None = None) -> bytes:
     from reportlab.lib import colors
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.styles import getSampleStyleSheet
@@ -906,7 +918,7 @@ def _build_justificante_pdf(m: MovimientoBancario, filas: list[ReciboJustif], cl
             f.referencia or "", Paragraph(f.cliente or f.mercado or "", cli),
         ])
     # Líneas MANUALES de ajuste (compensaciones con siniestros, devoluciones de fees…) — suman al total.
-    for a in (m.ajustes_justif or []):
+    for a in (ajustes or []):
         imp = Decimal(str(a.get("importe") or 0))
         total += imp
         data.append(["Ajuste", _num_es(imp), "", Paragraph(str(a.get("texto") or ""), cli), ""])
@@ -930,14 +942,14 @@ def _build_justificante_pdf(m: MovimientoBancario, filas: list[ReciboJustif], cl
     return buf.getvalue()
 
 
-@router.get("/{mid}/justificante.pdf")
-def justificante_pdf(mid: int, db: Session = Depends(get_db)):
-    """PDF del justificante del apunte con las transferencias que lo componen (transferencia_ids)."""
-    m = db.get(MovimientoBancario, mid)
-    if m is None:
-        raise HTTPException(status_code=404, detail=f"Movimiento {mid} no encontrado")
-    ids = m.transferencia_ids or []
-    clase = _clase_de_concepto(m.concepto)
+def _filas_justificante(db: Session, m: MovimientoBancario) -> tuple[list[ReciboJustif], str, list[dict]]:
+    """(filas por recibo, clase, ajustes) de un apunte. Si es ESPEJO de otro (otra pata de un
+    traspaso entre cuentas), usa las transferencias/ajustes/clase del apunte apuntado → PDF idéntico."""
+    fuente = db.get(MovimientoBancario, m.espejo_mid) if m.espejo_mid else m
+    if fuente is None:
+        return [], _clase_de_concepto(m.concepto), []
+    ids = fuente.transferencia_ids or []
+    clase = _clase_de_concepto(fuente.concepto)
     filas: list[ReciboJustif] = []
     if ids:
         trs = list(db.scalars(select(Transferencia).where(Transferencia.id.in_(ids))).all())
@@ -945,11 +957,75 @@ def justificante_pdf(mid: int, db: Session = Depends(get_db)):
         byid = {t.id: t for t in trs}
         trs_ord = [byid[i] for i in ids if i in byid]   # conserva el orden de selección
         filas = _filas_recibo(trs_ord, cov, _desglose_recibos(db, trs_ord))
+    return filas, clase, (fuente.ajustes_justif or [])
+
+
+@router.get("/{mid}/justificante.pdf")
+def justificante_pdf(mid: int, db: Session = Depends(get_db)):
+    """PDF del justificante del apunte con las transferencias que lo componen (o, si es espejo de
+    otro apunte, las de aquel: el mismo dinero movido entre dos cuentas propias)."""
+    m = db.get(MovimientoBancario, mid)
+    if m is None:
+        raise HTTPException(status_code=404, detail=f"Movimiento {mid} no encontrado")
+    filas, clase, ajustes = _filas_justificante(db, m)
     if not filas:
         raise HTTPException(status_code=409, detail="Este apunte no tiene transferencias asociadas para el justificante.")
-    pdf = _build_justificante_pdf(m, filas, clase)
+    pdf = _build_justificante_pdf(m, filas, clase, ajustes)
     nombre = f"{m.identificador or m.id}. {m.concepto or 'Justificante'}.pdf"
     return StreamingResponse(
         io.BytesIO(pdf), media_type="application/pdf",
         headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(nombre)}"},
     )
+
+
+@router.get("/{mid}/justificante", response_model=list[ReciboJustif])
+def justificante_filas(mid: int, db: Session = Depends(get_db)):
+    """Filas POR RECIBO del justificante de un apunte (resolviendo el espejo si lo tiene). Para la
+    vista previa en el modal cuando el apunte se justifica como espejo de otro."""
+    m = db.get(MovimientoBancario, mid)
+    if m is None:
+        raise HTTPException(status_code=404, detail=f"Movimiento {mid} no encontrado")
+    filas, _clase, _aj = _filas_justificante(db, m)
+    return filas
+
+
+class EspejoCandidato(BaseModel):
+    mid: int
+    identificador: str | None
+    cuenta: str | None
+    fecha: dt.date | None
+    concepto: str | None
+    importe: Decimal
+    n_transferencias: int
+
+
+@router.get("/{mid}/espejo-candidatos", response_model=list[EspejoCandidato])
+def espejo_candidatos(mid: int, dias: int = 10, db: Session = Depends(get_db)):
+    """Apuntes YA justificados (con transferencias) que podrían ser la OTRA pata de este apunte:
+    otra cuenta, mismo importe (en valor absoluto) y fecha cercana. Para justificar por espejo el
+    ingreso de un traspaso entre cuentas propias sin volver a seleccionar las transferencias."""
+    m = db.get(MovimientoBancario, mid)
+    if m is None:
+        raise HTTPException(status_code=404, detail=f"Movimiento {mid} no encontrado")
+    objetivo = abs(Decimal(m.ingreso or 0) - Decimal(m.gasto or 0))
+    stmt = select(MovimientoBancario).where(
+        MovimientoBancario.id != m.id,
+        MovimientoBancario.transferencia_ids.is_not(None),
+    )
+    if m.fecha:
+        stmt = stmt.where(MovimientoBancario.fecha >= m.fecha - dt.timedelta(days=dias),
+                          MovimientoBancario.fecha <= m.fecha + dt.timedelta(days=dias))
+    out: list[EspejoCandidato] = []
+    for c in db.scalars(stmt.order_by(MovimientoBancario.fecha)).all():
+        if not c.transferencia_ids:
+            continue
+        if (c.cuenta or "") == (m.cuenta or ""):     # la otra pata está SIEMPRE en otra cuenta
+            continue
+        imp = abs(Decimal(c.ingreso or 0) - Decimal(c.gasto or 0))
+        if abs(imp - objetivo) > Decimal("0.5"):
+            continue
+        out.append(EspejoCandidato(
+            mid=c.id, identificador=c.identificador, cuenta=c.cuenta, fecha=c.fecha,
+            concepto=c.concepto, importe=imp, n_transferencias=len(c.transferencia_ids or []),
+        ))
+    return out
