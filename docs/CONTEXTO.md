@@ -24,11 +24,17 @@
 - **Operativo:** renovar el **secreto de Entra** (~jun 2028) o el login dejará de funcionar.
 - **Menor:** subir la retención de backups de **Azure a 35 días**.
 
-**Cerrado recientemente (2026-07):** conciliación bancaria **Fase A** (importar extracto Norma 43, validado
-Sabadell+Bankinter) **y Fase B** (conciliar apuntes de seguros con transferencias: proponer→revisar→
-confirmar) · **mapeo editable de columnas de BDX** por programa (Risk) · arreglos del **módulo Tareas**
-(desfase de periodo, orden secuencial, pasos en paralelo, arranque rodante 01/07/2026) · **backup a NAS** ·
-**5 recibos duplicados** resueltos · **reconciliación de Alembic** (repo↔prod, un solo head).
+**Cerrado recientemente (2026-07):** **justificante contable** — (a) desglose por recibo también para
+**Comisiones/Honorarios** (los traspasos/liquidaciones de comisión ya no salen con recibo "en blanco",
+p. ej. Bankinter 103.06) y (b) **justificante ESPEJO** (`espejo_mid`): justificar un apunte como la otra
+pata de un traspaso entre cuentas propias (Sabadell 262.06 "Ingreso Comisiones" = Bankinter 103.06
+"Traspaso Comisiones"); columna **Premium Bdx** + **líneas de ajuste manual** para cuadrar Bankinter ·
+conciliación bancaria **Fase A** (importar extracto Norma 43, validado Sabadell+Bankinter) **y Fase B**
+(conciliar apuntes de seguros con transferencias: proponer→revisar→confirmar) · **mapeo editable de
+columnas de BDX** por programa (Risk) · arreglos del **módulo Tareas** (desfase de periodo, orden
+secuencial, pasos en paralelo, arranque rodante 01/07/2026) · **backup a NAS** · **5 recibos duplicados**
+resueltos · **reconciliación de Alembic** (repo↔prod, un solo head) · fix del **Manual** (cursor saltaba
+al título al editar) · **CI** con `concurrency: cancel-in-progress` (no encolar despliegues).
 
 **Mejoras / módulos propuestos (brainstorm 2026-07-11) — para valorar:**
 - **Verifactu / SII (facturación electrónica)** — le interesó a Fernando. Paso 0: confirmar con la asesoría
@@ -1337,6 +1343,61 @@ en tareas secuenciales); el `orden` se calcula de los flags al guardar y se deri
 Al pasar el cursor por un mes: guía vertical + recuadro con la **prima acumulada de cada año visible** en
 ese mes (resalta el punto de cada línea y el año actual en negrita). Respeta la selección de años. Todo en
 SVG con bandas de hover invisibles por mes (`EvolucionProgramaChart` en `BinderDetalle.tsx`).
+
+## Sesión 12/07/2026 (equipo "ferna") — Justificante contable: desglose de Comisiones + justificante ESPEJO
+
+Continuación del justificante (para el gestor contable). Todo verificado contra los PDF hechos a mano en
+`Mayrit Insurance Broker/…/Cuenta Bankinter` y `…/Cuenta Sabadell General`. Commits `c813d7a` y `056f6c5`.
+
+### 1) Desglose por recibo también para Comisiones/Honorarios (arregla "recibos en blanco")
+- **Síntoma:** en Bankinter 103.06 ("Traspaso Comisiones a Mayrit") los recibos salían en blanco. El
+  desglose por recibo (`_desglose_recibos` en `contabilidad.py`) solo se aplicaba a **Primas**; para
+  Comisiones/Honorarios devolvía una fila sin recibo.
+- **Causa/dato:** al traspasar comisiones, cada línea del Premium guarda `traspasado = brokerage_amount` y
+  `fecha_traspaso` (ver `recibos.py::traspasar_premium` → `sync_binder`), y el importe de la transferencia
+  del binder es la Σ de esa columna. El desglose por recibo ES recuperable.
+- **Fix:** `_desglose_recibos` ahora es PRECISO por **(subtipo, binder, mes de premium, recibo)**: importe
+  por recibo = Σ de la columna del subtipo (`ingresado`/`liquidado_uw`/`traspasado`) de las líneas de ese
+  recibo en ese mes de premium **que participaron en el flujo** (su fecha de cobro/liq./traspaso puesta).
+  Como el importe de la transferencia es esa misma Σ, **cuadra** (Σ recibos = importe transferencia). Vale
+  para Primas Y Comisiones/Honorarios; reproduce el PDF a mano (una fila por **recibo × mes de premium**).
+  Respaldo por (binder,mes)/fecha SOLO para Primas antiguas (2018-19 sin fecha de flujo por línea).
+- **Verificado:** 103.06 pasó de mayoría en blanco → **71 filas, 0 en blanco, Σ=60.460,15** (= importe).
+  Sin regresión en Primas (Σfilas==Σtransferencias siempre). El `func.to_char(premium_bdx,'YYYY-MM')` debe
+  ser UNA sola expresión reutilizada en SELECT y GROUP BY (si no, Postgres da GroupingError).
+
+### 2) Justificante ESPEJO — otra pata de un traspaso entre cuentas propias
+- **Caso:** el "**Ingreso Comisiones**" que ENTRA en la cuenta de la sociedad (Sabadell General **262.06**,
+  +60.460,15) es el MISMO dinero que el "**Traspaso Comisiones**" que SALE de la cuenta de clientes
+  (Bankinter **103.06**, −60.460,15): mismas 24 transferencias, mismo desglose (PDF idéntico, confirmado
+  con `208.05`≡`076.05`). No se podía justificar porque: (a) "Ingreso Comisiones" es **ambiguo** — de 101
+  apuntes, la mayoría son **cobros directos** (subtipo Cobro) y solo ~7 son traspaso → no se puede deducir
+  el subtipo del concepto ni de la cuenta; (b) las 24 transferencias ya estaban usadas en el 103.06.
+- **Solución (elegida por Fernando):** campo `movimientos_bancarios.**espejo_mid**` (migración
+  `conta_espejo_mid_0001`). Un apunte se justifica como **espejo** de otro ya justificado, heredando sus
+  transferencias/ajustes/clase; el PDF sale idéntico. En el modal aparece un **selector** con los apuntes
+  candidatos (otra cuenta, mismo importe abs, fecha cercana, ya justificado) y una **vista previa** de las
+  filas heredadas. Espejo y justificante propio son **excluyentes**; un apunte no puede espejarse a sí mismo.
+- **Backend:** `_filas_justificante(db, m)` resuelve el espejo; endpoints `GET /contabilidad/{mid}/justificante`
+  (filas JSON) y `/{mid}/espejo-candidatos`; `_build_justificante_pdf` parametriza `ajustes`;
+  `_read.conciliado` incluye `espejo_mid`; `actualizar` persiste `espejo_mid` (excluyente con
+  `transferencia_ids`). **Front:** `AltaMovimiento.tsx` muestra el justificante aunque el concepto no
+  reconozca clase, con el selector de espejo y la vista previa; `api.ts` +`EspejoCandidato`,
+  `espejoCandidatos`, `justificanteFilas`. **El 262.06 ya quedó enlazado al 103.06 en producción.**
+
+### 3) Revisión 094.06 y 107.07 (NO tocados — Fernando mete los ajustes)
+El desglose está bien (Σfilas==Σtransferencias). No cuadran con el banco por falta de **ajuste manual**:
+- **094.06** (Cobro Primas, Bankinter 24/06): 2 cobros OM (Atca 64.669,44 + MDABNZ1J009 60.450,00 =
+  125.119,44); el banco ingresó **+414,40** de más sin cobro que lo explique → ajuste **+414,40**.
+- **107.07** (Liquidación Primas, Bankinter 07/07): 10 liquidaciones = 445.190,13; el banco pagó **−1.178,88**
+  menos (algo se netea al liquidar al UW; cerca hay un siniestro B1634PI0620IBE de 1.179,00 ya justificado
+  en 109.07, difiere 0,12) → ajuste **−1.178,88**. Fernando los mete a mano con el concepto correcto.
+
+### Nota migraciones (recordatorio): el deploy NO ejecuta Alembic (`startup.sh` solo arranca gunicorn).
+Las migraciones se aplican **a mano** con `alembic upgrade head` (usuario `mayrit_app`, que SÍ tiene DDL).
+Ya aplicadas a prod: `conta_ajustes_justif_0001` y `conta_espejo_mid_0001`. Head del repo = `conta_espejo_mid_0001`.
+
+---
 
 ## Sesión 11-12/07/2026 (equipo "ferna") — Conciliación bancaria (Norma 43), mapeo editable BDX, Tareas y reconciliación Alembic
 
