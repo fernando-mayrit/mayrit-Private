@@ -50,6 +50,7 @@ class MovimientoRead(BaseModel):
     factura: bool
     conciliado: bool = False
     transferencia_ids: list[int] | None = None
+    ajustes_justif: list[dict] | None = None
 
     class Config:
         from_attributes = True
@@ -492,6 +493,7 @@ class MovimientoUpdate(BaseModel):
     tarjeta: bool | None = None
     movimiento_bancario: bool | None = None
     transferencia_ids: list[int] | None = None   # transferencias que componen el apunte (justificante)
+    ajustes_justif: list[dict] | None = None      # líneas manuales de ajuste del justificante ({texto, importe})
 
 
 @router.put("/{mid}", response_model=MovimientoRead)
@@ -502,7 +504,7 @@ def actualizar(mid: int, payload: MovimientoUpdate, db: Session = Depends(get_db
     if m is None:
         raise HTTPException(status_code=404, detail=f"Movimiento {mid} no encontrado")
     datos = payload.model_dump(exclude_unset=True)
-    for k in ("grupo", "concepto", "saldo", "descripcion", "factura", "tarjeta", "movimiento_bancario", "transferencia_ids"):
+    for k in ("grupo", "concepto", "saldo", "descripcion", "factura", "tarjeta", "movimiento_bancario", "transferencia_ids", "ajustes_justif"):
         if k in datos:
             setattr(m, k, datos[k])
     if datos.get("fecha"):
@@ -556,6 +558,7 @@ class ReciboJustif(BaseModel):
     transferencia_id: int
     importe_transferencia: Decimal
     fecha: dt.date | None
+    premium_bdx: dt.date | None   # periodo del Premium (para el justificante del gestor contable)
     importe: Decimal           # importe individual de ESTE recibo
     referencia: str | None
     recibo: str | None
@@ -657,7 +660,7 @@ def _filas_recibo(trs: list[Transferencia], cov: dict[str, str],
         for (rec, imp) in desg.get(t.id, [(None, Decimal(t.importe or 0))]):
             filas.append(ReciboJustif(
                 transferencia_id=t.id, importe_transferencia=Decimal(t.importe or 0),
-                fecha=t.fecha, importe=imp, referencia=t.numero_poliza, recibo=rec,
+                fecha=t.fecha, premium_bdx=t.periodo, importe=imp, referencia=t.numero_poliza, recibo=rec,
                 cliente=cov.get(t.numero_poliza or ""), mercado=t.mercado,
             ))
     return filas
@@ -679,11 +682,11 @@ def _transferencias_ya_justificadas(db: Session, excluir_mid: int | None) -> set
 @router.get("/transferencias-justificante", response_model=list[ReciboJustif])
 def transferencias_justificante(
     clase: str = "cobro", fecha: dt.date | None = None, ambito: str | None = None,
-    excluir_mid: int | None = None, limit: int = 1500, db: Session = Depends(get_db),
+    excluir_mid: int | None = None, dias: int = 0, limit: int = 1500, db: Session = Depends(get_db),
 ):
     """Transferencias candidatas (del subtipo de la clase) para componer un apunte, filtradas por la
-    FECHA del movimiento y ocultando las ya usadas en otro apunte. Se autoseleccionan en el front y su
-    suma debe cuadrar con el importe del apunte.
+    FECHA del movimiento (±`dias` de ventana: la fecha valor del banco ≠ la contable) y ocultando las ya
+    usadas en otro apunte. Se autoseleccionan en el front y su suma debe cuadrar con el importe del apunte.
 
     `ambito` (Primas/Siniestros/Comisiones/Honorarios, deducido del concepto del apunte) acota el
     `tipo` de transferencia: un apunte «Cobro Primas» NO debe mezclar transferencias de Siniestros."""
@@ -692,7 +695,12 @@ def transferencias_justificante(
     if fecha is None:
         return []
     subtipos = _CLASE_SUBTIPOS.get(clase, _CLASE_SUBTIPOS["cobro"])
-    stmt = select(Transferencia).where(Transferencia.subtipo.in_(subtipos), Transferencia.fecha == fecha)
+    stmt = select(Transferencia).where(Transferencia.subtipo.in_(subtipos))
+    if dias > 0:
+        stmt = stmt.where(Transferencia.fecha >= fecha - dt.timedelta(days=dias),
+                          Transferencia.fecha <= fecha + dt.timedelta(days=dias))
+    else:
+        stmt = stmt.where(Transferencia.fecha == fecha)
     if ambito:
         stmt = stmt.where(Transferencia.tipo == ambito)
     usados = _transferencias_ya_justificadas(db, excluir_mid)
@@ -862,23 +870,30 @@ def _build_justificante_pdf(m: MovimientoBancario, filas: list[ReciboJustif], cl
 
     imp_label = _IMP_LABEL.get(clase, "Importe")
     cli = styles["Normal"].clone("cli"); cli.fontSize = 8
-    data = [["Recibo", "Fecha", imp_label, "Referencia", "Cliente"]]
+    # Columnas como en el justificante del gestor: Recibo · Cobrado/Liquidado · Premium Bdx · Ref · Cliente.
+    data = [["Recibo", imp_label, "Premium Bdx", "Referencia", "Cliente"]]
     total = Decimal(0)
     for f in filas:
         total += f.importe
         data.append([
-            f.recibo or "", f.fecha.strftime("%d/%m/%Y") if f.fecha else "",
-            _num_es(f.importe), f.referencia or "", Paragraph(f.cliente or f.mercado or "", cli),
+            f.recibo or "", _num_es(f.importe),
+            f.premium_bdx.strftime("%d/%m/%Y") if f.premium_bdx else "",
+            f.referencia or "", Paragraph(f.cliente or f.mercado or "", cli),
         ])
-    data.append(["", "Total", _num_es(total), "", ""])
+    # Líneas MANUALES de ajuste (compensaciones con siniestros, devoluciones de fees…) — suman al total.
+    for a in (m.ajustes_justif or []):
+        imp = Decimal(str(a.get("importe") or 0))
+        total += imp
+        data.append(["Ajuste", _num_es(imp), "", Paragraph(str(a.get("texto") or ""), cli), ""])
+    data.append(["", _num_es(total), "Total", "", ""])
 
-    t = Table(data, colWidths=[24 * mm, 22 * mm, 28 * mm, 36 * mm, 68 * mm], repeatRows=1)
+    t = Table(data, colWidths=[24 * mm, 26 * mm, 24 * mm, 42 * mm, 62 * mm], repeatRows=1)
     t.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), naranja),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
         ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
         ("FONTSIZE", (0, 0), (-1, -1), 8),
-        ("ALIGN", (2, 0), (2, -1), "RIGHT"),
+        ("ALIGN", (1, 0), (1, -1), "RIGHT"),
         ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#cccccc")),
         ("ROWBACKGROUNDS", (0, 1), (-1, -2), [colors.white, colors.HexColor("#f6f6f6")]),
         ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#fff1ea")),

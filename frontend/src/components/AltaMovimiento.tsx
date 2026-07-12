@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { contabilidadApi, type ContaCategoria, type BaseAlta, type MovimientoBancario, type ReciboJustif } from "../api";
+import { contabilidadApi, type ContaCategoria, type BaseAlta, type MovimientoBancario, type ReciboJustif, type AjusteJustif } from "../api";
 import { fmtMiles, fmtFechaES } from "../format";
 import FormPanel from "./FormPanel";
 import NumberInput from "./NumberInput";
@@ -43,10 +43,12 @@ export default function AltaMovimiento({ cuenta, cats, movimiento, onClose, onSa
   const [fechaFiltro] = useState(movimiento?.fecha?.slice(0, 10) ?? "");
   const [impById, setImpById] = useState<Map<number, number>>(new Map());  // importe por transferencia (acumula)
   const [genJustif, setGenJustif] = useState(false);
+  // Líneas MANUALES de ajuste del justificante (compensaciones con siniestros, etc.). Suman al cuadre.
+  const [ajustes, setAjustes] = useState<AjusteJustif[]>(movimiento?.ajustes_justif ?? []);
 
   // ¿Hay cambios sin guardar? Compara los campos editables con su estado al abrir; así el aviso de
   // "Cambios sin guardar" solo salta si de verdad se tocó algo (antes `dirty` iba fijo a true).
-  const snapshot = JSON.stringify({ fecha, devengo, tipo, grupo, concepto, importe, saldo, descripcion, movBanc, factura, tarjeta, transfIds });
+  const snapshot = JSON.stringify({ fecha, devengo, tipo, grupo, concepto, importe, saldo, descripcion, movBanc, factura, tarjeta, transfIds, ajustes });
   const [inicialSnap] = useState(snapshot);
   const dirty = snapshot !== inicialSnap;
 
@@ -79,7 +81,11 @@ export default function AltaMovimiento({ cuenta, cats, movimiento, onClose, onSa
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [claseJustif, ambitoJustif, fechaFiltro]);
   const sumaSel = useMemo(() => transfIds.reduce((a, id) => a + (impById.get(id) ?? 0), 0), [transfIds, impById]);
-  const restante = num(importe) - sumaSel;
+  const sumaAjustes = useMemo(() => ajustes.reduce((a, x) => a + num(x.importe), 0), [ajustes]);
+  const restante = num(importe) - sumaSel - sumaAjustes;
+  const addAjuste = () => setAjustes((s) => [...s, { texto: "", importe: 0 }]);
+  const setAjuste = (i: number, patch: Partial<AjusteJustif>) => setAjustes((s) => s.map((a, k) => (k === i ? { ...a, ...patch } : a)));
+  const delAjuste = (i: number) => setAjustes((s) => s.filter((_, k) => k !== i));
   const toggleTransf = (id: number) => setTransfIds((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
   const marcarTodos = () => setTransfIds([...new Set(candidatos.map((c) => c.transferencia_id))]);
   const quitarTodos = () => setTransfIds([]);
@@ -88,7 +94,7 @@ export default function AltaMovimiento({ cuenta, cats, movimiento, onClose, onSa
     if (!movimiento) return;
     setGenJustif(true); setError(null);
     try {
-      await contabilidadApi.actualizar(movimiento.id, { transferencia_ids: transfIds });  // persistir selección
+      await contabilidadApi.actualizar(movimiento.id, { transferencia_ids: transfIds, ajustes_justif: ajustes.filter((a) => (a.texto || "").trim() || num(a.importe) !== 0) });  // persistir selección + ajustes
       const { blob, filename } = await contabilidadApi.justificantePdf(movimiento.id);
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a"); a.href = url; a.download = filename; a.click();
@@ -136,6 +142,7 @@ export default function AltaMovimiento({ cuenta, cats, movimiento, onClose, onSa
         importe: num(importe), saldo: saldo !== "" ? num(saldo) : null, descripcion: descripcion || null,
         movimiento_bancario: movBanc, factura, tarjeta,
         transferencia_ids: claseJustif ? transfIds : null,
+        ajustes_justif: claseJustif ? ajustes.filter((a) => (a.texto || "").trim() || num(a.importe) !== 0) : null,
       };
       if (edicion && movimiento) await contabilidadApi.actualizar(movimiento.id, datos);
       else await contabilidadApi.crear({ cuenta, ...datos });
@@ -261,10 +268,10 @@ export default function AltaMovimiento({ cuenta, cats, movimiento, onClose, onSa
           <div className="justif-head">
             <b>Justificante</b>
             <span className="hint">transferencias que componen este {claseJustif === "liquidacion" ? "pago" : claseJustif === "traspaso" ? "traspaso" : "cobro"}</span>
-            <span className={"justif-restante" + (Math.abs(restante) < 0.01 && transfIds.length > 0 ? " ok" : "")}>
-              {Math.abs(restante) < 0.01 && transfIds.length > 0
-                ? <>✓ Cuadra · {fmtMiles(sumaSel)} €</>
-                : <>Restante para cuadrar: <b>{fmtMiles(restante)} €</b> <span className="hint">(sel. {fmtMiles(sumaSel)} de {fmtMiles(num(importe))} €)</span></>}
+            <span className={"justif-restante" + (Math.abs(restante) < 0.01 && (transfIds.length > 0 || ajustes.length > 0) ? " ok" : "")}>
+              {Math.abs(restante) < 0.01 && (transfIds.length > 0 || ajustes.length > 0)
+                ? <>✓ Cuadra · {fmtMiles(sumaSel + sumaAjustes)} €</>
+                : <>Restante para cuadrar: <b>{fmtMiles(restante)} €</b> <span className="hint">(sel. {fmtMiles(sumaSel + sumaAjustes)} de {fmtMiles(num(importe))} €)</span></>}
             </span>
           </div>
           <div className="justif-filtros">
@@ -275,7 +282,7 @@ export default function AltaMovimiento({ cuenta, cats, movimiento, onClose, onSa
             <div className="justif-row justif-cab">
               <span />
               <span>Recibo</span>
-              <span>Fecha</span>
+              <span>Premium Bdx</span>
               <span className="jr-imp">Importe</span>
               <span>Referencia</span>
               <span>Cliente</span>
@@ -284,7 +291,7 @@ export default function AltaMovimiento({ cuenta, cats, movimiento, onClose, onSa
               <label key={i} className={"justif-row" + (i > 0 && candidatos[i - 1].transferencia_id === c.transferencia_id ? " jr-cont" : "")}>
                 <input type="checkbox" checked={transfIds.includes(c.transferencia_id)} onChange={() => toggleTransf(c.transferencia_id)} />
                 <span className="jr-num">{c.recibo ?? "—"}</span>
-                <span className="jr-fec">{c.fecha ? fmtFechaES(c.fecha) : ""}</span>
+                <span className="jr-fec">{c.premium_bdx ? fmtFechaES(c.premium_bdx) : ""}</span>
                 <span className="jr-imp">{fmtMiles(c.importe)} €</span>
                 <span className="jr-ref">{c.referencia}</span>
                 <span className="jr-cli">{c.cliente ?? c.mercado}</span>
@@ -293,6 +300,26 @@ export default function AltaMovimiento({ cuenta, cats, movimiento, onClose, onSa
             {candidatos.length === 0 && <div className="hint" style={{ padding: 8 }}>No hay transferencias sin justificar para la fecha de este apunte.</div>}
           </div>
           <div className="hint" style={{ marginBottom: 6 }}>{transfIds.length} transferencia(s) seleccionada(s). Se autoseleccionan las de la fecha del apunte; las ya usadas en otro apunte no aparecen.</div>
+
+          {/* Líneas MANUALES de ajuste: compensaciones que no son recibos (siniestros compensados con
+              primas, devolución de fees…). Suman al cuadre y salen en el PDF. */}
+          <div className="justif-ajustes" style={{ marginTop: 6, marginBottom: 8 }}>
+            <div className="hint" style={{ marginBottom: 4 }}>
+              <b>Ajustes manuales</b> — compensaciones que no son recibos (p. ej. siniestro compensado con primas). Suman al cuadre y salen en el justificante.
+            </div>
+            {ajustes.map((a, i) => (
+              <div key={i} style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 4 }}>
+                <input type="text" value={a.texto} placeholder="Descripción (p. ej. Devolución de fees a Lloyd's)" style={{ flex: 1, minWidth: 0 }}
+                  onChange={(e) => setAjuste(i, { texto: e.target.value })} />
+                <span style={{ width: 130, flexShrink: 0 }}>
+                  <NumberInput value={a.importe ? String(a.importe) : ""} onChange={(v) => setAjuste(i, { importe: num(v) })} decimals={2} suffix="€" />
+                </span>
+                <button type="button" className="btn-link btn-sm" title="Quitar" onClick={() => delAjuste(i)}>✕</button>
+              </div>
+            ))}
+            <button type="button" className="btn-secondary btn-sm" onClick={addAjuste}>＋ Añadir ajuste</button>
+          </div>
+
           {edicion && (
             <button className="btn-secondary btn-sm" onClick={generarJustificante} disabled={genJustif || transfIds.length === 0}>
               {genJustif ? "Generando…" : "📄 Generar justificante (PDF)"}

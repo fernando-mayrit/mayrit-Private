@@ -1232,6 +1232,10 @@ class MovimientoBancario(Base):
     # transferencia.id). Cada transferencia es el importe REAL movido (cobro/liquidación parcial), con
     # su fecha; sumadas por fecha cuadran con el importe del apunte. Con ellas se genera el PDF.
     transferencia_ids: Mapped[list[int] | None] = mapped_column(JSONB)
+    # Líneas MANUALES de ajuste del justificante: [{"texto": str, "importe": float}]. Para cuadrar un
+    # apunte cuando además de recibos hay compensaciones (p. ej. siniestros compensados con primas,
+    # devolución de fees). Suman al cuadre y salen en el PDF. En Bankinter es habitual.
+    ajustes_justif: Mapped[list[dict] | None] = mapped_column(JSONB)
 
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

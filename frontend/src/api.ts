@@ -506,6 +506,7 @@ export interface MovimientoBancario {
   factura: boolean;
   conciliado: boolean;
   transferencia_ids?: number[] | null;
+  ajustes_justif?: AjusteJustif[] | null;
 }
 export interface ContaCategoria { concepto: string; grupo: string | null; tipo: string | null; cuenta_contable: string | null }
 // Fila POR RECIBO del justificante. Varias filas pueden compartir transferencia_id (un cobro que
@@ -514,12 +515,14 @@ export interface ReciboJustif {
   transferencia_id: number;
   importe_transferencia: number | string;
   fecha: string | null;
+  premium_bdx: string | null;          // periodo del Premium (para el justificante)
   importe: number | string;            // importe individual de ESTE recibo
   referencia: string | null;
   recibo: string | null;
   cliente: string | null;
   mercado: string | null;
 }
+export interface AjusteJustif { texto: string; importe: number }
 export interface BaseAlta { ultimo_saldo: number | string | null; next_iden: number }
 export interface MovimientoCrear {
   cuenta: string; fecha: string; devengo?: string | null; tipo: string;
@@ -527,6 +530,7 @@ export interface MovimientoCrear {
   saldo?: number | null; descripcion?: string | null;
   movimiento_bancario?: boolean; factura?: boolean; tarjeta?: boolean;
   transferencia_ids?: number[] | null;
+  ajustes_justif?: AjusteJustif[] | null;
 }
 export interface MovimientosListados {
   items: MovimientoBancario[];
@@ -569,15 +573,16 @@ export const contabilidadApi = {
   categorias: () => request<ContaCategoria[]>("/contabilidad/categorias"),
   base: (cuenta: string, anio: number) => request<BaseAlta>(`/contabilidad/base?cuenta=${encodeURIComponent(cuenta)}&anio=${anio}`),
   crear: (d: MovimientoCrear) => request<MovimientoBancario>("/contabilidad", { method: "POST", body: JSON.stringify(d) }),
-  actualizar: (id: number, d: Partial<{ fecha: string; devengo: string | null; tipo: string; grupo: string | null; concepto: string | null; importe: number; saldo: number | null; descripcion: string | null; factura: boolean; tarjeta: boolean; movimiento_bancario: boolean; transferencia_ids: number[] | null }>) =>
+  actualizar: (id: number, d: Partial<{ fecha: string; devengo: string | null; tipo: string; grupo: string | null; concepto: string | null; importe: number; saldo: number | null; descripcion: string | null; factura: boolean; tarjeta: boolean; movimiento_bancario: boolean; transferencia_ids: number[] | null; ajustes_justif: AjusteJustif[] | null }>) =>
     request<MovimientoBancario>(`/contabilidad/${id}`, { method: "PUT", body: JSON.stringify(d) }),
   // Transferencias candidatas para el justificante (clase: cobro | liquidacion | traspaso), filtradas
-  // por la fecha del movimiento y ocultando las ya usadas en otro apunte (excluirMid = apunte actual).
-  transferenciasJustificante: (clase: string, opts: { fecha?: string; ambito?: string; excluirMid?: number } = {}) => {
+  // por la fecha del movimiento (±dias de ventana) y ocultando las ya usadas en otro apunte.
+  transferenciasJustificante: (clase: string, opts: { fecha?: string; ambito?: string; excluirMid?: number; dias?: number } = {}) => {
     const qs = new URLSearchParams({ clase });
     if (opts.fecha) qs.set("fecha", opts.fecha);
     if (opts.ambito) qs.set("ambito", opts.ambito);
     if (opts.excluirMid != null) qs.set("excluir_mid", String(opts.excluirMid));
+    if (opts.dias != null) qs.set("dias", String(opts.dias));
     return request<ReciboJustif[]>(`/contabilidad/transferencias-justificante?${qs.toString()}`);
   },
   // Descarga el PDF del justificante de un apunte (con los recibos ya asociados).
