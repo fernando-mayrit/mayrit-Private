@@ -11,6 +11,12 @@ on:
       - main
   workflow_dispatch:
 
+# Varios push seguidos a main: cancela los despliegues en curso y despliega solo el ÚLTIMO commit
+# (evita que se encolen builds; el último siempre incluye todo lo anterior).
+concurrency:
+  group: deploy-mayrit
+  cancel-in-progress: true
+
 jobs:
   build-deploy:
     runs-on: ubuntu-latest
