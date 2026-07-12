@@ -144,11 +144,11 @@ export default function ManualPage() {
                   <button className="btn-icon btn-icon-rojo" title="Borrar" onClick={() => borrar(s)}>🗑️</button>
                 </div>
               </div>
-              {editingId === s.id && <Editor />}
+              {editingId === s.id && Editor()}
             </section>
           ))}
           {editingId === "new" ? (
-            <section className="manual-seccion manual-seccion-edit"><Editor /></section>
+            <section className="manual-seccion manual-seccion-edit">{Editor()}</section>
           ) : (
             <button className="btn-secondary manual-add" onClick={nueva}>＋ Añadir sección</button>
           )}
