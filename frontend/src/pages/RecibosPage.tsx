@@ -478,10 +478,10 @@ export default function RecibosPage() {
             const traspasado = !!r.comision_fecha_traspaso;
             const pagado = !!r.comision_cedida_fecha_pago;
             const tieneCedida = num(r.comision_cedida) > 0 || num(r.comision_cedida_a_pagar) > 0;
-            const chip = (on: boolean, emoji: string, acc: "cobrar" | "liquidar" | "traspasar" | "pagar", lbl: string) => (
+            const chip = (on: boolean, emoji: string, acc: "cobrar" | "liquidar" | "traspasar" | "pagar", lbl: string, hecho: string) => (
               <button
                 className={"acc-chip" + (on ? " on" : "")}
-                title={on ? `${lbl} ✓ — clic para deshacer` : lbl}
+                title={on ? `${hecho} ✓ — clic para deshacer` : lbl}
                 onClick={() => pedirGestion(r, acc, on, lbl)}
               >
                 {emoji}
@@ -491,11 +491,11 @@ export default function RecibosPage() {
             const aplica = (k: string) => !PEND[k].noAplica?.(r);
             return (
               <div className="recibo-row-acc">
-                {chip(cobrado, "💰", "cobrar", "Cobrar")}
+                {chip(cobrado, "💰", "cobrar", "Cobrar", "Cobrado")}
                 {/* Liquidar/Traspasar/Pagar SOLO tienen sentido (y aparecen) una vez cobrada la prima. */}
-                {cobrado && aplica("pdte_liquidar") && chip(liquidado, "🏦", "liquidar", "Liquidar a compañía")}
-                {cobrado && aplica("pdte_traspaso") && chip(traspasado, "🔁", "traspasar", "Traspasar comisión a gastos")}
-                {cobrado && tieneCedida && aplica("pendiente_pago") && chip(pagado, "💸", "pagar", "Pagar comisión al corredor")}
+                {cobrado && aplica("pdte_liquidar") && chip(liquidado, "🏦", "liquidar", "Liquidar a compañía", "Liquidado a compañía")}
+                {cobrado && aplica("pdte_traspaso") && chip(traspasado, "🔁", "traspasar", "Traspasar comisión a gastos", "Traspasada comisión a gastos")}
+                {cobrado && tieneCedida && aplica("pendiente_pago") && chip(pagado, "💸", "pagar", "Pagar comisión al corredor", "Pagada comisión al corredor")}
                 <button className="btn-icono" title="Editar" aria-label="Editar" onClick={() => setSel(r)}>✏️</button>
               </div>
             );
