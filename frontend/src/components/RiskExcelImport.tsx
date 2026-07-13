@@ -166,9 +166,11 @@ export default function RiskExcelImport({
             <table className="compacto tabla-risk-preview">
               <thead>
                 <tr>
-                  <th>Certificado</th><th>Asegurado</th><th>Secc.</th><th>RC</th><th>Reporting</th>
-                  <th className="num">GWP our</th><th className="num">Com. %</th>
-                  <th className="num">Prima a Traspasar</th><th className="num">a Liquidar</th>
+                  <th>Certificado</th><th>Asegurado</th>
+                  <th className="num">GWP Our Line</th>
+                  <th className="num">Net Premium to Lloyd's Broker</th>
+                  <th className="num">Comisión a Traspasar</th>
+                  <th className="num">Prima a Liquidar</th>
                 </tr>
               </thead>
               <tbody>
@@ -176,11 +178,8 @@ export default function RiskExcelImport({
                   <tr key={i} className={m.reporting ? undefined : "fila-sin-periodo"}>
                     <td>{m.certificado ?? "—"}</td>
                     <td>{m.asegurado ?? "—"}</td>
-                    <td>{m.section_no ?? "—"}</td>
-                    <td>{m.risk_code ?? "—"}</td>
-                    <td>{m.reporting ?? "⛔"}</td>
                     <td className="num">{m.gwp_our_line != null ? fmtMiles(m.gwp_our_line) : "—"}</td>
-                    <td className="num">{m.comision_pct.toFixed(2)}%</td>
+                    <td className="num">{m.net_premium_broker != null ? fmtMiles(m.net_premium_broker) : "—"}</td>
                     <td className="num">{m.prima_traspasar != null ? fmtMiles(m.prima_traspasar) : "—"}</td>
                     <td className="num">{m.liquidar != null ? fmtMiles(m.liquidar) : "—"}</td>
                   </tr>
@@ -188,9 +187,9 @@ export default function RiskExcelImport({
               </tbody>
               <tfoot>
                 <tr className="fila-total-risk">
-                  <td colSpan={5}><b>TOTAL ({prev.n_lineas} líneas)</b></td>
+                  <td colSpan={2}><b>TOTAL ({prev.n_lineas} líneas)</b></td>
                   <td className="num"><b>{fmtMiles(prev.total_gwp_our_line)}</b></td>
-                  <td />
+                  <td className="num"><b>{fmtMiles(prev.total_net_premium_broker)}</b></td>
                   <td className="num"><b>{fmtMiles(prev.total_prima_traspasar)}</b></td>
                   <td className="num"><b>{fmtMiles(prev.total_liquidar)}</b></td>
                 </tr>

@@ -930,12 +930,13 @@ export interface RiskExcelPreview {
   total_gwp_100: number;
   total_prima_traspasar: number;
   total_liquidar: number;
+  total_net_premium_broker: number;
   mapeadas: Record<string, string>;
   sin_mapear: string[];
   sin_periodo: number;
   problemas: { nivel: "bloqueante" | "aviso"; texto: string }[];
   bloqueado: boolean;
-  muestra: { certificado: string | null; asegurado: string | null; section_no: number | null; risk_code: string | null; reporting: string | null; gwp_our_line: number | null; comision_pct: number; prima_traspasar: number | null; liquidar: number | null }[];
+  muestra: { certificado: string | null; asegurado: string | null; section_no: number | null; risk_code: string | null; reporting: string | null; gwp_our_line: number | null; net_premium_broker: number | null; comision_pct: number; prima_traspasar: number | null; liquidar: number | null }[];
 }
 export interface RiskExcelImportResult {
   bdx_id: number;

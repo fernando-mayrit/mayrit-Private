@@ -426,6 +426,7 @@ def preview_risk_excel(db: Session, binder: Binder, content: bytes, hoja: str | 
     tot_100 = sum((d.get("gross_written_premium") or Decimal(0)) for d in coerced)
     tot_traspasar = sum((d.get("brokerage_amount") or Decimal(0)) for d in coerced)        # nuestra comisión
     tot_liquidar = sum((d.get("final_net_premium_uw") or Decimal(0)) for d in coerced)      # neto al UW
+    tot_net_broker = sum((d.get("net_premium_to_broker") or Decimal(0)) for d in coerced)   # Net Premium to Lloyd's Broker
 
     # Reparto por sección: la declarada o la deducida por risk code; aviso de las que no casan.
     rc2sec, rc_amb = _rc2sec(binder)
@@ -452,6 +453,7 @@ def preview_risk_excel(db: Session, binder: Binder, content: bytes, hoja: str | 
         "section_no": _seccion_de(d, rc2sec, rc_amb), "risk_code": d.get("risk_code"),
         "reporting": d["reporting_period_start"].isoformat() if d.get("reporting_period_start") else None,
         "gwp_our_line": float(d["total_gwp_our_line"]) if d.get("total_gwp_our_line") is not None else None,
+        "net_premium_broker": float(d["net_premium_to_broker"]) if d.get("net_premium_to_broker") is not None else None,
         "comision_pct": float((d.get("commission_coverholder_pct") or 0) + (d.get("brokerage_pct") or 0)),
         "prima_traspasar": float(d["brokerage_amount"]) if d.get("brokerage_amount") is not None else None,
         "liquidar": float(d["final_net_premium_uw"]) if d.get("final_net_premium_uw") is not None else None,
@@ -469,6 +471,7 @@ def preview_risk_excel(db: Session, binder: Binder, content: bytes, hoja: str | 
         "n_lineas": meta["n_filas"], "periodos": periodos,
         "total_gwp_our_line": float(round(tot_our, 2)), "total_gwp_100": float(round(tot_100, 2)),
         "total_prima_traspasar": float(round(tot_traspasar, 2)), "total_liquidar": float(round(tot_liquidar, 2)),
+        "total_net_premium_broker": float(round(tot_net_broker, 2)),
         "mapeadas": meta["mapeadas"], "sin_mapear": meta["sin_mapear"], "muestra": muestra,
         "por_seccion": por_seccion, "auto_seccion": auto_seccion, "sin_seccion": sin_seccion,
         "periodos_ya_cargados": periodos_ya_cargados,
