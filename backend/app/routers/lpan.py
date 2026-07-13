@@ -772,9 +772,11 @@ _BDX_HEADERS = [
 _BDX_SUBTOT = (27, 32, 60)
 
 
-def _bdx_fila(l: "BdxLinea", b, coverholder: str) -> list:
+def _bdx_fila(l: "BdxLinea", b, coverholder: str, per_ini: dt.date, per_fin: dt.date) -> list:
     """Fila del Premium Bordereau (61 columnas) para una línea. Los % se dan como fracción (28% -> 0,28),
-    igual que en el modelo. El 100% GWP y 'GWP incl. tax' no se importaron (solo our line) -> our line."""
+    igual que en el modelo. El 100% GWP y 'GWP incl. tax' no se importaron (solo our line) -> our line.
+    El Reporting Period (Start/End) es el del PREMIUM que se descarga: día 1 y último día de ese mes,
+    igual para todas las líneas, no el reporting del Risk de cada línea."""
     def f(x):
         return float(x) if x is not None else None
 
@@ -783,15 +785,10 @@ def _bdx_fila(l: "BdxLinea", b, coverholder: str) -> list:
 
     ourline = f(l.total_gwp_our_line)
     taxes = f(l.total_taxes_levies)
-    # Fin del periodo de reporte: si no está en BD, se deriva como último día del mes de inicio.
-    fin_periodo = l.reporting_period_end
-    if fin_periodo is None and l.reporting_period_start:
-        s = l.reporting_period_start
-        fin_periodo = s.replace(day=calendar.monthrange(s.year, s.month)[1])
     # Suma asegurada: el 100% no se importó (solo our line) -> our line como respaldo.
     suma_aseg = f(l.sum_insured_total if l.sum_insured_total is not None else l.sum_insured_our_line)
     return [
-        coverholder, b.yoa, b.umr, l.reporting_period_start, fin_periodo,
+        coverholder, b.yoa, b.umr, per_ini, per_fin,
         l.section_no, l.class_of_business, l.risk_code, l.type_of_insurance, l.certificate_ref,
         l.insured_name, l.insured_id, l.insured_address, l.insured_province, l.insured_postcode,
         l.insured_country, l.risk_inception_date, l.risk_expiry_date, l.location_risk_province,
@@ -830,6 +827,11 @@ def bdx_excel(binder_id: int, periodo: str, agrupar: bool = True, db: Session = 
                BdxLinea.premium_bdx.is_not(None))
     ).all()
     lineas = [l for l in lineas if l.premium_bdx and l.premium_bdx.strftime("%Y-%m") == periodo]
+
+    # Reporting Period del bordereau = el mes del Premium que se descarga: día 1 y último día del mes.
+    _y, _m = (int(x) for x in periodo.split("-")[:2])
+    per_ini = dt.date(_y, _m, 1)
+    per_fin = dt.date(_y, _m, calendar.monthrange(_y, _m)[1])
 
     # Agrupar por (sección, risk code), mismo orden que los bloques LPAN.
     grupos: dict[tuple, list] = {}
@@ -901,7 +903,7 @@ def bdx_excel(binder_id: int, periodo: str, agrupar: bool = True, db: Session = 
         for clave in sorted(grupos.keys()):
             filas = grupos[clave]
             for l in filas:
-                ws.append(_bdx_fila(l, b, coverholder))
+                ws.append(_bdx_fila(l, b, coverholder, per_ini, per_fin))
                 estilo_fila(ws.max_row)
             # Subtotales del grupo (solo en las 3 columnas de importe).
             sub = [None] * ncol
@@ -913,7 +915,7 @@ def bdx_excel(binder_id: int, periodo: str, agrupar: bool = True, db: Session = 
     else:
         # Premium Bdx PLANO: todas las líneas seguidas, sin agrupar por Risk Code ni subtotales.
         for l in lineas:
-            ws.append(_bdx_fila(l, b, coverholder))
+            ws.append(_bdx_fila(l, b, coverholder, per_ini, per_fin))
             estilo_fila(ws.max_row)
 
     for col in range(1, ncol + 1):
