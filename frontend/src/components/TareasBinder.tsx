@@ -48,6 +48,7 @@ const PILL: Record<string, [string, string]> = {
   vencida: ["pill-pendiente", "Vencida"],
   pendiente: ["pill-parcial", "Pendiente"],
   futura: ["pill-anulado", "Futura"],
+  sin_movimiento: ["pill-anulado", "Sin movimiento"],   // flujo dormido ≥6 meses: informa, no es pendiente
 };
 // Pill y orden por categoría (Risk → Premium → Claims → General).
 const CAT_PILL: Record<string, string> = {
@@ -420,21 +421,25 @@ export default function TareasBinder({ binderId }: { binderId?: number }) {
     <div style={{ display: "flex", flexDirection: "column", gap: 4, padding: "6px 0 6px 26px" }}>
       {pasos.map((ps) => {
         const esAuto = !!ps.regla_auto;
+        const sinMov = !!ps.sin_movimiento;   // flujo dormido: gris, no marcable
         // Secuencial: un paso aún no hecho con algún anterior pendiente sale bloqueado (gris + 🔒).
         const bloqueado = !!ps.bloqueado && !ps.hecho;
-        const inerte = esAuto || bloqueado;   // no marcable a mano (auto o bloqueado)
+        const inerte = esAuto || bloqueado || sinMov;   // no marcable a mano (auto, bloqueado o sin movimiento)
         return (
-          <label key={ps.paso_id} style={{ display: "flex", alignItems: "center", gap: 6, cursor: inerte ? "default" : "pointer", opacity: bloqueado ? 0.55 : 1 }}>
-            <input type="checkbox" checked={ps.hecho}
+          <label key={ps.paso_id} style={{ display: "flex", alignItems: "center", gap: 6, cursor: inerte ? "default" : "pointer", opacity: (bloqueado || sinMov) ? 0.55 : 1 }}>
+            <input type="checkbox" checked={ps.hecho && !sinMov}
               disabled={inerte || busyOc === busyKey(ps)}
               onChange={() => { if (!inerte) onToggle(ps); }} />
-            <span style={{ textDecoration: ps.hecho ? "line-through" : "none", color: ps.hecho ? "var(--texto-suave, #888)" : undefined }}>
+            <span style={{ textDecoration: (ps.hecho && !sinMov) ? "line-through" : "none", color: (ps.hecho || sinMov) ? "var(--texto-suave, #888)" : undefined }}>
               {ps.titulo}
             </span>
-            {bloqueado && !esAuto && (
+            {sinMov && (
+              <span className="hint" title={`Sin movimiento: no hay ${reglaLabel(ps.regla_auto) || "dato"} desde hace ≥6 meses. Si vuelve a llegar, se marca solo.`}>· ⊘ sin movimiento</span>
+            )}
+            {bloqueado && !esAuto && !sinMov && (
               <span className="hint" title="Se desbloquea al completar el paso anterior">· 🔒 bloqueado</span>
             )}
-            {esAuto && (
+            {esAuto && !sinMov && (
               <span className="hint" title={`Se marca solo: ${reglaLabel(ps.regla_auto)}${ps.periodo ? ` · ${mesAnyo(ps.periodo)}` : ""}`}>
                 · 🔒 auto ({reglaLabel(ps.regla_auto)}{ps.periodo ? ` ${mesAnyo(ps.periodo)}` : ""}) {ps.hecho ? "✓" : "pendiente"}
               </span>
@@ -604,7 +609,9 @@ export default function TareasBinder({ binderId }: { binderId?: number }) {
                                 <span className={`pill ${cls}`}>{txt}</span>
                                 {tienePasos && <span className="hint">{a.n_pasos_hechos}/{a.n_pasos}</span>}
                                 <span style={{ marginLeft: "auto", whiteSpace: "nowrap" }}>
-                                  {a.estado === "hecha"
+                                  {a.estado === "sin_movimiento"
+                                    ? <span className="hint" title="El flujo lleva ≥6 meses sin dato. Si vuelve a llegar, se marca solo.">sin movimiento</span>
+                                    : a.estado === "hecha"
                                     ? <button className="btn-link btn-sm" disabled={busyOc === k} onClick={() => toggleHechaAgenda(a)}>Deshacer</button>
                                     : <button className="btn-primary btn-sm" disabled={busyOc === k} onClick={() => toggleHechaAgenda(a)}>{busyOc === k ? "…" : tienePasos ? "Marcar todo" : "Marcar hecha"}</button>}
                                 </span>

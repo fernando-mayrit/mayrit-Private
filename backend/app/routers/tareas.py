@@ -169,6 +169,47 @@ def _auto_ok(paso: TareaPaso, periodo: str | None, datos: dict, binder_id: int) 
     return periodo in datos.get(paso.regla_auto, {}).get(binder_id, set())
 
 
+# Meses seguidos sin un dato (Risk/Premium/Claims/LPAN) tras los que su ausencia deja de ser un
+# PENDIENTE (rojo) y pasa a "sin movimiento" (gris): en el run-off de un binder los datos llegan a
+# saltos y no sabemos si un flujo se acabó del todo (puede volver un mes suelto). Cada flujo va por
+# su cuenta. Si el dato vuelve a llegar, el flujo se "re-arma" solo (el auto-marcado lo pone en verde).
+_MESES_DORMIDO = 6
+
+
+def _dato_dormido(datos: dict, regla: str | None, binder: Binder | None, periodo: str | None) -> bool:
+    """El flujo `regla` está DORMIDO para `periodo`: no ha traído dato en los `_MESES_DORMIDO` meses
+    anteriores. Solo se considera dormido si ANTES sí hubo dato (un flujo que se apagó) o el binder ya
+    está vencido — así un binder nuevo que todavía no ha cargado ese dato sigue saliendo pendiente."""
+    if not regla or not periodo or not binder:
+        return False
+    meses = datos.get(regla, {}).get(binder.id, set())
+    y, m = int(periodo[:4]), int(periodo[5:7])
+    base = dt.date(y, m, 1)
+    for k in range(1, _MESES_DORMIDO + 1):
+        if _add_months(base, -k).strftime("%Y-%m") in meses:
+            return False                                   # llegó dato hace <6 meses → sigue vigilándose
+    hubo_antes = any(pm < periodo for pm in meses)         # el flujo estuvo activo y se apagó
+    vencido = bool(binder.fecha_vencimiento and base > binder.fecha_vencimiento)
+    return hubo_antes or vencido
+
+
+# Categoría de la tarea AUTO → flujo de dato que la alimenta (para la dormancia a nivel de ENTREGA).
+_CAT_REGLA = {"Risk": "risk", "Premium": "premium", "Claims": "claims"}
+
+
+def _ocurrencia_dormida(t: Tarea, binder: Binder | None, f: dt.date, datos: dict) -> bool:
+    """La ENTREGA (mes) de una tarea AUTO está 'sin movimiento': su flujo de dato (por la categoría de
+    la tarea) lleva ≥6 meses dormido. Entonces toda la entrega es moot (nada que recibir/procesar/enviar
+    ese mes), no solo el paso del dato. Solo aplica a tareas auto (Risk/Premium/Claims)."""
+    if not binder or t.origen != "auto":
+        return False
+    regla = _CAT_REGLA.get(t.categoria)
+    if not regla:
+        return False
+    periodo = _periodo_de(binder, t, f, _paso(t))
+    return _dato_dormido(datos, regla, binder, periodo)
+
+
 def _fechas_hechas(t: Tarea, binder: Binder | None, datos: dict) -> set[dt.date]:
     """Conjunto de fechas de ocurrencia que cuentan como HECHAS (en vivo):
     - Sin pasos: las que tengan TareaHecha (marcado manual).
@@ -176,16 +217,20 @@ def _fechas_hechas(t: Tarea, binder: Binder | None, datos: dict) -> set[dt.date]
     if not binder:
         return set()
     ocs = _ocurrencias(t, binder)
+    # Entregas "sin movimiento" (flujo dormido ≥6 meses): cuentan como hechas (no bloquean, no salen rojas).
+    dormidas = {f for f in ocs if _ocurrencia_dormida(t, binder, f, datos)}
     if not t.pasos:
         manual = {h.fecha_ocurrencia for h in t.hechas}
-        return {f for f in ocs if f in manual}
+        return {f for f in ocs if f in manual} | dormidas
     manual_pp: dict[dt.date, set[int]] = defaultdict(set)
     for p in t.pasos:
         for ph in p.hechos:
             manual_pp[ph.fecha_ocurrencia].add(p.id)
     paso = _paso(t)
-    done: set[dt.date] = set()
+    done: set[dt.date] = set(dormidas)
     for k, f in enumerate(ocs):
+        if f in dormidas:
+            continue
         periodo = _periodo_de(binder, t, f, paso)
         if all(p.id in manual_pp[f] or _auto_ok(p, periodo, datos, binder.id) for p in t.pasos):
             done.add(f)
@@ -337,6 +382,7 @@ class PasoEstado(BaseModel):
     orden: int
     regla_auto: str | None = None    # risk | premium | lpan | claims | None
     auto: bool = False               # el paso se marcó por la regla (dato presente), no a mano
+    sin_movimiento: bool = False     # el flujo lleva ≥6 meses sin dato: cuenta como hecho pero en gris
     periodo: str | None = None       # periodo (YYYY-MM) que comprueba la regla en esta entrega
     hecho: bool
     fecha_hecha: dt.date | None = None
@@ -349,6 +395,14 @@ def _pasos_de_ocurrencia(t: Tarea, binder: Binder | None, f: dt.date, k: int,
     `manual` = {(paso_id, fecha): TareaPasoHecho}. Un paso está hecho si está marcado a mano o si su
     regla auto se cumple para el periodo de esa entrega."""
     periodo = _periodo_de(binder, t, f, _paso(t)) if binder else None
+    # Entrega "sin movimiento": el flujo del dato lleva ≥6 meses dormido → toda la entrega es moot.
+    # Todos sus pasos salen en gris (satisfechos, no marcables como pendientes).
+    if binder and _ocurrencia_dormida(t, binder, f, datos):
+        return [PasoEstado(
+            paso_id=p.id, titulo=p.titulo, orden=p.orden, regla_auto=p.regla_auto,
+            auto=False, sin_movimiento=True, periodo=periodo if p.regla_auto else None,
+            hecho=True, fecha_hecha=None, bloqueado=False,
+        ) for p in t.pasos], True
     pasos: list[PasoEstado] = []
     completa = True
     # Bloqueo por GRUPOS: los pasos con el MISMO `orden` forman un grupo paralelo (no se bloquean entre
@@ -420,17 +474,20 @@ def agenda(binder_id: int | None = None, solo_pendientes: bool = False, db: Sess
             if f < SUELO_ENTREGAS:
                 continue
             h = hechas.get(f)
+            pasos, _ = _pasos_de_ocurrencia(t, binder, f, k, datos, manual)
             if not _debida(t, f, hoy, False):
                 estado = "futura"      # su plazo aún no ha llegado (aunque el dato ya exista)
             elif f in done:
-                estado = "hecha"
+                # Completa por dato/mano = "hecha" (verde). Completa SOLO porque el flujo lleva ≥6 meses
+                # dormido (nada real hecho) = "sin_movimiento" (gris): informa pero no es pendiente.
+                hay_real = (h is not None) or any(p.hecho and not p.sin_movimiento for p in pasos)
+                estado = "hecha" if hay_real else "sin_movimiento"
             elif f < hoy:
                 estado = "vencida"
             else:
                 estado = "pendiente"
             if solo_pendientes and estado not in ("vencida", "pendiente"):
                 continue
-            pasos, _ = _pasos_de_ocurrencia(t, binder, f, k, datos, manual)
             out.append(AgendaItem(
                 tarea_id=t.id, titulo=t.titulo, categoria=t.categoria, origen=t.origen,
                 binder_id=t.binder_id, binder_umr=(binder.umr or binder.agreement_number),

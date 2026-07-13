@@ -733,6 +733,7 @@ export interface TareaPasoEstado {
   orden: number;
   regla_auto?: string | null;
   auto: boolean;                // marcado por la regla (dato presente), no a mano
+  sin_movimiento?: boolean;     // flujo dormido ≥6 meses: cuenta como hecho pero en gris (no es pendiente)
   periodo?: string | null;      // periodo YYYY-MM que comprueba la regla en esta entrega
   hecho: boolean;
   fecha_hecha?: string | null;
