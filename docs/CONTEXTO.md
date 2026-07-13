@@ -22,7 +22,9 @@
 - **Afinar conciliación bancaria** con el uso: ventana/umbral de la Fase B; categorización que aprenda del
   texto del banco (regla concepto→categoría, estilo `bdx_alias`).
 - **Operativo:** renovar el **secreto de Entra** (~jun 2028) o el login dejará de funcionar.
-- **Menor:** subir la retención de backups de **Azure a 35 días**.
+- **Azure (dimensionamiento/coste): CERRADO 2026-07-13** — BD B1ms y App Service Básico B1 bien dimensionados
+  (CPU ~10%, mem ~63%), retención backup 35d hecha, nada que reservar (Basic/Burstable no reservables), las 3
+  recomendaciones de Advisor (read replica / HA zona / geo-backup) descartadas. Ver [[seguridad-azure]].
 
 **Cerrado recientemente (2026-07):** **justificante contable** — (a) desglose por recibo también para
 **Comisiones/Honorarios** (los traspasos/liquidaciones de comisión ya no salen con recibo "en blanco",
@@ -58,29 +60,23 @@ URLs: `https://app.mayritbroker.com` (dominio propio; DNS en **DonDominio** → 
 **usuarios autorizados añadidos**. Certificado SharePoint en la nube y redirect del dominio: hechos.
 Desarrollo en local: backend `uvicorn --reload` (8000) + `npm run dev` (5173), sin login Entra.
 
-**Pendiente — verificado en el código:**
-- **Parser de Excel del Risk BDX (día a día):** `bdx_import.importar_filas` ya es origen-agnóstico,
-  pero falta el endpoint que lea el `.xlsx` y lo vuelque. Hoy "Subir Excel" solo abre el selector de
-  carpeta + el match de Premium.
-- **Blindar la importación frente a periodos bloqueados** (`bdx_import` no comprueba el bloqueo aún).
-- **Mostrar la cuenta usada en cada movimiento** en el listado/ficha de recibos (los `cuenta_*_id` se
-  guardan y se preseleccionan en el modal, pero no se muestran como columna/campo).
-- **Soporte `.xls`** en la app (hoy solo `.xlsx`; el `.xls` solo lo lee el migrador VAMMOS con xlrd).
-- **Módulos placeholder** (menú, EnConstruccion): Transferencias · Contabilidad · Consultoría (Fees) · Comisiones.
-- **Liquidaciones + LPAN** (Fase 3): sin router ni página todavía.
-- **Recálculo de un suplemento retroactivo** (cuando aplique con BDX).
-
-**Pendiente — datos / revisión (no se ve en el código):**
-- Migrar **recibos 2020-2022** (run-off) para cuadrar periodos.
-- Revisar **descuadres reales** de recibos y los **6 grupos multi-cert de CY0219** (suplementos vs pólizas).
+**Pendiente REAL (revisado y verificado 2026-07-13 — lo demás de este bloque estaba stale y se ha limpiado):**
+- **Blindar la importación de BDX frente a periodos bloqueados** (opcional-menor): `_bloqueantes` en
+  `bdx_import.py` valida columnas/periodos pero NO comprueba si el mes está CERRADO. Solo aporta si de
+  verdad reimportáis meses cerrados; si no, no merece la pena.
+- **Soporte `.xls`** en la app (hoy solo `.xlsx`; el `.xls` solo lo lee el migrador VAMMOS con xlrd). Menor.
+- **Módulo placeholder** (EnConstruccion): solo **UCR**. (Transferencias · Contabilidad · Consultoría · Comisiones YA son páginas reales.)
+- **Paginación** de `/recibos` y `/siniestros` — solo cuando crezcan. Menor.
 
 **Operativo:** renovar el **secreto de Entra** (~junio 2028) o el login dejará de funcionar.
 
-**Decisión abierta:** `TLiquidaciones` (4330) vs `TLiquidaciones1` (4018) — cuál es la buena (Fase 3).
-
-**Ya hecho (NO es pendiente):** Programas + **triangulación** (binder y programa) · **Siniestros** +
-ratios · **Pólizas (OM)** (pantalla y renovación) · **Pagador** (Corredor/Tomador) · **cuentas
-bancarias por movimiento** (cobro/liquidación/traspaso/pago) · **cierre anual** · **despliegue + login**.
+**YA HECHO (se quitó de "pendiente" el 2026-07-13, estaba stale):** Subir **Risk BDX por Excel**
+(`bdx.py` risk_excel_preview/import) · **Cancellation Reason + Turnover** mapeados (commit e3e48b3) ·
+páginas reales de **Transferencias/Consultoría/Comisiones** · **recibos 2020-2022 migrados**
+(93/98/134) · decisión **TLiquidaciones** resuelta · módulo **LPAN** con router+página · «mostrar cuenta
+usada» (los `cuenta_*_id` ya fluyen en Recibos) · Programas + **triangulación** (binder y programa) ·
+**Siniestros** + ratios · **Pólizas (OM)** · **Pagador** · **cuentas bancarias por movimiento** · **cierre
+anual** · **despliegue + login**.
 
 ---
 
