@@ -19,8 +19,11 @@ function Stat({ label, value, sub, tono }: { label: string; value: string; sub?:
   );
 }
 
-// Gráfico de líneas anual (SVG): un valor por año, comparable (mismo periodo).
+// Gráfico de líneas anual (SVG): un valor por año, comparable (mismo periodo). Al pasar el puntero
+// por encima resalta el punto más cercano y muestra un tooltip con el año, el valor y la variación
+// respecto al año anterior.
 function LineaAnual({ datos }: { datos: { anio: number; valor: number }[] }) {
+  const [hover, setHover] = useState<number | null>(null);
   if (datos.length < 2) return <div className="hint">Sin datos suficientes.</div>;
   const W = 560, H = 190, ML = 58, MR = 14, MT = 12, MB = 26;
   const iw = W - ML - MR, ih = H - MT - MB;
@@ -30,23 +33,57 @@ function LineaAnual({ datos }: { datos: { anio: number; valor: number }[] }) {
   const y = (v: number) => MT + ih - (v / maxY) * ih;
   const path = datos.map((p, i) => `${i === 0 ? "M" : "L"}${x(i)},${y(p.valor)}`).join(" ");
   const yTicks = 4;
+
+  const onMove = (e: ReactMouseEvent<SVGSVGElement>) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    const vx = ((e.clientX - r.left) / r.width) * W;               // x en coords del viewBox
+    setHover(Math.max(0, Math.min(n - 1, Math.round(((vx - ML) / iw) * (n - 1)))));
+  };
+
+  const ph = hover !== null ? datos[hover] : null;
+  const prev = hover !== null && hover > 0 ? datos[hover - 1] : null;
+  const delta = ph && prev && prev.valor > 0 ? ((ph.valor - prev.valor) / prev.valor) * 100 : null;
+
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: "auto" }}>
-      {Array.from({ length: yTicks + 1 }, (_, i) => {
-        const v = (maxY / yTicks) * i;
-        return (
-          <g key={i}>
-            <line x1={ML} y1={y(v)} x2={W - MR} y2={y(v)} stroke="#e5e7eb" strokeWidth={1} />
-            <text x={ML - 6} y={y(v) + 4} textAnchor="end" fontSize={10} fill="#6b7280">{eur(v)}</text>
-          </g>
-        );
-      })}
-      {datos.map((p, i) => (
-        <text key={p.anio} x={x(i)} y={H - 8} textAnchor="middle" fontSize={10} fill="#6b7280">{p.anio}</text>
-      ))}
-      <path d={path} fill="none" stroke="#2563eb" strokeWidth={2.5} />
-      {datos.map((p, i) => <circle key={p.anio} cx={x(i)} cy={y(p.valor)} r={2.8} fill="#2563eb" />)}
-    </svg>
+    <div className="kpi-lm-plot">
+      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: "auto" }}
+           onMouseMove={onMove} onMouseLeave={() => setHover(null)}>
+        {Array.from({ length: yTicks + 1 }, (_, i) => {
+          const v = (maxY / yTicks) * i;
+          return (
+            <g key={i}>
+              <line x1={ML} y1={y(v)} x2={W - MR} y2={y(v)} stroke="#e5e7eb" strokeWidth={1} />
+              <text x={ML - 6} y={y(v) + 4} textAnchor="end" fontSize={10} fill="#6b7280">{eur(v)}</text>
+            </g>
+          );
+        })}
+        {datos.map((p, i) => (
+          <text key={p.anio} x={x(i)} y={H - 8} textAnchor="middle" fontSize={10} fill="#6b7280">{p.anio}</text>
+        ))}
+        {hover !== null && <line x1={x(hover)} y1={MT} x2={x(hover)} y2={MT + ih} stroke="#9ca3af" strokeWidth={1} strokeDasharray="3 3" />}
+        <path d={path} fill="none" stroke="#2563eb" strokeWidth={2.5} />
+        {datos.map((p, i) => <circle key={p.anio} cx={x(i)} cy={y(p.valor)} r={hover === i ? 4.5 : 2.8} fill="#2563eb" />)}
+      </svg>
+      {ph && (
+        <div className="kpi-lm-tip" style={{ left: `${(x(hover!) / W) * 100}%`, transform: hover! > (n - 1) / 2 ? "translateX(-105%)" : "translateX(8px)" }}>
+          <div className="kpi-lm-tip-tit">{ph.anio}</div>
+          <div className="kpi-lm-tip-row">
+            <span className="kpi-lm-dot" style={{ background: "#2563eb" }} />
+            <span>Retenida</span>
+            <span className="kpi-lm-tip-val">{fmtMiles(ph.valor)} €</span>
+          </div>
+          {delta !== null && (
+            <div className="kpi-lm-tip-row">
+              <span />
+              <span>vs {prev!.anio}</span>
+              <span className="kpi-lm-tip-val" style={{ color: delta >= 0 ? "#16a34a" : "#dc2626" }}>
+                {delta >= 0 ? "▲" : "▼"} {Math.abs(delta).toFixed(1)}%
+              </span>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
