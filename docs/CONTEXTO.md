@@ -1452,3 +1452,45 @@ Ahora repo y prod comparten un único head y `alembic upgrade` vuelve a funciona
 - Gráfico de evolución del binder: **tooltip por mes** (prima acumulada de cada año). Ya estaba, aquí solo se
   menciona por continuidad.
 - **Backup a NAS** confirmado hecho (alea+mayrit). **5 recibos duplicados** resueltos (0 duplicados de binder).
+
+## Sesión 13/07/2026 (equipo "ferna") — Tareas (mes correcto), BDX (columnas y periodos), UI
+
+### Tareas — el periodo comprobado ya no resta el plazo (arreglo del "sale mayo en julio")
+En julio se carga el Risk de **junio**, pero la tarea decía "Risk cargado **mayo**". `_periodo_de`
+(`tareas.py`) calculaba `mes(límite) − (intervalo + round(plazo/30))`. El plazo ya está incorporado en la
+fecha límite (fin de periodo + plazo días), así que **restarlo otra vez** retrocedía un mes de más (con
+`plazo=30`, el 93% de los binders: `round(30/30)=1` → julio−2 = mayo). Ahora es simplemente
+`mes(límite) − intervalo` → julio comprueba junio. El plazo solo coloca la fecha límite/aviso, no el
+periodo. Verificado en `/tareas/agenda` y `/tareas/{id}/ocurrencias`.
+
+### Risk BDX — subida: mapear Cancellation Reason y Turnover (no caen en Extra)
+Casi todas las plantillas los traen. Dos columnas nuevas en `bdx_lineas` (`cancellation_reason` texto,
+`turnover` importe) + alias en el `MAPEO` (`sharepoint.py`), y se vuelcan en el Premium/LPAN Bdx (antes
+salían vacías, `_bdx_fila` en `lpan.py`). Migración **`bdx_cancel_turnover_0001`** (aditiva, nulable),
+aplicada a prod. Las líneas ya importadas los tienen en `extra`; las nuevas se mapean solas. *(Pendiente
+opcional: backfill de `extra` → columnas para el histórico.)*
+
+### Risk BDX — subida: listado de preview reducido a lo útil
+Columnas del preview: **Certificado · Asegurado · GWP Our Line · Net Premium to Lloyd's Broker · Comisión a
+Traspasar · Prima a Liquidar** (se quitan Secc./RC/Reporting/Com.%). Backend expone `net_premium_broker`
+por línea + total (`bdx_import.py`).
+
+### Premium/LPAN Bdx — descarga: Reporting Period = mes del Premium
+Las columnas **Reporting Period Start/End Date** ahora son el día 1 y el último día del mes del Premium que
+se descarga (igual para todas las filas), no el reporting del Risk de cada línea (`_bdx_fila` recibe
+`per_ini`/`per_fin` desde el `periodo`).
+
+### UI varios
+- **Recibos · gestión cobros/pagos:** chips invertidos — se RESALTAN los pendientes (borde naranja) y se
+  ATENÚAN los hechos; tooltip de los hechos en pasado (Cobrado, Liquidado, Traspasada, Pagada).
+- **Nueva Cotización:** buscador de cliente por cualquier parte del nombre (combobox).
+- **KPIs:** tooltip en el gráfico "Comisión retenida por año" (año, valor y variación vs año anterior).
+- **Machear Premium:** encabezado y línea de totales fijos al hacer scroll (`.match-tabla` necesitaba
+  `border-collapse:separate` + `overflow:visible` para que el sticky funcione).
+
+### Justificante ESPEJO / conciliación — sin cambio de código
+El apunte 262.06 (Sabadell General) no mostraba justificante y la conciliación daba "Not Found": el backend
+LOCAL corría código viejo (procesos huérfanos que heredaban el socket del puerto 8000 y no soltaban el
+`--reload`). Reiniciar el backend lo resolvió. **Aviso operativo:** el `--reload` local en Windows no es
+fiable; tras cambios de backend hay que reiniciar (y matar workers `multiprocessing-fork` huérfanos si el
+socket queda pillado).
