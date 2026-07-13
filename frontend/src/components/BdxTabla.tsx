@@ -417,7 +417,7 @@ export default function BdxTabla({
                       title={bloq ? "Ver línea (periodo bloqueado)" : "Editar línea"}
                       onClick={() => onRowClick(l)}
                     >
-                      {bloq ? "👁" : "✏️"}
+                      {bloq ? "📁" : "✏️"}
                     </button>
                   </td>
                 )}
