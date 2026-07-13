@@ -19,8 +19,22 @@
 - **Power BI — Ingresos** — pipeline montado (tabla `ppto_ingresos` + vista + Excel sembrado + cargador);
   falta que Fernando rellene/cargue y crear el usuario de BD `mayrit_bi`.
 - **Paginación** de `GET /recibos` y `/siniestros` — mejora de rendimiento NO urgente (cuando crezcan).
-- **Afinar conciliación bancaria** con el uso: ventana/umbral de la Fase B; categorización que aprenda del
-  texto del banco (regla concepto→categoría, estilo `bdx_alias`).
+- **Afinar conciliación bancaria** (analizado 2026-07-13 — RETOMAR mañana; DECISIÓN pendiente de Fernando:
+  ¿empezamos por categorización o por emparejamiento?). **Cómo funciona hoy** (`contabilidad.py`):
+  - *Fase A (importar Norma 43):* categoría PROPUESTA aprendida del histórico. `_firma_desc` saca la "firma
+    del pagador" de la descripción (quita máscara de tarjeta + prefijos de operación, solo letras, 25 chars);
+    `_historial_categorias` mapea firma→(concepto,grupo,tipo) más frecuente de la cuenta; `_sugerir_categoria`
+    propone SOLO con match fuerte (firma exacta o prefijo común ≥10) — conservador, deja en blanco si duda.
+  - *Fase B (conciliar):* `_preseleccion` empareja apuntes de seguros↔transferencias del ledger por SUMA de
+    importes (una exacta / todas / misma fecha / subconjunto-suma hasta 16 candidatas / fuzzy→revisar);
+    ventana `dias=7`, tolerancia `0.01`. Estados: exacta/revisar/sin_candidatas. Nunca inventa.
+  - **Puntos flojos a afinar (2 frentes):** (1) *Categorización* — no hay REGLA explícita editable estilo
+    `bdx_alias` ("si descripción contiene X → concepto Y"), ni categorización masiva en el preview, ni botón
+    "recordar esta categoría como regla"; pagadores nuevos/variables quedan en blanco → trabajo manual los
+    viernes. Plan: tabla `conta_alias` + aplicar-a-todos-del-mismo-pagador + recordar-como-regla.
+    (2) *Emparejamiento (Fase B)* — ventana de días y tolerancia fijas (hacerlas ajustables en la UI), tope de
+    16 candidatas en el subconjunto-suma (subirlo/optimizar). Recomendación: empezar por (1), que es lo que
+    más ahorra en la rutina semanal.
 - **Operativo:** renovar el **secreto de Entra** (~jun 2028) o el login dejará de funcionar.
 - **Azure (dimensionamiento/coste): CERRADO 2026-07-13** — BD B1ms y App Service Básico B1 bien dimensionados
   (CPU ~10%, mem ~63%), retención backup 35d hecha, nada que reservar (Basic/Burstable no reservables), las 3
