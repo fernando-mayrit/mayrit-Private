@@ -1,0 +1,27 @@
+# Dependabot: vigila que las dependencias (pip/npm/acciones de CI) no tengan fallos de
+# seguridad conocidos y abre un PR agrupado (uno por ecosistema/semana) para actualizarlas.
+# Los AVISOS de seguridad se activan aparte en Settings → Security → "Dependabot alerts".
+version: 2
+updates:
+  - package-ecosystem: "pip"
+    directory: "/backend"
+    schedule:
+      interval: "weekly"
+    groups:
+      backend:
+        patterns: ["*"]
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: "npm"
+    directory: "/frontend"
+    schedule:
+      interval: "weekly"
+    groups:
+      frontend:
+        patterns: ["*"]
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
