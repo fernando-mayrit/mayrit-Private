@@ -43,7 +43,7 @@ jobs:
           cp -r frontend/dist backend/static
 
       - name: Login to Azure
-        uses: azure/login@v2
+        uses: azure/login@v3
         with:
           client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_6F74D89A915D42F9B20A87BD9BCE2B6A }}
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_F08220AC6F0F4E06A232B92A8BAAB743 }}
