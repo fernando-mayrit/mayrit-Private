@@ -749,6 +749,10 @@ def transferencias_justificante(
 
 
 # ── Conciliación automática (Fase B): proponer las transferencias que cuadran cada apunte de seguros ──
+# La conciliación se olvida de TODO lo anterior a 2026 (apuntes y transferencias). Decisión de negocio.
+_CONCILIACION_DESDE = dt.date(2026, 1, 1)
+
+
 def _ambito_de(concepto: str | None) -> str | None:
     """Ámbito de seguros del apunte (Primas/Siniestros/Comisiones/Honorarios), o None si NO es de seguros.
     'Comisiones Bancarias' se excluye (es una comisión del banco, no de mediación)."""
@@ -818,10 +822,13 @@ class ConcPreview(BaseModel):
 def conciliar_preview(cuenta: str, dias: int = 7, desde: dt.date | None = None, db: Session = Depends(get_db)):
     """Propone (SIN escribir nada) las transferencias que cuadran cada apunte de SEGUROS aún no conciliado
     de la cuenta. Ventana de ±`dias` (la fecha valor del banco ≠ la contable). Etiqueta cada uno:
-    exacta / revisar (con residual) / sin candidatas."""
-    q = select(MovimientoBancario).where(MovimientoBancario.cuenta == cuenta)
-    if desde:
-        q = q.where(MovimientoBancario.fecha >= desde)
+    exacta / revisar (con residual) / sin candidatas.
+
+    La conciliación IGNORA todo lo anterior a 2026 (decisión de negocio): ni apuntes ni transferencias
+    de antes de `_CONCILIACION_DESDE` entran en el proceso."""
+    corte = max(desde, _CONCILIACION_DESDE) if desde else _CONCILIACION_DESDE
+    q = select(MovimientoBancario).where(
+        MovimientoBancario.cuenta == cuenta, MovimientoBancario.fecha >= corte)
     apuntes = db.scalars(q.order_by(MovimientoBancario.fecha.desc())).all()
     usadas = _transferencias_ya_justificadas(db, None)
     out: list[ConcApunte] = []
@@ -836,7 +843,9 @@ def conciliar_preview(cuenta: str, dias: int = 7, desde: dt.date | None = None, 
         subs = _CLASE_SUBTIPOS[clase]
         objetivo = Decimal(m.ingreso or 0) if (m.ingreso or 0) else Decimal(m.gasto or 0)
         f = m.fecha
-        qtr = select(Transferencia).where(Transferencia.subtipo.in_(subs), Transferencia.tipo == amb)
+        qtr = select(Transferencia).where(
+            Transferencia.subtipo.in_(subs), Transferencia.tipo == amb,
+            Transferencia.fecha >= _CONCILIACION_DESDE)   # nada anterior a 2026
         if f:
             qtr = qtr.where(Transferencia.fecha >= f - dt.timedelta(days=dias),
                             Transferencia.fecha <= f + dt.timedelta(days=dias))

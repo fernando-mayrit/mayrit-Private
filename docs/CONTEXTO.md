@@ -1417,6 +1417,9 @@ Objetivo: dejar de teclear el extracto a mano cada semana. Dos fases, principio 
   (subtipo+ámbito+ventana ±días, excluyendo ya-usadas), con suma/residual y confianza (exacta/revisar/sin
   candidatas). Persiste SOLO lo confirmado (`transferencia_ids`); `_read.conciliado` ahora = bool(transferencia_ids).
   Realidad: los grupos grandes NO cuadran 1:1 (fees/pagos partidos) → "revisar" con residual, nunca auto-enlace.
+  **Corte 2026 (13/07, decisión de negocio):** la conciliación IGNORA todo lo anterior a **2026-01-01** —
+  ni apuntes ni transferencias candidatas de antes entran (`_CONCILIACION_DESDE` en `contabilidad.py`;
+  aplicado a `conciliar_preview`, tanto al filtro de apuntes como al de transferencias).
 - Regla de arquitectura (decidida): **recibos → transferencias (esperado)**, **extracto → banco (real)**,
   **Fase B → confirmar y detectar descuadres**. NO generar transferencias desde el banco (perdería el contexto
   binder/recibo/periodo y el control esperado-vs-real).
