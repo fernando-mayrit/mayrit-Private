@@ -428,6 +428,8 @@ class BdxLinea(Base):
     location_risk_country: Mapped[str | None] = mapped_column(String(80))
     risk_transaction_type: Mapped[str | None] = mapped_column(String(40))   # New/Renewal/Endorsement/Cancellation
     transaction_type: Mapped[str | None] = mapped_column(String(40))        # Original/Additional/Return premium
+    cancellation_reason: Mapped[str | None] = mapped_column(String(200))    # motivo de cancelación (si aplica)
+    turnover: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))        # facturación / volumen del riesgo
     effective_date_transaction: Mapped[dt.date | None] = mapped_column(Date)
     expiry_date_transaction: Mapped[dt.date | None] = mapped_column(Date)
 

@@ -41,6 +41,8 @@ MAPEO: dict[str, str] = {
     "location_risk_country": ["Location of risk - Country (Location ID)", "Location of risk - Country (ISO code)"],
     "risk_transaction_type": ["Risk Transaction Type", "Transaction Type (New Business, Endorsement, Renewal, Cancellation)", "Risk, Transaction Type (New, Renewal, Endorsement, Cancellation.etc)"],
     "transaction_type": ["Transaction Type", "Transaction Type (Original, additional, return premium)", "Transaction Type - (Original, additional, return premium)", "Transaction Type - (Original premium, additional premium, return premium.etc)"],
+    "cancellation_reason": ["Cancellation Reason"],
+    "turnover": ["Turnover"],
     "effective_date_transaction": ["Effective Date of Transaction", "Transaction Effective Date"],
     "expiry_date_transaction": ["Expiry Date of Transaction", "Transaction Expiry Date"],
     # Prima
