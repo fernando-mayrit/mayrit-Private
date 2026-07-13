@@ -24,7 +24,7 @@ jobs:
       id-token: write   # requerido para el login OIDC
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Node
         uses: actions/setup-node@v4
