@@ -26,6 +26,21 @@ app.add_middleware(
 )
 
 
+# Cabeceras de seguridad (defensa en profundidad; NO afectan al uso normal de la app):
+# HSTS obliga a HTTPS, nosniff evita adivinar tipos de contenido, X-Frame-Options evita
+# clickjacking (la app no se embebe en iframes), Referrer-Policy limita la fuga de URLs,
+# Permissions-Policy desactiva APIs del navegador que no usamos. Sin CSP para no romper el SPA.
+@app.middleware("http")
+async def cabeceras_seguridad(request, call_next):
+    resp = await call_next(request)
+    resp.headers.setdefault("Strict-Transport-Security", "max-age=31536000")
+    resp.headers.setdefault("X-Content-Type-Options", "nosniff")
+    resp.headers.setdefault("X-Frame-Options", "DENY")
+    resp.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    resp.headers.setdefault("Permissions-Policy", "geolocation=(), microphone=(), camera=()")
+    return resp
+
+
 @app.get("/health")
 def health():
     return {"status": "ok", "service": "mayrit-api"}
