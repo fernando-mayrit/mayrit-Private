@@ -1542,6 +1542,9 @@ se descarga (igual para todas las filas), no el reporting del Risk de cada líne
 - **KPIs:** tooltip en el gráfico "Comisión retenida por año" (año, valor y variación vs año anterior).
 - **Machear Premium:** encabezado y línea de totales fijos al hacer scroll (`.match-tabla` necesitaba
   `border-collapse:separate` + `overflow:visible` para que el sticky funcione).
+- **Tareas · Por mes:** el encabezado de categoría (Risk/Premium/Claims) pasa de pill pequeño a un **rail
+  vertical** a la izquierda del bloque (nombre en vertical + contador). Colores = los pills de la app:
+  Risk amarillo, Premium verde, Claims rojo, General gris (no inventar paletas, respetar la convención).
 
 ### Justificante ESPEJO / conciliación — sin cambio de código
 El apunte 262.06 (Sabadell General) no mostraba justificante y la conciliación daba "Not Found": el backend
