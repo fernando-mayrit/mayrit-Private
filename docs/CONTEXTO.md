@@ -39,6 +39,13 @@
 - **Azure (dimensionamiento/coste): CERRADO 2026-07-13** — BD B1ms y App Service Básico B1 bien dimensionados
   (CPU ~10%, mem ~63%), retención backup 35d hecha, nada que reservar (Basic/Burstable no reservables), las 3
   recomendaciones de Advisor (read replica / HA zona / geo-backup) descartadas. Ver [[seguridad-azure]].
+- **Elección de nube: SEGUIR EN AZURE (decisión razonada, 2026-07-14).** Es la mejor opción para este caso
+  NO por ser superior en abstracto (AWS/GCP son equivalentes), sino porque la app **vive en el ecosistema
+  Microsoft**: SharePoint (origen de los BDX), Entra ID + MFA (login) y Microsoft 365. Azure integra todo eso
+  de forma **nativa**; migrar a otra nube añadiría fontanería y complejidad sin ganar nada, y perdería esa
+  integración y la historia de cumplimiento/seguridad (relevante para una correduría). El stack es **estándar
+  y portable** (Python/React/PostgreSQL) → no hay lock-in real; se podría mover si algún día la factura se
+  disparara o hiciera falta algo que Azure no dé, pero a este tamaño ninguna de esas dos cosas está cerca.
 
 **Cerrado recientemente (2026-07):** **justificante contable** — (a) desglose por recibo también para
 **Comisiones/Honorarios** (los traspasos/liquidaciones de comisión ya no salen con recibo "en blanco",
