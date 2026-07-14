@@ -404,6 +404,13 @@ export default function TareasBinder({ binderId }: { binderId?: number }) {
       await Promise.all([cargar(), cargarAgenda()]);
     } catch (e) { setError((e as Error).message); } finally { setBusyOc(null); }
   }
+  async function toggleSinMovAgenda(a: TareaAgendaItem, marcar: boolean) {
+    setBusyOc(a.tarea_id + a.fecha);
+    try {
+      await tareasApi.marcarSinMovimiento(a.tarea_id, { fecha_ocurrencia: a.fecha, sin_movimiento: marcar });
+      await Promise.all([cargar(), cargarAgenda()]);
+    } catch (e) { setError((e as Error).message); } finally { setBusyOc(null); }
+  }
   async function togglePasoAgenda(a: TareaAgendaItem, ps: TareaPasoEstado) {
     setBusyOc(a.tarea_id + a.fecha + ps.paso_id);
     try {
@@ -610,12 +617,17 @@ export default function TareasBinder({ binderId }: { binderId?: number }) {
                                 <span className="hint">· {fmtFechaES(a.fecha)}</span>
                                 <span className={`pill ${cls}`}>{txt}</span>
                                 {tienePasos && <span className="hint">{a.n_pasos_hechos}/{a.n_pasos}</span>}
-                                <span style={{ marginLeft: "auto", whiteSpace: "nowrap" }}>
+                                <span style={{ marginLeft: "auto", whiteSpace: "nowrap", display: "inline-flex", gap: 8, alignItems: "center" }}>
                                   {a.estado === "sin_movimiento"
-                                    ? <span className="hint" title="El flujo lleva ≥6 meses sin dato. Si vuelve a llegar, se marca solo.">sin movimiento</span>
+                                    ? (a.sin_mov_manual
+                                        ? <button className="btn-link btn-sm" disabled={busyOc === k} title="Deshacer 'sin movimiento' de este mes" onClick={() => toggleSinMovAgenda(a, false)}>{busyOc === k ? "…" : "Deshacer sin movimiento"}</button>
+                                        : <span className="hint" title="El flujo lleva ≥6 meses sin dato. Si vuelve a llegar, se marca solo.">sin movimiento</span>)
                                     : a.estado === "hecha"
                                     ? <button className="btn-link btn-sm" disabled={busyOc === k} onClick={() => toggleHechaAgenda(a)}>Deshacer</button>
-                                    : <button className="btn-primary btn-sm" disabled={busyOc === k} onClick={() => toggleHechaAgenda(a)}>{busyOc === k ? "…" : tienePasos ? "Marcar todo" : "Marcar hecha"}</button>}
+                                    : <>
+                                        <button className="btn-primary btn-sm" disabled={busyOc === k} onClick={() => toggleHechaAgenda(a)}>{busyOc === k ? "…" : tienePasos ? "Marcar todo" : "Marcar hecha"}</button>
+                                        <button className="btn-link btn-sm" disabled={busyOc === k} title="Este mes no hubo dato (p. ej. no hay Premium). Deja de estar pendiente, solo este mes." onClick={() => toggleSinMovAgenda(a, true)}>⊘ Sin movimiento</button>
+                                      </>}
                                 </span>
                               </div>
                               {tienePasos && listaPasos(

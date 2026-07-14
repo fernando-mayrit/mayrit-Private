@@ -210,6 +210,30 @@ def _ocurrencia_dormida(t: Tarea, binder: Binder | None, f: dt.date, datos: dict
     return _dato_dormido(datos, regla, binder, periodo)
 
 
+def _sinmov_manual(t: Tarea, f: dt.date) -> bool:
+    """El usuario marcó A MANO esta entrega (mes) como 'sin movimiento' (no hubo dato ese mes)."""
+    return any(h.fecha_ocurrencia == f and h.sin_movimiento for h in t.hechas)
+
+
+def _datos_del_periodo(t: Tarea, binder: Binder | None, f: dt.date, datos: dict) -> bool:
+    """El dato real de esta entrega YA está cargado (tareas auto Risk/Premium/Claims). Si es así, la entrega
+    está de verdad hecha (verde), y ninguna marca 'sin movimiento' (manual o automática) debe taparlo."""
+    regla = _CAT_REGLA.get(t.categoria)
+    if not regla or not binder or t.origen != "auto":
+        return False
+    periodo = _periodo_de(binder, t, f, _paso(t))
+    return bool(periodo) and periodo in datos.get(regla, {}).get(binder.id, set())
+
+
+def _entrega_sin_mov(t: Tarea, binder: Binder | None, f: dt.date, datos: dict) -> bool:
+    """La entrega (mes) es 'sin movimiento': marcada a mano O flujo dormido ≥6 meses (automático). Pero si
+    el DATO real de ese mes acaba llegando, deja de serlo (el auto-marcado la pone en verde). Solo afecta a
+    ESE mes; los demás siguen normales."""
+    if _datos_del_periodo(t, binder, f, datos):
+        return False
+    return _sinmov_manual(t, f) or _ocurrencia_dormida(t, binder, f, datos)
+
+
 def _fechas_hechas(t: Tarea, binder: Binder | None, datos: dict) -> set[dt.date]:
     """Conjunto de fechas de ocurrencia que cuentan como HECHAS (en vivo):
     - Sin pasos: las que tengan TareaHecha (marcado manual).
@@ -217,8 +241,8 @@ def _fechas_hechas(t: Tarea, binder: Binder | None, datos: dict) -> set[dt.date]
     if not binder:
         return set()
     ocs = _ocurrencias(t, binder)
-    # Entregas "sin movimiento" (flujo dormido ≥6 meses): cuentan como hechas (no bloquean, no salen rojas).
-    dormidas = {f for f in ocs if _ocurrencia_dormida(t, binder, f, datos)}
+    # Entregas "sin movimiento" (dormido ≥6 meses O marcado a mano): cuentan como hechas (no bloquean).
+    dormidas = {f for f in ocs if _entrega_sin_mov(t, binder, f, datos)}
     if not t.pasos:
         manual = {h.fecha_ocurrencia for h in t.hechas}
         return {f for f in ocs if f in manual} | dormidas
@@ -395,9 +419,9 @@ def _pasos_de_ocurrencia(t: Tarea, binder: Binder | None, f: dt.date, k: int,
     `manual` = {(paso_id, fecha): TareaPasoHecho}. Un paso está hecho si está marcado a mano o si su
     regla auto se cumple para el periodo de esa entrega."""
     periodo = _periodo_de(binder, t, f, _paso(t)) if binder else None
-    # Entrega "sin movimiento": el flujo del dato lleva ≥6 meses dormido → toda la entrega es moot.
+    # Entrega "sin movimiento": dormido ≥6 meses (auto) o marcado a mano → toda la entrega es moot.
     # Todos sus pasos salen en gris (satisfechos, no marcables como pendientes).
-    if binder and _ocurrencia_dormida(t, binder, f, datos):
+    if _entrega_sin_mov(t, binder, f, datos):
         return [PasoEstado(
             paso_id=p.id, titulo=p.titulo, orden=p.orden, regla_auto=p.regla_auto,
             auto=False, sin_movimiento=True, periodo=periodo if p.regla_auto else None,
@@ -445,8 +469,9 @@ class AgendaItem(BaseModel):
     agencia: str | None = None
     programa: str | None = None
     fecha: dt.date            # fecha (límite) de la ocurrencia
-    estado: str               # hecha | vencida | pendiente | futura
+    estado: str               # hecha | vencida | pendiente | futura | sin_movimiento
     fecha_hecha: dt.date | None = None
+    sin_mov_manual: bool = False   # 'sin movimiento' puesto A MANO (se puede deshacer; el auto no)
     pasos: list[PasoEstado] = []   # checklist de esta entrega (vacío si la tarea no tiene pasos)
     n_pasos: int = 0
     n_pasos_hechos: int = 0
@@ -480,7 +505,7 @@ def agenda(binder_id: int | None = None, solo_pendientes: bool = False, db: Sess
             elif f in done:
                 # Completa por dato/mano = "hecha" (verde). Completa SOLO porque el flujo lleva ≥6 meses
                 # dormido (nada real hecho) = "sin_movimiento" (gris): informa pero no es pendiente.
-                hay_real = (h is not None) or any(p.hecho and not p.sin_movimiento for p in pasos)
+                hay_real = (h is not None and not h.sin_movimiento) or any(p.hecho and not p.sin_movimiento for p in pasos)
                 estado = "hecha" if hay_real else "sin_movimiento"
             elif f < hoy:
                 estado = "vencida"
@@ -494,6 +519,7 @@ def agenda(binder_id: int | None = None, solo_pendientes: bool = False, db: Sess
                 agencia=(binder.productor.nombre if binder.productor else None),
                 programa=(binder.programa.nombre if binder.programa else None),
                 fecha=f, estado=estado, fecha_hecha=(h.fecha_hecha if h else None),
+                sin_mov_manual=(h is not None and h.sin_movimiento),
                 pasos=pasos, n_pasos=len(pasos), n_pasos_hechos=sum(1 for p in pasos if p.hecho),
             ))
     out.sort(key=lambda x: (x.fecha, x.binder_umr or "", x.categoria))
@@ -689,8 +715,12 @@ def ocurrencias(tarea_id: int, incluir_futuras: bool = False, db: Session = Depe
         pasos, completa = _pasos_de_ocurrencia(t, binder, f, k, datos, manual)
         h = hechas.get(f)
         hecha = completa if t.pasos else (h is not None)
+        moot = _entrega_sin_mov(t, binder, f, datos)
+        hay_real = (h is not None and not h.sin_movimiento) or (bool(t.pasos) and any(p.hecho and not p.sin_movimiento for p in pasos))
         if not _debida(t, f, hoy, False):
             estado = "futura"          # su plazo aún no ha llegado (aunque el dato del periodo ya exista)
+        elif moot and not hay_real:
+            estado = "sin_movimiento"  # dormido ≥6 meses o marcado a mano: no pendiente
         elif hecha:
             estado = "hecha"
         elif f < hoy:
@@ -773,8 +803,41 @@ def marcar_hecha(tarea_id: int, payload: HechaIn, db: Session = Depends(get_db))
     else:
         h.fecha_hecha = payload.fecha_hecha or dt.date.today()
         h.notas = payload.notas
+        h.sin_movimiento = False   # marcar hecha (real) anula una marca 'sin movimiento' previa
     db.commit()
     return {"ok": True, "hecha": True}
+
+
+class SinMovIn(BaseModel):
+    fecha_ocurrencia: dt.date
+    sin_movimiento: bool = True   # True = marcar 'sin movimiento este mes'; False = deshacer
+
+
+@router.post("/tareas/{tarea_id}/sin-movimiento", status_code=200)
+def marcar_sin_movimiento(tarea_id: int, payload: SinMovIn, db: Session = Depends(get_db)):
+    """Marca (o deshace) A MANO una entrega concreta (mes) como 'sin movimiento': confirma que ese mes no
+    hubo dato (p. ej. no hay Premium ese mes en un binder activo). Deja de estar pendiente y no bloquea el
+    cierre, pero SOLO ese mes — los siguientes siguen saliendo normales. Reversible; y si el dato acaba
+    llegando, el auto-marcado la pone en verde igualmente."""
+    t = db.get(Tarea, tarea_id)
+    if t is None:
+        raise HTTPException(status_code=404, detail=f"Tarea {tarea_id} no encontrada")
+    h = db.scalar(select(TareaHecha).where(
+        TareaHecha.tarea_id == tarea_id, TareaHecha.fecha_ocurrencia == payload.fecha_ocurrencia))
+    if payload.sin_movimiento:
+        if h is None:
+            h = TareaHecha(tarea_id=tarea_id, fecha_ocurrencia=payload.fecha_ocurrencia,
+                           fecha_hecha=dt.date.today(), sin_movimiento=True)
+            db.add(h)
+        else:
+            h.sin_movimiento = True
+        db.commit()
+        return {"ok": True, "sin_movimiento": True}
+    # Deshacer: solo borra si la marca ERA 'sin movimiento' (no toca un 'hecha' real).
+    if h is not None and h.sin_movimiento:
+        db.delete(h)
+        db.commit()
+    return {"ok": True, "sin_movimiento": False}
 
 
 # ── Pasos (checklist) de una tarea ──────────────────────────────────────────────────────────────

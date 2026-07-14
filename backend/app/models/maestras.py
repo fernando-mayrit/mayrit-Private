@@ -1057,6 +1057,10 @@ class TareaHecha(Base):
     fecha_ocurrencia: Mapped[dt.date] = mapped_column(Date)   # fecha (calendario) de la ocurrencia
     fecha_hecha: Mapped[dt.date] = mapped_column(Date)        # cuándo se marcó hecha
     notas: Mapped[str | None] = mapped_column(Text)
+    # Marca MANUAL "sin movimiento este mes": el usuario confirma que ese mes NO hubo dato (p. ej. no hay
+    # Premium ese mes en un binder activo). La entrega deja de ser pendiente (gris, no bloquea), pero SOLO
+    # ese mes: los siguientes siguen saliendo normales. Si el dato acaba llegando, el auto-marcado gana.
+    sin_movimiento: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     tarea: Mapped["Tarea"] = relationship(back_populates="hechas")

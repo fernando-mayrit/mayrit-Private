@@ -813,6 +813,9 @@ export const tareasApi = {
       `/tareas/${id}/ocurrencias${incluirFuturas ? "?incluir_futuras=true" : ""}`),
   marcarHecha: (id: number, body: { fecha_ocurrencia: string; fecha_hecha?: string | null; notas?: string | null; deshacer?: boolean }) =>
     request(`/tareas/${id}/hecha`, { method: "POST", body: JSON.stringify(body) }),
+  // Marcar/deshacer 'sin movimiento este mes' (no hubo dato ese mes; solo afecta a esa entrega).
+  marcarSinMovimiento: (id: number, body: { fecha_ocurrencia: string; sin_movimiento: boolean }) =>
+    request(`/tareas/${id}/sin-movimiento`, { method: "POST", body: JSON.stringify(body) }),
   // ── Pasos (checklist) ──
   pasos: (id: number) => request<TareaPaso[]>(`/tareas/${id}/pasos`),
   crearPaso: (id: number, body: { titulo: string; orden?: number; regla_auto?: string | null }) =>
@@ -847,6 +850,7 @@ export interface TareaAgendaItem {
   fecha: string;
   estado: string;
   fecha_hecha?: string | null;
+  sin_mov_manual?: boolean;      // 'sin movimiento' puesto a mano (se puede deshacer)
   pasos: TareaPasoEstado[];
   n_pasos: number;
   n_pasos_hechos: number;
