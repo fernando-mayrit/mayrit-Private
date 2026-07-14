@@ -1606,3 +1606,23 @@ ellos quienes reciben el envío mensual).
   SharePoint del usuario (`Cuentas/2026/...`) NO se puede escribir desde Azure; **opción B futura**: que la
   app escriba en su biblioteca de SharePoint vía API. Adjuntar usa `<input type=file>` normal (el navegador
   recuerda la última carpeta; sirve para abrir en `Tickets para ordenar`).
+
+### Tareas · "Sin movimiento este mes" MANUAL (por entrega)
+Complementa el "sin movimiento" AUTOMÁTICO (dormancia ≥6 meses). Caso: un binder **activo** que un mes
+concreto no tiene dato (p. ej. no hay Premium ese mes) — la regla de 6 meses no aplica todavía, así que
+salía en rojo/pendiente sin poder quitarlo salvo marcarlo "hecho" (mal, implica cargarlo) o esperar 6 meses.
+- Ahora en **Tareas → Por mes**, cada entrega pendiente/vencida tiene botón **"⊘ Sin movimiento"**: la pone
+  en **gris**, deja de ser pendiente y no bloquea el cierre — **SOLO ese mes** (los siguientes salen
+  normales; no sabemos si volverá a haber). **Reversible** ("Deshacer sin movimiento"; las automáticas de 6
+  meses no se tocan).
+- **El dato manda:** si el Premium/Risk/Claims de ese mes acaba llegando, el auto-marcado lo pone en **verde**
+  (guarda `_datos_del_periodo` en `_entrega_sin_mov`). Y **no** se puede marcar "sin movimiento" un mes que ya
+  tiene dato (tendría sentido: sí hubo movimiento).
+- Backend: columna `sin_movimiento` en `tareas_hechas` (migración **`tarea_sinmov_manual_0001`**, aplicada a
+  prod), helpers `_sinmov_manual`/`_datos_del_periodo`/`_entrega_sin_mov`, endpoint
+  `POST /tareas/{id}/sin-movimiento`, campo `sin_mov_manual` en la agenda. Verificado end-to-end.
+
+### Transferencias · botón "Descargar Excel" del listado filtrado
+Exporta a `.xlsx` **todo lo que cumple los filtros activos** (año/origen/tipo/subtipo/sentido/cuenta/búsqueda),
+no solo las 500 que se muestran (re-pide el listado con `limit` alto). Reutiliza el endpoint genérico
+`/export/xlsx`. Mismas columnas del listado; números como número y fechas dd/mm/aaaa.
