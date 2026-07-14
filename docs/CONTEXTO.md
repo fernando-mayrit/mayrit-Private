@@ -1535,8 +1535,12 @@ Easy Auth, pero no añadía cabeceras propias).
   vulnerabilidad se activan en Settings → Security → "Dependabot alerts". Ya ha abierto/mergeado
   actualizaciones: vite, esbuild, grupo frontend (8 paquetes), y acciones de CI (checkout 4→7, setup-node
   4→6, azure/login 2→3).
-- **Estado abierto:** GitHub reporta **4 vulnerabilidades de dependencias** (1 alta, 3 moderadas) en el repo,
-  que Dependabot está gestionando vía PRs. Pendiente: revisarlas y mergear las actualizaciones que falten.
+- **4 vulnerabilidades de dependencias — RESUELTAS (14/07).** Eran las 4 del dev-server de Vite
+  (`scope: development`, cero exposición en producción; 3 específicas de Windows). Se cerraron con un
+  **salto mínimo `vite 5.4 → 6.4.3`** (arrastra `esbuild 0.25.12`; `plugin-react` queda en 4.7.0, v4), en
+  vez del `vite 8` que proponía Dependabot, para minimizar riesgo. Verificado: `npm audit` 0 + build
+  (`tsc && vite build`) OK. *(Los PRs de Dependabot que proponían vite 8 quedan obsoletos; los de
+  github-actions —checkout/setup-node/azure-login— son aparte e inofensivos.)*
 - Recordatorio de credenciales (sin cambios): las claves (`mayrit_app`, `SP_PFX_PASSWORD`…) viven SOLO en
   `~/.mayrit/.env` (fuera de OneDrive, fuera de git). La BD Azure es **producción compartida**; el backend
   local trabaja contra prod. Migraciones aplicadas a mano (`alembic upgrade head`).
