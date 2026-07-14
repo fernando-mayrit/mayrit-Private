@@ -347,7 +347,7 @@ fieldset[disabled] { opacity: .85; }
 .panel h2 { margin-top: 0; }
 .field { margin-bottom: 14px; display: flex; flex-direction: column; gap: 4px; }
 .field label { font-size: 13px; color: var(--gris); font-weight: 500; }
-.field input[type="text"], .field input[type="date"], .field input[type="month"], .field input[type="number"], .field textarea, .field select {
+.field input[type="text"], .field input[type="password"], .field input[type="date"], .field input[type="month"], .field input[type="number"], .field textarea, .field select {
   padding: 8px 10px; border: 1px solid var(--borde); border-radius: 8px; font-size: 14px; font-family: inherit; background: #fff;
 }
 .field input:focus, .field textarea:focus, .field select:focus { outline: none; border-color: var(--naranja); box-shadow: 0 0 0 3px rgba(224, 122, 90, 0.25); }

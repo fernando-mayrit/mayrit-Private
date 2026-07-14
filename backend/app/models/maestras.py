@@ -1380,6 +1380,7 @@ class Credencial(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     propietario: Mapped[str] = mapped_column(String(120), index=True)   # usuario que la creó y la posee
     titulo: Mapped[str] = mapped_column(String(200))
+    grupo: Mapped[str | None] = mapped_column(String(80), index=True)   # agrupación de 1er nivel (Alea, Mayrit…)
     categoria: Mapped[str | None] = mapped_column(String(80), index=True)
     usuario: Mapped[str | None] = mapped_column(String(255))            # login/usuario del servicio (no del equipo)
     url: Mapped[str | None] = mapped_column(String(500))

@@ -7,6 +7,7 @@ import PageHeader from "../components/PageHeader";
 type FormState = {
   id?: number;
   titulo: string;
+  grupo: string;          // agrupación de 1er nivel (Alea, Mayrit…)
   categoria: string;
   usuario: string;        // login del servicio
   url: string;
@@ -17,9 +18,45 @@ type FormState = {
 };
 
 const VACIO: FormState = {
-  titulo: "", categoria: "", usuario: "", url: "", secreto: "", notas: "",
+  titulo: "", grupo: "", categoria: "", usuario: "", url: "", secreto: "", notas: "",
   visibilidad: "privada", permisos: [],
 };
+
+// Grupos que aparecen siempre en el desplegable, aunque aún no tengan credenciales.
+const GRUPOS_SEMILLA = ["Alea", "Mayrit", "Lloyds", "Novacover"];
+
+// Desplegable que además permite AÑADIR un valor nuevo (para Grupo y Categoría). Elige de la lista
+// o pulsa «➕ Añadir…» para escribir uno nuevo (que quedará disponible al guardar).
+const OPCION_NUEVA = "__nueva__";
+function SelectorConAlta({ valor, opciones, onChange, placeholderNuevo }: {
+  valor: string;
+  opciones: string[];
+  onChange: (v: string) => void;
+  placeholderNuevo: string;
+}) {
+  // Modo "escribir nuevo": al elegir «➕ Añadir…», o si el valor guardado no está en la lista.
+  const [modoNuevo, setModoNuevo] = useState(valor !== "" && !opciones.includes(valor));
+  if (modoNuevo) {
+    return (
+      <div style={{ display: "flex", gap: 6 }}>
+        <input type="text" style={{ flex: 1 }} value={valor} placeholder={placeholderNuevo}
+               autoFocus onChange={(e) => onChange(e.target.value)} />
+        <button type="button" className="btn-secondary" title="Volver a la lista"
+                onClick={() => { setModoNuevo(false); onChange(""); }}>↩ Lista</button>
+      </div>
+    );
+  }
+  return (
+    <select value={valor} onChange={(e) => {
+      if (e.target.value === OPCION_NUEVA) { setModoNuevo(true); onChange(""); }
+      else onChange(e.target.value);
+    }}>
+      <option value="">— (ninguno) —</option>
+      {opciones.map((o) => <option key={o} value={o}>{o}</option>)}
+      <option value={OPCION_NUEVA}>➕ Añadir nuevo…</option>
+    </select>
+  );
+}
 
 // Generador de contraseñas en el CLIENTE (no viaja hasta que se guarda). Evita caracteres
 // ambiguos (l/I/1, O/0) para que sea fácil de leer/teclear si hace falta.
@@ -52,11 +89,17 @@ export default function CredencialesPage({ usuario }: { usuario: string | null }
   const yo = (usuario ?? "").trim();
   const [items, setItems] = useState<Credencial[]>([]);
   const [equipo, setEquipo] = useState<Usuario[]>([]);
+  const [grupos, setGrupos] = useState<string[]>([]);
   const [categorias, setCategorias] = useState<string[]>([]);
   const [q, setQ] = useState("");
+  const [filtroGrupo, setFiltroGrupo] = useState("");
   const [filtroCat, setFiltroCat] = useState("");
+  const [colapsados, setColapsados] = useState<Record<string, boolean>>({});   // grupos plegados en la lista
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Grupos del desplegable = semilla (Alea, Mayrit…) + los ya usados, sin duplicar.
+  const gruposOpciones = [...GRUPOS_SEMILLA, ...grupos.filter((g) => !GRUPOS_SEMILLA.includes(g))];
 
   // Contraseñas reveladas en la tabla (id → texto) y avisos de "copiado".
   const [revelados, setRevelados] = useState<Record<number, string>>({});
@@ -74,18 +117,20 @@ export default function CredencialesPage({ usuario }: { usuario: string | null }
     setLoading(true);
     setError(null);
     try {
-      const [creds, cats] = await Promise.all([
-        credencialesApi.listar(yo, { q: q || undefined, categoria: filtroCat || undefined }),
+      const [creds, grps, cats] = await Promise.all([
+        credencialesApi.listar(yo, { q: q || undefined, grupo: filtroGrupo || undefined, categoria: filtroCat || undefined }),
+        credencialesApi.grupos(yo),
         credencialesApi.categorias(yo),
       ]);
       setItems(creds);
+      setGrupos(grps);
       setCategorias(cats);
     } catch (e) {
       setError((e as Error).message);
     } finally {
       setLoading(false);
     }
-  }, [yo, q, filtroCat]);
+  }, [yo, q, filtroGrupo, filtroCat]);
 
   // Búsqueda/filtro en vivo (con pequeño retardo). Al cambiar, se ocultan las reveladas.
   useEffect(() => {
@@ -112,6 +157,7 @@ export default function CredencialesPage({ usuario }: { usuario: string | null }
     abrir({
       id: c.id,
       titulo: c.titulo,
+      grupo: c.grupo ?? "",
       categoria: c.categoria ?? "",
       usuario: c.usuario ?? "",
       url: c.url ?? "",
@@ -131,6 +177,7 @@ export default function CredencialesPage({ usuario }: { usuario: string | null }
     setError(null);
     const payload: CredencialWrite = {
       titulo: form.titulo.trim(),
+      grupo: form.grupo.trim() || null,
       categoria: form.categoria.trim() || null,
       usuario: form.usuario.trim() || null,
       url: form.url.trim() || null,
@@ -195,18 +242,24 @@ export default function CredencialesPage({ usuario }: { usuario: string | null }
     setForm({ ...form, permisos: tiene ? form.permisos.filter((n) => n !== nombre) : [...form.permisos, nombre] });
   }
 
-  // Agrupa las credenciales por categoría (las sin categoría, al final).
-  const grupos = new Map<string, Credencial[]>();
+  // Agrupa las credenciales en dos niveles: Grupo → Categoría (los vacíos, al final).
+  const ordenTexto = (a: string, b: string) => (!a ? 1 : !b ? -1 : a.localeCompare(b, "es"));
+  const porGrupo = new Map<string, Credencial[]>();
   for (const c of items) {
-    const k = c.categoria ?? "";
-    if (!grupos.has(k)) grupos.set(k, []);
-    grupos.get(k)!.push(c);
+    const g = c.grupo ?? "";
+    if (!porGrupo.has(g)) porGrupo.set(g, []);
+    porGrupo.get(g)!.push(c);
   }
-  const gruposOrden = [...grupos.entries()].sort((a, b) => {
-    if (!a[0]) return 1;
-    if (!b[0]) return -1;
-    return a[0].localeCompare(b[0], "es");
-  });
+  const gruposOrden = [...porGrupo.keys()].sort(ordenTexto);
+  function porCategoria(creds: Credencial[]): { cat: string; creds: Credencial[] }[] {
+    const m = new Map<string, Credencial[]>();
+    for (const c of creds) {
+      const k = c.categoria ?? "";
+      if (!m.has(k)) m.set(k, []);
+      m.get(k)!.push(c);
+    }
+    return [...m.keys()].sort(ordenTexto).map((cat) => ({ cat, creds: m.get(cat)! }));
+  }
 
   if (!yo) {
     return (
@@ -228,11 +281,15 @@ export default function CredencialesPage({ usuario }: { usuario: string | null }
       <div className="toolbar">
         <input
           type="search"
-          placeholder="Buscar por título, usuario, categoría o web…"
+          placeholder="Buscar por título, usuario, grupo, categoría o web…"
           value={q}
           onChange={(e) => setQ(e.target.value)}
         />
-        <select value={filtroCat} onChange={(e) => setFiltroCat(e.target.value)}>
+        <select className="filtro" value={filtroGrupo} onChange={(e) => setFiltroGrupo(e.target.value)}>
+          <option value="">Todos los grupos</option>
+          {grupos.map((g) => <option key={g} value={g}>{g}</option>)}
+        </select>
+        <select className="filtro" value={filtroCat} onChange={(e) => setFiltroCat(e.target.value)}>
           <option value="">Todas las categorías</option>
           {categorias.map((c) => <option key={c} value={c}>{c}</option>)}
         </select>
@@ -246,61 +303,79 @@ export default function CredencialesPage({ usuario }: { usuario: string | null }
       ) : items.length === 0 ? (
         <div className="empty">Aún no hay contraseñas. Crea la primera con «+ Nueva contraseña».</div>
       ) : (
-        gruposOrden.map(([cat, creds]) => (
-          <div key={cat || "—"} style={{ marginBottom: 18 }}>
-            <div className="nav-group-title" style={{ padding: "6px 2px" }}>
-              {cat || "Sin categoría"} <span style={{ opacity: 0.6, fontWeight: 400 }}>({creds.length})</span>
+        gruposOrden.map((g) => {
+          const creds = porGrupo.get(g)!;
+          const abierto = !colapsados[g];
+          return (
+            <div key={g || "—"} style={{ marginBottom: 20 }}>
+              <button
+                type="button"
+                className="nav-group-title nav-group-title-btn"
+                style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "8px 4px", fontSize: 15 }}
+                onClick={() => setColapsados((s) => ({ ...s, [g]: abierto }))}
+              >
+                <span>{abierto ? "▾" : "▸"}</span>
+                <span style={{ fontWeight: 800 }}>{g || "Sin grupo"}</span>
+                <span style={{ opacity: 0.6, fontWeight: 400 }}>({creds.length})</span>
+              </button>
+              {abierto && porCategoria(creds).map(({ cat, creds: cc }) => (
+                <div key={cat || "—"} style={{ marginBottom: 12, marginLeft: 6 }}>
+                  <div className="nav-group-title" style={{ padding: "4px 2px", fontSize: 12, opacity: 0.85 }}>
+                    {cat || "Sin categoría"} <span style={{ opacity: 0.6, fontWeight: 400 }}>({cc.length})</span>
+                  </div>
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Título</th>
+                        <th>Usuario</th>
+                        <th>Contraseña</th>
+                        <th>Visibilidad</th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {cc.map((c) => (
+                        <tr key={c.id}>
+                          <td>
+                            {c.url ? (
+                              <a href={/^https?:\/\//i.test(c.url) ? c.url : `https://${c.url}`}
+                                 target="_blank" rel="noreferrer">{c.titulo}</a>
+                            ) : c.titulo}
+                          </td>
+                          <td>{c.usuario ?? "—"}</td>
+                          <td>
+                            <span style={{ fontFamily: "monospace" }}>
+                              {revelados[c.id] !== undefined ? revelados[c.id] : "••••••••"}
+                            </span>
+                            <button className="btn-link" style={{ marginLeft: 8 }} onClick={() => toggleVer(c)}>
+                              {revelados[c.id] !== undefined ? "ocultar" : "ver"}
+                            </button>
+                            <button className="btn-link" style={{ marginLeft: 6 }} onClick={() => copiar(c)}>
+                              {copiado === c.id ? "✓ copiado" : "copiar"}
+                            </button>
+                          </td>
+                          <td>
+                            {c.visibilidad === "publica" ? (
+                              <span title={c.permisos.length ? `Compartida con: ${c.permisos.join(", ")}` : "Pública sin destinatarios"}>
+                                👥 Pública{c.permisos.length ? ` (${c.permisos.length})` : ""}
+                              </span>
+                            ) : <span>🔒 Privada</span>}
+                            {!c.es_propia && <span className="hint" style={{ marginLeft: 6 }}>· de {c.propietario}</span>}
+                          </td>
+                          <td className="acciones">
+                            {c.es_propia
+                              ? <button className="btn-link" onClick={() => abrirEdicion(c)}>Editar</button>
+                              : <span className="hint">solo lectura</span>}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ))}
             </div>
-            <table>
-              <thead>
-                <tr>
-                  <th>Título</th>
-                  <th>Usuario</th>
-                  <th>Contraseña</th>
-                  <th>Visibilidad</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {creds.map((c) => (
-                  <tr key={c.id}>
-                    <td>
-                      {c.url ? (
-                        <a href={/^https?:\/\//i.test(c.url) ? c.url : `https://${c.url}`}
-                           target="_blank" rel="noreferrer">{c.titulo}</a>
-                      ) : c.titulo}
-                    </td>
-                    <td>{c.usuario ?? "—"}</td>
-                    <td>
-                      <span style={{ fontFamily: "monospace" }}>
-                        {revelados[c.id] !== undefined ? revelados[c.id] : "••••••••"}
-                      </span>
-                      <button className="btn-link" style={{ marginLeft: 8 }} onClick={() => toggleVer(c)}>
-                        {revelados[c.id] !== undefined ? "ocultar" : "ver"}
-                      </button>
-                      <button className="btn-link" style={{ marginLeft: 6 }} onClick={() => copiar(c)}>
-                        {copiado === c.id ? "✓ copiado" : "copiar"}
-                      </button>
-                    </td>
-                    <td>
-                      {c.visibilidad === "publica" ? (
-                        <span title={c.permisos.length ? `Compartida con: ${c.permisos.join(", ")}` : "Pública sin destinatarios"}>
-                          👥 Pública{c.permisos.length ? ` (${c.permisos.length})` : ""}
-                        </span>
-                      ) : <span>🔒 Privada</span>}
-                      {!c.es_propia && <span className="hint" style={{ marginLeft: 6 }}>· de {c.propietario}</span>}
-                    </td>
-                    <td className="acciones">
-                      {c.es_propia
-                        ? <button className="btn-link" onClick={() => abrirEdicion(c)}>Editar</button>
-                        : <span className="hint">solo lectura</span>}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ))
+          );
+        })
       )}
 
       {form && (
@@ -319,13 +394,16 @@ export default function CredencialesPage({ usuario }: { usuario: string | null }
                    onChange={(e) => setForm({ ...form, titulo: e.target.value })} />
           </div>
           <div className="field">
+            <label>Grupo</label>
+            <SelectorConAlta valor={form.grupo} opciones={gruposOpciones}
+                             placeholderNuevo="Nombre del grupo nuevo"
+                             onChange={(v) => setForm({ ...form, grupo: v })} />
+          </div>
+          <div className="field">
             <label>Categoría</label>
-            <input type="text" list="cred-categorias" value={form.categoria}
-                   placeholder="p. ej. Correo, Bancos, Regulatorio…"
-                   onChange={(e) => setForm({ ...form, categoria: e.target.value })} />
-            <datalist id="cred-categorias">
-              {categorias.map((c) => <option key={c} value={c} />)}
-            </datalist>
+            <SelectorConAlta valor={form.categoria} opciones={categorias}
+                             placeholderNuevo="Nombre de la categoría nueva"
+                             onChange={(v) => setForm({ ...form, categoria: v })} />
           </div>
           <div className="field">
             <label>Usuario</label>
@@ -335,17 +413,16 @@ export default function CredencialesPage({ usuario }: { usuario: string | null }
           </div>
           <div className="field">
             <label>Contraseña {!form.id && <span className="required">*</span>}</label>
-            <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-              <input
-                type={verSecretoForm ? "text" : "password"}
-                style={{ flex: 1, fontFamily: "monospace" }}
-                value={form.secreto}
-                autoComplete="new-password"
-                placeholder={form.id ? "(dejar vacío para no cambiarla)" : ""}
-                onChange={(e) => setForm({ ...form, secreto: e.target.value })}
-              />
+            <input
+              type={verSecretoForm ? "text" : "password"}
+              value={form.secreto}
+              autoComplete="new-password"
+              placeholder={form.id ? "(dejar vacío para no cambiarla)" : ""}
+              onChange={(e) => setForm({ ...form, secreto: e.target.value })}
+            />
+            <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
               <button type="button" className="btn-secondary" onClick={() => setVerSecretoForm((v) => !v)}>
-                {verSecretoForm ? "🙈" : "👁"}
+                {verSecretoForm ? "🙈 Ocultar" : "👁 Ver"}
               </button>
               <button type="button" className="btn-secondary"
                       onClick={() => { setForm({ ...form, secreto: generarPassword() }); setVerSecretoForm(true); }}>

@@ -1339,6 +1339,7 @@ export interface Credencial {
   id: number;
   propietario: string;
   titulo: string;
+  grupo: string | null;
   categoria: string | null;
   usuario: string | null;          // login/usuario del servicio (no del equipo)
   url: string | null;
@@ -1351,6 +1352,7 @@ export interface Credencial {
 }
 export interface CredencialWrite {
   titulo: string;
+  grupo?: string | null;
   categoria?: string | null;
   usuario?: string | null;
   url?: string | null;
@@ -1360,12 +1362,15 @@ export interface CredencialWrite {
   permisos?: string[];
 }
 export const credencialesApi = {
-  listar: (usuario: string, params?: { q?: string; categoria?: string }) => {
+  listar: (usuario: string, params?: { q?: string; grupo?: string; categoria?: string }) => {
     const qs = new URLSearchParams({ usuario });
     if (params?.q) qs.set("q", params.q);
+    if (params?.grupo) qs.set("grupo", params.grupo);
     if (params?.categoria) qs.set("categoria", params.categoria);
     return request<Credencial[]>(`/credenciales?${qs.toString()}`);
   },
+  grupos: (usuario: string) =>
+    request<string[]>(`/credenciales/grupos?usuario=${encodeURIComponent(usuario)}`),
   categorias: (usuario: string) =>
     request<string[]>(`/credenciales/categorias?usuario=${encodeURIComponent(usuario)}`),
   secreto: (id: number, usuario: string) =>

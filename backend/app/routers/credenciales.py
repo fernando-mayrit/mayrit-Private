@@ -54,6 +54,7 @@ def _limpiar_permisos(permisos: list[str] | None, propietario: str) -> list[str]
 # ── Schemas ──────────────────────────────────────────────────────────────────────────────────
 class CredencialIn(BaseModel):
     titulo: str
+    grupo: str | None = None
     categoria: str | None = None
     usuario: str | None = None
     url: str | None = None
@@ -65,6 +66,7 @@ class CredencialIn(BaseModel):
 
 class CredencialUpdate(BaseModel):
     titulo: str | None = None
+    grupo: str | None = None
     categoria: str | None = None
     usuario: str | None = None
     url: str | None = None
@@ -80,6 +82,7 @@ class CredencialRead(BaseModel):
     id: int
     propietario: str
     titulo: str
+    grupo: str | None = None
     categoria: str | None = None
     usuario: str | None = None
     url: str | None = None
@@ -98,6 +101,7 @@ def _read(c: Credencial, actual: str) -> CredencialRead:
         id=c.id,
         propietario=c.propietario,
         titulo=c.titulo,
+        grupo=c.grupo,
         categoria=c.categoria,
         usuario=c.usuario,
         url=c.url,
@@ -122,13 +126,16 @@ def _usuario_actual(usuario: str) -> str:
 def listar(
     usuario: str = Query(...),
     q: str | None = None,
+    grupo: str | None = None,
     categoria: str | None = None,
     db: Session = Depends(get_db),
 ):
     """Credenciales visibles para el usuario (propias + públicas compartidas con él), ordenadas por
-    categoría y título. Sin contraseñas (se piden aparte)."""
+    grupo, categoría y título. Sin contraseñas (se piden aparte)."""
     u = _usuario_actual(usuario)
     stmt = select(Credencial).where(_visible_para(u))
+    if grupo:
+        stmt = stmt.where(Credencial.grupo == grupo)
     if categoria:
         stmt = stmt.where(Credencial.categoria == categoria)
     if q and q.strip():
@@ -136,17 +143,31 @@ def listar(
         stmt = stmt.where(or_(
             Credencial.titulo.ilike(like),
             Credencial.usuario.ilike(like),
+            Credencial.grupo.ilike(like),
             Credencial.categoria.ilike(like),
             Credencial.url.ilike(like),
         ))
-    # En PostgreSQL, ASC deja los NULL al final → las sin categoría caen abajo.
-    cs = db.scalars(stmt.order_by(Credencial.categoria, Credencial.titulo)).all()
+    # En PostgreSQL, ASC deja los NULL al final → las sin grupo/categoría caen abajo.
+    cs = db.scalars(stmt.order_by(Credencial.grupo, Credencial.categoria, Credencial.titulo)).all()
     return [_read(c, u) for c in cs]
+
+
+@router.get("/grupos", response_model=list[str])
+def grupos(usuario: str = Query(...), db: Session = Depends(get_db)):
+    """Grupos distintos ya usados en las credenciales visibles (para el desplegable y el filtro).
+    El frontend los combina con los grupos semilla (Alea, Mayrit, Lloyds, Novacover)."""
+    u = _usuario_actual(usuario)
+    rows = db.scalars(
+        select(Credencial.grupo)
+        .where(_visible_para(u), Credencial.grupo.is_not(None))
+        .distinct()
+    ).all()
+    return sorted({r for r in rows if r})
 
 
 @router.get("/categorias", response_model=list[str])
 def categorias(usuario: str = Query(...), db: Session = Depends(get_db)):
-    """Categorías distintas ya usadas en las credenciales visibles (para el filtro y el autocompletar)."""
+    """Categorías distintas ya usadas en las credenciales visibles (para el desplegable y el filtro)."""
     u = _usuario_actual(usuario)
     rows = db.scalars(
         select(Credencial.categoria)
@@ -186,6 +207,7 @@ def crear(payload: CredencialIn, usuario: str = Query(...), db: Session = Depend
     c = Credencial(
         propietario=u,
         titulo=payload.titulo.strip(),
+        grupo=(payload.grupo or "").strip() or None,
         categoria=(payload.categoria or "").strip() or None,
         usuario=(payload.usuario or "").strip() or None,
         url=(payload.url or "").strip() or None,
@@ -216,6 +238,8 @@ def editar(cred_id: int, payload: CredencialUpdate, usuario: str = Query(...), d
         if not data["titulo"].strip():
             raise HTTPException(status_code=422, detail="El título es obligatorio.")
         c.titulo = data["titulo"].strip()
+    if "grupo" in data:
+        c.grupo = (data["grupo"] or "").strip() or None
     if "categoria" in data:
         c.categoria = (data["categoria"] or "").strip() or None
     if "usuario" in data:
