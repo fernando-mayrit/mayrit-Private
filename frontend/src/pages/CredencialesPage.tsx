@@ -94,12 +94,14 @@ export default function CredencialesPage({ usuario }: { usuario: string | null }
   const [q, setQ] = useState("");
   const [filtroGrupo, setFiltroGrupo] = useState("");
   const [filtroCat, setFiltroCat] = useState("");
-  const [colapsados, setColapsados] = useState<Record<string, boolean>>({});   // grupos plegados en la lista
+  const [abiertos, setAbiertos] = useState<Record<string, boolean>>({});   // grupos DESPLEGADOS (por defecto todo replegado)
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   // Grupos del desplegable = semilla (Alea, Mayrit…) + los ya usados, sin duplicar.
   const gruposOpciones = [...GRUPOS_SEMILLA, ...grupos.filter((g) => !GRUPOS_SEMILLA.includes(g))];
+  // Con búsqueda/filtro activo se despliegan todos (para ver los resultados); sin filtro, todo replegado.
+  const hayFiltro = !!(q.trim() || filtroGrupo || filtroCat);
 
   // Contraseñas reveladas en la tabla (id → texto) y avisos de "copiado".
   const [revelados, setRevelados] = useState<Record<number, string>>({});
@@ -278,7 +280,14 @@ export default function CredencialesPage({ usuario }: { usuario: string | null }
         <strong>públicas</strong>, quien elijas del equipo.
       </p>
 
-      <div className="toolbar">
+      <div
+        className="toolbar"
+        style={{
+          position: "sticky", top: 0, zIndex: 20,
+          background: "var(--fondo)", padding: "10px 0", marginBottom: 8,
+          borderBottom: "1px solid var(--borde)", flexWrap: "wrap",
+        }}
+      >
         <input
           type="search"
           placeholder="Buscar por título, usuario, grupo, categoría o web…"
@@ -305,14 +314,14 @@ export default function CredencialesPage({ usuario }: { usuario: string | null }
       ) : (
         gruposOrden.map((g) => {
           const creds = porGrupo.get(g)!;
-          const abierto = !colapsados[g];
+          const abierto = hayFiltro || !!abiertos[g];
           return (
             <div key={g || "—"} style={{ marginBottom: 20 }}>
               <button
                 type="button"
                 className="nav-group-title nav-group-title-btn"
                 style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "8px 4px", fontSize: 15 }}
-                onClick={() => setColapsados((s) => ({ ...s, [g]: abierto }))}
+                onClick={() => setAbiertos((s) => ({ ...s, [g]: !abierto }))}
               >
                 <span>{abierto ? "▾" : "▸"}</span>
                 <span style={{ fontWeight: 800 }}>{g || "Sin grupo"}</span>
