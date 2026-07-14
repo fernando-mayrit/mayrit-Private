@@ -94,6 +94,19 @@ anual** · **despliegue + login**.
 
 ---
 
+## Seguridad (resumen) — estado actual (2026-07-14)
+Resumen canónico del estado de seguridad (detalle de implementación en la sesión 13/07 más abajo).
+- **Acceso:** Entra **Easy Auth + MFA** — solo usuarios autorizados (asignación requerida = Sí).
+- **Base de datos cerrada:** firewall con **solo IPs permitidas** + servicios de Azure; **no abierta a
+  Internet**.
+- **App:** solo **HTTPS**, **TLS 1.2**, **cabeceras de seguridad** (HSTS, nosniff, X-Frame-Options,
+  Referrer-Policy, Permissions-Policy — en `main.py`).
+- **Backups:** automáticos de **Azure (35 días)** + **copia propia al NAS** de la oficina. *(Resuelto lo
+  que en la revisión del 21-22/06 quedaba PENDIENTE.)*
+- **Dependencias:** vigiladas por **Dependabot** (pip/npm/actions, PR agrupado semanal).
+
+---
+
 ## Qué es Mayrit
 Correduría de seguros y reaseguros **atípica**: intermedia muy pocas pólizas; el grueso del
 negocio son **servicios a Agencias de Suscripción** (Alea es cliente de Mayrit, y hay otras).
@@ -697,8 +710,8 @@ Acceso protegido por **Entra Easy Auth** (Require authentication, 302). Enterpri
 (client id `ff43376f-…`): puesto **"¿Asignación requerida? = Sí"** y asignados **3 usuarios** (los
 grupos no van por el plan). La API FastAPI no valida identidad propia (va detrás de Easy Auth) —
 refinamiento futuro de defensa en profundidad. `alea-db` = Flexible Server **Burstable** (sin geo-
-redundancia ni HA por nivel). **PENDIENTE backup**: `pg_dump` programado a un **NAS** de la oficina +
-subir **retención Azure a 35 días** (faltan ruta del NAS y qué PC).
+redundancia ni HA por nivel). **Backup: RESUELTO** — retención **Azure a 35 días** + copia propia al **NAS**
+de la oficina. Ver el resumen canónico en [Seguridad (resumen)](#seguridad-resumen--estado-actual-2026-07-14).
 
 ### UI varios
 - Menú lateral: grupo **Contabilidad** + opción **Transferencias** (Financiero); **Configuración**
