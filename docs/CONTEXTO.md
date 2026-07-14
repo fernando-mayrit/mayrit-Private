@@ -46,6 +46,16 @@
   integración y la historia de cumplimiento/seguridad (relevante para una correduría). El stack es **estándar
   y portable** (Python/React/PostgreSQL) → no hay lock-in real; se podría mover si algún día la factura se
   disparara o hiciera falta algo que Azure no dé, pero a este tamaño ninguna de esas dos cosas está cerca.
+- **Gestor documental: SEGUIR CON SHAREPOINT para archivos de personas (decisión razonada, 2026-07-14).**
+  Distinguir dos usos: (1) SharePoint como "base de datos" (listas con los BDX fila a fila) = MAL uso, es
+  justo lo que Mayrit+PostgreSQL está sustituyendo → seguir migrando. (2) SharePoint como repositorio de
+  **archivos** (pólizas, contratos, Word/Excel) = buen uso y la **mejor** opción para este caso: ya se paga
+  con M365, versiones, permisos con el mismo login (Entra), integra con Office/Teams. Alternativas
+  descartadas: **Azure Blob Storage** no es un DMS para personas (es almacén para que lo use la app por
+  debajo; complementa, no sustituye); DMS especializados (M-Files/DocuWare/iManage) = caros y overkill a este
+  tamaño; Google Drive = fuera del ecosistema. **Mejora futura (no urgente):** si se quiere que los Word de
+  LPAN/FDO y bordereaux que genera la app se **archiven solos**, la pieza natural es Azure Blob conectado a la
+  app (hoy se descargan a mano).
 
 **Cerrado recientemente (2026-07):** **justificante contable** — (a) desglose por recibo también para
 **Comisiones/Honorarios** (los traspasos/liquidaciones de comisión ya no salen con recibo "en blanco",
