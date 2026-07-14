@@ -1503,4 +1503,6 @@ El apunte 262.06 (Sabadell General) no mostraba justificante y la conciliación 
 LOCAL corría código viejo (procesos huérfanos que heredaban el socket del puerto 8000 y no soltaban el
 `--reload`). Reiniciar el backend lo resolvió. **Aviso operativo:** el `--reload` local en Windows no es
 fiable; tras cambios de backend hay que reiniciar (y matar workers `multiprocessing-fork` huérfanos si el
-socket queda pillado).
+socket del puerto 8000 queda pillado por un padre muerto). **Mejor arrancar el backend local SIN `--reload`**
+(`uvicorn app.main:app --port 8000`): más estable, sin watcher que se caiga ni sockets heredados; el precio
+es reiniciar a mano al tocar backend, que es lo que había que hacer igualmente.
