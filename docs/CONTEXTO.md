@@ -1561,3 +1561,24 @@ Easy Auth, pero no añadía cabeceras propias).
 - Recordatorio de credenciales (sin cambios): las claves (`mayrit_app`, `SP_PFX_PASSWORD`…) viven SOLO en
   `~/.mayrit/.env` (fuera de OneDrive, fuera de git). La BD Azure es **producción compartida**; el backend
   local trabaja contra prod. Migraciones aplicadas a mano (`alembic upgrade head`).
+
+### Justificantes de gastos: adjuntar ticket al movimiento + paquete mensual (NUEVO)
+Flujo para dejar de casar tickets↔movimientos a mano cada viernes, todo dentro de Mayrit (decisión:
+NO depender de la herramienta de la gestoría —hoy Biloop, mañana otra; Biloop es solo informativa y son
+ellos quienes reciben el envío mensual).
+- **Adjuntar ticket/factura** (imagen o PDF) a un movimiento desde su ficha (`AltaMovimiento`, solo en
+  edición). Se guarda en la BD (`movimiento_adjuntos`, contenido en `LargeBinary`), marca el apunte como
+  justificado (`factura=True`), y se puede **ver/abrir con un clic** (nunca queda "atrapado" — ver
+  [[prefer-tangible-files]]). Indicador **📎** en el listado (`n_adjuntos`).
+- **Extracto mensual real del banco** (`extractos_bancarios`, uno por cuenta+mes): se sube el PDF de verdad
+  (más creíble que uno generado). El usuario prefirió el del banco.
+- **Paquete mensual (ZIP)** para la gestoría (`GET /contabilidad/paquete?periodo=&cuenta=`): por banco, los
+  tickets **renombrados con su código** (`{identificador}. {cuenta contable}. {concepto}`, lo que ya muestra
+  la ficha) + el extracto del mes. **Siempre cuenta a cuenta** (nunca en grupo, decisión de negocio).
+- Endpoints en `contabilidad.py`; UI: sección en `AltaMovimiento`, componente `PaqueteMensual`, botón
+  "📤 Paquete mensual" en Contabilidad. Migración **`conta_adjuntos_0001`** (aplicada a prod). Verificado
+  end-to-end (subir→ver→ZIP con estructura `Banco/código. cuenta contable. concepto.ext`→borrar), prod limpia.
+- **Dónde se guardan (opción A):** en la BD de Mayrit, con exportación a ficheros reales (ZIP). La carpeta de
+  SharePoint del usuario (`Cuentas/2026/...`) NO se puede escribir desde Azure; **opción B futura**: que la
+  app escriba en su biblioteca de SharePoint vía API. Adjuntar usa `<input type=file>` normal (el navegador
+  recuerda la última carpeta; sirve para abrir en `Tickets para ordenar`).
