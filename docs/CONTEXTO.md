@@ -1506,3 +1506,24 @@ fiable; tras cambios de backend hay que reiniciar (y matar workers `multiprocess
 socket del puerto 8000 queda pillado por un padre muerto). **Mejor arrancar el backend local SIN `--reload`**
 (`uvicorn app.main:app --port 8000`): más estable, sin watcher que se caiga ni sockets heredados; el precio
 es reiniciar a mano al tocar backend, que es lo que había que hacer igualmente.
+
+### Seguridad — refuerzo (defensa en profundidad, IMPLEMENTADA)
+Cierra el "refinamiento futuro" que quedaba pendiente en la revisión del 21-22/06 (la API va detrás de Entra
+Easy Auth, pero no añadía cabeceras propias).
+- **Cabeceras HTTP de seguridad** (`backend/app/main.py`, middleware que las pone en toda respuesta):
+  `Strict-Transport-Security` (HSTS, `max-age=31536000` → fuerza HTTPS), `X-Content-Type-Options: nosniff`,
+  `X-Frame-Options: DENY` (anti-clickjacking, la app no se embebe en iframes),
+  `Referrer-Policy: strict-origin-when-cross-origin` (limita fuga de URLs),
+  `Permissions-Policy: geolocation=(), microphone=(), camera=()` (desactiva APIs del navegador que no se usan).
+  **Sin CSP a propósito** para no romper el SPA (posible refinamiento futuro). Todas con `setdefault` (no
+  pisan si ya vinieran puestas).
+- **Dependabot** (`.github/dependabot.yml`): vigila **pip** (`/backend`), **npm** (`/frontend`) y
+  **github-actions** (`/`); PR **agrupado semanal** por ecosistema (límite 5 PR abiertos). Los AVISOS de
+  vulnerabilidad se activan en Settings → Security → "Dependabot alerts". Ya ha abierto/mergeado
+  actualizaciones: vite, esbuild, grupo frontend (8 paquetes), y acciones de CI (checkout 4→7, setup-node
+  4→6, azure/login 2→3).
+- **Estado abierto:** GitHub reporta **4 vulnerabilidades de dependencias** (1 alta, 3 moderadas) en el repo,
+  que Dependabot está gestionando vía PRs. Pendiente: revisarlas y mergear las actualizaciones que falten.
+- Recordatorio de credenciales (sin cambios): las claves (`mayrit_app`, `SP_PFX_PASSWORD`…) viven SOLO en
+  `~/.mayrit/.env` (fuera de OneDrive, fuera de git). La BD Azure es **producción compartida**; el backend
+  local trabaja contra prod. Migraciones aplicadas a mano (`alembic upgrade head`).
