@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   transferenciasApi,
+  exportarXlsx,
   type Transferencia,
   type TransferenciaListada,
   type TransferenciasOpciones,
   type TransferenciaFiltros,
 } from "../api";
-import { fmtMiles } from "../format";
+import { fmtMiles, fmtFechaES } from "../format";
 import PageHeader from "../components/PageHeader";
 import FormPanel from "../components/FormPanel";
 import NumberInput from "../components/NumberInput";
@@ -82,6 +83,7 @@ export default function TransferenciasPage() {
   // Alta / edición manual
   const [form, setForm] = useState<FormState | null>(null);
   const [saving, setSaving] = useState(false);
+  const [exportando, setExportando] = useState(false);
   const [confirmar, setConfirmar] = useState<{ titulo: string; mensaje: ReactNode; accion: () => void } | null>(null);
 
   const filtros: TransferenciaFiltros = useMemo(
@@ -99,6 +101,35 @@ export default function TransferenciasPage() {
   }
   useEffect(() => { cargar(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [filtros]);
   useEffect(() => { transferenciasApi.opciones().then(setOpciones).catch(() => {}); }, []);
+
+  // Valor de una celda para Excel: números como número, fechas dd/mm/aaaa, resto texto.
+  function valorExport(t: Transferencia, col: Col<Transferencia>): string | number | null {
+    const raw = col.calc ? col.calc(t) : (t as unknown as Record<string, unknown>)[col.key];
+    if (raw == null || raw === "") return null;
+    if (col.tipo === "num") return Number(raw) || 0;
+    if (col.tipo === "date") return fmtFechaES(raw);
+    return String(raw);
+  }
+  // Descargar a Excel TODO lo que cumple los filtros actuales (no solo lo que se muestra en pantalla).
+  async function descargarExcel() {
+    setExportando(true); setError(null);
+    try {
+      const full = await transferenciasApi.listar({ ...filtros, limit: 100000 });
+      const blob = await exportarXlsx({
+        nombre: "Transferencias",
+        hoja: "Transferencias",
+        headers: TR_COLS.map((c) => c.label),
+        filas: full.items.map((t) => TR_COLS.map((c) => valorExport(t, c))),
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `Transferencias${anio ? ` ${anio}` : ""}.xlsx`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) { setError((e as Error).message); }
+    finally { setExportando(false); }
+  }
 
   // Detección de cambios: el aviso de cerrar solo salta si se ha tocado algo. Se compara el form
   // actual con el snapshot capturado al abrir (alta o edición).
@@ -204,7 +235,13 @@ export default function TransferenciasPage() {
               {(opciones?.cuentas ?? []).map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
           </div>
-          <button className="btn-primary" onClick={nuevo}>＋ Nuevo movimiento</button>
+          <div className="toolbar" style={{ gap: 8 }}>
+            <button className="btn-primary" onClick={nuevo}>＋ Nuevo movimiento</button>
+            <button className="btn-secondary" onClick={descargarExcel} disabled={exportando || !data?.items.length}
+              title="Descargar a Excel el listado tal y como está filtrado">
+              {exportando ? "Generando…" : "📊 Descargar Excel"}
+            </button>
+          </div>
         </div>
 
         {/* Contador (mismo formato que la pestaña Siniestros) */}
