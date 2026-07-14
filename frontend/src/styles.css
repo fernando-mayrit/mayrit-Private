@@ -1300,3 +1300,12 @@ tr.fila-inactiva td { opacity: 0.55; }
 .match-tabla { border-collapse: separate; border-spacing: 0; overflow: visible; border-radius: 0; }
 .match-tabla thead th { position: sticky; top: 0; z-index: 2; background: #f8fafc; box-shadow: inset 0 -1px 0 var(--borde); }
 .match-tabla tfoot .match-total td { position: sticky; bottom: 0; z-index: 2; background: #eef2f7; box-shadow: inset 0 1px 0 #cbd5e1; }
+
+/* Adjuntos (tickets/facturas) del movimiento + paquete mensual a la gestoría */
+.adj-lista { display: flex; flex-direction: column; gap: 5px; margin: 6px 0; }
+.adj-item { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.adj-nombre { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--naranja-osc, #b9530f); text-decoration: none; }
+.adj-nombre:hover { text-decoration: underline; }
+.adj-subir { display: inline-flex; align-items: center; cursor: pointer; }
+.paq-mes { display: flex; gap: 12px; margin-bottom: 10px; }
+.paq-mes .field { flex: 0 0 auto; }

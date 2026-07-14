@@ -14,7 +14,7 @@ from __future__ import annotations
 import datetime as dt
 from decimal import Decimal
 
-from sqlalchemy import JSON, Boolean, Computed, Date, DateTime, ForeignKey, Index, Integer, Numeric, String, Text, UniqueConstraint, func, text
+from sqlalchemy import JSON, Boolean, Computed, Date, DateTime, ForeignKey, Index, Integer, LargeBinary, Numeric, String, Text, UniqueConstraint, func, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
 
@@ -1246,6 +1246,38 @@ class MovimientoBancario(Base):
 
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class MovimientoAdjunto(Base):
+    """Ticket/factura escaneado que justifica un movimiento bancario (normalmente un gasto). El fichero se
+    guarda en la propia BD; se puede ver/descargar desde la app y sale renombrado con el código del
+    movimiento en el paquete mensual para la gestoría. Un movimiento puede tener varios adjuntos."""
+
+    __tablename__ = "movimiento_adjuntos"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    movimiento_id: Mapped[int] = mapped_column(
+        ForeignKey("movimientos_bancarios.id", ondelete="CASCADE"), index=True)
+    nombre_original: Mapped[str] = mapped_column(String(255))   # nombre del fichero tal cual se subió
+    mime: Mapped[str | None] = mapped_column(String(120))
+    contenido: Mapped[bytes] = mapped_column(LargeBinary)
+    subido_en: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ExtractoBancario(Base):
+    """Extracto MENSUAL del banco (el PDF real descargado del banco), por cuenta y mes. Se sube a la app
+    para incluirlo en el paquete mensual a la gestoría junto con los tickets. Uno por (cuenta, periodo)."""
+
+    __tablename__ = "extractos_bancarios"
+    __table_args__ = (UniqueConstraint("cuenta", "periodo", name="uq_extracto_cuenta_periodo"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    cuenta: Mapped[str] = mapped_column(String(60), index=True)
+    periodo: Mapped[str] = mapped_column(String(7))    # YYYY-MM
+    nombre_original: Mapped[str] = mapped_column(String(255))
+    mime: Mapped[str | None] = mapped_column(String(120))
+    contenido: Mapped[bytes] = mapped_column(LargeBinary)
+    subido_en: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class Parametro(Base):

@@ -508,6 +508,23 @@ export interface MovimientoBancario {
   transferencia_ids?: number[] | null;
   ajustes_justif?: AjusteJustif[] | null;
   espejo_mid?: number | null;
+  n_adjuntos?: number;               // tickets/facturas adjuntos
+}
+export interface AdjuntoMovimiento {
+  id: number;
+  movimiento_id: number;
+  nombre_original: string;
+  nombre_export: string;             // nombre con el código del movimiento (para la gestoría)
+  mime?: string | null;
+  subido_en: string;
+}
+export interface ExtractoMensual {
+  id: number;
+  cuenta: string;
+  periodo: string;                   // YYYY-MM
+  nombre_original: string;
+  mime?: string | null;
+  subido_en: string;
 }
 export interface EspejoCandidato {
   mid: number;
@@ -628,6 +645,44 @@ export const contabilidadApi = {
   },
   conciliarAplicar: (items: { mid: number; transferencia_ids: number[] }[]) =>
     request<{ conciliados: number; conflictos: number[] }>("/contabilidad/conciliar/aplicar", { method: "POST", body: JSON.stringify({ items }) }),
+
+  // ── Adjuntos (tickets/facturas) de un movimiento ──
+  listarAdjuntos: (mid: number) => request<AdjuntoMovimiento[]>(`/contabilidad/movimientos/${mid}/adjuntos`),
+  subirAdjunto: (mid: number, file: File) => {
+    const fd = new FormData(); fd.append("file", file);
+    return requestForm<AdjuntoMovimiento>(`/contabilidad/movimientos/${mid}/adjuntos`, fd);
+  },
+  urlAdjunto: (aid: number) => `${BASE}/contabilidad/adjuntos/${aid}`,
+  borrarAdjunto: (aid: number) => request<void>(`/contabilidad/adjuntos/${aid}`, { method: "DELETE" }),
+
+  // ── Extractos mensuales del banco (PDF real, por cuenta y mes) ──
+  listarExtractos: (cuenta?: string, periodo?: string) => {
+    const qs = new URLSearchParams();
+    if (cuenta) qs.set("cuenta", cuenta);
+    if (periodo) qs.set("periodo", periodo);
+    return request<ExtractoMensual[]>(`/contabilidad/extractos?${qs.toString()}`);
+  },
+  subirExtracto: (cuenta: string, periodo: string, file: File) => {
+    const fd = new FormData(); fd.append("cuenta", cuenta); fd.append("periodo", periodo); fd.append("file", file);
+    return requestForm<ExtractoMensual>("/contabilidad/extractos", fd);
+  },
+  urlExtracto: (eid: number) => `${BASE}/contabilidad/extractos/${eid}`,
+  borrarExtracto: (eid: number) => request<void>(`/contabilidad/extractos/${eid}`, { method: "DELETE" }),
+
+  // ── Paquete mensual (ZIP) para la gestoría: tickets renombrados + extracto, por banco ──
+  descargarPaquete: async (periodo: string, cuenta?: string): Promise<{ blob: Blob; filename: string }> => {
+    const qs = new URLSearchParams({ periodo });
+    if (cuenta) qs.set("cuenta", cuenta);
+    const res = await fetch(`${BASE}/contabilidad/paquete?${qs.toString()}`);
+    if (!res.ok) {
+      let msg = `Error al generar el paquete (${res.status})`;
+      try { const j = await res.json(); if (j?.detail) msg = j.detail; } catch { /* sin cuerpo */ }
+      throw new Error(msg);
+    }
+    const cd = res.headers.get("Content-Disposition") || "";
+    const m = /filename\*=UTF-8''([^;]+)/i.exec(cd);
+    return { blob: await res.blob(), filename: m ? decodeURIComponent(m[1]) : `Gastos ${periodo}.zip` };
+  },
 };
 
 export interface ConcApunte {

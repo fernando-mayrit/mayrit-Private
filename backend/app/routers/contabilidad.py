@@ -9,6 +9,7 @@ import datetime as dt
 import hashlib
 import io
 import re
+import zipfile
 from collections import Counter, defaultdict
 from decimal import Decimal
 from urllib.parse import quote
@@ -22,7 +23,8 @@ from sqlalchemy.orm import Session
 from .. import norma43
 from ..db import get_db
 from ..models.maestras import (
-    Bdx, BdxLinea, Binder, ContaCategoria, CuentaBancaria, MovimientoBancario, Productor, Recibo, Transferencia,
+    Bdx, BdxLinea, Binder, ContaCategoria, CuentaBancaria, ExtractoBancario, MovimientoAdjunto,
+    MovimientoBancario, Productor, Recibo, Transferencia,
 )
 
 router = APIRouter(prefix="/contabilidad", tags=["Contabilidad"])
@@ -52,6 +54,7 @@ class MovimientoRead(BaseModel):
     transferencia_ids: list[int] | None = None
     ajustes_justif: list[dict] | None = None
     espejo_mid: int | None = None
+    n_adjuntos: int = 0        # tickets/facturas adjuntos a este movimiento
 
     class Config:
         from_attributes = True
@@ -135,8 +138,20 @@ def listar(
         base.order_by(MovimientoBancario.fecha.desc().nullslast(), MovimientoBancario.id.desc()).limit(limit)
     ).all()
 
+    # Nº de adjuntos (tickets) por movimiento listado, en una sola consulta.
+    ids = [m.id for m in items]
+    n_adj = dict(db.execute(
+        select(MovimientoAdjunto.movimiento_id, func.count())
+        .where(MovimientoAdjunto.movimiento_id.in_(ids)).group_by(MovimientoAdjunto.movimiento_id)
+    ).all()) if ids else {}
+    reads = []
+    for m in items:
+        r = _read(m)
+        r.n_adjuntos = n_adj.get(m.id, 0)
+        reads.append(r)
+
     return MovimientosListados(
-        items=[_read(m) for m in items],
+        items=reads,
         total_gasto=Decimal(tg), total_ingreso=Decimal(ti), neto=Decimal(ti) - Decimal(tg),
         saldo_cuenta=saldo_cuenta, n_total=n,
     )
@@ -1038,3 +1053,199 @@ def espejo_candidatos(mid: int, dias: int = 10, db: Session = Depends(get_db)):
             concepto=c.concepto, importe=imp, n_transferencias=len(c.transferencia_ids or []),
         ))
     return out
+
+
+# ── Adjuntos (tickets/facturas) y extractos mensuales ──────────────────────────
+# El fichero se guarda en la BD. Se puede VER/DESCARGAR desde la app (nunca queda "atrapado") y sale
+# renombrado con el código del movimiento en el paquete mensual para la gestoría.
+_INVAL = re.compile(r'[<>:"/\\|?*\n\r\t]')
+
+
+def _sanea(nombre: str) -> str:
+    return _INVAL.sub("-", nombre or "").strip().rstrip(".") or "documento"
+
+
+def _ext(nombre: str) -> str:
+    i = (nombre or "").rfind(".")
+    return nombre[i:] if 0 <= i < len(nombre) - 1 else ""
+
+
+def _cuenta_contable(db: Session, concepto: str | None) -> str | None:
+    if not concepto:
+        return None
+    return db.scalar(select(ContaCategoria.cuenta_contable).where(
+        ContaCategoria.concepto == concepto, ContaCategoria.cuenta_contable.is_not(None)).limit(1))
+
+
+def _nombre_export(db: Session, m: MovimientoBancario) -> str:
+    """Nombre base del ticket para la gestoria: '{codigo}. {cuenta contable}. {concepto}' — igual que lo
+    muestra la ficha del movimiento (p. ej. '270.07. 62900005. Gastos IT (Software)')."""
+    partes = [p for p in (m.identificador, _cuenta_contable(db, m.concepto), m.concepto) if p]
+    return _sanea(". ".join(partes)) if partes else _sanea(f"movimiento-{m.id}")
+
+
+class AdjuntoRead(BaseModel):
+    id: int
+    movimiento_id: int
+    nombre_original: str
+    nombre_export: str = ""     # nombre con el codigo del movimiento (como se archiva para la gestoria)
+    mime: str | None = None
+    subido_en: dt.datetime
+
+    class Config:
+        from_attributes = True
+
+
+class ExtractoRead(BaseModel):
+    id: int
+    cuenta: str
+    periodo: str
+    nombre_original: str
+    mime: str | None = None
+    subido_en: dt.datetime
+
+    class Config:
+        from_attributes = True
+
+
+def _adj_read(db: Session, a: MovimientoAdjunto, m: MovimientoBancario | None = None) -> AdjuntoRead:
+    m = m or db.get(MovimientoBancario, a.movimiento_id)
+    r = AdjuntoRead.model_validate(a)
+    r.nombre_export = (_nombre_export(db, m) if m else _sanea(a.nombre_original)) + _ext(a.nombre_original)
+    return r
+
+
+@router.post("/movimientos/{mid}/adjuntos", response_model=AdjuntoRead, status_code=201)
+async def subir_adjunto(mid: int, file: UploadFile = File(...), db: Session = Depends(get_db)):
+    """Adjunta un ticket/factura (imagen o PDF) a un movimiento y marca el apunte como justificado."""
+    m = db.get(MovimientoBancario, mid)
+    if m is None:
+        raise HTTPException(404, f"Movimiento {mid} no encontrado")
+    data = await file.read()
+    if not data:
+        raise HTTPException(400, "El fichero esta vacio.")
+    adj = MovimientoAdjunto(movimiento_id=mid, nombre_original=file.filename or "ticket",
+                            mime=file.content_type, contenido=data)
+    db.add(adj)
+    m.factura = True                 # al adjuntar, queda justificado
+    db.commit(); db.refresh(adj)
+    return _adj_read(db, adj, m)
+
+
+@router.get("/movimientos/{mid}/adjuntos", response_model=list[AdjuntoRead])
+def listar_adjuntos(mid: int, db: Session = Depends(get_db)):
+    m = db.get(MovimientoBancario, mid)
+    if m is None:
+        raise HTTPException(404, f"Movimiento {mid} no encontrado")
+    adjs = db.scalars(select(MovimientoAdjunto).where(MovimientoAdjunto.movimiento_id == mid)
+                      .order_by(MovimientoAdjunto.id)).all()
+    return [_adj_read(db, a, m) for a in adjs]
+
+
+@router.get("/adjuntos/{aid}")
+def ver_adjunto(aid: int, db: Session = Depends(get_db)):
+    a = db.get(MovimientoAdjunto, aid)
+    if a is None:
+        raise HTTPException(404, "Adjunto no encontrado")
+    m = db.get(MovimientoBancario, a.movimiento_id)
+    nombre = (_nombre_export(db, m) if m else _sanea(a.nombre_original)) + _ext(a.nombre_original)
+    return StreamingResponse(io.BytesIO(a.contenido), media_type=a.mime or "application/octet-stream",
+        headers={"Content-Disposition": f"inline; filename*=UTF-8''{quote(nombre)}"})
+
+
+@router.delete("/adjuntos/{aid}", status_code=204)
+def borrar_adjunto(aid: int, db: Session = Depends(get_db)):
+    a = db.get(MovimientoAdjunto, aid)
+    if a is not None:
+        db.delete(a); db.commit()
+
+
+@router.post("/extractos", response_model=ExtractoRead, status_code=201)
+async def subir_extracto(cuenta: str = Form(...), periodo: str = Form(...),
+                         file: UploadFile = File(...), db: Session = Depends(get_db)):
+    """Sube el extracto MENSUAL del banco (PDF real) de una cuenta. Uno por (cuenta, mes); reemplaza."""
+    data = await file.read()
+    if not data:
+        raise HTTPException(400, "El fichero esta vacio.")
+    ex = db.scalar(select(ExtractoBancario).where(
+        ExtractoBancario.cuenta == cuenta, ExtractoBancario.periodo == periodo))
+    if ex is None:
+        ex = ExtractoBancario(cuenta=cuenta, periodo=periodo)
+        db.add(ex)
+    ex.nombre_original = file.filename or f"extracto-{cuenta}-{periodo}"
+    ex.mime = file.content_type
+    ex.contenido = data
+    db.commit(); db.refresh(ex)
+    return ExtractoRead.model_validate(ex)
+
+
+@router.get("/extractos", response_model=list[ExtractoRead])
+def listar_extractos(cuenta: str | None = None, periodo: str | None = None, db: Session = Depends(get_db)):
+    q = select(ExtractoBancario)
+    if cuenta:
+        q = q.where(ExtractoBancario.cuenta == cuenta)
+    if periodo:
+        q = q.where(ExtractoBancario.periodo == periodo)
+    return [ExtractoRead.model_validate(e) for e in
+            db.scalars(q.order_by(ExtractoBancario.periodo.desc(), ExtractoBancario.cuenta)).all()]
+
+
+@router.get("/extractos/{eid}")
+def ver_extracto(eid: int, db: Session = Depends(get_db)):
+    e = db.get(ExtractoBancario, eid)
+    if e is None:
+        raise HTTPException(404, "Extracto no encontrado")
+    nombre = _sanea(f"Extracto {e.cuenta} {e.periodo}") + _ext(e.nombre_original)
+    return StreamingResponse(io.BytesIO(e.contenido), media_type=e.mime or "application/octet-stream",
+        headers={"Content-Disposition": f"inline; filename*=UTF-8''{quote(nombre)}"})
+
+
+@router.delete("/extractos/{eid}", status_code=204)
+def borrar_extracto(eid: int, db: Session = Depends(get_db)):
+    e = db.get(ExtractoBancario, eid)
+    if e is not None:
+        db.delete(e); db.commit()
+
+
+@router.get("/paquete")
+def paquete_mensual(periodo: str, cuenta: str | None = None, db: Session = Depends(get_db)):
+    """ZIP del mes `periodo` (YYYY-MM) para la gestoria: por cada banco, los tickets renombrados con su
+    codigo + el extracto del mes. El mes se toma del devengo (o la fecha) del movimiento."""
+    try:
+        y, mth = (int(x) for x in periodo.split("-")[:2])
+        ini = dt.date(y, mth, 1)
+        fin = dt.date(y + (mth == 12), (mth % 12) + 1, 1)
+    except Exception:
+        raise HTTPException(400, "Periodo invalido (usa YYYY-MM).")
+
+    mes = func.coalesce(MovimientoBancario.devengo, MovimientoBancario.fecha)
+    q = select(MovimientoBancario).where(mes >= ini, mes < fin)
+    if cuenta:
+        q = q.where(MovimientoBancario.cuenta == cuenta)
+    movs = db.scalars(q.order_by(MovimientoBancario.cuenta, MovimientoBancario.iden)).all()
+
+    buf = io.BytesIO()
+    n_tickets = 0
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        for m in movs:
+            adjs = db.scalars(select(MovimientoAdjunto).where(
+                MovimientoAdjunto.movimiento_id == m.id).order_by(MovimientoAdjunto.id)).all()
+            if not adjs:
+                continue
+            base = _nombre_export(db, m)
+            for k, a in enumerate(adjs):
+                sufijo = f" ({k + 1})" if len(adjs) > 1 else ""
+                z.writestr(f"{_sanea(m.cuenta)}/{base}{sufijo}{_ext(a.nombre_original)}", a.contenido)
+                n_tickets += 1
+        exq = select(ExtractoBancario).where(ExtractoBancario.periodo == periodo)
+        if cuenta:
+            exq = exq.where(ExtractoBancario.cuenta == cuenta)
+        for e in db.scalars(exq).all():
+            z.writestr(f"{_sanea(e.cuenta)}/Extracto {_sanea(e.cuenta)} {periodo}{_ext(e.nombre_original)}", e.contenido)
+
+    if n_tickets == 0:
+        raise HTTPException(409, "No hay tickets adjuntos para ese mes (sube alguno antes de generar el paquete).")
+    buf.seek(0)
+    nombre = _sanea(f"Gastos {cuenta} {periodo}" if cuenta else f"Gastos {periodo}") + ".zip"
+    return StreamingResponse(buf, media_type="application/zip",
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(nombre)}"})

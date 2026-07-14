@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { contabilidadApi, type ContaCategoria, type BaseAlta, type MovimientoBancario, type ReciboJustif, type AjusteJustif, type EspejoCandidato } from "../api";
+import { contabilidadApi, type ContaCategoria, type BaseAlta, type MovimientoBancario, type ReciboJustif, type AjusteJustif, type EspejoCandidato, type AdjuntoMovimiento } from "../api";
 import { fmtMiles, fmtFechaES } from "../format";
 import FormPanel from "./FormPanel";
 import NumberInput from "./NumberInput";
@@ -51,6 +51,10 @@ export default function AltaMovimiento({ cuenta, cats, movimiento, onClose, onSa
   const [espejoMid, setEspejoMid] = useState<number | null>(movimiento?.espejo_mid ?? null);
   const [espejoCands, setEspejoCands] = useState<EspejoCandidato[]>([]);
   const [espejoFilas, setEspejoFilas] = useState<ReciboJustif[]>([]);
+  // Ticket/factura escaneado que justifica el movimiento (para gastos). Se guarda en Mayrit y se puede
+  // ver/descargar; sale renombrado con el código en el paquete mensual para la gestoría.
+  const [adjuntos, setAdjuntos] = useState<AdjuntoMovimiento[]>([]);
+  const [subiendoAdj, setSubiendoAdj] = useState(false);
 
   // ¿Hay cambios sin guardar? Compara los campos editables con su estado al abrir; así el aviso de
   // "Cambios sin guardar" solo salta si de verdad se tocó algo (antes `dirty` iba fijo a true).
@@ -91,9 +95,26 @@ export default function AltaMovimiento({ cuenta, cats, movimiento, onClose, onSa
     if (!edicion || !movimiento) return;
     let vivo = true;
     contabilidadApi.espejoCandidatos(movimiento.id).then((r) => { if (vivo) setEspejoCands(r); }).catch(() => {});
+    contabilidadApi.listarAdjuntos(movimiento.id).then((r) => { if (vivo) setAdjuntos(r); }).catch(() => {});
     return () => { vivo = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  async function subirTicket(f: File) {
+    if (!movimiento) return;
+    setSubiendoAdj(true); setError(null);
+    try {
+      const a = await contabilidadApi.subirAdjunto(movimiento.id, f);
+      setAdjuntos((s) => [...s, a]);
+      setFactura(true);   // al adjuntar, el movimiento queda justificado
+    } catch (e) { setError((e as Error).message); }
+    finally { setSubiendoAdj(false); }
+  }
+  async function quitarTicket(aid: number) {
+    setError(null);
+    try { await contabilidadApi.borrarAdjunto(aid); setAdjuntos((s) => s.filter((x) => x.id !== aid)); }
+    catch (e) { setError((e as Error).message); }
+  }
   // Vista previa de las filas heredadas del apunte espejado (su desglose por recibo).
   useEffect(() => {
     if (!espejoMid) { setEspejoFilas([]); return; }
@@ -284,6 +305,35 @@ export default function AltaMovimiento({ cuenta, cats, movimiento, onClose, onSa
           </>
         )}
       </div>
+
+      {/* Ticket/factura escaneado (para gastos): se adjunta al movimiento, se puede ver/descargar, y
+          sale en el paquete mensual para la gestoría renombrado con el código. Solo en edición (el
+          movimiento debe existir para colgarle el fichero). */}
+      {edicion && movimiento && (
+        <div className="justif-sec">
+          <div className="justif-head">
+            <b>📎 Ticket / factura</b>
+            <span className="hint">comprobante de este movimiento · se guarda en Mayrit y va en el paquete mensual a la gestoría</span>
+          </div>
+          {adjuntos.length > 0 && (
+            <div className="adj-lista">
+              {adjuntos.map((a) => (
+                <div key={a.id} className="adj-item">
+                  <span aria-hidden>🧾</span>
+                  <a href={contabilidadApi.urlAdjunto(a.id)} target="_blank" rel="noopener noreferrer" className="adj-nombre" title="Abrir el fichero">{a.nombre_export}</a>
+                  <button type="button" className="btn-link btn-sm" title="Quitar" onClick={() => quitarTicket(a.id)}>✕</button>
+                </div>
+              ))}
+            </div>
+          )}
+          <label className="btn-secondary btn-sm adj-subir">
+            {subiendoAdj ? "Subiendo…" : "📎 Adjuntar ticket"}
+            <input type="file" accept="image/*,application/pdf" style={{ display: "none" }} disabled={subiendoAdj}
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) subirTicket(f); e.target.value = ""; }} />
+          </label>
+          {adjuntos.length === 0 && <span className="hint" style={{ marginLeft: 8 }}>aún sin comprobante</span>}
+        </div>
+      )}
 
       {/* Justificante: recibos que componen este apunte (solo al EDITAR un apunte de seguros ya
           existente; en el alta no aplica, el movimiento aún no está guardado). */}

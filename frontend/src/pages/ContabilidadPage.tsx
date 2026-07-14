@@ -6,6 +6,7 @@ import TablaDatos, { type Col } from "../components/TablaDatos";
 import AltaMovimiento from "../components/AltaMovimiento";
 import ImportarExtracto from "../components/ImportarExtracto";
 import ConciliarExtracto from "../components/ConciliarExtracto";
+import PaqueteMensual from "../components/PaqueteMensual";
 
 // Contabilidad — libro de banco categorizado (espejo de las listas 'Contabilidad - *' de SharePoint).
 // Regla clave: SIEMPRE se ve UNA sola cuenta a la vez (nunca se mezclan). 'Movimiento Fondos'
@@ -51,6 +52,7 @@ export default function ContabilidadPage() {
   const [editando, setEditando] = useState<MovimientoBancario | null>(null);
   const [importFile, setImportFile] = useState<File | null>(null);
   const [conciliar, setConciliar] = useState(false);
+  const [paquete, setPaquete] = useState(false);
   const importInputRef = useRef<HTMLInputElement>(null);
   const [anio, setAnio] = useState<number | "">(new Date().getFullYear());   // por defecto, año en curso
   const [grupo, setGrupo] = useState("");
@@ -116,8 +118,11 @@ export default function ContabilidadPage() {
   }, []);
   const columnas = useMemo<Col<MovimientoBancario>[]>(() => COLS.map((c) => c.key === "factura"
     ? { ...c, render: (m: MovimientoBancario) => (
-        <input type="checkbox" checked={!!m.factura} style={{ cursor: "pointer" }}
-          onClick={(e) => e.stopPropagation()} onChange={() => toggleJustif(m)} />
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+          <input type="checkbox" checked={!!m.factura} style={{ cursor: "pointer" }}
+            onClick={(e) => e.stopPropagation()} onChange={() => toggleJustif(m)} />
+          {(m.n_adjuntos ?? 0) > 0 && <span title={`${m.n_adjuntos} ticket(s) adjunto(s)`}>📎</span>}
+        </span>
       ) }
     : c), [toggleJustif]);
 
@@ -166,6 +171,8 @@ export default function ContabilidadPage() {
                 title="Subir un extracto del banco en Norma 43 (Cuaderno 43) y darlo de alta en bloque">⬆️ Importar extracto</button>
               <button className="btn-secondary btn-sm" onClick={() => setConciliar(true)} disabled={!cuenta || cuenta === FONDOS}
                 title="Cruzar los apuntes de seguros con las transferencias que los cuadran (propone, tú confirmas)">🔗 Conciliar</button>
+              <button className="btn-secondary btn-sm" onClick={() => setPaquete(true)} disabled={!cuenta || cuenta === FONDOS}
+                title="Extracto del mes + tickets renombrados por su código, en un ZIP por banco, para la gestoría">📤 Paquete mensual</button>
               <input ref={importInputRef} type="file" accept=".n43,.q43,.aeb,.txt" style={{ display: "none" }}
                 onChange={(e) => { const f = e.target.files?.[0]; if (f) setImportFile(f); e.target.value = ""; }} />
             </div>
@@ -227,6 +234,10 @@ export default function ContabilidadPage() {
           onClose={() => setConciliar(false)}
           onSaved={() => { setConciliar(false); cargar(); }}
         />
+      )}
+
+      {paquete && cuenta && (
+        <PaqueteMensual cuenta={cuenta} onClose={() => setPaquete(false)} />
       )}
     </div>
   );
