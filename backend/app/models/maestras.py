@@ -1368,6 +1368,48 @@ class DgsfpVinculo(Base):
     agencia: Mapped["DgsfpAgencia"] = relationship()
 
 
+class Credencial(Base):
+    """Entrada del gestor de contraseñas. La contraseña (`secreto_cifrado`) se guarda CIFRADA
+    (Fernet, ver ``app/seguridad.py``); el resto de campos en claro. `notas` NO se cifra (es para
+    pistas, no para secretos). Visibilidad: 'privada' (solo `propietario`) o 'publica' (propietario
+    + los usuarios listados en ``credencial_permisos``). La identidad del usuario es por nombre,
+    como en todo Mayrit; el cifrado protege el dato en reposo, no frente a suplantación de usuario."""
+
+    __tablename__ = "credenciales"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    propietario: Mapped[str] = mapped_column(String(120), index=True)   # usuario que la creó y la posee
+    titulo: Mapped[str] = mapped_column(String(200))
+    categoria: Mapped[str | None] = mapped_column(String(80), index=True)
+    usuario: Mapped[str | None] = mapped_column(String(255))            # login/usuario del servicio (no del equipo)
+    url: Mapped[str | None] = mapped_column(String(500))
+    notas: Mapped[str | None] = mapped_column(Text)                     # EN CLARO: no meter secretos aquí
+    secreto_cifrado: Mapped[str] = mapped_column(Text)                  # contraseña cifrada (token Fernet)
+    visibilidad: Mapped[str] = mapped_column(String(10), server_default=text("'privada'"), default="privada")
+
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    permisos: Mapped[list["CredencialPermiso"]] = relationship(
+        back_populates="credencial", cascade="all, delete-orphan", lazy="selectin")
+
+
+class CredencialPermiso(Base):
+    """Usuario del equipo con permiso para ver una credencial PÚBLICA (el propietario siempre la ve;
+    no hace falta listarlo aquí)."""
+
+    __tablename__ = "credencial_permisos"
+    __table_args__ = (UniqueConstraint("credencial_id", "usuario", name="uq_credencial_permiso"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    credencial_id: Mapped[int] = mapped_column(
+        ForeignKey("credenciales.id", ondelete="CASCADE"), index=True)
+    usuario: Mapped[str] = mapped_column(String(120), index=True)
+
+    credencial: Mapped["Credencial"] = relationship(back_populates="permisos")
+
+
 class ManualSeccion(Base):
     """Sección del Manual de uso de la app (editable desde la propia app). El cuerpo es Markdown.
     El orden lo da `orden` (menor primero)."""

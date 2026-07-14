@@ -56,6 +56,20 @@
   tamaño; Google Drive = fuera del ecosistema. **Mejora futura (no urgente):** si se quiere que los Word de
   LPAN/FDO y bordereaux que genera la app se **archiven solos**, la pieza natural es Azure Blob conectado a la
   app (hoy se descargan a mano).
+- **Gestor de contraseñas: CONSTRUIDO dentro de Mayrit (decisión razonada, 2026-07-14).** Objetivo real
+  (acotado con Fernando): un cajón para las contraseñas del equipo, **no un Word**, sin líos —NO se buscaba
+  autorrelleno de portales ni una bóveda "pro". Para ESE objetivo, un módulo propio detrás del login de Entra
+  encaja mejor que pagar un Bitwarden/1Password (que sería lo correcto si se quisiera autorrelleno/móvil/zero-
+  knowledge). Diseño: tabla `credenciales` (+ `credencial_permisos`), contraseña **cifrada en reposo** con
+  **Fernet** (clave en `MAYRIT_VAULT_KEY`, ver abajo); cada entrada es **privada** (solo el propietario) o
+  **pública** (propietario + los usuarios elegidos); categorías para agrupar; generador de contraseñas en el
+  **cliente** (opcional); ver/copiar bajo demanda (el listado NO lleva contraseñas en claro al navegador).
+  Módulo: `credenciales.py` (router) + `seguridad.py` (cifrado) + `CredencialesPage.tsx`. Acceso **discreto**
+  (a petición de Fernando): NO en el menú lateral, sino en el desplegable **⚙️ Configuración → Contraseñas**
+  (esconderlo no da seguridad —esa la dan Entra+cifrado+ACL— pero evita que se vea de reojo). **Nivel de seguridad (honesto):** más que un Word (cifrado + login Entra/MFA + control por
+  entrada), menos que un gestor pro (**NO es zero-knowledge**: el servidor tiene la clave y puede descifrar; la
+  separación privada/pública entre usuarios es por **buena fe**, como el resto de restricciones de la app). Las
+  **notas NO se cifran** (son para pistas, no secretos).
 
 **Cerrado recientemente (2026-07):** **justificante contable** — (a) desglose por recibo también para
 **Comisiones/Honorarios** (los traspasos/liquidaciones de comisión ya no salen con recibo "en blanco",
@@ -1561,6 +1575,12 @@ Easy Auth, pero no añadía cabeceras propias).
 - Recordatorio de credenciales (sin cambios): las claves (`mayrit_app`, `SP_PFX_PASSWORD`…) viven SOLO en
   `~/.mayrit/.env` (fuera de OneDrive, fuera de git). La BD Azure es **producción compartida**; el backend
   local trabaja contra prod. Migraciones aplicadas a mano (`alembic upgrade head`).
+- **`MAYRIT_VAULT_KEY` (gestor de contraseñas) — PENDIENTE en Azure y otros equipos.** Es la clave que cifra
+  las contraseñas guardadas. Ya está en el `~/.mayrit/.env` de ESTE equipo (generada 2026-07-14). **Debe ser
+  la MISMA en Azure** (App Setting `MAYRIT_VAULT_KEY`, idealmente enlazado a un secreto de Key Vault) **y en
+  cada equipo** que use el módulo; si difiere, cada máquina solo descifra lo que ella cifró, y **si se pierde,
+  las contraseñas son irrecuperables**. Copiar el valor de este equipo a Azure y a los demás. Regla igual que
+  la de `mayrit_app`: misma clave copiada-y-pegada en todas partes.
 
 ### Justificantes de gastos: adjuntar ticket al movimiento + paquete mensual (NUEVO)
 Flujo para dejar de casar tickets↔movimientos a mano cada viernes, todo dentro de Mayrit (decisión:

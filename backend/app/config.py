@@ -42,6 +42,12 @@ class Settings(BaseSettings):
     # Usuario asignado a ESTE equipo (autologin): MAYRIT_USUARIO en ~/.mayrit/.env.
     mayrit_usuario: str = ""
 
+    # Clave de cifrado del gestor de contraseñas (Fernet, urlsafe-base64 de 32 bytes). Cifra los
+    # secretos EN REPOSO en la BD. DEBE ser la MISMA en todos los equipos y en Azure (si difiere,
+    # cada máquina ve solo lo que ella cifró). En local: MAYRIT_VAULT_KEY en ~/.mayrit/.env; en
+    # Azure: App Setting enlazado a un secreto de Key Vault. Generar con `python -m app.seguridad`.
+    mayrit_vault_key: str = ""
+
     # Datos de referencia COMPARTIDOS con Alea (mismo servidor, base 'alea'): p. ej. el
     # callejero de códigos postales. Se leen con el propio usuario de Mayrit (solo lectura).
     pg_database_ref: str = "alea"

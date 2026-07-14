@@ -2,6 +2,8 @@
 from .maestras import (
     Binder,
     BinderSeccion,
+    Credencial,
+    CredencialPermiso,
     Mercado,
     Productor,
     Ramo,
@@ -21,4 +23,6 @@ __all__ = [
     "BinderSeccion",
     "SeccionMercado",
     "SeccionRiskCode",
+    "Credencial",
+    "CredencialPermiso",
 ]

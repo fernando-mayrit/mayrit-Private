@@ -1334,6 +1334,50 @@ export const avisosApi = {
     request<AvisoNivel>(`/avisos/niveles/${tipo}/categoria`, { method: "PUT", body: JSON.stringify({ categoria }) }),
 };
 
+// ── Gestor de contraseñas (credenciales del equipo, privadas o compartidas) ──
+export interface Credencial {
+  id: number;
+  propietario: string;
+  titulo: string;
+  categoria: string | null;
+  usuario: string | null;          // login/usuario del servicio (no del equipo)
+  url: string | null;
+  notas: string | null;
+  visibilidad: "privada" | "publica";
+  permisos: string[];              // usuarios que pueden verla (si es pública)
+  es_propia: boolean;              // el usuario actual es el propietario → puede editar/borrar
+  created_at: string | null;
+  updated_at: string | null;
+}
+export interface CredencialWrite {
+  titulo: string;
+  categoria?: string | null;
+  usuario?: string | null;
+  url?: string | null;
+  notas?: string | null;
+  secreto?: string;                // contraseña en claro; al editar, vacío = no cambiarla
+  visibilidad?: "privada" | "publica";
+  permisos?: string[];
+}
+export const credencialesApi = {
+  listar: (usuario: string, params?: { q?: string; categoria?: string }) => {
+    const qs = new URLSearchParams({ usuario });
+    if (params?.q) qs.set("q", params.q);
+    if (params?.categoria) qs.set("categoria", params.categoria);
+    return request<Credencial[]>(`/credenciales?${qs.toString()}`);
+  },
+  categorias: (usuario: string) =>
+    request<string[]>(`/credenciales/categorias?usuario=${encodeURIComponent(usuario)}`),
+  secreto: (id: number, usuario: string) =>
+    request<{ secreto: string }>(`/credenciales/${id}/secreto?usuario=${encodeURIComponent(usuario)}`),
+  crear: (usuario: string, data: CredencialWrite) =>
+    request<Credencial>(`/credenciales?usuario=${encodeURIComponent(usuario)}`, { method: "POST", body: JSON.stringify(data) }),
+  editar: (id: number, usuario: string, data: CredencialWrite) =>
+    request<Credencial>(`/credenciales/${id}?usuario=${encodeURIComponent(usuario)}`, { method: "PUT", body: JSON.stringify(data) }),
+  borrar: (id: number, usuario: string) =>
+    request<void>(`/credenciales/${id}?usuario=${encodeURIComponent(usuario)}`, { method: "DELETE" }),
+};
+
 // ── Manual de uso (secciones editables) ──
 export const manualApi = {
   listar: () => request<import("./types").ManualSeccion[]>(`/manual`),

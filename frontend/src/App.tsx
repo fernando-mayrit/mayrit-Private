@@ -22,6 +22,7 @@ import TransferenciasPage from "./pages/TransferenciasPage";
 import RamosPage from "./pages/RamosPage";
 import CuentasBancariasPage from "./pages/CuentasBancariasPage";
 import UsuariosPage from "./pages/UsuariosPage";
+import CredencialesPage from "./pages/CredencialesPage";
 import ManualPage from "./pages/ManualPage";
 import EnConstruccion from "./components/EnConstruccion";
 import Inicio from "./components/Inicio";
@@ -56,6 +57,7 @@ const EMOJI: Record<string, string> = {
   contabilidad: "📒",
   kpis: "📊",
   agencias_dgsfp: "🏛️",
+  credenciales: "🔐",
   manual: "📖",
 };
 
@@ -84,6 +86,7 @@ type Page =
   | "contabilidad"
   | "kpis"
   | "agencias_dgsfp"
+  | "credenciales"
   | "manual";
 
 // Barra superior: las Maestras (las partes).
@@ -143,11 +146,12 @@ const CONTABILIDAD: ItemMenu[] = [
   { id: "cierre", label: "Cierre Contable" },
 ];
 
-// Menú lateral: Configuración (catálogos compartidos).
+// Menú lateral: Configuración (catálogos compartidos + gestor de contraseñas personal).
 const CONFIG: { id: Page; label: string }[] = [
   { id: "ramos", label: "Ramos" },
   { id: "cuentas", label: "Cuentas Bancarias" },
   { id: "usuarios", label: "Usuarios" },
+  { id: "credenciales", label: "Contraseñas" },
 ];
 
 // Grupos del menú lateral (desplegables/acordeón). El de Configuración va aparte, abajo del todo.
@@ -552,6 +556,7 @@ export default function App() {
           {page === "ramos" && <RamosPage />}
           {page === "cuentas" && <CuentasBancariasPage />}
           {page === "usuarios" && <UsuariosPage />}
+          {page === "credenciales" && <CredencialesPage usuario={usuario} />}
           {page === "manual" && <ManualPage />}
         </main>
       </div>
