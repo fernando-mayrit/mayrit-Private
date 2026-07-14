@@ -589,10 +589,12 @@ export default function TareasBinder({ binderId }: { binderId?: number }) {
                   📅 {mesLabel(g.mes)}{g.pendientes > 0 && <span className="hint" style={{ marginLeft: 8 }}>· {g.pendientes} pendiente{g.pendientes > 1 ? "s" : ""}</span>}
                 </h3>
                 {g.categorias.map((c) => (
-                  <div key={c.cat} style={{ margin: "0 0 12px 6px" }}>
-                    <div style={{ margin: "8px 0 4px" }}>
-                      <span className={`pill ${CAT_PILL[c.cat] ?? "pill-anulado"}`}>{c.cat}</span>
+                  <div key={c.cat} className={`tareas-cat cat-${(c.cat || "General").toLowerCase()}`}>
+                    <div className="tareas-cat-rail">
+                      <span className="tareas-cat-count">{c.binders.reduce((s, b) => s + b.items.length, 0)}</span>
+                      <span className="tareas-cat-titulo">{c.cat}</span>
                     </div>
+                    <div className="tareas-cat-body">
                     {c.binders.map((b) => (
                       <div key={b.binder} style={{ margin: "0 0 8px 14px" }}>
                         <div style={{ fontSize: 13, color: "var(--texto-suave, #666)", margin: "4px 0 2px" }}>📑 {b.binder}</div>
@@ -626,6 +628,7 @@ export default function TareasBinder({ binderId }: { binderId?: number }) {
                         })}
                       </div>
                     ))}
+                    </div>
                   </div>
                 ))}
               </section>

@@ -1309,3 +1309,22 @@ tr.fila-inactiva td { opacity: 0.55; }
 .adj-subir { display: inline-flex; align-items: center; cursor: pointer; }
 .paq-mes { display: flex; gap: 12px; margin-bottom: 10px; }
 .paq-mes .field { flex: 0 0 auto; }
+
+/* Encabezado de categoría (Risk/Premium/Claims) en Tareas · vista Por mes: rail VERTICAL a la izquierda */
+.tareas-cat { display: flex; align-items: stretch; gap: 10px; margin: 12px 0 16px; }
+.tareas-cat-rail {
+  flex: 0 0 auto; width: 34px; border-radius: 7px;
+  background: var(--cat-bg, #f1f2f4); border-left: 5px solid var(--cat-color, #888);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 9px; padding: 10px 0;
+}
+.tareas-cat-body { flex: 1; min-width: 0; }
+.tareas-cat-titulo {
+  writing-mode: vertical-rl; transform: rotate(180deg);
+  font-size: 13px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--cat-ink, #333);
+}
+.tareas-cat-count { font-size: 11px; font-weight: 700; color: #fff; background: var(--cat-color, #888); border-radius: 999px; padding: 1px 7px; min-width: 20px; text-align: center; }
+/* Mismos colores que los pills de categoría: Risk amarillo, Premium verde, Claims rojo, General gris. */
+.cat-risk    { --cat-color: #b45309; --cat-bg: #fdecd1; --cat-ink: #b45309; }
+.cat-premium { --cat-color: #1a7f37; --cat-bg: #dcebe0; --cat-ink: #1a7f37; }
+.cat-claims  { --cat-color: #b42318; --cat-bg: #fde2dd; --cat-ink: #b42318; }
+.cat-general { --cat-color: #8a8f98; --cat-bg: var(--gris-claro, #f1f2f4); --cat-ink: #4b5563; }
