@@ -106,9 +106,9 @@ export default function LpanFdoRow({
         </>
       ) : (
         <>
-          <td><input type="text" value={signing} placeholder="21285*18/06/2026" style={{ width: 150 }}
+          <td><input type="text" value={signing} style={{ width: 150 }}
             onChange={(e) => setSigning(e.target.value)} /></td>
-          <td><input type="text" value={wp} placeholder="BNIXQUR" style={{ width: 110 }}
+          <td><input type="text" value={wp} style={{ width: 110 }}
             onChange={(e) => setWp(e.target.value)} /></td>
           <td><input type="date" className="inp-fecha" value={fproc}
             onChange={(e) => setFproc(e.target.value)} /></td>
