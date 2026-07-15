@@ -1555,6 +1555,25 @@ socket del puerto 8000 queda pillado por un padre muerto). **Mejor arrancar el b
 (`uvicorn app.main:app --port 8000`): más estable, sin watcher que se caiga ni sockets heredados; el precio
 es reiniciar a mano al tocar backend, que es lo que había que hacer igualmente.
 
+**CONFIRMADO Y EXPLICADO (2026-07-15).** Se intentó volver a poner `--reload` (Fernando: "reiniciar pasa
+demasiado a menudo") y la prueba reprodujo el problema EN VIVO → **se revirtió; la decisión de NO usar
+`--reload` es correcta**. El porqué, ya con la mecánica exacta:
+- El venv (`~/.mayrit/venv`, Python 3.14) usa un **stub**: `venv\Scripts\python.exe` **re-lanza el intérprete
+  real** (`AppData\Local\Python\pythoncore-3.14-64\python.exe`). Por eso SIEMPRE hay **2 procesos** (padre
+  stub + hijo real) aunque no haya `--reload`, y **el que agarra el socket del 8000 es el hijo**, con OTRO
+  ejecutable.
+- Con `--reload` se añade encima el worker de **multiprocessing spawn**, cuya **línea de comandos NO contiene
+  "uvicorn"** → ningún filtro por nombre/cmdline lo caza. Si el padre muere, ese hijo queda **huérfano
+  agarrando el 8000**: `netstat` muestra LISTENING con un **PID ya muerto**, el puerto no se puede enlazar y
+  el siguiente arranque **falla en silencio** → backend zombi que responde GET pero se come los POST (el bug
+  de "Generar LPAN / Cobrar Premium no hacen nada"). Con la app escribiendo en la **BD de PRODUCCIÓN**, eso
+  es inaceptable: mejor reiniciar a mano.
+- **Solución al dolor de reiniciar**: `reiniciar_backend.vbs` (raíz del repo) — **un doble clic**: mata lo que
+  escuche en el 8000 **y sus hijos** (hay que ir por PUERTO + PATERNIDAD, no por nombre) y arranca uno limpio,
+  avisando cuando responde. Probado: rearranca bien y no duplica. NO toca Alea (puerto 8010).
+- Para diagnosticar: `Get-CimInstance Win32_Process -Filter "Name='python.exe'" | Select ProcessId,
+  ParentProcessId, CommandLine` y `netstat -ano | findstr :8000` (si el PID del netstat no existe → huérfano).
+
 ### Seguridad — refuerzo (defensa en profundidad, IMPLEMENTADA)
 Cierra el "refinamiento futuro" que quedaba pendiente en la revisión del 21-22/06 (la API va detrás de Entra
 Easy Auth, pero no añadía cabeceras propias).
