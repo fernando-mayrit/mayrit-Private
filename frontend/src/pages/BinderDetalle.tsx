@@ -1704,13 +1704,12 @@ export default function BinderDetalle({ binder }: { binder: Binder }) {
       {tab === "lpan" && (
         !lpanData ? (
           <div className="loading">Cargando…</div>
-        ) : lpanData.periodos.length === 0 ? (
-          <div className="empty">No hay líneas de Premium (incluidas en premium) para generar LPAN.</div>
         ) : (
           <div className="lpan-tab">
             <p className="hint" style={{ marginBottom: 10 }}>
-              FDO y signing number por risk code (transversal). Después, por periodo → sección → risk code,
-              genera el LPAN de cada bloque cobrado (importes en € · GWP our line, comisiones, IPT y neto a UW).
+              Primero el <b>FDO y signing number</b> por risk code (transversal; se hace <b>antes de tener
+              Premium</b> — es donde se comunica a Xchanging dónde enviar cada bloque de primas). Después, por
+              periodo → sección → risk code, genera el LPAN de cada bloque cobrado.
             </p>
 
             {/* ── Panel FDO por sección y risk code (solo binders Lloyd's; en Compañía no hay FDO) ── */}
@@ -1748,6 +1747,12 @@ export default function BinderDetalle({ binder }: { binder: Binder }) {
             })()}
 
             {/* ── Periodo → Sección → Risk Code ── */}
+            {lpanData.periodos.length === 0 && (
+              <div className="empty" style={{ marginTop: 4 }}>
+                Aún no hay Premium (líneas incluidas en premium) para generar LPAN.
+                {lpanData.es_lloyds ? <> Los <b>FDO</b> ya se pueden preparar arriba.</> : null}
+              </div>
+            )}
             {lpanData.periodos.length > 0 && (() => {
               // Mes "completo" = todos los WP Status en Completed (los risk codes con prima 0 € no necesitan LPAN).
               const esCompleto = (p: typeof lpanData.periodos[number]) =>
