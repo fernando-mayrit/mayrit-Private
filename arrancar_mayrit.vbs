@@ -15,7 +15,10 @@ sh.CurrentDirectory = base
 py = sh.ExpandEnvironmentStrings("%USERPROFILE%") & "\.mayrit\venv\Scripts\python.exe"
 
 ' Backend OCULTO (ventana 0). PYTHONDONTWRITEBYTECODE evita .pyc en conflicto (OneDrive).
-sh.Run "cmd /c set PYTHONDONTWRITEBYTECODE=1&& cd /d """ & base & "\backend"" && """ & py & """ -m uvicorn app.main:app --port 8000", 0, False
+' --reload: IMPRESCINDIBLE. Sin él, uvicorn no recoge los cambios del código y hay que reiniciar el
+' backend a mano cada vez (parecía "que el reload de Windows falla", pero es que faltaba el flag).
+' --reload-dir app: vigila solo el código (no el venv ni static) → recarga rápida.
+sh.Run "cmd /c set PYTHONDONTWRITEBYTECODE=1&& cd /d """ & base & "\backend"" && """ & py & """ -m uvicorn app.main:app --port 8000 --reload --reload-dir app", 0, False
 
 ' Frontend OCULTO (ventana 0).
 sh.Run "cmd /c cd /d """ & base & "\frontend"" && npm run dev", 0, False
