@@ -1635,3 +1635,29 @@ Sección y Risk Code" se muestra siempre** (sale de las secciones/risk codes DEC
 Premium); el aviso de "sin Premium" queda solo en la zona de LPAN de abajo. El backend (`vista` en `lpan.py`)
 ya devolvía `fdos` independientes del Premium (`_secciones_declaradas`) — el fallo era solo del frontend
 (`BinderDetalle.tsx`). Se mantiene: FDO solo en Lloyd's (en Compañía no hay).
+
+### LPAN · separación por país (IPT distinto ES/PT) — B1634PI2825NUV
+Binder que asegura en **España y Portugal**, con **IPT distinto por país**: hay que separar los LPAN de
+cada país en las secciones mixtas. Descubrimiento importante: de 6 binders que parecían "mixtos" en
+`location_risk_country`, **5 eran datos sucios** (provincias como Jaén/Madrid, 'EUR', 'NA', nulos, 'España')
+= todo España; **solo el PI2825NUV tiene Portugal real** (`PRT`/`ESP` limpios).
+- **Regla (general pero condicional):** separa un (sección, risk code) por país **solo cuando tiene riesgos
+  en ES y PT de verdad**. `_pais_de(l)`: `PT` si `location_risk_country` es PRT/Portugal, `ES` para todo lo
+  demás (robusto a la basura). Así hoy solo parte el PI2825NUV; el resto no cambia; y un binder futuro con
+  Portugal real se partiría solo.
+- **Modelo/BD:** columna `pais` en `lpans` (migración **`lpan_pais_0001`**, aplicada a prod). **FDO único**
+  (no se separa, compartido por ambos países — decisión del usuario).
+- **Agrupamiento** (`_grupos_premium`) por `(periodo, sección, rc, comisión, país)`; la **vista** muestra
+  fila **ES** y fila **PT** en las secciones mixtas (S5/S6/S8/S9), cada una con su **IPT**; nombre con sufijo
+  **`-ES`/`-PT`**. `generar_lpan` crea dos LPAN; el **Word** sale con los importes de cada país. La pastilla
+  de país es texto pequeño coloreado en la línea de comisión (no pill con padding: desbordaba la columna).
+- **Excel LPAN Bdx:** **UN solo fichero**, con España y Portugal **separados dentro de la hoja** (bloques por
+  `(país, sección, rc)` con subtotales; primero todos los ES, luego los PT), igual que la separación por
+  risk code/sección. No se hacen dos ficheros.
+- **Históricos:** un LPAN histórico sin país (generado antes, o con el país puesto a mano en el nombre p.ej.
+  "... E7 ESP") **cubre** las filas ES/PT de ese mes → no vuelve a pedir generarlo. (El equipo ya lo hacía a
+  mano; el binder tenía 29 LPAN previos.)
+- **Fix de layout (tabla LPAN):** las cajas se solapaban porque los `<input type=date>` sin ancho fijado
+  tomaban su ancho intrínseco (~130px) y desbordaban su columna (95px). Solución: inputs/selects de la tabla
+  a `width:100%` + `box-sizing`, columnas de fecha ensanchadas (95→118), `min-width:1540` + scroll horizontal
+  en `.lpan-bloques-scroll`. Quitada la muestra "BNIXQUR" del WP.
