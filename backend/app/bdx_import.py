@@ -232,6 +232,12 @@ def importar_filas(db: Session, binder: Binder, filas: list[dict], origen: str =
 # Reaprovecha el MAPEO (columna interna → nombre de columna del bordereau) y la coacción de tipos.
 _CLAVES_FILA = ("certificate_ref", "total_gwp_our_line", "gross_written_premium", "section_no")
 
+# IDENTIDAD de una línea de riesgo: al menos uno de estos. Una fila que trae IMPORTES pero NINGUNO de
+# ellos es la típica fila de TOTALES («Σ» al final de la hoja: sin certificado, sin asegurado y sin
+# fechas). Se descarta: si entrara como una línea más, duplicaría el GWP del mes entero. Se cuenta y
+# se informa en el preview (nada silencioso).
+_IDENTIDAD_FILA = ("certificate_ref", "insured_name", "reporting_period_start")
+
 
 def _norm_col(h: str | None) -> str:
     """Normaliza un encabezado para comparar: ignora paréntesis y mayúsculas/espacios. Así
@@ -311,12 +317,19 @@ def parse_risk_excel(content: bytes, hoja: str | None = None,
             best_i, best_n = i, n
     headers = [str(v).strip() if v is not None else "" for v in (rows[best_i] if rows else [])]
     colmap = _resolver_columnas(headers, alias_extra)
+    # Solo se puede juzgar si una fila es de TOTALES cuando alguna columna de identidad está mapeada.
+    # Si no lo está (plantilla rara), NO se descarta nada: ya bloquea `_bloqueantes` por columna clave.
+    ident = [k for k in _IDENTIDAD_FILA if k in colmap]
     filas: list[dict] = []
+    n_totales = 0
     for r in rows[best_i + 1:]:
         if not any(v not in (None, "") for v in r):
             continue
         fila = {campo: (r[idx] if idx < len(r) else None) for campo, idx in colmap.items()}
         if not any(fila.get(k) not in (None, "") for k in _CLAVES_FILA):
+            continue
+        if ident and not any(fila.get(k) not in (None, "") for k in ident):
+            n_totales += 1        # fila de TOTALES/resumen: se ignora (se informa en el preview)
             continue
         # Captura COMPLETA de la fila: TODAS las celdas con cabecera (no solo las reconocidas), para
         # no perder nada. Las no mapeadas se guardarán tal cual en `extra`.
@@ -332,6 +345,7 @@ def parse_risk_excel(content: bytes, hoja: str | None = None,
         "cabecera_fila": best_i + 1,
         "mapeadas": {campo: headers[i] for campo, i in colmap.items()},
         "sin_mapear": [headers[i] for i in range(len(headers)) if headers[i] and i not in usados],
+        "filas_totales": n_totales,   # filas de totales/resumen descartadas (se avisa en el preview)
         "hojas": list(wb.sheetnames),
         "hoja": sheet,
     }
@@ -353,14 +367,23 @@ def _rc2sec(binder: Binder) -> tuple[dict[str, int], set[str]]:
     return rc2sec, rc_amb
 
 
-def _seccion_de(datos: dict, rc2sec: dict[str, int], rc_amb: set[str]) -> int | None:
-    """Sección de la línea: la declarada, o la deducida por su risk code (si es inequívoco)."""
+def _seccion_unica(binder: Binder) -> int | None:
+    """Nº de la única sección del binder, o None si tiene 0 o varias. Cuando solo hay una, no hay
+    ambigüedad posible: toda línea sin Section No/Risk Code va ahí (los bordereaux de caución
+    —SB01/SB02— no traen esas columnas y todo va a su única sección)."""
+    return 1 if len(binder.secciones) == 1 else None
+
+
+def _seccion_de(datos: dict, rc2sec: dict[str, int], rc_amb: set[str],
+                sec_unica: int | None = None) -> int | None:
+    """Sección de la línea: la declarada, la deducida por su risk code (si es inequívoco), o —si el
+    binder tiene UNA sola sección— esa."""
     if datos.get("section_no") is not None:
         return datos["section_no"]
     code = (datos.get("risk_code") or "").strip()
     if code and code in rc2sec and code not in rc_amb:
         return rc2sec[code]
-    return None
+    return sec_unica
 
 
 def _coerce_fila(cols: dict, fila: dict) -> dict:
@@ -398,15 +421,17 @@ _COLUMNAS_CLAVE = {
 }
 
 
-def _bloqueantes(meta: dict, coerced: list[dict]) -> list[str]:
-    """Problemas CRÍTICOS que impiden importar (columnas clave sin reconocer, líneas sin periodo…)."""
+def _bloqueantes(meta: dict, coerced: list[dict], sec_unica: int | None = None) -> list[str]:
+    """Problemas CRÍTICOS que impiden importar (columnas clave sin reconocer, líneas sin periodo…).
+    `sec_unica`: si el binder tiene una sola sección, la falta de Section No/Risk Code NO bloquea
+    (todo va a esa sección)."""
     problemas: list[str] = []
     mapeadas = meta.get("mapeadas", {})
     faltan = [nombre for campo, nombre in _COLUMNAS_CLAVE.items() if campo not in mapeadas]
     if faltan:
         problemas.append("No se reconocen columnas CLAVE en el Excel: " + ", ".join(faltan)
                          + ". Revisa que la hoja y el formato sean correctos (o hay que añadir el alias).")
-    if "section_no" not in mapeadas and "risk_code" not in mapeadas:
+    if "section_no" not in mapeadas and "risk_code" not in mapeadas and sec_unica is None:
         problemas.append("No se reconoce ni «Section No» ni «Risk Code»: no se puede asignar la sección.")
     sin_periodo = sum(1 for d in coerced if not d.get("reporting_period_start"))
     if sin_periodo:
@@ -428,12 +453,13 @@ def preview_risk_excel(db: Session, binder: Binder, content: bytes, hoja: str | 
     tot_liquidar = sum((d.get("final_net_premium_uw") or Decimal(0)) for d in coerced)      # neto al UW
     tot_net_broker = sum((d.get("net_premium_to_broker") or Decimal(0)) for d in coerced)   # Net Premium to Lloyd's Broker
 
-    # Reparto por sección: la declarada o la deducida por risk code; aviso de las que no casan.
+    # Reparto por sección: la declarada, la deducida por risk code, o la única del binder.
     rc2sec, rc_amb = _rc2sec(binder)
+    sec_unica = _seccion_unica(binder)
     por_seccion: dict[str, int] = {}
     auto_seccion = sin_seccion = 0
     for d in coerced:
-        sec = _seccion_de(d, rc2sec, rc_amb)
+        sec = _seccion_de(d, rc2sec, rc_amb, sec_unica)
         if sec is None:
             sin_seccion += 1
             continue
@@ -450,7 +476,7 @@ def preview_risk_excel(db: Session, binder: Binder, content: bytes, hoja: str | 
 
     muestra = [{
         "certificado": d.get("certificate_ref"), "asegurado": d.get("insured_name"),
-        "section_no": _seccion_de(d, rc2sec, rc_amb), "risk_code": d.get("risk_code"),
+        "section_no": _seccion_de(d, rc2sec, rc_amb, sec_unica), "risk_code": d.get("risk_code"),
         "reporting": d["reporting_period_start"].isoformat() if d.get("reporting_period_start") else None,
         "gwp_our_line": float(d["total_gwp_our_line"]) if d.get("total_gwp_our_line") is not None else None,
         "net_premium_broker": float(d["net_premium_to_broker"]) if d.get("net_premium_to_broker") is not None else None,
@@ -458,9 +484,13 @@ def preview_risk_excel(db: Session, binder: Binder, content: bytes, hoja: str | 
         "prima_traspasar": float(d["brokerage_amount"]) if d.get("brokerage_amount") is not None else None,
         "liquidar": float(d["final_net_premium_uw"]) if d.get("final_net_premium_uw") is not None else None,
     } for d in coerced]   # todas las líneas (no solo una muestra), con su fila de totales en el modal
-    problemas = [{"nivel": "bloqueante", "texto": t} for t in _bloqueantes(meta, coerced)]
+    problemas = [{"nivel": "bloqueante", "texto": t} for t in _bloqueantes(meta, coerced, sec_unica)]
     if sin_seccion:
         problemas.append({"nivel": "aviso", "texto": f"{sin_seccion} línea(s) sin sección (su risk code no está en ninguna sección del binder)."})
+    if meta.get("filas_totales"):
+        problemas.append({"nivel": "aviso", "texto": f"{meta['filas_totales']} fila(s) de TOTALES del Excel ignorada(s) (sin certificado ni fechas, solo sumas). Es lo correcto: si entraran, duplicarían el GWP."})
+    if sec_unica and "section_no" not in meta.get("mapeadas", {}) and "risk_code" not in meta.get("mapeadas", {}):
+        problemas.append({"nivel": "aviso", "texto": "El Excel no trae Section No/Risk Code: como el binder tiene UNA sola sección, todas las líneas van a esa sección."})
     if meta["sin_mapear"]:
         problemas.append({"nivel": "aviso", "texto": f"{len(meta['sin_mapear'])} columna(s) del Excel no reconocida(s): se guardan íntegras en «Extra» (no se pierde nada), pero no van a su campo."})
     if periodos_ya_cargados:
@@ -498,6 +528,7 @@ def importar_risk_excel(db: Session, binder: Binder, content: bytes, hoja: str |
         db.flush()
 
     rc2sec, rc_amb = _rc2sec(binder)
+    sec_unica = _seccion_unica(binder)
 
     # Meses (reporting) ya presentes en el Risk ANTES de esta subida → se omiten enteros.
     periodos_existentes = {
@@ -512,7 +543,7 @@ def importar_risk_excel(db: Session, binder: Binder, content: bytes, hoja: str |
     # usuario lo revise. Sin periodo no se agrupa ni genera recibo, y encima se salta la protección
     # de 'mes ya cargado' → duplicados. (Bug detectado con el Risk de junio del PI2725.)
     coerced = [_coerce_fila(cols, f) for f in filas]
-    blk = _bloqueantes(meta, coerced)
+    blk = _bloqueantes(meta, coerced, sec_unica)
     if blk:
         raise ValueError("No se ha importado NADA para no dejar el Risk BDX a medias. "
                          "Problemas críticos:\n· " + "\n· ".join(blk))
@@ -520,7 +551,7 @@ def importar_risk_excel(db: Session, binder: Binder, content: bytes, hoja: str |
     insertadas = omitidas_periodo = auto_seccion = sin_seccion = 0
     periodos_omitidos: set[str] = set()
     for fila, datos in zip(filas, coerced):
-        sec = _seccion_de(datos, rc2sec, rc_amb)
+        sec = _seccion_de(datos, rc2sec, rc_amb, sec_unica)
         if datos.get("section_no") is None and sec is not None:
             datos["section_no"] = sec
             auto_seccion += 1
