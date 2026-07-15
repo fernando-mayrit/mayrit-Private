@@ -63,7 +63,7 @@ export default function LpanRow({
     if (!esLloyds) {
       setSaving(true);
       try {
-        await lpanApi.generarLpan(binderId, { risk_code: r.risk_code, section, periodo, comision_pct: r.comision_pct });
+        await lpanApi.generarLpan(binderId, { risk_code: r.risk_code, section, periodo, comision_pct: r.comision_pct, pais: r.pais });
         await onChanged();
       } catch (e) {
         alert((e as Error).message);
@@ -78,7 +78,7 @@ export default function LpanRow({
     if (cancelado) return;
     setSaving(true);
     try {
-      const lp2 = await lpanApi.generarLpan(binderId, { risk_code: r.risk_code, section, periodo, comision_pct: r.comision_pct });
+      const lp2 = await lpanApi.generarLpan(binderId, { risk_code: r.risk_code, section, periodo, comision_pct: r.comision_pct, pais: r.pais });
       const { blob, filename } = await lpanApi.lpanWord(lp2.id);
       await guardarEn(handle, blob, filename);
       await onChanged();
@@ -144,7 +144,12 @@ export default function LpanRow({
 
   return (
     <tr>
-      <th>{r.risk_code}<span className="hint" style={{ display: "block", fontWeight: 400 }}>{Number(r.comision_pct).toFixed(2)}%</span></th>
+      <th>{r.risk_code}
+        <span className="hint" style={{ display: "block", fontWeight: 400 }}>
+          {Number(r.comision_pct).toFixed(2)}%
+          {r.pais && <> · <b style={{ color: r.pais === "PT" ? "#b45309" : "#1a7f37" }}
+            title={r.pais === "PT" ? "Portugal (IPT propio)" : "España (IPT propio)"}>{r.pais}</b></>}
+        </span></th>
       <td className="num">{r.num_lineas}</td>
       <td className="num">{fmtMiles(r.gross_premium)}</td>
       <td className="num">{brokeragePct}</td>
@@ -181,7 +186,7 @@ export default function LpanRow({
       </td>
       {lp ? (
         <>
-          <td><input type="text" value={wp} placeholder="BNIXQUR" style={{ width: 90 }}
+          <td><input type="text" value={wp}
             disabled={bloqueado} title={bloqueado ? "Bloqueado al estar Completed" : undefined}
             onChange={(e) => setWp(e.target.value)} /></td>
           <td><input type="date" className="inp-fecha" value={fproc}

@@ -23,6 +23,7 @@ import io
 import os
 import tempfile
 import zipfile
+from collections import defaultdict
 from decimal import Decimal
 from urllib.parse import quote
 
@@ -126,14 +127,17 @@ def _fdo_docx_bytes(broker_ref: str, ref1: str, umr: str | None, signing: str | 
 
 
 def _nombre_lpan(agreement: str | None, periodo: str, section: int, risk_code: str,
-                 comision_pct: "Decimal | None" = None) -> str:
+                 comision_pct: "Decimal | None" = None, pais: str | None = None) -> str:
     """Nombre/Broker Ref 2 del LPAN (patrón histórico): '<UMR> <MM> BDX-S<sec>-<rc>-<MMAA>'
     (p.ej. periodo 2019-07, PI0219CRO, S1, E7 -> 'PI0219 07 BDX-S1-E7-0719'). Si el risk code tiene
-    varias comisiones, se añade el sufijo de comisión '-35.00' para distinguir los LPAN."""
+    varias comisiones, se añade el sufijo de comisión '-35.00'. Si la sección se separa por país (IPT
+    distinto), se añade '-ES'/'-PT' al final (p.ej. '... BDX-S6-E7-0726-PT')."""
     yyyy, mm = (periodo.split("-") + ["", ""])[:2]
     base = f"{_umr_part(agreement)} {mm} BDX-S{section}-{risk_code}-{mm}{yyyy[2:]}"
     if comision_pct is not None:
         base += f"-{_d(comision_pct):.2f}"
+    if pais:
+        base += f"-{pais}"
     return base
 
 
@@ -245,6 +249,7 @@ class LpanRead(BaseModel):
     id: int
     tipo: str
     periodo: str
+    pais: str | None = None
     num_lineas: int
     gross_premium: Decimal | None = None
     brokerage: Decimal | None = None
@@ -272,6 +277,7 @@ class RcEnSeccion(BaseModel):
     risk_code: str
     nombre_lpan: str                      # nombre/Broker Ref 2 que tendrá (o tiene) el LPAN de este grupo
     comision_pct: Decimal = Decimal(0)    # comisión total % del grupo (separa LPAN del mismo rc)
+    pais: str | None = None               # 'ES'/'PT' si la sección se separa por país (IPT distinto); None si no
     signing_number: str | None = None     # del FDO del risk code (si lo tiene)
     num_lineas: int
     gross_premium: Decimal
@@ -350,6 +356,7 @@ class LpanCreate(BaseModel):
     section: int = 0
     periodo: str
     comision_pct: Decimal = Decimal(0)   # comisión total % del grupo a generar
+    pais: str | None = None              # 'ES'/'PT' si el grupo se separa por país; None si no
     tipo: str = "PM"
 
 
@@ -397,9 +404,19 @@ def _comm_pct(l) -> Decimal:
     return (_d(l.commission_coverholder_pct) + _d(l.brokerage_pct)).quantize(Decimal("0.01"))
 
 
-def _grupos_premium(db: Session, binder_id: int) -> dict[tuple[str, int, str, Decimal], dict]:
+def _pais_de(l) -> str:
+    """País a efectos de IPT/LPAN: 'PT' si el riesgo está en Portugal, 'ES' para todo lo demás. El campo
+    `location_risk_country` viene sucio en varios binders (provincias, 'EUR', nulos) = España; por eso solo
+    se reconoce Portugal explícito y el resto es España."""
+    c = (l.location_risk_country or "").strip().upper()
+    return "PT" if c in ("PRT", "PT", "PORTUGAL") else "ES"
+
+
+def _grupos_premium(db: Session, binder_id: int) -> dict[tuple[str, int, str, Decimal, str | None], dict]:
     """Líneas del Premium (incluidas en premium) agrupadas por (periodo 'YYYY-MM', sección, risk_code,
-    comisión total %). La comisión separa LPAN distintos dentro del mismo risk code."""
+    comisión total %, país). La comisión separa LPAN del mismo risk code. El PAÍS (5º elemento) es None
+    salvo cuando ese mismo grupo tiene riesgos en ES **y** PT (IPT distinto): entonces se parte en dos
+    grupos, 'ES' y 'PT'. Los grupos de un solo país quedan con país None (no se separan)."""
     lineas = db.scalars(
         select(BdxLinea)
         .join(Bdx, BdxLinea.bdx_id == Bdx.id)
@@ -410,16 +427,30 @@ def _grupos_premium(db: Session, binder_id: int) -> dict[tuple[str, int, str, De
             BdxLinea.commission_coverholder_amount, BdxLinea.brokerage_amount,
             BdxLinea.commission_coverholder_pct, BdxLinea.brokerage_pct,
             BdxLinea.final_net_premium_uw, BdxLinea.prima_cobrada, BdxLinea.liquidado,
+            BdxLinea.location_risk_country,
         ))
     ).all()
-    grupos: dict[tuple[str, int, str, Decimal], dict] = {}
+    # 1ª pasada: qué países hay en cada (sección, risk code) del binder → decide si ESE rc se separa por
+    # país. Se decide a nivel de (sección, rc), no por mes/comisión, para que TODOS los LPAN de un rc
+    # mixto salgan separados (ES/PT) de forma consistente, sin mezclar meses sin partir.
+    paises_rc: dict[tuple[int, str], set[str]] = defaultdict(set)
+    datos = []
     for l in lineas:
         rc = (l.risk_code or "—").strip() or "—"
         sec = int(l.section_no) if l.section_no is not None else 0
         per = l.premium_bdx.strftime("%Y-%m")
         comm = _comm_pct(l)
-        g = grupos.setdefault((per, sec, rc, comm),
-                              {"num": 0, "gross": D0, "brk": D0, "tax": D0, "net": D0, "cobr": 0, "liqd": 0, "comm": comm})
+        pais = _pais_de(l)
+        paises_rc[(sec, rc)].add(pais)
+        datos.append((l, (per, sec, rc, comm), pais))
+    mixtos = {k for k, ps in paises_rc.items() if len(ps) > 1}
+    # 2ª pasada: agrupar con país solo en los (sección, rc) mixtos (los demás, país None).
+    grupos: dict[tuple[str, int, str, Decimal, str | None], dict] = {}
+    for l, base, pais in datos:
+        per, sec, rc, comm = base
+        p = pais if (sec, rc) in mixtos else None
+        g = grupos.setdefault((per, sec, rc, comm, p),
+                              {"num": 0, "gross": D0, "brk": D0, "tax": D0, "net": D0, "cobr": 0, "liqd": 0, "comm": comm, "pais": p})
         g["num"] += 1
         g["gross"] += _d(l.total_gwp_our_line)
         g["brk"] += _d(l.commission_coverholder_amount) + _d(l.brokerage_amount)
@@ -465,10 +496,15 @@ def vista(binder_id: int, db: Session = Depends(get_db)):
     grupos = _grupos_premium(db, binder_id)
     fdos = {(f.section, f.risk_code): f for f in db.scalars(select(Fdo).where(Fdo.binder_id == binder_id)).all()}
     lpans = db.scalars(select(Lpan).where(Lpan.binder_id == binder_id)).all()
-    lpan_por = {(lp.periodo, lp.section, lp.risk_code, _d(lp.comision_pct)): lp for lp in lpans if lp.comision_pct is not None}
+    lpan_por = {(lp.periodo, lp.section, lp.risk_code, _d(lp.comision_pct), lp.pais): lp for lp in lpans if lp.comision_pct is not None}
     # (periodo, sección, risk code) con un LPAN histórico SIN comisión (lumped): cubre el rc entero.
     # Solo los lumped (comision_pct NULL); los LPAN nuevos con comisión concreta NO cubren otras comisiones.
     lpan_rc_hist = {(lp.periodo, lp.section, lp.risk_code) for lp in lpans if lp.comision_pct is None}
+    # (periodo, sección, rc, comisión) con LPAN histórico SIN país (generado antes del split por país, o
+    # con el país puesto a mano en el nombre p.ej. '... E7 ESP'): cubre las filas ES/PT de ese grupo, para
+    # que un mes ya hecho no vuelva a pedir generarlo separado.
+    hist_sin_pais = {(lp.periodo, lp.section, lp.risk_code, _d(lp.comision_pct))
+                     for lp in lpans if lp.pais is None and lp.comision_pct is not None}
     exenciones = {(e.periodo, e.section, (e.risk_code or "").strip(), _d(e.comision_pct)): e
                   for e in db.scalars(select(LpanExencion).where(LpanExencion.binder_id == binder_id)).all()}
 
@@ -484,23 +520,25 @@ def vista(binder_id: int, db: Session = Depends(get_db)):
     ) for (sec, rc) in claves]
 
     periodos: list[PeriodoLpan] = []
-    for per in sorted({p for (p, _, _, _) in grupos}, reverse=True):  # más reciente arriba
+    for per in sorted({p for (p, _, _, _, _) in grupos}, reverse=True):  # más reciente arriba
         secciones: list[SeccionLpan] = []
-        for sec in sorted({s for (p, s, _, _) in grupos if p == per}):
+        for sec in sorted({s for (p, s, _, _, _) in grupos if p == per}):
             rcs: list[RcEnSeccion] = []
-            # Una fila por (risk code, comisión total %): el mismo rc con comisiones distintas se separa.
-            for (rc, comm) in sorted({(r, c) for (p, s, r, c) in grupos if p == per and s == sec}):
-                g = grupos[(per, sec, rc, comm)]
-                lp = lpan_por.get((per, sec, rc, comm))
+            # Una fila por (risk code, comisión total %, país): el mismo rc con comisiones o países
+            # distintos (IPT distinto) se separa en LPAN distintos.
+            for (rc, comm, pais) in sorted({(r, c, pa) for (p, s, r, c, pa) in grupos if p == per and s == sec},
+                                           key=lambda x: (x[0], x[1], x[2] or "")):
+                g = grupos[(per, sec, rc, comm, pais)]
+                lp = lpan_por.get((per, sec, rc, comm, pais))
                 f = fdos.get((sec, rc))
                 ex = exenciones.get((per, sec, rc, comm))
                 # Nombre que tiene (si ya está generado) o tendrá el LPAN: si el risk code tiene varias
-                # comisiones en el mes, el nombre lleva el sufijo de comisión (igual que al generarlo).
-                varias = len({c for (p, s, r, c) in grupos if p == per and s == sec and r == rc}) > 1
+                # comisiones en el mes, lleva el sufijo de comisión; si se separa por país, el de país.
+                varias = len({c for (p, s, r, c, pa) in grupos if p == per and s == sec and r == rc}) > 1
                 nombre_lpan = lp.broker_ref2 if lp and lp.broker_ref2 else \
-                    _nombre_lpan(b.agreement_number, per, sec, rc, comm if varias else None)
+                    _nombre_lpan(b.agreement_number, per, sec, rc, comm if varias else None, pais)
                 rcs.append(RcEnSeccion(
-                    risk_code=rc, nombre_lpan=nombre_lpan, comision_pct=comm,
+                    risk_code=rc, nombre_lpan=nombre_lpan, comision_pct=comm, pais=pais,
                     signing_number=f.signing_number if f else None,
                     num_lineas=g["num"], gross_premium=g["gross"], brokerage=g["brk"],
                     tax=g["tax"], net_premium=g["net"],
@@ -646,6 +684,7 @@ def generar_lpan(binder_id: int, payload: LpanCreate, db: Session = Depends(get_
     rc, per = (payload.risk_code or "").strip(), (payload.periodo or "").strip()
     sec = int(payload.section or 0)
     comm = _d(payload.comision_pct).quantize(Decimal("0.01"))
+    pais = (payload.pais or "").strip().upper() or None
     tipo = payload.tipo or "PM"
     es_lloyds = _binder_es_lloyds(b)
     f = db.scalar(select(Fdo).where(Fdo.binder_id == binder_id, Fdo.section == sec, Fdo.risk_code == rc))
@@ -655,22 +694,24 @@ def generar_lpan(binder_id: int, payload: LpanCreate, db: Session = Depends(get_
         if not f.signing_number:
             raise HTTPException(status_code=409, detail=f"El FDO del risk code {rc} (sección {sec}) aún no tiene signing number.")
     grupos = _grupos_premium(db, binder_id)
-    g = grupos.get((per, sec, rc, comm))
+    g = grupos.get((per, sec, rc, comm, pais))
+    suf = f", {pais}" if pais else ""
     if not g or g["num"] == 0:
-        raise HTTPException(status_code=404, detail=f"No hay líneas de Premium para {rc} (sección {sec}, comisión {comm}%) en {per}.")
+        raise HTTPException(status_code=404, detail=f"No hay líneas de Premium para {rc} (sección {sec}, comisión {comm}%{suf}) en {per}.")
     if g["cobr"] != g["num"]:
-        raise HTTPException(status_code=409, detail=f"Hay líneas sin cobrar en {rc} {per}: no se puede generar el LPAN.")
-    # Unicidad por (binder, sección, risk code, periodo, tipo, comisión) — vale con y sin FDO.
+        raise HTTPException(status_code=409, detail=f"Hay líneas sin cobrar en {rc} {per}{suf}: no se puede generar el LPAN.")
+    # Unicidad por (binder, sección, risk code, periodo, tipo, comisión, país) — vale con y sin FDO.
     if db.scalar(select(Lpan).where(Lpan.binder_id == binder_id, Lpan.section == sec, Lpan.risk_code == rc,
-                                    Lpan.periodo == per, Lpan.tipo == tipo, Lpan.comision_pct == comm)):
-        raise HTTPException(status_code=409, detail=f"Ya existe un LPAN {tipo} para {rc} sección {sec} {per} (comisión {comm}%).")
+                                    Lpan.periodo == per, Lpan.tipo == tipo, Lpan.comision_pct == comm,
+                                    Lpan.pais.is_(None) if pais is None else Lpan.pais == pais)):
+        raise HTTPException(status_code=409, detail=f"Ya existe un LPAN {tipo} para {rc} sección {sec} {per} (comisión {comm}%{suf}).")
 
-    # Si el risk code tiene varias comisiones en ese mes, el nombre lleva el sufijo de comisión.
-    varias = len({c for (p, s, r, c) in grupos if p == per and s == sec and r == rc}) > 1
-    nombre = _nombre_lpan(b.agreement_number, per, sec, rc, comm if varias else None)
+    # El nombre lleva sufijo de comisión (si el rc tiene varias) y de país (si se separa por país).
+    varias = len({c for (p, s, r, c, pa) in grupos if p == per and s == sec and r == rc}) > 1
+    nombre = _nombre_lpan(b.agreement_number, per, sec, rc, comm if varias else None, pais)
     moneda = b.moneda or "EUR"
     lp = Lpan(
-        fdo_id=f.id if f else None, binder_id=binder_id, risk_code=rc, section=sec, periodo=per, tipo=tipo, comision_pct=comm,
+        fdo_id=f.id if f else None, binder_id=binder_id, risk_code=rc, section=sec, periodo=per, tipo=tipo, comision_pct=comm, pais=pais,
         num_lineas=g["num"], gross_premium=g["gross"], brokerage=g["brk"], tax=g["tax"], net_premium=g["net"],
         broker_ref1=b.agreement_number, broker_ref2=nombre, moneda=moneda,
         work_package=None, fecha=None, sdd=_sdd_de(per), estado="Work in Progress",
@@ -716,9 +757,12 @@ def lpan_de_linea(line_id: int, db: Session = Depends(get_db)):
     per = l.premium_bdx.strftime("%Y-%m")
     sec = int(l.section_no) if l.section_no is not None else 0
     rc = (l.risk_code or "").strip()
-    lp = db.scalar(select(Lpan).where(
-        Lpan.binder_id == bdx.binder_id, Lpan.section == sec, Lpan.risk_code == rc,
-        Lpan.periodo == per, Lpan.comision_pct == _comm_pct(l)))
+    pais = _pais_de(l)
+    base = (Lpan.binder_id == bdx.binder_id, Lpan.section == sec, Lpan.risk_code == rc,
+            Lpan.periodo == per, Lpan.comision_pct == _comm_pct(l))
+    # Primero el LPAN de su país (grupo separado por país); si no, el unificado (país None).
+    lp = db.scalar(select(Lpan).where(*base, Lpan.pais == pais)) \
+        or db.scalar(select(Lpan).where(*base, Lpan.pais.is_(None)))
     if lp is None:
         # Si solo hay un LPAN para ese (binder, sección, risk code, mes), usarlo (sin distinguir comisión).
         lps = db.scalars(select(Lpan).where(
@@ -809,11 +853,13 @@ def _bdx_fila(l: "BdxLinea", b, coverholder: str, per_ini: dt.date, per_fin: dt.
 
 
 @router.get("/binders/{binder_id}/lpan/bdx-excel")
-def bdx_excel(binder_id: int, periodo: str, agrupar: bool = True, db: Session = Depends(get_db)):
+def bdx_excel(binder_id: int, periodo: str, agrupar: bool = True, pais: str | None = None,
+              db: Session = Depends(get_db)):
     """Bordereau del periodo en formato Lloyd's (61 columnas). Dos variantes:
     - `agrupar=True` (**LPAN Bdx**): líneas AGRUPADAS por (Sección, Risk Code) como los bloques LPAN,
       con una fila de SUBTOTALES (GWP, impuestos, neto a UW) + una fila en blanco por grupo.
-    - `agrupar=False` (**Premium Bdx**): las mismas líneas pero PLANAS, sin agrupar ni subtotales."""
+    - `agrupar=False` (**Premium Bdx**): las mismas líneas pero PLANAS, sin agrupar ni subtotales.
+    `pais` ('ES'/'PT') filtra las líneas por país del riesgo (secciones con IPT distinto ES+PT)."""
     import io
 
     import openpyxl
@@ -828,16 +874,21 @@ def bdx_excel(binder_id: int, periodo: str, agrupar: bool = True, db: Session = 
                BdxLinea.premium_bdx.is_not(None))
     ).all()
     lineas = [l for l in lineas if l.premium_bdx and l.premium_bdx.strftime("%Y-%m") == periodo]
+    pais = (pais or "").strip().upper() or None
+    if pais:
+        lineas = [l for l in lineas if _pais_de(l) == pais]
 
     # Reporting Period del bordereau = el mes del Premium que se descarga: día 1 y último día del mes.
     _y, _m = (int(x) for x in periodo.split("-")[:2])
     per_ini = dt.date(_y, _m, 1)
     per_fin = dt.date(_y, _m, calendar.monthrange(_y, _m)[1])
 
-    # Agrupar por (sección, risk code), mismo orden que los bloques LPAN.
+    # Agrupar por (país, sección, risk code): en la MISMA hoja quedan primero todos los bloques de España
+    # y luego los de Portugal (IPT distinto), cada uno con su subtotal — igual que la separación por
+    # sección/risk code. En binders de un solo país (todo ES) el orden es idéntico al de antes.
     grupos: dict[tuple, list] = {}
     for l in lineas:
-        grupos.setdefault((l.section_no if l.section_no is not None else 0, (l.risk_code or "").strip()), []).append(l)
+        grupos.setdefault((_pais_de(l), l.section_no if l.section_no is not None else 0, (l.risk_code or "").strip()), []).append(l)
 
     # ── Estilo idéntico al modelo de muestra (Premium Bordereaux) ──
     ncol = len(_BDX_HEADERS)
@@ -925,7 +976,7 @@ def bdx_excel(binder_id: int, periodo: str, agrupar: bool = True, db: Session = 
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
-    fname = f"{'LPAN' if agrupar else 'Premium'} Bdx {b.umr or b.agreement_number or binder_id} {periodo}.xlsx"
+    fname = f"{'LPAN' if agrupar else 'Premium'} Bdx {b.umr or b.agreement_number or binder_id} {periodo}{f' {pais}' if pais else ''}.xlsx"
     return StreamingResponse(
         buf, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="{fname}"'},

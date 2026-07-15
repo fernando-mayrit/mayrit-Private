@@ -114,6 +114,7 @@ export interface LpanRegistro {
   id: number;
   tipo: string;
   periodo: string;
+  pais: string | null;
   num_lineas: number;
   gross_premium: number | string | null;
   brokerage: number | string | null;
@@ -139,6 +140,7 @@ export interface RcEnSeccion {
   risk_code: string;
   nombre_lpan: string;   // nombre/Broker Ref 2 que tiene (o tendrá) el LPAN de este grupo
   comision_pct: number | string;
+  pais: string | null;   // 'ES'/'PT' si la sección se separa por país (IPT distinto); null si no
   signing_number: string | null;
   num_lineas: number;
   gross_premium: number | string;
@@ -211,7 +213,7 @@ export const lpanApi = {
     const filename = m ? decodeURIComponent(m[1]) : `FDO_${fdoId}.docx`;
     return { blob: await res.blob(), filename };
   },
-  generarLpan: (binderId: number, data: { risk_code: string; section: number; periodo: string; comision_pct: number | string; tipo?: string }) =>
+  generarLpan: (binderId: number, data: { risk_code: string; section: number; periodo: string; comision_pct: number | string; pais?: string | null; tipo?: string }) =>
     request<LpanRegistro>(`/binders/${binderId}/lpan`, { method: "POST", body: JSON.stringify(data) }),
   // Descarga el Word del LPAN (regenerado desde su registro). Devuelve el blob y el nombre propuesto.
   lpanWord: async (lpanId: number): Promise<{ blob: Blob; filename: string }> => {
@@ -237,8 +239,8 @@ export const lpanApi = {
   deLinea: (lineId: number) => request<LpanRegistro | null>(`/bdx-lineas/${lineId}/lpan`),
   // Descarga el Excel BDX de un periodo (blob + nombre propuesto), para guardarlo eligiendo carpeta.
   // agrupar=true → LPAN Bdx (agrupado por Risk Code); agrupar=false → Premium Bdx (plano).
-  bdxExcel: async (binderId: number, periodo: string, agrupar = true): Promise<{ blob: Blob; filename: string }> => {
-    const res = await fetch(`${BASE}/binders/${binderId}/lpan/bdx-excel?periodo=${encodeURIComponent(periodo)}&agrupar=${agrupar}`);
+  bdxExcel: async (binderId: number, periodo: string, agrupar = true, pais?: string | null): Promise<{ blob: Blob; filename: string }> => {
+    const res = await fetch(`${BASE}/binders/${binderId}/lpan/bdx-excel?periodo=${encodeURIComponent(periodo)}&agrupar=${agrupar}${pais ? `&pais=${pais}` : ""}`);
     if (!res.ok) {
       let msg = `Error al generar el Excel BDX (${res.status})`;
       try { const j = await res.json(); if (j?.detail) msg = j.detail; } catch { /* sin cuerpo JSON */ }

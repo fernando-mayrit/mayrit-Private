@@ -653,6 +653,9 @@ class Lpan(Base):
     risk_code: Mapped[str] = mapped_column(String(20))
     section: Mapped[int] = mapped_column(Integer, server_default="0", default=0)  # nº de sección del bordereau
     periodo: Mapped[str] = mapped_column(String(7))     # 'YYYY-MM' del Premium BDX
+    # País del bloque cuando la sección tiene riesgos en varios países con IPT distinto (ES/PT). NULL = el
+    # grupo no se separa por país (un solo país). Separa LPAN distintos del mismo (sección, rc, periodo).
+    pais: Mapped[str | None] = mapped_column(String(2))
     tipo: Mapped[str] = mapped_column(String(10), server_default="PM", default="PM")  # FDO/PM/AP/RP
     # Comisión total % del grupo (coverholder % + brokerage %). Separa LPAN distintos del mismo
     # (sección, risk code, periodo) cuando hay líneas con comisiones distintas.

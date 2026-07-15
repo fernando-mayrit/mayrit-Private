@@ -441,14 +441,15 @@ export default function BinderDetalle({ binder }: { binder: Binder }) {
   }
   // Descargar el Excel del bordereau de un periodo eligiendo carpeta (mismo flujo que LPAN/FDO, con
   // memoria de carpeta compartida). agrupar=true → LPAN Bdx (agrupado); false → Premium Bdx (plano).
-  async function descargarBdxExcel(periodo: string, agrupar = true) {
+  async function descargarBdxExcel(periodo: string, agrupar = true, pais?: string) {
     const tipo = agrupar ? "LPAN Bdx" : "Premium Bdx";
-    const { handle, cancelado } = await pedirDestino(`${tipo} ${binder.umr ?? binder.id} ${periodo}.xlsx`);
+    const suf = pais ? ` ${pais}` : "";
+    const { handle, cancelado } = await pedirDestino(`${tipo} ${binder.umr ?? binder.id} ${periodo}${suf}.xlsx`);
     if (cancelado) return;
     setLpanBusy(true);
     setError(null);
     try {
-      const { blob, filename } = await lpanApi.bdxExcel(binder.id, periodo, agrupar);
+      const { blob, filename } = await lpanApi.bdxExcel(binder.id, periodo, agrupar, pais);
       await guardarEn(handle, blob, filename);
     } catch (e) {
       setError((e as Error).message);
@@ -1788,7 +1789,7 @@ export default function BinderDetalle({ binder }: { binder: Binder }) {
                   </h4>
                   {lpanPreparado && (
                     <button className="btn-secondary btn-sm" disabled={lpanBusy}
-                       title="Descargar el LPAN Bdx de este mes (agrupado por Risk Code, formato Lloyd's; elige carpeta)"
+                       title="Descargar el LPAN Bdx de este mes (agrupado por Risk Code; España y Portugal separados en la misma hoja; elige carpeta)"
                        onClick={() => descargarBdxExcel(p.periodo)}>
                       ⬇️ LPAN Bdx (Excel)
                     </button>
@@ -1803,9 +1804,9 @@ export default function BinderDetalle({ binder }: { binder: Binder }) {
                         <col style={{ width: 110 }} /><col style={{ width: 85 }} />
                         <col style={{ width: 95 }} /><col style={{ width: 110 }} />
                         <col style={{ width: 90 }} /><col style={{ width: 150 }} />
-                        <col style={{ width: 90 }} /><col style={{ width: 95 }} />
-                        <col style={{ width: 95 }} /><col style={{ width: 100 }} />
-                        <col style={{ width: 95 }} /><col style={{ width: 95 }} />
+                        <col style={{ width: 100 }} /><col style={{ width: 118 }} />
+                        <col style={{ width: 118 }} /><col style={{ width: 110 }} />
+                        <col style={{ width: 118 }} /><col style={{ width: 118 }} />
                         <col style={{ width: 80 }} />
                       </colgroup>
                       <thead>
