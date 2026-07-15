@@ -1680,3 +1680,69 @@ cada país en las secciones mixtas. Descubrimiento importante: de 6 binders que 
   tomaban su ancho intrínseco (~130px) y desbordaban su columna (95px). Solución: inputs/selects de la tabla
   a `width:100%` + `box-sizing`, columnas de fecha ensanchadas (95→118), `min-width:1540` + scroll horizontal
   en `.lpan-bloques-scroll`. Quitada la muestra "BNIXQUR" del WP.
+
+---
+
+## Sesión 15/07/2026 (equipo "ferna") — Risk BDX de caución (SB02), gestor de contraseñas y la trampa del `--reload`
+
+### Contraseñas · grupos replegados + barra fija (commit `b0e69fc`)
+`CredencialesPage.tsx`: al entrar, **todos los grupos salen replegados** (se cambió el estado `colapsados` →
+`abiertos`, vacío = todo cerrado; así el defecto es replegado sin trucos de "primera carga"). **Se
+auto-despliegan al buscar/filtrar** (`hayFiltro`), si no la búsqueda sería inútil; al limpiar, vuelven a
+plegarse. La **barra de búsqueda + filtros + botón «Nueva»** es ahora **sticky** (`position:sticky; top:0`)
+con fondo `var(--fondo)`: no hace falta negative-margin porque el contenido va en la misma caja que la barra
+(el padding del `.container` no lleva contenido). El sticky va **inline** en esa página (la clase `.toolbar`
+la usan muchas otras y no se toca).
+
+### Risk BDX del SB02 (caución CGICE / Hamilton) — cómo se sube y por qué fallaba
+**El fichero CRUDO de CGICE NO sirve** (`6. CGICE-RISK-JUNIO.xlsx`, 33 columnas: `bondNumber`,
+`netPremiumGWPForPaidPeriod`, `commission`, `tax`…): **no trae** Reporting Period, ni GWP de la línea de
+Hamilton, ni brokerage, ni Final Net Premium. Esas columnas **no se mapean: se CALCULAN** (línea de Hamilton
+= `participacion` 30%, brokerage 2,5%…). **El bueno es el ENRIQUECIDO**:
+`Risk Bordereaux SB0226IBE Hamilton.xlsx` (una hoja por mes: January…June).
+- **El mapeo del programa 13 (Iberian-Caución) ya estaba bien**: 28 columnas reconocidas (Reporting Period
+  Start/End, `Total Gross Written Premium (Hamilton line)`, `Hamilton Line (%)`, `Brokerage %/Amount`,
+  `Final Net Premium to Hamilton`, `commission`, `tax`, `Net Premium to pay to Reinsurance Broker by
+  Reinsured`, `bondNumber`→certificado, `registrationName`→asegurado…). Las **20 restantes van a `extra`** y
+  son descriptivas o duplicados (cifras al 100% de CGICE, `commission (Hamilton line)`, `Reinsured
+  Commission`, `region`, `mainClientNationalId`…). **No se pierde nada.**
+- **Fidelidad VERIFICADA**: se comparó el enero del Excel (ya cargado por el tool antiguo) contra la BD →
+  **32/32 valores idénticos** (GWP our line, brokerage, neto al UW, net premium to broker). El uploader
+  genérico reproduce exactamente lo que hizo `tools/importar_caucion_risk.py`.
+
+### Dos guardarraíles nuevos en el importador (commit `7d77fb7`, `bdx_import.py`)
+1. **Sección única** (`_seccion_unica`): si el binder tiene **UNA sola sección** (caso SB01/SB02), las líneas
+   sin `Section No`/`Risk Code` van a esa sección. Ya **no bloquea** (antes: "no se puede asignar la
+   sección"); sale un **aviso** explicándolo. Es la decisión que ya tomó el tool antiguo ("1 sección para
+   todo"). `_bloqueantes(meta, coerced, sec_unica)`.
+2. **Fila de TOTALES** (`_IDENTIDAD_FILA`): estas hojas traen al final una fila con **solo sumas** (sin
+   certificado, ni asegurado, ni fechas). **Pasaba el filtro** (`_CLAVES_FILA` incluye `total_gwp_our_line`)
+   y se colaba como una línea más → **habría duplicado el GWP del mes** (enero: +78.262 €). Ahora se descarta
+   por IDENTIDAD y **se informa** en el preview (nada silencioso). **Blindaje**: solo se aplica si alguna
+   columna de identidad está mapeada, para no comerse líneas buenas en plantillas raras.
+   - *Ojo*: ese era el famoso "1 de 88 líneas sin Reporting Period" — **era la fila de totales**.
+- Verificado por HTTP contra el backend real: **June → `bloqueado=false`, 49 líneas, 0 sin sección (las 49 a
+  la sección 1), 0 sin periodo**, GWP our line 81.745,25 · traspasar 2.043,65 · liquidar 53.134,44.
+  January 87 (+1 totales ignorada), April 25 (+2).
+
+### ⚠️ La trampa del `--reload` — CONFIRMADA y revertida (commits `494ac2a` → `2566d36`)
+Se intentó volver a poner `--reload` en los lanzadores ("reiniciar pasa demasiado a menudo") y **la prueba
+reprodujo el bug en vivo**. Se revirtió: **NO usar `--reload` es lo correcto**. Detalle completo en la
+sección de la sesión 13/07 ("Justificante ESPEJO / conciliación"). Resumen de la mecánica descubierta:
+- El venv (Python 3.14) usa un **stub**: `venv\Scripts\python.exe` **re-lanza el intérprete real**
+  (`pythoncore-3.14-64`). Siempre hay **2 procesos** aunque no haya reload, y **el socket del 8000 lo agarra
+  el HIJO**, con otro ejecutable.
+- Con `--reload` se suma el worker de **multiprocessing spawn**, cuya **línea de comandos NO dice "uvicorn"**
+  → ningún filtro por nombre lo caza. Si el padre muere queda **huérfano agarrando el 8000**: `netstat`
+  muestra LISTENING con un **PID muerto**, el puerto no se puede enlazar y el siguiente arranque **falla en
+  silencio** → zombi que responde GET pero **se come los POST** (el bug de "Generar LPAN no hace nada").
+- **Solución al dolor real**: **`reiniciar_backend.vbs`** (raíz del repo) → **un doble clic**: mata lo que
+  escuche en el 8000 **y sus hijos** (por PUERTO + PATERNIDAD, la única forma fiable), arranca uno limpio y
+  avisa cuando responde. Probado: rearranca, no duplica, no toca Alea (8010).
+
+### Operativo — la IP del firewall vuelve a cambiar
+La IP pública de Fernando cambió otra vez (`81.33.245.10` → `81.33.173.156`) y el backend local dejó de
+conectar a la BD (la conexión se **cuelga**, no da error claro). Es lo esperado desde que se cerró el
+firewall. Fix: `alea-db` → **Redes** → «Agregar dirección IP del cliente actual» → **Guardar**. La app en
+producción NUNCA se ve afectada (entra por "servicios de Azure"). Para diagnosticar rápido: un `socket
+connect` al 5432 con timeout + `https://api.ipify.org` para ver la IP actual.
