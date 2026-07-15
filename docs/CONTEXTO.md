@@ -1626,3 +1626,12 @@ salía en rojo/pendiente sin poder quitarlo salvo marcarlo "hecho" (mal, implica
 Exporta a `.xlsx` **todo lo que cumple los filtros activos** (año/origen/tipo/subtipo/sentido/cuenta/búsqueda),
 no solo las 500 que se muestran (re-pide el listado con `limit` alto). Reutiliza el endpoint genérico
 `/export/xlsx`. Mismas columnas del listado; números como número y fechas dd/mm/aaaa.
+
+### LPAN · FDO visible sin Premium (se prepara ANTES)
+El **FDO es lo PRIMERO** del flujo Lloyd's: es el documento donde se comunica a **Xchanging** dónde enviar
+cada bloque de primas, y se hace **antes de tener ningún Premium**. La pestaña LPAN lo escondía si
+`periodos == 0` (cortaba con "No hay líneas de Premium"). Ahora, en binders **Lloyd's**, el cuadro **"FDO por
+Sección y Risk Code" se muestra siempre** (sale de las secciones/risk codes DECLARADOS en el binder, no del
+Premium); el aviso de "sin Premium" queda solo en la zona de LPAN de abajo. El backend (`vista` en `lpan.py`)
+ya devolvía `fdos` independientes del Premium (`_secciones_declaradas`) — el fallo era solo del frontend
+(`BinderDetalle.tsx`). Se mantiene: FDO solo en Lloyd's (en Compañía no hay).
