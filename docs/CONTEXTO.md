@@ -111,7 +111,7 @@ Desarrollo en local: backend `uvicorn --reload` (8000) + `npm run dev` (5173), s
   `bdx_import.py` valida columnas/periodos pero NO comprueba si el mes está CERRADO. Solo aporta si de
   verdad reimportáis meses cerrados; si no, no merece la pena.
 - **Soporte `.xls`** en la app (hoy solo `.xlsx`; el `.xls` solo lo lee el migrador VAMMOS con xlrd). Menor.
-- **Módulo placeholder** (EnConstruccion): solo **UCR**. (Transferencias · Contabilidad · Consultoría · Comisiones YA son páginas reales.)
+- **Módulos placeholder** (EnConstruccion): **ninguno** — UCR ya es página real (16/07/2026).
 - **Paginación** de `/recibos` y `/siniestros` — solo cuando crezcan. Menor.
 
 **Operativo:** renovar el **secreto de Entra** (~junio 2028) o el login dejará de funcionar.
@@ -1760,11 +1760,11 @@ connect` al 5432 con timeout + `https://api.ipify.org` para ver la IP actual.
   `estadoSiniestroClase` ya reconocía ambos idiomas.
 - **Cantidades a 0** por defecto (se cambian a mano).
 
-### TPA por sección del binder (preasigna el del siniestro)
-- Columna **`tpa`** en `siniestros` y en `binder_secciones` (migración **`siniestro_tpa_0001`**, en prod).
-- En el **formulario del binder** (`BindersPage.tsx`) cada sección tiene un campo **TPA**.
-- En el alta del siniestro, el TPA (**antes de Abogado**, **NO editable**) se **preasigna** desde la sección
-  del binder del asegurado elegido (`polizasSiniestro` en `BinderDetalle` coge `binder.secciones[sec-1].tpa`).
+### TPA por sección del binder — ⚠ REVERTIDO (el TPA se asigna en los UCR)
+- Se probó a poner el TPA por **sección del binder**, pero Fernando lo revirtió: el TPA se asigna en los
+  **UCR**. Migración **`binder_seccion_tpa_drop_0001`** (en prod) quita `binder_secciones.tpa`; el campo del
+  binder, la preasignación por sección y la columna se retiraron. **Se mantiene** `siniestros.tpa` (migración
+  `siniestro_tpa_0001`) y `ucrs.tpa`. Hoy el TPA del siniestro sale del **UCR** (ver más abajo).
 
 ### Módulo UCR (Unique Claims Reference) — NUEVO
 Deja de ser placeholder. Origen: lista SharePoint **`Mayrit - TUCR`** (86 filas, columnas Coverholder/UMR/
@@ -1778,3 +1778,40 @@ Section/RiskCode/**Signing**/UCR/Notas/Estado/**TPA**).
 - **Pestaña UCR en el binder** (a la derecha de Siniestros): los UCR de ese binder (por UMR), **con
   alta/edición/borrado** (`UcrModal`, patrón bloqueado + botón «Editar»; el UMR viene del binder). Se quitó
   el botón "🔖 Nuevo UCR" de la pestaña Siniestros (la generación `next-ucr` ya no se usa desde ahí).
+
+### UCR · alta desde FDO (`UcrModal.tsx`, `routers/ucr.py`)
+- **Los UCR nacen de un FDO**: el botón «🔖 Nuevo UCR» del binder se **deshabilita si no hay FDO dados de
+  alta** (`lpanData.fdos` con `fdo != null`; se carga `cargarLpan()` también al abrir la pestaña UCR).
+- **Nº de UCR** = UMR + **2 letras**, **solo editables las 2 letras** (el UMR es prefijo fijo), y **no puede
+  duplicar** otro UCR del binder (validación cliente). Autonumeración con **relleno de huecos**: endpoint
+  **`GET /ucr/next?umr=`** devuelve el **primer sufijo libre** (si existe …AB pero no …AA, sugiere AA).
+- **Desplegable de FDO** (tras Coverholder): al vincular, **Sección + Risk Code + Signing** se ponen solos y
+  quedan **bloqueados**. El **Signing va invertido** vs el FDO (Xchanging): FDO `XXXXX*DD/MM/YYYY` → UCR
+  `YYYY/MM/DD*XXXXX` (helper **`signingUcrDesdeFdo`** en `format.ts`).
+- **UMR y Coverholder** fijos del binder (no editables). **Estado = pastilla de color** (verde Abierto / rojo
+  Cerrado, toggle). **TPA** = desplegable con «➕ Añadir nuevo…» (opciones de `/ucr/opciones`, que ahora
+  devuelve también `tpas`). **Todos los campos obligatorios salvo Notas**.
+- No hay FK UCR↔FDO: la vinculación es «en blando» (copia section/risk_code/signing). Sin migración.
+
+### Siniestros · alta: UCR y TPA desde el UCR (`SiniestroModal.tsx`)
+- El campo **UCR** pasa a **desplegable con los UCR del binder** (sin texto libre); se **auto-asigna** el que
+  coincide por **Sección + Risk Code** al elegir la póliza. **TPA** = el del **UCR** elegido, **no editable**.
+- **Todos los campos obligatorios al dar de alta salvo Abogado y Notas** (Fecha de Cierre solo si Cerrado;
+  YOA va oculto). Emoji **🚨** en el botón «Nuevo siniestro» y en el título del modal.
+- **Pastillas de estado igualadas a los UCR**: **verde Abierto / rojo Cerrado**, etiqueta en **español**
+  (helper **`estadoSiniestroPill`**), en modal + tabla del binder + página global. Antes estaban al revés y
+  en inglés.
+
+### FormPanel · aviso «cambios sin guardar» (fix)
+- `UcrModal` era el único modal que **forzaba `dirty=true`**, así que avisaba aunque no tocaras nada. Se
+  alineó con el resto (que calculan `dirty` comparando el form con su estado inicial): ahora marca «sucio»
+  solo si el usuario edita de verdad. Los prefills automáticos no cuentan.
+
+### Operativa de datos en PROD (recibos / Risk Myrtea)
+- Se **borraron las 6 líneas** del Risk de Myrtea (`bdx` 50, binder 61 `B1634MA0326MYR`) con reporting period
+  **2026-06-01** y el **recibo 2026-0124** (id 1426), para re-subir el Risk de junio con cambios. Ninguna
+  póliza/recibo se toca al borrar un BDX (no hay cascada hacia `recibos`; `bdx_lineas.recibo_id` es SET NULL).
+- Tras re-subir y re-emitir (salió **2026-0127**), se **renumeró 0127 → 0124** (recibo + campo `recibo` de
+  las 6 líneas) para **no dejar hueco** en la serie. **Nota importante:** la numeración de recibos es
+  **`AÑO-(MAX+1)`** (`_siguiente_numero` en `recibos.py`), **no rellena huecos** ni se puede fijar a mano
+  desde la app → para ocupar un hueco hay que **renumerar a posteriori** en BD.
