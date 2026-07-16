@@ -144,10 +144,11 @@ def _construir(db: Session, b: Binder, periodo: str, crudo: bool = False) -> tup
             "Previously Paid - Fees": prev_f,
             "Reserve - Indemnity": res_i,
             "Reserve - Fees": res_f,
-            # Total Incurred = cifra REAL del claims (no mecánicamente pagado+reserva). En modo `crudo`
-            # (comparativa) se trae el campo tal cual, sin respaldo pagado+reservas.
-            "Total Incurred - Indemnity": _f(s.total_indemnity) if (crudo or s.total_indemnity is not None) else paid_i + res_i,
-            "Total Incurred - Fees": _f(s.total_fees) if (crudo or s.total_fees is not None) else paid_f + res_f,
+            # Total Incurred. En modo `crudo` (comparativa) = LO QUE SE VE EN PANTALLA: pagado + reservas
+            # (el campo `total_indemnity` de la BD no se muestra en la app y puede estar desfasado por la
+            # importación, así que se ignora). En el BDX real se usa el campo guardado si existe.
+            "Total Incurred - Indemnity": (paid_i + res_i) if crudo else (_f(s.total_indemnity) if s.total_indemnity is not None else paid_i + res_i),
+            "Total Incurred - Fees": (paid_f + res_f) if crudo else (_f(s.total_fees) if s.total_fees is not None else paid_f + res_f),
             "Date Claim Opened": s.date_opened,
             "Date Closed": s.date_closed,
         }
