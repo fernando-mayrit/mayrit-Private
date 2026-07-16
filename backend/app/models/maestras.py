@@ -214,6 +214,10 @@ class Binder(Base):
     cuenta_bancaria_id: Mapped[int | None] = mapped_column(ForeignKey("cuentas_bancarias.id"))
 
     notas: Mapped[str | None] = mapped_column(Text)
+    # Plantilla del Risk Excel de este binder (formato del coverholder): { hoja, headers: [orden],
+    # por_cabecera: {cabecera -> campo interno | null} }. Se usa para descargar el Premium/LPAN con las
+    # MISMAS columnas y orden que su Risk. Null → formato Lloyd's estándar (61 columnas).
+    risk_plantilla: Mapped[dict | None] = mapped_column(JSONB)
 
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[dt.datetime] = mapped_column(
@@ -521,6 +525,9 @@ class BdxLinea(Base):
     recibo_id: Mapped[int | None] = mapped_column(
         ForeignKey("recibos.id", ondelete="SET NULL"), index=True
     )
+    # Línea de Risk CERRADA sin premium (nunca llegará a un Premium): motivo del cierre manual
+    # ("Cancelada", "Otro"…). La "Prima 0" NO se guarda: se calcula al vuelo (net_premium_to_broker == 0).
+    sin_premium_motivo: Mapped[str | None] = mapped_column(String(40))
     notas: Mapped[str | None] = mapped_column(Text)
     # Fila original ÍNTEGRA del bordereau de origen (todas sus columnas con su nombre tal cual), para
     # bordereaux con encabezados no estándar (p. ej. caución Hamilton/CGICE): garantiza que no se

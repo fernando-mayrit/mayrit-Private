@@ -1469,13 +1469,20 @@ async def match_excel(binder_id: int, file: UploadFile | None = File(None), hoja
             BdxLinea.certificate_ref, BdxLinea.net_premium_to_broker, BdxLinea.reporting_period_start,
             BdxLinea.total_gwp_our_line, BdxLinea.total_taxes_levies,
             BdxLinea.commission_coverholder_amount, BdxLinea.brokerage_amount,
-            BdxLinea.final_net_premium_uw,
+            BdxLinea.final_net_premium_uw, BdxLinea.incluido_en_premium, BdxLinea.premium_bdx,
         ))
     ).all()
+    # Candidatas por certificado. Se EXCLUYEN las líneas ya incluidas en OTRO Premium (distinto periodo):
+    # un macheo nuevo NO debe arrastrar líneas ya cobradas/atribuidas a otro Premium (el subset-sum por
+    # importe podía "robar" líneas antiguas del mismo certificado). Se admiten las del propio periodo,
+    # para poder RE-machear ese Premium.
     por_cert: dict[str, list[BdxLinea]] = {}
     for l in risk:
-        if l.certificate_ref:
-            por_cert.setdefault(l.certificate_ref.strip().lower(), []).append(l)
+        if not l.certificate_ref:
+            continue
+        if l.incluido_en_premium and l.premium_bdx and l.premium_bdx.strftime("%Y-%m") != periodo:
+            continue
+        por_cert.setdefault(l.certificate_ref.strip().lower(), []).append(l)
 
     filas: list[MatchRow] = []
     matched_ids: list[int] = []

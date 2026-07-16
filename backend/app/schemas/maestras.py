@@ -659,6 +659,7 @@ class BdxLineaBase(BaseModel):
     liquidado_uw: Decimal | None = None
     fecha_liquidacion: dt.date | None = None
     recibo: str | None = None
+    sin_premium_motivo: str | None = None   # línea cerrada sin premium (cancelada / otro)
     notas: str | None = None
 
 

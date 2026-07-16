@@ -518,17 +518,18 @@ def editar(binder_id: int, payload: sch.BinderUpdate, db: Session = Depends(get_
                 status_code=409,
                 detail="No se puede cerrar el binder con BDX sin bloquear. " + " · ".join(partes),
             )
-        # No se puede cerrar producción si el Risk no está todo cuadrado (machado con Premium):
-        # quedan líneas de Risk sin incluir en ningún Premium.
+        # No se puede cerrar producción si el Risk no está todo cuadrado: quedan líneas de Risk
+        # PENDIENTES de Premium. Se excluyen las resueltas: en Premium, prima 0, o marcadas «sin premium».
+        from ..bdx_estado import cond_pendiente_premium   # lazy: evita import circular
         sin_machear = db.scalar(
             select(func.count()).select_from(BdxLinea).join(Bdx, Bdx.id == BdxLinea.bdx_id)
-            .where(Bdx.binder_id == binder_id, Bdx.tipo == "Risk", BdxLinea.incluido_en_premium.is_(False))
+            .where(Bdx.binder_id == binder_id, Bdx.tipo == "Risk", cond_pendiente_premium())
         )
         if sin_machear:
             raise HTTPException(
                 status_code=409,
                 detail=f"No se puede cerrar: quedan {sin_machear} línea(s) de Risk sin machear con "
-                       "Premium. Inclúyelas en un Premium antes de cerrar.",
+                       "Premium. Inclúyelas en un Premium (o márcalas «sin premium») antes de cerrar.",
             )
         # No se puede cerrar producción con tareas de Risk o Premium pendientes.
         from .tareas import pendientes_para_cierre   # lazy: evita import circular

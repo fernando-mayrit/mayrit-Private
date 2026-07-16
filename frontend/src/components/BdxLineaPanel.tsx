@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { bdxApi } from "../api";
 import type { BdxLinea, BdxLineaWrite } from "../types";
+import { estadoPremiumLinea } from "./BdxTabla";
 import FormPanel from "./FormPanel";
 import LineaLpan from "./LineaLpan";
 import NumberInput from "./NumberInput";
@@ -180,6 +181,16 @@ export default function BdxLineaPanel({ bdxId, linea, onSaved, onClose, onDelete
   const [inicial] = useState<FormVals>(() => inicialDe(linea));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [marcando, setMarcando] = useState(false);
+  const [motivoSel, setMotivoSel] = useState("Cancelada");
+
+  // Cerrar/abrir esta línea como "sin premium" (motivo null = quitar la marca). Refresca al terminar.
+  async function marcarSin(motivo: string | null) {
+    if (!linea) return;
+    setMarcando(true); setError(null);
+    try { await bdxApi.marcarSinPremium([linea.id], motivo); onSaved(); }
+    catch (e) { setError((e as Error).message); setMarcando(false); }
+  }
 
   // Una línea existente abre BLOQUEADA (solo consulta); "Corregir" la habilita. Una línea nueva
   // abre ya editable. El periodo cerrado (readOnly) es un bloqueo duro que no se puede levantar aquí.
@@ -358,6 +369,34 @@ export default function BdxLineaPanel({ bdxId, linea, onSaved, onClose, onDelete
           )}
         </div>
       )}
+      {/* Estado frente al Premium + acción para cerrar la línea "sin premium" (cancelada / otro). */}
+      {!diseno && linea && (() => {
+        const e = estadoPremiumLinea(linea);
+        const primaCero = Number(linea.net_premium_to_broker ?? 0) === 0;
+        const puedeMarcar = !readOnly && !linea.incluido_en_premium && !primaCero;
+        return (
+          <div className="recibo-acciones-top" style={{ gap: 10, flexWrap: "wrap" }}>
+            <span className="hint">Estado Premium:</span>
+            <span className={`pill ${e.clase}`}>{e.label}</span>
+            {puedeMarcar && (linea.sin_premium_motivo ? (
+              <button type="button" className="btn-sm btn-secondary" disabled={marcando} onClick={() => marcarSin(null)}>
+                Quitar «sin premium»
+              </button>
+            ) : (
+              <span style={{ display: "inline-flex", gap: 6, alignItems: "center", marginLeft: "auto" }}>
+                <select value={motivoSel} onChange={(ev) => setMotivoSel(ev.target.value)} disabled={marcando}>
+                  <option value="Cancelada">Cancelada</option>
+                  <option value="Otro">Otro</option>
+                </select>
+                <button type="button" className="btn-sm btn-primary" disabled={marcando} onClick={() => marcarSin(motivoSel)}>
+                  Marcar como sin premium
+                </button>
+              </span>
+            ))}
+          </div>
+        );
+      })()}
+
       <div className="diseno-barra">
         <button type="button" className={"btn-secondary btn-sm" + (diseno ? " sel" : "")} onClick={() => setDiseno((d) => !d)}>
           {diseno ? "✓ Diseñando" : "✎ Diseñar formulario"}

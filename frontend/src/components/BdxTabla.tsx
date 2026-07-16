@@ -14,6 +14,15 @@ function pendiente(base: unknown, hecho: unknown): number | null {
   return base == null || base === "" ? null : num(base) - num(hecho);
 }
 
+// Estado de una línea de Risk frente al Premium (mismo criterio que el backend `bdx_estado`):
+// en Premium (verde) · sin premium por prima 0 o cancelación (gris) · pendiente (ámbar).
+export function estadoPremiumLinea(l: BdxLinea): { label: string; clase: string } {
+  if (l.incluido_en_premium) return { label: "En Premium", clase: "pill-cobrado" };
+  if (l.sin_premium_motivo) return { label: `Sin premium · ${l.sin_premium_motivo}`, clase: "pill-anulado" };
+  if (num(l.net_premium_to_broker) === 0) return { label: "Sin premium · Prima 0", clase: "pill-anulado" };
+  return { label: "Pendiente", clase: "pill-parcial" };
+}
+
 // Catálogo de TODAS las columnas (clic derecho en la cabecera para elegir).
 const CATALOGO: Col[] = [
   { key: "certificate_ref", label: "Certificado", tipo: "text" },
@@ -22,6 +31,7 @@ const CATALOGO: Col[] = [
   { key: "reporting_period_end", label: "Reporting End", tipo: "date" },
   { key: "net_premium_to_broker", label: "Prima a Mayrit", tipo: "num" },
   { key: "incluido_en_premium", label: "Incluido Premium", tipo: "bool" },
+  { key: "estado_premium", label: "Estado Premium", tipo: "text" },
   { key: "premium_bdx", label: "Premium Bdx", tipo: "date" },
   { key: "ingresado", label: "Cobrado", tipo: "num" },
   { key: "pdte_cobro", label: "Pdte. Cobro", tipo: "num", calc: (l) => pendiente(l.net_premium_to_broker, l.ingresado) },
@@ -74,7 +84,7 @@ const DEFAULT_KEYS: string[] = [
   "insured_name",
   "reporting_period_start",
   "net_premium_to_broker",
-  "incluido_en_premium",
+  "estado_premium",
   "premium_bdx",
   "ingresado",
   "pdte_cobro",
@@ -87,6 +97,7 @@ const DEFAULT_KEYS: string[] = [
 const VACIO = "(vacías)";
 
 function valorRaw(l: BdxLinea, col: Col): unknown {
+  if (col.key === "estado_premium") return estadoPremiumLinea(l).label;   // texto canónico (para filtro/orden)
   return col.calc ? col.calc(l) : (l as unknown as Record<string, unknown>)[col.key];
 }
 // Texto canónico de una celda (para mostrar y para los filtros). "" = vacío.
@@ -101,8 +112,9 @@ function fmtValor(l: BdxLinea, col: Col): string {
 }
 
 // Persistencia de la configuración de columnas (v2: nuevo orden/labels por defecto).
-const COLS_KEY = "mayrit.bdx.columnas.v4";
+const COLS_KEY = "mayrit.bdx.columnas.v5";   // v5: + columna «Estado Premium», sin «Incluido Premium»
 const SORT_KEY = "mayrit.bdx.orden.v4";
+const WIDTHS_KEY = "mayrit.bdx.anchos.v1";   // anchos de columna ajustables (arrastrando el borde)
 type SortState = { key: string; dir: 1 | -1 } | null;
 
 function cargarVisibles(): string[] {
@@ -153,6 +165,17 @@ export default function BdxTabla({
   const [dragKey, setDragKey] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const filtroRef = useRef<HTMLDivElement | null>(null);
+  // Anchos de columna ajustables arrastrando el borde derecho de la cabecera. Se tocan los <col> por
+  // DOM durante el arrastre (0 re-renders de filas) y solo se persiste al soltar.
+  const colRefs = useRef<Record<string, HTMLTableColElement | null>>({});
+  const anchosFirst = useRef(true);
+  const [anchos, setAnchos] = useState<Record<string, number>>(() => {
+    try { const raw = localStorage.getItem(WIDTHS_KEY); if (raw) return JSON.parse(raw) as Record<string, number>; } catch { /* ignora */ }
+    return {};
+  });
+  const [resizingKey, setResizingKey] = useState<string | null>(null);
+  const anchoDe = (c: Col) =>
+    anchos[c.key] ?? (c.key === "estado_premium" ? 165 : c.tipo === "num" || c.tipo === "pct" || c.tipo === "int" ? 90 : 140);
 
   useEffect(() => {
     try {
@@ -168,6 +191,10 @@ export default function BdxTabla({
       /* ignora */
     }
   }, [sort]);
+  useEffect(() => {
+    if (anchosFirst.current) { anchosFirst.current = false; return; }
+    try { localStorage.setItem(WIDTHS_KEY, JSON.stringify(anchos)); } catch { /* ignora */ }
+  }, [anchos]);
 
   useEffect(() => {
     if (!menu && !filtro) return;
@@ -285,6 +312,10 @@ export default function BdxTabla({
   const { gwp, nPolizas, primaMayrit, cobrado, aTraspasar, traspasado, aLiquidar, liquidado } = tot;
 
   function celda(l: BdxLinea, col: Col) {
+    if (col.key === "estado_premium") {
+      const e = estadoPremiumLinea(l);
+      return <span className={`pill ${e.clase}`}>{e.label}</span>;
+    }
     if (col.tipo === "bool") return <input type="checkbox" checked={!!valorRaw(l, col)} disabled readOnly />;
     const s = fmtValor(l, col);
     return s === "" ? "—" : s;
@@ -335,7 +366,15 @@ export default function BdxTabla({
       </div>
 
       <div className="tabla-scroll bdx-scroll">
-        <table className="compacto bdx-tabla">
+        <table className="compacto bdx-tabla tabla-datos">
+          <colgroup>
+            {bloqueada && <col style={{ width: 22 }} />}
+            {cols.map((c) => (
+              <col key={c.key} ref={(el) => { colRefs.current[c.key] = el; }} style={{ width: anchoDe(c) }} />
+            ))}
+            {onRowClick && <col style={{ width: 34 }} />}
+            <col className="col-spacer" />
+          </colgroup>
           <thead>
             <tr
               onContextMenu={(e) => {
@@ -355,7 +394,7 @@ export default function BdxTabla({
                     key={c.key}
                     className={(numCol ? "num " : "") + "col-arrastrable" + (dragKey === c.key ? " arrastrando" : "")}
                     style={{ whiteSpace: "nowrap" }}
-                    draggable
+                    draggable={!resizingKey}
                     onDragStart={(e) => {
                       setDragKey(c.key);
                       e.dataTransfer.effectAllowed = "move";
@@ -380,10 +419,42 @@ export default function BdxTabla({
                     >
                       ▾
                     </span>
+                    <span
+                      className="col-resize"
+                      title="Arrastra para ajustar el ancho (doble clic para auto)"
+                      onClick={(e) => e.stopPropagation()}
+                      onDoubleClick={(e) => {
+                        e.stopPropagation();
+                        setAnchos((a) => { const nx = { ...a }; delete nx[c.key]; return nx; });
+                      }}
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        const th = (e.currentTarget as HTMLElement).closest("th");
+                        const col = colRefs.current[c.key];
+                        const startX = e.clientX;
+                        const startW = th?.offsetWidth ?? anchoDe(c);
+                        let lastW = startW;
+                        setResizingKey(c.key);
+                        const onMove = (ev: MouseEvent) => {
+                          lastW = Math.max(32, Math.round(startW + (ev.clientX - startX)));
+                          if (col) col.style.width = `${lastW}px`;
+                        };
+                        const onUp = () => {
+                          setResizingKey(null);
+                          setAnchos((a) => ({ ...a, [c.key]: lastW }));
+                          document.removeEventListener("mousemove", onMove);
+                          document.removeEventListener("mouseup", onUp);
+                        };
+                        document.addEventListener("mousemove", onMove);
+                        document.addEventListener("mouseup", onUp);
+                      }}
+                    />
                   </th>
                 );
               })}
               {onRowClick && <th className="col-acciones" title="Acciones" />}
+              <th className="col-spacer" aria-hidden="true"></th>
             </tr>
           </thead>
           <tbody>
@@ -421,6 +492,7 @@ export default function BdxTabla({
                     </button>
                   </td>
                 )}
+                <td className="col-spacer"></td>
               </tr>
               );
             })}

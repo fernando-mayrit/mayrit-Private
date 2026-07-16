@@ -2,6 +2,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { bdxApi, recibosApi, siniestrosApi, claimsBdxApi, triangulacionApi, lpanApi, ucrApi, resumenBinder, evolucionPrograma, type BdxDetalle, type BdxPreview, type BdxImportResult, type PremiumGrupo, type ClaimsBdxVista, type Triangulacion, type MetricaTriangulo, type VistaLpan, type ResumenBinder, type ResumenItem, type EvolucionPrograma, type EvolucionSerie, type UcrRegistro } from "../api";
 import type { Binder, Bdx, BdxLinea, Recibo, Siniestro } from "../types";
 import BdxLineaPanel from "../components/BdxLineaPanel";
+import CancelacionesSugeridas from "../components/CancelacionesSugeridas";
 import BdxTabla from "../components/BdxTabla";
 import TablaDatos, { type Col } from "../components/TablaDatos";
 import NumberInput from "../components/NumberInput";
@@ -609,6 +610,7 @@ export default function BinderDetalle({ binder }: { binder: Binder }) {
 
   // ── Subir Risk/Premium desde un Excel del navegador (multipart) ──
   const fileRef = useRef<HTMLInputElement>(null);
+  const plantillaRef = useRef<HTMLInputElement>(null);
   const [subirFile, setSubirFile] = useState<File | null>(null);
   // PC: IBNR manual (% s/ GWP). La siniestralidad sale de los Claims importados (no simulada).
   const [ibnrPct, setIbnrPct] = useState("0");
@@ -729,6 +731,17 @@ export default function BinderDetalle({ binder }: { binder: Binder }) {
     setExcelModo(modo);
     setSubirFile(null);
     if (fileRef.current) { fileRef.current.value = ""; fileRef.current.click(); }
+  }
+
+  // Capturar el FORMATO del Risk Excel (columnas + orden) como plantilla del binder, para descargar el
+  // Premium/LPAN con ese mismo modelo. Solo lee cabeceras: no importa líneas ni toca datos.
+  async function capturarPlantilla(file: File) {
+    try {
+      const r = await bdxApi.capturarPlantillaRisk(binder.id, file);
+      alert(`✅ Plantilla del Risk capturada (hoja «${r.hoja ?? "—"}»): ${r.n_columnas} columnas — ${r.mapeadas} con campo interno, ${r.sin_mapear} propias del coverholder.\n\nLas descargas de Premium/LPAN de este binder ya usarán este formato.`);
+    } catch (e) {
+      alert("No se pudo capturar la plantilla: " + (e as Error).message);
+    }
   }
 
   // Cifras por mes (Reporting Start): GWP (our line), Net Premium to Broker, comisión (brokerage).
@@ -1236,6 +1249,8 @@ export default function BinderDetalle({ binder }: { binder: Binder }) {
       {/* Input de fichero oculto para Subir Risk/Premium (lo dispara el botón). */}
       <input ref={fileRef} type="file" accept=".xlsx" style={{ display: "none" }}
         onChange={(e) => { const f = e.target.files?.[0]; if (f) setSubirFile(f); }} />
+      <input ref={plantillaRef} type="file" accept=".xlsx" style={{ display: "none" }}
+        onChange={(e) => { const f = e.target.files?.[0]; e.currentTarget.value = ""; if (f) capturarPlantilla(f); }} />
       {subirFile && excelModo === "risk" && (
         <RiskExcelImport binderId={binder.id} file={subirFile}
           onClose={() => setSubirFile(null)}
@@ -1269,6 +1284,9 @@ export default function BinderDetalle({ binder }: { binder: Binder }) {
                       ⤓ Importar de SharePoint
                     </button>
                   )}
+                  <button className="btn-secondary" title="Captura el formato (columnas y orden) del Risk Excel del coverholder para reproducirlo en las descargas de Premium/LPAN. Solo lee cabeceras: no importa líneas." onClick={() => plantillaRef.current?.click()}>
+                    📐 Capturar plantilla del Risk
+                  </button>
                 </div>
               )}
               <div className="empty">
@@ -1278,6 +1296,8 @@ export default function BinderDetalle({ binder }: { binder: Binder }) {
               </div>
             </>
           ) : (
+            <>
+            {!produccionCerrada && <CancelacionesSugeridas binderId={binder.id} onMarcado={refrescarSel} />}
             <BdxTabla
               lineas={lineasVista}
               onRowClick={(l) => setLinea(l)}
@@ -1298,6 +1318,9 @@ export default function BinderDetalle({ binder }: { binder: Binder }) {
                       </button>
                     </>
                   )}
+                  <button className="btn-secondary btn-sm" title="Captura el formato (columnas y orden) del Risk Excel del coverholder para reproducirlo en las descargas de Premium/LPAN. Solo lee cabeceras: no importa líneas." onClick={() => plantillaRef.current?.click()}>
+                    📐 Plantilla del Risk
+                  </button>
                   {selMeses.size > 0 && (
                     <span className="hint">
                       Filtrado por Datos:{" "}
@@ -1307,6 +1330,7 @@ export default function BinderDetalle({ binder }: { binder: Binder }) {
                 </>
               }
             />
+            </>
           )}
         </>
       )}

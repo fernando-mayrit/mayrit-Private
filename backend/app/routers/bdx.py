@@ -116,6 +116,27 @@ async def risk_excel_import(binder_id: int, file: UploadFile = File(...), hoja: 
         raise HTTPException(status_code=400, detail=f"No se pudo importar el Excel: {e}")
 
 
+@router.post("/binders/{binder_id}/bdx/risk-plantilla")
+async def capturar_plantilla_risk(binder_id: int, file: UploadFile = File(...), hoja: str | None = Form(None),
+                                  db: Session = Depends(get_db)):
+    """Captura SOLO el formato (cabeceras + orden + mapeo) del Risk Excel del binder y lo guarda como
+    plantilla, para reproducirlo al descargar el Premium/LPAN. No importa líneas ni pasa guardarraíles."""
+    b = db.get(Binder, binder_id)
+    if b is None:
+        raise HTTPException(status_code=404, detail=f"Binder {binder_id} no encontrado")
+    content = await _leer_xlsx(file)
+    try:
+        return bdx_import.capturar_plantilla_risk(db, b, content, hoja)
+    except HTTPException:
+        raise
+    except ValueError as e:
+        db.rollback()
+        raise HTTPException(status_code=422, detail=str(e))
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=f"No se pudo leer el Excel: {e}")
+
+
 # ── Mapeo editable de columnas de BDX (alias por programa) ──
 class AliasIn(BaseModel):
     tipo: str = "risk"          # risk | premium | claims
@@ -320,6 +341,61 @@ def incluir_en_premium(payload: IncluirPremium, db: Session = Depends(get_db)):
     )
     db.commit()
     return {"actualizadas": len(payload.linea_ids), "incluido": incluido, "periodo": payload.periodo}
+
+
+# ─────────── Cerrar líneas de Risk "sin premium" (cancelada / otro; la prima 0 es automática) ───────────
+class SinPremiumIn(BaseModel):
+    linea_ids: list[int]
+    motivo: str | None = None   # 'Cancelada' | 'Otro' | …; None = quitar la marca
+
+
+@router.post("/bdx/lineas/sin-premium")
+def marcar_sin_premium(payload: SinPremiumIn, db: Session = Depends(get_db)):
+    """Marca (o desmarca, motivo=None) líneas de Risk como CERRADAS sin premium. Reversible.
+    Independiente de `incluido_en_premium`: NO entra en las sumas de Premium/LPAN/comisiones/recibo."""
+    if not payload.linea_ids:
+        return {"actualizadas": 0}
+    motivo = (payload.motivo or "").strip() or None
+    db.execute(update(BdxLinea).where(BdxLinea.id.in_(payload.linea_ids)).values(sin_premium_motivo=motivo))
+    db.commit()
+    return {"actualizadas": len(payload.linea_ids), "motivo": motivo}
+
+
+@router.get("/binders/{binder_id}/bdx/cancelaciones-sugeridas")
+def cancelaciones_sugeridas(binder_id: int, db: Session = Depends(get_db)):
+    """Pares de líneas del Risk que se ANULAN entre sí (mismo certificate, prima a Mayrit opuesta) y
+    siguen PENDIENTES de Premium → candidatas a marcar «sin premium (cancelada)» de un clic."""
+    from collections import defaultdict
+    from ..bdx_estado import cond_pendiente_premium
+    lineas = db.scalars(
+        select(BdxLinea).join(Bdx, Bdx.id == BdxLinea.bdx_id)
+        .where(Bdx.binder_id == binder_id, Bdx.tipo == "Risk", cond_pendiente_premium())
+    ).all()
+    porcert: dict[str, list[BdxLinea]] = defaultdict(list)
+    for l in lineas:
+        porcert[(l.certificate_ref or "").strip()].append(l)
+    pares = []
+    for cert, ls in porcert.items():
+        if not cert:
+            continue
+        pos = sorted((l for l in ls if float(l.net_premium_to_broker or 0) > 0), key=lambda x: float(x.net_premium_to_broker or 0))
+        neg = list(l for l in ls if float(l.net_premium_to_broker or 0) < 0)
+        usados: set[int] = set()
+        for p in pos:
+            for i, nl in enumerate(neg):
+                if i in usados:
+                    continue
+                if abs(float(p.net_premium_to_broker or 0) + float(nl.net_premium_to_broker or 0)) < 0.01:
+                    usados.add(i)
+                    pares.append({
+                        "certificate_ref": cert,
+                        "insured_name": p.insured_name or nl.insured_name,
+                        "importe": float(p.net_premium_to_broker or 0),
+                        "linea_ids": [p.id, nl.id],
+                        "periodos": sorted({str(x.reporting_period_start) for x in (p, nl) if x.reporting_period_start}),
+                    })
+                    break
+    return {"pares": pares}
 
 
 # ─────────────────── Bloqueo de periodos del BDX (presentado) ────────────────

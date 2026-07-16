@@ -348,6 +348,9 @@ def parse_risk_excel(content: bytes, hoja: str | None = None,
         "filas_totales": n_totales,   # filas de totales/resumen descartadas (se avisa en el preview)
         "hojas": list(wb.sheetnames),
         "hoja": sheet,
+        # Cabeceras EN ORDEN (no vacías) → para capturar la "plantilla" de Risk del binder y reproducir
+        # ese mismo formato de columnas al descargar el Premium/LPAN.
+        "headers": [h for h in headers if h],
     }
     return filas, meta
 
@@ -535,6 +538,36 @@ def preview_risk_excel(db: Session, binder: Binder, content: bytes, hoja: str | 
     }
 
 
+def plantilla_de_meta(meta: dict) -> dict:
+    """Plantilla del Risk del binder a partir del `meta` del parser: la hoja, las cabeceras EN ORDEN y a
+    qué campo interno mapea cada una (None si esa columna va a `extra`)."""
+    headers = meta.get("headers", [])
+    header_a_campo = {h: campo for campo, h in meta.get("mapeadas", {}).items()}   # invierte campo->cabecera
+    return {
+        "hoja": meta.get("hoja"),
+        "headers": headers,
+        "por_cabecera": {h: header_a_campo.get(h) for h in headers},
+    }
+
+
+def capturar_plantilla_risk(db: Session, binder: Binder, content: bytes, hoja: str | None = None) -> dict:
+    """Lee SOLO el formato (cabeceras + mapeo) de un Risk Excel y lo guarda como plantilla del binder.
+    NO importa líneas ni pasa por los guardarraíles (para capturar/actualizar el formato en cualquier
+    momento, p. ej. binders ya cargados o cuando el coverholder cambia el modelo a mitad de año)."""
+    _filas, meta = parse_risk_excel(content, hoja, cargar_alias(db, binder.programa_id, "risk"))
+    plantilla = plantilla_de_meta(meta)
+    if not plantilla["headers"]:
+        raise ValueError("No se han encontrado cabeceras en la hoja elegida. Revisa que es la hoja del Risk.")
+    binder.risk_plantilla = plantilla
+    db.commit()
+    por = plantilla["por_cabecera"]
+    return {
+        "hoja": plantilla["hoja"], "n_columnas": len(plantilla["headers"]),
+        "mapeadas": sum(1 for v in por.values() if v), "sin_mapear": sum(1 for v in por.values() if not v),
+        "headers": plantilla["headers"],
+    }
+
+
 def importar_risk_excel(db: Session, binder: Binder, content: bytes, hoja: str | None = None) -> dict:
     """Añade TODAS las líneas del Excel al BDX Risk del binder (sin dedup por línea: se conservan los
     duplicados legítimos de pagos fraccionados). Asigna la sección por risk code cuando falta. La única
@@ -597,6 +630,7 @@ def importar_risk_excel(db: Session, binder: Binder, content: bytes, hoja: str |
     ends = [l.reporting_period_end for l in bdx.lineas if l.reporting_period_end]
     bdx.reporting_period_start = min(starts) if starts else None
     bdx.reporting_period_end = max(ends) if ends else None
+    binder.risk_plantilla = plantilla_de_meta(meta)   # captura/actualiza el formato del Risk del binder
     db.commit()
     periodos = sorted({str(p) for p in (l.reporting_period_start for l in bdx.lineas) if p})
     return {"bdx_id": bdx.id, "insertadas": insertadas, "omitidas_periodo": omitidas_periodo,

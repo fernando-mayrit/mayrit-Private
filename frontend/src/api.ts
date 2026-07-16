@@ -952,6 +952,17 @@ export const bdxApi = {
       method: "POST",
       body: JSON.stringify({ linea_ids: lineaIds, periodo }),
     }),
+  // Cerrar líneas de Risk "sin premium" (motivo null = quitar la marca).
+  marcarSinPremium: (lineaIds: number[], motivo: string | null) =>
+    request<{ actualizadas: number; motivo: string | null }>(`/bdx/lineas/sin-premium`, {
+      method: "POST",
+      body: JSON.stringify({ linea_ids: lineaIds, motivo }),
+    }),
+  // Pares de líneas que se anulan entre sí (cancelaciones) y siguen pendientes de Premium.
+  cancelacionesSugeridas: (binderId: number) =>
+    request<{ pares: { certificate_ref: string; insured_name: string | null; importe: number; linea_ids: number[]; periodos: string[] }[] }>(
+      `/binders/${binderId}/bdx/cancelaciones-sugeridas`,
+    ),
   // Importación desde SharePoint (solo lectura el preview; el import escribe).
   sharepointPreview: (binderId: number) =>
     request<BdxPreview>(`/binders/${binderId}/bdx/sharepoint-preview`),
@@ -967,6 +978,13 @@ export const bdxApi = {
     const fd = new FormData(); fd.append("file", file);
     if (hoja) fd.append("hoja", hoja);
     return requestForm<RiskExcelImportResult>(`/binders/${binderId}/bdx/risk-excel-import`, fd);
+  },
+  // Capturar SOLO el formato (columnas + orden) del Risk Excel como plantilla del binder (no importa líneas).
+  capturarPlantillaRisk: (binderId: number, file: File, hoja?: string) => {
+    const fd = new FormData(); fd.append("file", file);
+    if (hoja) fd.append("hoja", hoja);
+    return requestForm<{ hoja: string | null; n_columnas: number; mapeadas: number; sin_mapear: number; headers: string[] }>(
+      `/binders/${binderId}/bdx/risk-plantilla`, fd);
   },
   // Mapeo editable de columnas (alias por programa)
   bdxCampos: (tipo = "risk") => request<BdxCampo[]>(`/bdx/campos?tipo=${tipo}`),

@@ -427,6 +427,7 @@ export interface BdxLinea {
   liquidado_uw?: string | number | null;
   fecha_liquidacion?: string | null;
   recibo?: string | null;
+  sin_premium_motivo?: string | null;   // línea cerrada sin premium (Cancelada / Otro)
   notas?: string | null;
   // Identificación adicional (algunas plantillas la traen por línea)
   coverholder_name?: string | null;

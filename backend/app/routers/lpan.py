@@ -852,6 +852,155 @@ def _bdx_fila(l: "BdxLinea", b, coverholder: str, per_ini: dt.date, per_fin: dt.
     ]
 
 
+# ── Descarga con el FORMATO del Risk de cada binder (plantilla) ──────────────────────────────────
+# Campos internos por tipo, para formatear la celda y transformar el valor al exportar (igual criterio
+# que _bdx_fila: importes como número, % como fracción, fechas como fecha).
+_AMOUNT_FIELDS = {
+    "gross_written_premium", "total_gwp_our_line", "fees", "commission_coverholder_amount",
+    "total_taxes_levies", "total_gwp_including_tax", "net_premium_to_broker", "sum_insured_total",
+    "sum_insured_our_line", "deductible_amount", "turnover", "tax1_taxable_premium", "tax1_amount",
+    "tax2_taxable_premium", "tax2_amount", "tax3_taxable_premium", "tax3_amount", "tax4_taxable_premium",
+    "tax4_amount", "brokerage_amount", "final_net_premium_uw",
+}
+_PCT_FIELDS = {
+    "written_line_pct", "commission_coverholder_pct", "pct_for_lloyds", "brokerage_pct",
+    "tax1_pct", "tax2_pct", "tax3_pct", "tax4_pct",
+}
+_DATE_FIELDS = {
+    "reporting_period_start", "reporting_period_end", "risk_inception_date", "risk_expiry_date",
+    "effective_date_transaction", "expiry_date_transaction", "policy_issuance_date",
+}
+_ACC_FMT = '_-* #,##0.00_-;\\-* #,##0.00_-;_-* "-"??_-;_-@_-'
+_SUBTOT_CAMPOS = ("gross_written_premium", "total_taxes_levies", "final_net_premium_uw")
+
+
+def _numfmt_campo(campo: str | None) -> str:
+    if campo in _PCT_FIELDS:
+        return "0.00%"
+    if campo in _AMOUNT_FIELDS:
+        return _ACC_FMT
+    if campo in _DATE_FIELDS:
+        return "mm-dd-yy"
+    return "General"
+
+
+def _bdx_valores(l: "BdxLinea", b, coverholder: str, per_ini: dt.date, per_fin: dt.date) -> dict:
+    """Valor de exportación de cada CAMPO interno de una línea (con el contexto del Premium: el Reporting
+    Period es el mes que se descarga). Importes -> float; % -> fracción; el resto se toma tal cual."""
+    v: dict = {}
+    for campo in _AMOUNT_FIELDS:
+        x = getattr(l, campo, None)
+        v[campo] = float(x) if x is not None else None
+    for campo in _PCT_FIELDS:
+        x = getattr(l, campo, None)
+        v[campo] = float(x) / 100 if x is not None else None
+    v["coverholder_name"] = coverholder
+    v["yoa"] = l.yoa if l.yoa is not None else b.yoa
+    v["umr"] = l.umr or b.umr
+    v["reporting_period_start"] = per_ini
+    v["reporting_period_end"] = per_fin
+    ourline, taxes = v.get("total_gwp_our_line"), v.get("total_taxes_levies")
+    v["total_gwp_including_tax"] = (ourline or 0) + (taxes or 0)
+    return v
+
+
+def _fila_desde_plantilla(l: "BdxLinea", plantilla: dict, valores: dict) -> list:
+    """Fila con las MISMAS columnas/orden que el Risk del binder: cada cabecera se rellena con su campo
+    interno (si mapea) o desde `extra` (columnas propias del coverholder sin campo)."""
+    extra = l.extra or {}
+    por = plantilla.get("por_cabecera", {})
+    out = []
+    for h in plantilla.get("headers", []):
+        campo = por.get(h)
+        if not campo:
+            out.append(extra.get(h))
+        elif campo in valores:
+            out.append(valores[campo])
+        else:
+            x = getattr(l, campo, None)
+            out.append(float(x) if isinstance(x, Decimal) else x)
+    return out
+
+
+def _bdx_excel_plantilla(b, plantilla: dict, coverholder: str, grupos: dict, lineas: list,
+                         per_ini: dt.date, per_fin: dt.date, agrupar: bool, periodo: str, pais: str | None):
+    """Bordereau con el formato (columnas + orden) del Risk del binder. Premium plano o LPAN agrupado."""
+    import io
+
+    import openpyxl
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    from openpyxl.utils import get_column_letter
+
+    headers = plantilla["headers"]
+    campos_col = [plantilla.get("por_cabecera", {}).get(h) for h in headers]   # campo por columna (0-based)
+    subtot_idx = {i for i, c in enumerate(campos_col) if c in _SUBTOT_CAMPOS}
+    ncol = len(headers)
+
+    thin = Side(style="thin")
+    hdr_font = Font(name="Calibri", size=9, bold=True)
+    hdr_fill = PatternFill("solid", fgColor="D9D9D9")
+    hdr_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    hdr_border = Border(left=thin, right=thin, top=thin, bottom=thin)
+    data_font = Font(name="Aptos Narrow", size=9)
+    sub_font = Font(name="Aptos Narrow", size=9, bold=True)
+    sub_border = Border(top=thin, bottom=thin)
+
+    def estilo(row: int, subtotal: bool = False) -> None:
+        for i in range(ncol):
+            c = ws.cell(row=row, column=i + 1)
+            c.font = sub_font if subtotal else data_font
+            c.number_format = _numfmt_campo(campos_col[i])
+            if subtotal and i in subtot_idx:
+                c.border = sub_border
+
+    meses_en = ["", "January", "February", "March", "April", "May", "June",
+                "July", "August", "September", "October", "November", "December"]
+    try:
+        titulo_hoja = meses_en[int(periodo.split("-")[1])]
+    except (ValueError, IndexError):
+        titulo_hoja = periodo
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = titulo_hoja
+    ws.append(headers)
+    for i in range(ncol):
+        c = ws.cell(row=1, column=i + 1)
+        c.font, c.fill, c.alignment, c.border = hdr_font, hdr_fill, hdr_align, hdr_border
+    ws.row_dimensions[1].height = 60
+
+    def escribir(l):
+        ws.append(_fila_desde_plantilla(l, plantilla, _bdx_valores(l, b, coverholder, per_ini, per_fin)))
+        estilo(ws.max_row)
+
+    if agrupar:
+        for clave in sorted(grupos.keys()):
+            filas = grupos[clave]
+            for l in filas:
+                escribir(l)
+            sub = [None] * ncol
+            for i in subtot_idx:
+                sub[i] = float(sum((getattr(l, campos_col[i], 0) or 0) for l in filas))
+            ws.append(sub)
+            estilo(ws.max_row, subtotal=True)
+            ws.append([])
+    else:
+        for l in lineas:
+            escribir(l)
+
+    for i in range(ncol):
+        ws.column_dimensions[get_column_letter(i + 1)].width = 14.0
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    fname = f"{'LPAN' if agrupar else 'Premium'} Bdx {b.umr or b.agreement_number or b.id} {periodo}{f' {pais}' if pais else ''}.xlsx"
+    return StreamingResponse(
+        buf, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+    )
+
+
 @router.get("/binders/{binder_id}/lpan/bdx-excel")
 def bdx_excel(binder_id: int, periodo: str, agrupar: bool = True, pais: str | None = None,
               db: Session = Depends(get_db)):
@@ -889,6 +1038,11 @@ def bdx_excel(binder_id: int, periodo: str, agrupar: bool = True, pais: str | No
     grupos: dict[tuple, list] = {}
     for l in lineas:
         grupos.setdefault((_pais_de(l), l.section_no if l.section_no is not None else 0, (l.risk_code or "").strip()), []).append(l)
+
+    # Si el binder tiene plantilla del Risk (formato del coverholder), reproducimos ESAS columnas/orden.
+    # Si no, se usa el formato Lloyd's estándar de 61 columnas (comportamiento de siempre).
+    if isinstance(b.risk_plantilla, dict) and b.risk_plantilla.get("headers"):
+        return _bdx_excel_plantilla(b, b.risk_plantilla, coverholder, grupos, lineas, per_ini, per_fin, agrupar, periodo, pais)
 
     # ── Estilo idéntico al modelo de muestra (Premium Bordereaux) ──
     ncol = len(_BDX_HEADERS)
