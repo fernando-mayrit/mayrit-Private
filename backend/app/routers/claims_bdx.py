@@ -543,3 +543,203 @@ def comparar(binder_id: int, file: UploadFile = File(...), db: Session = Depends
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="{nombre}"'},
     )
+
+
+# ─────────────── SUBIR un Claims BDX: aplicar SOLO las celdas AZULES a los siniestros ───────────────
+# El fichero es la plantilla de Lloyd's donde las celdas cambiadas van con FONDO AZUL (las que pinta el
+# «Comparar», o las que el gestor marque a mano). «Subir» copia SOLO esas celdas a su campo del siniestro
+# (empareja por Claim Reference + Certificate). Una fila que no casa con ningún siniestro = NUEVO (se crea).
+# Las reservas vienen YA NETAS de los pagos (fichero bien hecho): se copian tal cual, NO se recalcula el
+# Total Incurred (= pagado + reservas, se deduce solo) → no se duplica nada.
+
+# Cabecera del BDX → campo DIRECTO del Siniestro (los importes de pago se tratan aparte).
+_H2F = {
+    "UCR": "ucr", "Lloyd's Risk Code": "risk_code", "Original Currency": "currency",
+    "Certificate Reference": "certificate", "Claim Reference / Number": "reference",
+    "Insured Full Name or Company Name": "insured", "Risk Inception Date": "risk_inception",
+    "Risk Expiry Date": "risk_expiry", "Loss Description": "description",
+    "Date Claim First Advised/Date Claim Made": "claim_first_advised", "Claim Status": "status",
+    "Refer to Underwriters": "refer", "Denial (Y/N)": "denial", "Claimant Name": "claimant",
+    "Amount Claimed": "amount_claimed", "Reserve - Indemnity": "reserves_indemnity",
+    "Reserve - Fees": "reserves_fees", "Date Claim Opened": "date_opened", "Date Closed": "date_closed",
+}
+_F_FECHA = {"risk_inception", "risk_expiry", "claim_first_advised", "date_opened", "date_closed"}
+_F_NUM = {"amount_claimed", "reserves_indemnity", "reserves_fees", "paid_indemnity", "paid_fees"}
+_F_YN = {"refer", "denial"}
+
+
+def _es_azul(cell) -> bool:
+    """¿La celda tiene fondo AZUL? Acepta el 9BC2E6 del «Comparar» y cualquier azul parecido (azul
+    claramente dominante, ni gris ni blanco). Solo rellenos sólidos con color RGB explícito."""
+    f = getattr(cell, "fill", None)
+    if not f or f.patternType != "solid":
+        return False
+    rgb = getattr(getattr(f, "fgColor", None), "rgb", None)
+    if not isinstance(rgb, str) or len(rgb) < 6:
+        return False
+    try:
+        r, g, b = int(rgb[-6:-4], 16), int(rgb[-4:-2], 16), int(rgb[-2:], 16)
+    except ValueError:
+        return False
+    return b >= 120 and b > r + 20 and b > g + 10 and not (r > 205 and g > 205 and b > 205)
+
+
+def _leer_bdx_con_azules(contenido: bytes) -> list[dict]:
+    """Lee el Claims BDX subido devolviendo, por fila, {cabecera: (valor, es_azul)}. Necesita los
+    ESTILOS (para el azul), así que NO usa read_only. Detecta la cabecera igual que `_leer_bdx_subido`."""
+    try:
+        wb = openpyxl.load_workbook(io.BytesIO(contenido), data_only=True)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail=f"No se pudo leer el Excel: {e}")
+    ws = wb.active
+    filas = list(ws.iter_rows())
+    norm_h = {_hk(h): h for h in HEADERS}
+    hdr_idx, colmap = None, {}
+    for i, row in enumerate(filas[:25]):
+        cells = [_hk(c.value) for c in row]
+        if sum(1 for c in cells if c in norm_h) >= 5:
+            hdr_idx = i
+            for j, c in enumerate(cells):
+                if c in norm_h and norm_h[c] not in colmap:
+                    colmap[norm_h[c]] = j
+            break
+    if hdr_idx is None:
+        raise HTTPException(status_code=400,
+                            detail="No se reconocen las columnas del Claims BDX en el fichero (¿es la plantilla de Lloyd's?).")
+    out = []
+    for row in filas[hdr_idx + 1:]:
+        if all(c.value in (None, "") for c in row):
+            continue
+        d = {h: ((row[j].value, _es_azul(row[j])) if j < len(row) else (None, False)) for h, j in colmap.items()}
+        if not any((d.get(h) or (None,))[0] for h in ("Certificate Reference", "Claim Reference / Number", "UCR")):
+            continue
+        out.append(d)
+    return out
+
+
+def _coerce_campo(campo: str, val):
+    if campo in _F_FECHA:
+        return _to_date(val)
+    if campo in _F_NUM:
+        return Decimal(f"{_to_num(val):.2f}")
+    if campo in _F_YN:
+        return _yn(val)
+    return str(val).strip() if val not in (None, "") else None
+
+
+def _difiere(campo: str, viejo, nuevo) -> bool:
+    if campo in _F_NUM:
+        return round(_to_num(viejo), 2) != round(_to_num(nuevo), 2)
+    if campo in _F_FECHA:
+        return _to_date(viejo) != _to_date(nuevo)
+    if campo in _F_YN:
+        return _yn(viejo) != _yn(nuevo)
+    return _hv(viejo) != _hv(nuevo)
+
+
+def _val(par):
+    return (par or (None, False))[0]
+
+
+def _es_az(d: dict, h: str) -> bool:
+    return (d.get(h) or (None, False))[1]
+
+
+def _paid_nuevo(d: dict, suf: str) -> Decimal:
+    """Pagado acumulado = «Previously Paid» + «Paid this month» del fichero (el Total Incurred NO se toca)."""
+    return Decimal(f"{_to_num(_val(d.get(f'Previously Paid - {suf}'))) + _to_num(_val(d.get(f'Paid this month - {suf}'))):.2f}")
+
+
+def _aplicar_claims(db: Session, b: Binder, file_rows: list[dict], dry_run: bool) -> dict:
+    siniestros = db.scalars(select(Siniestro).where(Siniestro.binder_id == b.id)).all()
+    por_key: dict[tuple, Siniestro] = {(_hv(s.certificate), _hv(s.reference)): s for s in siniestros}
+    por_ref: dict[str, list] = {}
+    for s in siniestros:
+        por_ref.setdefault(_hv(s.reference), []).append(s)
+
+    nuevos, actualizados, ambiguos = [], [], []
+    sin_cambios = 0
+    for d in file_rows:
+        ref = _hv(_val(d.get("Claim Reference / Number")))
+        cert = _hv(_val(d.get("Certificate Reference")))
+        ident = {"reference": _val(d.get("Claim Reference / Number")), "certificate": _val(d.get("Certificate Reference")),
+                 "insured": _val(d.get("Insured Full Name or Company Name"))}
+        s = por_key.get((cert, ref))
+        if s is None:
+            cands = por_ref.get(ref, [])
+            if len(cands) == 1:
+                s = cands[0]
+            elif len(cands) > 1:
+                ambiguos.append(ident)          # misma referencia en varios siniestros y sin casar por certificado
+                continue
+
+        if s is None:
+            # ── NUEVO siniestro: se crea con TODOS los campos del fichero (es nuevo, no importa el azul) ──
+            campos = {campo: _coerce_campo(campo, _val(d.get(h))) for h, campo in _H2F.items() if _val(d.get(h)) not in (None, "")}
+            campos["paid_indemnity"] = _paid_nuevo(d, "Indemnity")
+            campos["paid_fees"] = _paid_nuevo(d, "Fees")
+            fin = _to_date(_val(d.get("Reporting Period (End Date)")))
+            if fin:
+                campos.setdefault("reporting_period", fin.replace(day=1))
+            nuevos.append({**ident, "campos": {k: str(v) for k, v in campos.items()}})
+            if not dry_run:
+                db.add(Siniestro(binder_id=b.id, **campos))
+            continue
+
+        # ── EXISTENTE: solo se copian las celdas AZULES ──
+        cambios = []
+        for h, campo in _H2F.items():
+            if not _es_az(d, h):
+                continue
+            nuevo = _coerce_campo(campo, _val(d.get(h)))
+            if _difiere(campo, getattr(s, campo), nuevo):
+                cambios.append({"campo": campo, "de": _fmt_val(getattr(s, campo)), "a": _fmt_val(nuevo)})
+                if not dry_run:
+                    setattr(s, campo, nuevo)
+        # Pagado: si el flujo de pago viene en azul, recalcula el acumulado (Previously + This month).
+        for suf, campo in (("Indemnity", "paid_indemnity"), ("Fees", "paid_fees")):
+            if _es_az(d, f"Paid this month - {suf}") or _es_az(d, f"Previously Paid - {suf}"):
+                nuevo = _paid_nuevo(d, suf)
+                if round(_to_num(getattr(s, campo)), 2) != round(_to_num(nuevo), 2):
+                    cambios.append({"campo": campo, "de": _fmt_val(getattr(s, campo)), "a": _fmt_val(nuevo)})
+                    if not dry_run:
+                        setattr(s, campo, nuevo)
+        if cambios:
+            actualizados.append({**ident, "cambios": cambios})
+        else:
+            sin_cambios += 1
+
+    if not dry_run:
+        db.commit()
+    return {
+        "dry_run": dry_run,
+        "n_filas": len(file_rows),
+        "nuevos": nuevos, "actualizados": actualizados, "ambiguos": ambiguos,
+        "n_nuevos": len(nuevos), "n_actualizados": len(actualizados),
+        "n_campos": sum(len(a["cambios"]) for a in actualizados), "sin_cambios": sin_cambios,
+    }
+
+
+def _fmt_val(v) -> str:
+    if v in (None, ""):
+        return "(vacío)"
+    if isinstance(v, dt.date):
+        return v.strftime("%d/%m/%Y")
+    return str(v)
+
+
+@router.post("/binders/{binder_id}/claims-bdx/aplicar")
+def aplicar(binder_id: int, file: UploadFile = File(...), dry_run: bool = True, db: Session = Depends(get_db)):
+    """SUBE un Claims BDX y aplica SOLO las celdas azules a los siniestros del binder (crea los nuevos).
+    Con `dry_run=true` (por defecto) NO escribe: devuelve el resumen para confirmar. Con `dry_run=false`
+    aplica y guarda. El binder «Cerrado» no admite escrituras."""
+    b = _binder_o_404(binder_id, db)
+    if not dry_run and (b.estado or "") == "Cerrado":
+        raise HTTPException(status_code=409, detail="El binder está «Cerrado»: no se pueden cargar más claims.")
+    contenido = file.file.read()
+    if not contenido:
+        raise HTTPException(status_code=400, detail="El fichero está vacío.")
+    file_rows = _leer_bdx_con_azules(contenido)
+    if not file_rows:
+        raise HTTPException(status_code=400, detail="El fichero no contiene filas de siniestros reconocibles.")
+    return _aplicar_claims(db, b, file_rows, dry_run)

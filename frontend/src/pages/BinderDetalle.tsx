@@ -355,6 +355,8 @@ export default function BinderDetalle({ binder }: { binder: Binder }) {
   const [nuevoSin, setNuevoSin] = useState(false);
   const [subiendoClaims, setSubiendoClaims] = useState(false);
   const claimsBdxRef = useRef<HTMLInputElement>(null);
+  const [aplicandoClaims, setAplicandoClaims] = useState(false);
+  const aplicarClaimsRef = useRef<HTMLInputElement>(null);
 
   async function subirClaimsBdx(file: File) {
     setSubiendoClaims(true);
@@ -369,6 +371,35 @@ export default function BinderDetalle({ binder }: { binder: Binder }) {
       URL.revokeObjectURL(url);
     } catch (e) { setError((e as Error).message); }
     finally { setSubiendoClaims(false); }
+  }
+
+  // Subir Claims BDX: aplica SOLO las celdas azules. Primero SIMULA (no escribe), muestra el resumen
+  // para confirmar, y solo entonces escribe. Nada silencioso.
+  async function subirClaimsBdxAplicar(file: File) {
+    setAplicandoClaims(true);
+    setError(null);
+    try {
+      const sim = await siniestrosApi.aplicarClaimsBdx(binder.id, file, true);   // dry-run
+      if (sim.n_nuevos === 0 && sim.n_actualizados === 0) {
+        alert("No hay ninguna celda azul con cambios que aplicar (ni siniestros nuevos). No se ha tocado nada.");
+        return;
+      }
+      const detalle = sim.actualizados.slice(0, 12)
+        .map((a) => `  • ${a.reference ?? a.certificate ?? "?"}: ${a.cambios.map((c) => c.campo).join(", ")}`)
+        .join("\n");
+      const nuevosTxt = sim.nuevos.slice(0, 12).map((n) => `  • ${n.reference ?? "?"} — ${n.insured ?? ""}`).join("\n");
+      const amb = sim.ambiguos.length ? `\n⚠ ${sim.ambiguos.length} fila(s) con referencia repetida en varios siniestros: se OMITEN (revísalas a mano).` : "";
+      const msg =
+        `Se aplicarán SOLO las celdas azules:\n\n` +
+        `• Crear ${sim.n_nuevos} siniestro(s) nuevo(s)` + (nuevosTxt ? `:\n${nuevosTxt}` : "") + `\n\n` +
+        `• Actualizar ${sim.n_campos} campo(s) en ${sim.n_actualizados} siniestro(s)` + (detalle ? `:\n${detalle}` : "") +
+        (sim.n_actualizados > 12 ? "\n  …" : "") + amb + `\n\n¿Aplicar estos cambios?`;
+      if (!window.confirm(msg)) return;
+      const r = await siniestrosApi.aplicarClaimsBdx(binder.id, file, false);   // aplicar de verdad
+      await cargarSiniestros();
+      alert(`Aplicado: ${r.n_nuevos} siniestro(s) nuevo(s) y ${r.n_campos} campo(s) actualizado(s) en ${r.n_actualizados} siniestro(s).`);
+    } catch (e) { setError((e as Error).message); }
+    finally { setAplicandoClaims(false); }
   }
 
   // Pólizas del Risk BDX para el alta manual de siniestros: una entrada por combinación distinta de
@@ -1595,12 +1626,27 @@ export default function BinderDetalle({ binder }: { binder: Binder }) {
               >
                 {subiendoClaims ? "Comparando…" : "📤 Comparar Claims Bdx"}
               </button>
+              <button
+                className="btn-primary btn-sm"
+                onClick={() => aplicarClaimsRef.current?.click()}
+                disabled={aplicandoClaims}
+                title="Sube un Claims BDX (Excel) y copia a la app SOLO las celdas marcadas en azul (crea los siniestros nuevos). Muestra un resumen para confirmar antes de escribir."
+              >
+                {aplicandoClaims ? "Subiendo…" : "📥 Subir Claims Bdx"}
+              </button>
               <input
                 ref={claimsBdxRef}
                 type="file"
                 accept=".xlsx"
                 style={{ display: "none" }}
                 onChange={(e) => { const f = e.target.files?.[0]; e.currentTarget.value = ""; if (f) subirClaimsBdx(f); }}
+              />
+              <input
+                ref={aplicarClaimsRef}
+                type="file"
+                accept=".xlsx"
+                style={{ display: "none" }}
+                onChange={(e) => { const f = e.target.files?.[0]; e.currentTarget.value = ""; if (f) subirClaimsBdxAplicar(f); }}
               />
               {polizasSiniestro.length === 0 && (
                 <span className="hint">Sin pólizas en el Risk BDX: no se pueden dar de alta siniestros.</span>

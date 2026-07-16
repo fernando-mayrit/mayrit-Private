@@ -96,7 +96,31 @@ export const siniestrosApi = {
     }
     return res.blob();
   },
+  // Sube un Claims BDX y aplica SOLO las celdas azules a los siniestros (crea los nuevos). Con
+  // dryRun=true (por defecto) NO escribe: devuelve el resumen para confirmar antes de aplicar.
+  aplicarClaimsBdx: async (binderId: number, file: File, dryRun = true): Promise<ClaimsAplicarResumen> => {
+    const form = new FormData();
+    form.append("file", file);
+    const res = await fetch(`${BASE}/binders/${binderId}/claims-bdx/aplicar?dry_run=${dryRun}`, { method: "POST", body: form });
+    if (!res.ok) {
+      let msg = `Error al subir el Claims BDX (${res.status})`;
+      try { msg = (await res.json()).detail ?? msg; } catch { /* ignora */ }
+      throw new Error(msg);
+    }
+    return res.json();
+  },
 };
+export interface ClaimsAplicarResumen {
+  dry_run: boolean;
+  n_filas: number;
+  n_nuevos: number;
+  n_actualizados: number;
+  n_campos: number;
+  sin_cambios: number;
+  nuevos: { reference: string | null; certificate: string | null; insured: string | null }[];
+  actualizados: { reference: string | null; certificate: string | null; insured: string | null; cambios: { campo: string; de: string; a: string }[] }[];
+  ambiguos: { reference: string | null; certificate: string | null; insured: string | null }[];
+}
 
 // ── LPAN / FDO (notas de pago a Lloyd's por risk code) ──
 export interface FdoRegistro {
