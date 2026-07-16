@@ -91,8 +91,10 @@ def _bloqueado(db: Session, binder_id: int, periodo: str) -> bool:
     ) is not None
 
 
-def _construir(db: Session, b: Binder, periodo: str) -> tuple[list[dict], list[dict]]:
-    """Filas (32 col) + meta (por siniestro) del Claims BDX del binder para ese periodo."""
+def _construir(db: Session, b: Binder, periodo: str, crudo: bool = False) -> tuple[list[dict], list[dict]]:
+    """Filas (32 col) + meta (por siniestro) del Claims BDX del binder para ese periodo.
+    `crudo=True` (comparativa): trae los importes TAL CUAL están en la app; en concreto el Total Incurred
+    es el campo guardado (`total_indemnity`/`total_fees`), sin la suma de respaldo pagado+reservas."""
     siniestros = db.scalars(
         select(Siniestro).where(Siniestro.binder_id == b.id).order_by(Siniestro.certificate, Siniestro.reference, Siniestro.id)
     ).all()
@@ -142,9 +144,10 @@ def _construir(db: Session, b: Binder, periodo: str) -> tuple[list[dict], list[d
             "Previously Paid - Fees": prev_f,
             "Reserve - Indemnity": res_i,
             "Reserve - Fees": res_f,
-            # Total Incurred = cifra REAL del claims (no mecánicamente pagado+reserva).
-            "Total Incurred - Indemnity": _f(s.total_indemnity) if s.total_indemnity is not None else paid_i + res_i,
-            "Total Incurred - Fees": _f(s.total_fees) if s.total_fees is not None else paid_f + res_f,
+            # Total Incurred = cifra REAL del claims (no mecánicamente pagado+reserva). En modo `crudo`
+            # (comparativa) se trae el campo tal cual, sin respaldo pagado+reservas.
+            "Total Incurred - Indemnity": _f(s.total_indemnity) if (crudo or s.total_indemnity is not None) else paid_i + res_i,
+            "Total Incurred - Fees": _f(s.total_fees) if (crudo or s.total_fees is not None) else paid_f + res_f,
             "Date Claim Opened": s.date_opened,
             "Date Closed": s.date_closed,
         }
@@ -530,7 +533,7 @@ def comparar(binder_id: int, file: UploadFile = File(...), db: Session = Depends
     if not file_rows:
         raise HTTPException(status_code=400, detail="El fichero no contiene filas de siniestros reconocibles.")
     periodo = _periodo_de_filas(file_rows)
-    app_filas, _ = _construir(db, b, periodo)
+    app_filas, _ = _construir(db, b, periodo, crudo=True)   # comparativa: importes/totales tal cual en la app
     file_by_key: dict[tuple, dict] = {}
     for d in file_rows:
         file_by_key.setdefault(_clave_fila(d), d)
