@@ -1593,7 +1593,7 @@ export default function BinderDetalle({ binder }: { binder: Binder }) {
                 disabled={subiendoClaims}
                 title="Sube un Claims BDX (Excel) y descarga un Excel con las celdas que difieren de los siniestros de la app (en azul)"
               >
-                {subiendoClaims ? "Comparando…" : "📤 Subir Claims Bdx"}
+                {subiendoClaims ? "Comparando…" : "📤 Comparar Claims Bdx"}
               </button>
               <input
                 ref={claimsBdxRef}
