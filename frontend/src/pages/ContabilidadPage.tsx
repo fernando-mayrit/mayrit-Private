@@ -166,7 +166,7 @@ export default function ContabilidadPage() {
               <input type="search" placeholder="Buscar concepto, descripción, código…" value={q} onChange={(e) => setQ(e.target.value)} style={{ flex: "1 1 200px", minWidth: 170 }} />
             </div>
             <div className="toolbar" style={{ gap: 8 }}>
-              <button className="btn-primary btn-sm" onClick={() => setAlta(true)} disabled={!cuenta}>＋ Alta de movimiento</button>
+              <button className="btn-primary btn-sm" onClick={() => setAlta(true)} disabled={!cuenta}>➕ Alta de movimiento</button>
               <button className="btn-primary btn-sm" onClick={() => importInputRef.current?.click()} disabled={cuenta === FONDOS}
                 title="Subir un extracto del banco en Norma 43 (Cuaderno 43) y darlo de alta en bloque">⬆️ Importar extracto</button>
               <button className="btn-primary btn-sm" onClick={() => setConciliar(true)} disabled={!cuenta || cuenta === FONDOS}
