@@ -494,7 +494,7 @@ export default function PolizaForm({
               return (
                 <button
                   type="button"
-                  className="btn-secondary"
+                  className="btn-primary"
                   onClick={onRenovar}
                   disabled={!!yaRenov || saving}
                   title={

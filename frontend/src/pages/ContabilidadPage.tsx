@@ -167,9 +167,9 @@ export default function ContabilidadPage() {
             </div>
             <div className="toolbar" style={{ gap: 8 }}>
               <button className="btn-primary btn-sm" onClick={() => setAlta(true)} disabled={!cuenta}>＋ Alta de movimiento</button>
-              <button className="btn-secondary btn-sm" onClick={() => importInputRef.current?.click()} disabled={cuenta === FONDOS}
+              <button className="btn-primary btn-sm" onClick={() => importInputRef.current?.click()} disabled={cuenta === FONDOS}
                 title="Subir un extracto del banco en Norma 43 (Cuaderno 43) y darlo de alta en bloque">⬆️ Importar extracto</button>
-              <button className="btn-secondary btn-sm" onClick={() => setConciliar(true)} disabled={!cuenta || cuenta === FONDOS}
+              <button className="btn-primary btn-sm" onClick={() => setConciliar(true)} disabled={!cuenta || cuenta === FONDOS}
                 title="Cruzar los apuntes de seguros con las transferencias que los cuadran (propone, tú confirmas)">🔗 Conciliar</button>
               <button className="btn-secondary btn-sm" onClick={() => setPaquete(true)} disabled={!cuenta || cuenta === FONDOS}
                 title="Extracto del mes + tickets renombrados por su código, en un ZIP por banco, para la gestoría">📤 Paquete mensual</button>

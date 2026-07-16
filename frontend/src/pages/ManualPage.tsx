@@ -150,7 +150,7 @@ export default function ManualPage() {
           {editingId === "new" ? (
             <section className="manual-seccion manual-seccion-edit">{Editor()}</section>
           ) : (
-            <button className="btn-secondary manual-add" onClick={nueva}>＋ Añadir sección</button>
+            <button className="btn-primary manual-add" onClick={nueva}>➕ Añadir sección</button>
           )}
         </div>
       ) : secs.length === 0 ? (

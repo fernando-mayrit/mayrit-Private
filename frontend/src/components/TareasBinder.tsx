@@ -831,7 +831,7 @@ export default function TareasBinder({ binderId }: { binderId?: number }) {
                 placeholder="Añadir paso — p. ej. Recopilar datos del coverholder"
                 onChange={(e) => setNuevoPaso(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addPaso(); } }} />
-              <button type="button" className="btn-secondary btn-sm" disabled={!nuevoPaso.trim()} onClick={addPaso}>＋ Añadir</button>
+              <button type="button" className="btn-primary btn-sm" disabled={!nuevoPaso.trim()} onClick={addPaso}>➕ Añadir</button>
             </div>
           </div>
         </FormPanel>

@@ -43,7 +43,7 @@ export default function CancelacionesSugeridas({ binderId, onMarcado }: { binder
                 <td>{p.insured_name ?? "—"}</td>
                 <td className="num">{fmtMiles(p.importe)} €</td>
                 <td>{p.periodos.map((s) => s.slice(0, 7)).join(" ↔ ")}</td>
-                <td><button type="button" className="btn-sm btn-secondary" disabled={busy} onClick={() => marcar(p.linea_ids)}>Marcar</button></td>
+                <td><button type="button" className="btn-sm btn-primary" disabled={busy} onClick={() => marcar(p.linea_ids)}>✅ Marcar</button></td>
               </tr>
             ))}
           </tbody>

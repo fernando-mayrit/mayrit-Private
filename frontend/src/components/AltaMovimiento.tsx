@@ -326,7 +326,7 @@ export default function AltaMovimiento({ cuenta, cats, movimiento, onClose, onSa
               ))}
             </div>
           )}
-          <label className="btn-secondary btn-sm adj-subir">
+          <label className="btn-primary btn-sm adj-subir">
             {subiendoAdj ? "Subiendo…" : "📎 Adjuntar ticket"}
             <input type="file" accept="image/*,application/pdf" style={{ display: "none" }} disabled={subiendoAdj}
               onChange={(e) => { const f = e.target.files?.[0]; if (f) subirTicket(f); e.target.value = ""; }} />
@@ -437,13 +437,13 @@ export default function AltaMovimiento({ cuenta, cats, movimiento, onClose, onSa
                 <button type="button" className="btn-link btn-sm" title="Quitar" onClick={() => delAjuste(i)}>✕</button>
               </div>
             ))}
-            <button type="button" className="btn-secondary btn-sm" onClick={addAjuste}>＋ Añadir ajuste</button>
+            <button type="button" className="btn-primary btn-sm" onClick={addAjuste}>➕ Añadir ajuste</button>
           </div>
           </>
           )}
 
           {edicion && (
-            <button className="btn-secondary btn-sm" onClick={generarJustificante} disabled={genJustif || (espejoMid ? false : transfIds.length === 0)}>
+            <button className="btn-primary btn-sm" onClick={generarJustificante} disabled={genJustif || (espejoMid ? false : transfIds.length === 0)}>
               {genJustif ? "Generando…" : "📄 Generar justificante (PDF)"}
             </button>
           )}

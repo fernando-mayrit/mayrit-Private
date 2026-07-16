@@ -200,7 +200,7 @@ export default function ReciboModal({
             <>
               <span className="pill pill-anulado pill-estado-lg">🔒 Contabilizado — no editable</span>
               {onDescontabilizar && (
-                <button className="btn-secondary btn-sm" onClick={pedirReabrir}>Reabrir para corregir</button>
+                <button className="btn-primary btn-sm" onClick={pedirReabrir}>🔓 Reabrir para corregir</button>
               )}
             </>
           ) : corrigiendo ? (

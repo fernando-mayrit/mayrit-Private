@@ -237,7 +237,7 @@ export default function TransferenciasPage() {
           </div>
           <div className="toolbar" style={{ gap: 8 }}>
             <button className="btn-primary" onClick={nuevo}>＋ Nuevo movimiento</button>
-            <button className="btn-secondary" onClick={descargarExcel} disabled={exportando || !data?.items.length}
+            <button className="btn-primary" onClick={descargarExcel} disabled={exportando || !data?.items.length}
               title="Descargar a Excel el listado tal y como está filtrado">
               {exportando ? "Generando…" : "📊 Descargar Excel"}
             </button>

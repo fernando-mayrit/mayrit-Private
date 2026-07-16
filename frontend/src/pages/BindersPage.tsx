@@ -1138,7 +1138,7 @@ export default function BindersPage() {
               </div>
               <div className="binder-botones">
                 <button
-                  className="btn-secondary btn-sm"
+                  className="btn-primary btn-sm"
                   onClick={pasarASuplemento}
                   disabled={(form.estado ?? "").startsWith("Cerrado")}
                   title={
@@ -1147,7 +1147,7 @@ export default function BindersPage() {
                       : undefined
                   }
                 >
-                  + Suplemento
+                  ➕ Suplemento
                 </button>
                 <button className="btn-secondary btn-sm" onClick={historialDesdeForm}>
                   Historial
@@ -1172,7 +1172,7 @@ export default function BindersPage() {
                   );
                   return (
                     <button
-                      className="btn-secondary btn-sm"
+                      className="btn-primary btn-sm"
                       onClick={renovar}
                       disabled={!!renov}
                       title={
@@ -1567,8 +1567,8 @@ export default function BindersPage() {
                 </div>
                 );
               })}
-              <button className="btn-secondary btn-sm" onClick={() => addMercado(i)}>
-                + Añadir mercado
+              <button className="btn-primary btn-sm" onClick={() => addMercado(i)}>
+                ➕ Añadir mercado
               </button>
               {(() => {
                 const part = num(form.participacion) ?? 100;
@@ -1583,8 +1583,8 @@ export default function BindersPage() {
               })()}
             </div>
           ))}
-          <button className="btn-secondary" onClick={addSeccion}>
-            + Añadir sección
+          <button className="btn-primary" onClick={addSeccion}>
+            ➕ Añadir sección
           </button>
 
           {/* ── Límite de Primas: genérico / por sección / por grupos de secciones ── */}
@@ -1701,8 +1701,8 @@ export default function BindersPage() {
                   </div>
                 </div>
               ))}
-              <button className="btn-secondary btn-sm" onClick={addGrupo}>
-                + Añadir grupo de límite
+              <button className="btn-primary btn-sm" onClick={addGrupo}>
+                ➕ Añadir grupo de límite
               </button>
               <div className="hint" style={{ marginTop: 6 }}>
                 Cada sección pertenece a un único grupo. Para mover una sección, márcala en otro grupo.

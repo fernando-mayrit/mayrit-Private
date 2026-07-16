@@ -75,7 +75,7 @@ export default function PaqueteMensual({ cuenta, onClose }: { cuenta: string; on
           </div>
         ) : <span className="hint">aún no subido</span>}
         <div style={{ marginTop: 8 }}>
-          <label className="btn-secondary btn-sm adj-subir">
+          <label className="btn-primary btn-sm adj-subir">
             {busy ? "…" : (extractoCuenta ? "Reemplazar extracto" : "⬆️ Subir extracto del banco")}
             <input type="file" accept="application/pdf,image/*" style={{ display: "none" }} disabled={busy}
               onChange={(e) => { const f = e.target.files?.[0]; if (f) subirExtracto(f); e.target.value = ""; }} />

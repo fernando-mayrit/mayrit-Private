@@ -204,8 +204,8 @@ export default function RamosPage() {
               </button>
             </div>
           ))}
-          <button className="btn-secondary btn-sm" onClick={addRC}>
-            + Añadir Risk Code
+          <button className="btn-primary btn-sm" onClick={addRC}>
+            ➕ Añadir Risk Code
           </button>
         </FormPanel>
       )}

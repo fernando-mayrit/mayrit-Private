@@ -1867,7 +1867,7 @@ export default function BinderDetalle({ binder }: { binder: Binder }) {
                     {p.periodo_label}{completo ? " ✓" : ""}
                   </h4>
                   {lpanPreparado && (
-                    <button className="btn-secondary btn-sm" disabled={lpanBusy}
+                    <button className="btn-primary btn-sm" disabled={lpanBusy}
                        title="Descargar el LPAN Bdx de este mes (agrupado por Risk Code; España y Portugal separados en la misma hoja; elige carpeta)"
                        onClick={() => descargarBdxExcel(p.periodo)}>
                       ⬇️ LPAN Bdx (Excel)
@@ -1999,7 +1999,7 @@ export default function BinderDetalle({ binder }: { binder: Binder }) {
                     >
                       Vista: {triVista === "cal" ? "Calendario" : "Por antigüedad"}
                     </button>
-                    <button className="btn-secondary" onClick={exportarTriangulo} title="Exportar a Excel la métrica y el ámbito seleccionados">⤓ Excel</button>
+                    <button className="btn-primary" onClick={exportarTriangulo} title="Exportar a Excel la métrica y el ámbito seleccionados">📊 Excel</button>
                   </div>
                   <div className="bdx-totales">
                     <div className="tot-col">
