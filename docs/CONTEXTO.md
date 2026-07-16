@@ -1815,3 +1815,53 @@ Section/RiskCode/**Signing**/UCR/Notas/Estado/**TPA**).
   las 6 líneas) para **no dejar hueco** en la serie. **Nota importante:** la numeración de recibos es
   **`AÑO-(MAX+1)`** (`_siguiente_numero` en `recibos.py`), **no rellena huecos** ni se puede fijar a mano
   desde la app → para ocupar un hueco hay que **renumerar a posteriori** en BD.
+
+## Sesión 16/07/2026 (cont.) — sin premium, plantilla de Risk, y BUG de fraccionados en el macheo
+
+### Import de Risk: periodo único + preview con neto (commit 2d5df04)
+- **Guardarraíl:** todas las líneas de un Risk Excel deben tener la **MISMA `Reporting Period Start Date`**;
+  si hay fechas distintas se **aborta** (bloqueante en preview + 422 en import), con el desglose.
+- **Preview con neto real:** `n_importaran` / `n_omitiran`; botón "Importar (N)" usa el neto y se deshabilita
+  si N=0; líneas ya-cargadas atenuadas con etiqueta "ya cargado". Ya no promete de más.
+
+### Líneas de Risk «sin premium» (prima 0 / cancelada)
+- Una línea de Risk se «marca» conciliada solo si entra en un Premium (`incluido_en_premium`). Las de
+  **prima 0** o **canceladas** nunca entran → quedaban pendientes para siempre y **bloqueaban el cierre**.
+- **`bdx_estado.py`**: criterio central *resuelta* = `incluido_en_premium OR net_premium_to_broker == 0 OR
+  sin_premium_motivo IS NOT NULL`. Migración **`bdx_linea_sin_premium_0001`** (columna `sin_premium_motivo`).
+- Cierre de producción (`binders.py`) usa `cond_pendiente_premium()`. Endpoints `POST /bdx/lineas/sin-premium`
+  (marcar/desmarcar) y `GET /binders/{id}/bdx/cancelaciones-sugeridas` (pares que se anulan). UI: columna
+  «Estado Premium» (pastilla) + **ancho de columnas ajustable** en `BdxTabla`; acción en `BdxLineaPanel`;
+  panel `CancelacionesSugeridas`. **Prima 0 es dinámica** (no se persiste); el flag es independiente de
+  `incluido_en_premium` → NO entra en sumas de Premium/LPAN/comisiones.
+
+### Descargas de Premium/LPAN con el formato del Risk del binder (plantilla)
+- El Premium/LPAN se descargaba en formato Lloyd's fijo de 61 columnas. Ahora, si el binder tiene plantilla,
+  sale con **las mismas columnas y orden que su Risk Excel** (del coverholder); si no, **fallback** al
+  formato de 61 columnas (nada se rompe).
+- Migración **`binder_risk_plantilla_0001`** (`binders.risk_plantilla` JSONB = `{hoja, headers, por_cabecera}`).
+  Captura **automática** al importar el Risk **+** endpoint `POST /binders/{id}/bdx/risk-plantilla` (solo lee
+  cabeceras, no importa líneas — para binders ya cargados y para re-capturar si el coverholder cambia el
+  formato a mitad de año). Botón «Capturar plantilla del Risk» en la pestaña BDX. Generación en `lpan.py`
+  (`_bdx_excel_plantilla`): mapea cada cabecera a su campo o a `extra`; el % va como fracción, el Reporting
+  Period es el del mes que se descarga.
+
+### ⚠ BUG de recibos FRACCIONADOS en el macheo de Premium (importante)
+- **Síntoma:** en varios binders (Crouco/IBE), el Premium de junio-2026 **aparentaba cobrado** cuando no se
+  había cobrado nada de ese mes.
+- **Causa raíz:** `match_excel` casa por certificado + **suma de importes**. En pólizas **fraccionadas**, los
+  N plazos tienen el **mismo importe** (`net_premium_to_broker`), así que el subset-sum marcaba como cobrado
+  un **plazo cualquiera** (a menudo el de junio) con los datos de cobro de otro. Los totales por póliza
+  cuadraban, pero la atribución cobrado/mes quedaba **barajada** entre plazos idénticos.
+- **Fix (código):** en `match_excel`, las candidatas por certificado **EXCLUYEN las líneas ya incluidas en
+  OTRO Premium** (`incluido_en_premium AND premium_bdx != periodo`) → coge el **siguiente plazo con Premium
+  Bdx libre**, no uno cualquiera. (Regla dictada por Fernando.)
+- **Limpieza de datos (a mano, en PROD, línea a línea con Fernando):** para cada plazo cobrado mal ubicado,
+  `premium_bdx` = **mes de su fecha de cobro − 1** (convención: se cobra el mes siguiente al del Premium), y
+  el **siguiente plazo en blanco** ocupa junio. Corregidos **PI2525CRO (52), PI2425CRO (53), PI2725IBE (55),
+  PI3026CRO (58)** → su Premium de junio queda **pendiente**. Los pares que se **anulan** (±importe, netean a
+  0) se marcaron **«sin premium · Cancelada»**. **PI1523CRO (41, 2023) y CY0219ALE (12, 2019)** salían en el
+  escaneo pero son **datos de migración uniformes** (mismas fechas) de **años cerrados** → se dejan como están.
+- **Lección de método:** en operaciones destructivas sobre PROD, **hacer SIEMPRE una foto (dump) del estado
+  original ANTES de tocar** (se guardó `snapshot_bdx_lineas.json`), y **no tocar las líneas sin cobrar**
+  (ambiguas). Detector de la huella: línea COBRADA con `premium_payment_date < premium_bdx`.
