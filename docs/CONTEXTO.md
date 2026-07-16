@@ -1746,3 +1746,35 @@ conectar a la BD (la conexión se **cuelga**, no da error claro). Es lo esperado
 firewall. Fix: `alea-db` → **Redes** → «Agregar dirección IP del cliente actual» → **Guardar**. La app en
 producción NUNCA se ve afectada (entra por "servicios de Azure"). Para diagnosticar rápido: un `socket
 connect` al 5432 con timeout + `https://api.ipify.org` para ver la IP actual.
+
+## Sesión 16/07/2026 (equipo "ferna") — Módulo de Siniestros (alta) + UCR nuevo
+
+### Siniestros · formulario de apertura (`SiniestroModal.tsx`)
+- **Periodo**: selector de **mes** (`type=month`), por defecto el **mes en curso** (día 1), editable, se
+  guarda siempre como `YYYY-MM-01`.
+- **Referencia** (campo libre) en el cuadro Siniestro. **Fecha de Apertura / Fecha de Cierre** (renombradas
+  de Abierto/Cerrado), en la **misma línea**; la de Cierre **solo si el estado es Cerrado**.
+- **Quitados** del formulario "Primer Aviso" (`claim_first_advised`) y "Última revisión" (`ultima_revision`)
+  — siguen en BD, solo desaparecen del alta (no se pierde dato).
+- **Estado en español** (Abierto/Cerrado), sin estados intermedios, por defecto **Abierto**.
+  `estadoSiniestroClase` ya reconocía ambos idiomas.
+- **Cantidades a 0** por defecto (se cambian a mano).
+
+### TPA por sección del binder (preasigna el del siniestro)
+- Columna **`tpa`** en `siniestros` y en `binder_secciones` (migración **`siniestro_tpa_0001`**, en prod).
+- En el **formulario del binder** (`BindersPage.tsx`) cada sección tiene un campo **TPA**.
+- En el alta del siniestro, el TPA (**antes de Abogado**, **NO editable**) se **preasigna** desde la sección
+  del binder del asegurado elegido (`polizasSiniestro` en `BinderDetalle` coge `binder.secciones[sec-1].tpa`).
+
+### Módulo UCR (Unique Claims Reference) — NUEVO
+Deja de ser placeholder. Origen: lista SharePoint **`Mayrit - TUCR`** (86 filas, columnas Coverholder/UMR/
+Section/RiskCode/**Signing**/UCR/Notas/Estado/**TPA**).
+- **Tabla `ucrs`** (modelo `Ucr`, migración **`ucr_tabla_0001`**, en prod). Lector
+  `sharepoint.leer_lista_ucr` + importador **`tools/importar_ucr.py`** (idempotente por `_OldID`). Los 86
+  UCR ya importados.
+- **Router `/ucr`** (list con filtros umr/estado/q + opciones + CRUD), registrado en `main.py`.
+- **Página UCR global** (menú lateral): listado de **SOLO LECTURA** con filtros. El alta/edición NO se hace
+  aquí.
+- **Pestaña UCR en el binder** (a la derecha de Siniestros): los UCR de ese binder (por UMR), **con
+  alta/edición/borrado** (`UcrModal`, patrón bloqueado + botón «Editar»; el UMR viene del binder). Se quitó
+  el botón "🔖 Nuevo UCR" de la pestaña Siniestros (la generación `next-ucr` ya no se usa desde ahí).
