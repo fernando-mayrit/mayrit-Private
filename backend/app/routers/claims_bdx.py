@@ -459,43 +459,49 @@ def _excel_comparacion(app_filas: list[dict], file_by_key: dict[tuple, dict]) ->
             elif h in H_NUM:
                 c.number_format = "#,##0.00"
 
-    # Se MANTIENE la información del BDX SUBIDO: se escriben los valores del fichero y se sombrea en azul
-    # (con comentario del valor de la app) lo que difiere. Las filas que solo están en la app se listan
-    # al final con TODAS sus celdas en azul.
-    app_by_key: dict[tuple, dict] = {}
-    for fila in app_filas:
-        app_by_key.setdefault(_clave_fila(fila), fila)
+    def _todas_azul(fila_xl, d):
+        for j, h in enumerate(HEADERS):
+            if d.get(h) not in (None, ""):
+                fila_xl[j + 1].fill = BLUE_FILL
 
+    # Se MANTIENE la información del BDX SUBIDO: en las filas que casan se escriben los valores del FICHERO,
+    # sombreando en azul lo que difiere de la app (con comentario del valor de la app). Se itera sobre las
+    # filas de la app (no se colapsan por clave) para traer siempre bien su dato en el comentario.
     usados, r = set(), 2
-    for k, fr in file_by_key.items():
-        af = app_by_key.get(k)
-        if af is not None:
-            usados.add(k)
-        difs = [h for h in HEADERS if not _igual(h, fr.get(h), af.get(h))] if af is not None else []
-        estado = "Difiere" if difs else ("Coincide" if af is not None else "Solo en el BDX subido")
-        ws.append([estado] + [fr.get(h) for h in HEADERS])
-        fila_xl = ws[r]
-        fila_xl[0].font = BODY_FONT
-        _formatos(fila_xl)
-        for h in difs:
-            c = fila_xl[HEADERS.index(h) + 1]
-            c.fill = BLUE_FILL
-            av = af.get(h)
-            c.comment = Comment(f"En la app: {av if av not in (None, '') else '(vacío)'}", "Mayrit")
-        r += 1
-
-    # Siniestros que están en la app pero NO en el fichero subido: todas sus celdas en azul.
     for fila in app_filas:
         k = _clave_fila(fila)
+        fr = file_by_key.get(k)
+        if fr is not None:
+            usados.add(k)
+            difs = [h for h in HEADERS if not _igual(h, fr.get(h), fila.get(h))]
+            estado = "Difiere" if difs else "Coincide"
+            ws.append([estado] + [fr.get(h) for h in HEADERS])   # valores del FICHERO subido
+            fila_xl = ws[r]
+            fila_xl[0].font = BODY_FONT
+            _formatos(fila_xl)
+            for h in difs:
+                c = fila_xl[HEADERS.index(h) + 1]
+                c.fill = BLUE_FILL
+                av = fila.get(h)
+                c.comment = Comment(f"En la app: {av if av not in (None, '') else '(vacío)'}", "Mayrit")
+        else:
+            # Solo en la app (no venía en el fichero): valores de la app, todas las celdas en azul.
+            ws.append(["Solo en la app"] + [fila.get(h) for h in HEADERS])
+            fila_xl = ws[r]
+            fila_xl[0].font = BODY_FONT
+            _formatos(fila_xl)
+            _todas_azul(fila_xl, fila)
+        r += 1
+
+    # Siniestros NUEVOS (en el fichero subido, no en la app): sus valores, TODAS las celdas en azul.
+    for k, fr in file_by_key.items():
         if k in usados:
             continue
-        ws.append(["Solo en la app"] + [fila.get(h) for h in HEADERS])
+        ws.append(["Solo en el BDX subido"] + [fr.get(h) for h in HEADERS])
         fila_xl = ws[r]
         fila_xl[0].font = BODY_FONT
         _formatos(fila_xl)
-        for j, h in enumerate(HEADERS):
-            if fila.get(h) not in (None, ""):
-                fila_xl[j + 1].fill = BLUE_FILL
+        _todas_azul(fila_xl, fr)
         r += 1
 
     ws.column_dimensions["A"].width = 20
