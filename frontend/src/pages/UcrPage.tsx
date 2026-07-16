@@ -17,7 +17,7 @@ const COLS: Col<UcrRegistro>[] = [
   {
     key: "estado", label: "Estado", tipo: "text", width: 90,
     render: (u) => u.estado
-      ? <span className={`pill ${/cerrad/i.test(u.estado) ? "pill-anulado" : "pill-cobrado"}`}>{u.estado}</span>
+      ? <span className={`pill ${/cerrad/i.test(u.estado) ? "pill-pendiente" : "pill-cobrado"}`}>{u.estado}</span>
       : <span className="hint">—</span>,
   },
   { key: "notas", label: "Notas", tipo: "text", width: 220 },

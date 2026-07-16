@@ -18,7 +18,7 @@ import ConfirmDialog from "../components/ConfirmDialog";
 import FormPanel from "../components/FormPanel";
 import type { ReactNode } from "react";
 import type { ReciboPreview, ReciboUpdate } from "../types";
-import { fmtMiles, fmtFechaES, estadoCobro, estadoSiniestroClase } from "../format";
+import { fmtMiles, fmtFechaES, estadoCobro, estadoSiniestroPill } from "../format";
 
 function n(v: unknown): number {
   const x = Number(String(v ?? "").replace(",", "."));
@@ -273,7 +273,7 @@ const SIN_COLS: Col<Siniestro>[] = [
   { key: "risk_code", label: "Risk Code", tipo: "text" },
   { key: "currency", label: "Moneda", tipo: "text" },
   { key: "status", label: "Estado", tipo: "text",
-    render: (s) => s.status ? <span className={`pill pill-sin-${estadoSiniestroClase(s.status)}`}>{s.status}</span> : <span className="hint">—</span> },
+    render: (s) => { if (!s.status) return <span className="hint">—</span>; const e = estadoSiniestroPill(s.status); return <span className={`pill ${e.clase}`}>{e.label}</span>; } },
   { key: "claimant", label: "Reclamante", tipo: "text", width: 160 },
   { key: "reporting_period", label: "Periodo", tipo: "text" },
   { key: "risk_inception", label: "Inicio riesgo", tipo: "date" },
@@ -317,7 +317,7 @@ const UCR_COLS: Col<UcrRegistro>[] = [
   {
     key: "estado", label: "Estado", tipo: "text", width: 95,
     render: (u) => u.estado
-      ? <span className={`pill ${/cerrad/i.test(u.estado) ? "pill-anulado" : "pill-cobrado"}`}>{u.estado}</span>
+      ? <span className={`pill ${/cerrad/i.test(u.estado) ? "pill-pendiente" : "pill-cobrado"}`}>{u.estado}</span>
       : <span className="hint">—</span>,
   },
   { key: "notas", label: "Notas", tipo: "text", width: 240 },
@@ -1561,7 +1561,7 @@ export default function BinderDetalle({ binder }: { binder: Binder }) {
                   ? "No hay pólizas: carga primero el Risk BDX del binder para poder dar de alta un siniestro."
                   : "Alta manual de un siniestro a partir de una póliza del binder"}
               >
-                ＋ Nuevo siniestro
+                🚨 Nuevo siniestro
               </button>
               <button
                 className="btn-secondary btn-sm"

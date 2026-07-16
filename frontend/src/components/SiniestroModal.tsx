@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { siniestrosApi } from "../api";
+import { siniestrosApi, ucrApi, type UcrRegistro } from "../api";
 import type { Siniestro } from "../types";
 import FormPanel from "./FormPanel";
 import NumberInput from "./NumberInput";
-import { estadoSiniestroClase, fmtMiles } from "../format";
+import { estadoSiniestroClase, estadoSiniestroPill, fmtMiles } from "../format";
 
 // Póliza del Risk BDX del binder, para el alta de un siniestro: al elegir asegurado/certificate
 // se rellenan solos certificate, sección, risk code e inicio/fin de riesgo.
@@ -125,6 +125,7 @@ export default function SiniestroModal({
   onSaved: (s: Siniestro) => void;
 }) {
   const nuevo = siniestro == null;
+  const umr = siniestro?.binder_umr ?? binderUmr;
   const tienePolizas = nuevo && polizas.length > 0;
   const inicial = useMemo(() => (siniestro ? aForm(siniestro) : formVacio()), [siniestro]);
   const [form, setForm] = useState<Form>(inicial);
@@ -168,13 +169,52 @@ export default function SiniestroModal({
   const dirty = useMemo(() => TODOS.some((c) => form[c.key as string] !== inicial[c.key as string]), [form, inicial]);
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
+  // ── UCR del binder: el campo UCR es un desplegable (solo valores existentes) y el TPA sale del UCR ──
+  const [ucrs, setUcrs] = useState<UcrRegistro[]>([]);
+  useEffect(() => {
+    if (!umr) return;
+    ucrApi.listar({ umr, limit: 5000 }).then((r) => setUcrs(r.items)).catch(() => {});
+  }, [umr]);
+  // Elegir un UCR (auto o a mano) fija también su TPA (no editable).
+  const elegirUcr = (code: string) => {
+    const u = ucrs.find((x) => (x.ucr ?? "") === code);
+    setForm((f) => ({ ...f, ucr: code, tpa: u?.tpa ?? "" }));
+  };
+  // Alta: al fijarse Sección + Risk Code (desde la póliza), asigna el UCR que coincide y su TPA.
+  useEffect(() => {
+    if (!nuevo) return;
+    const secc = (form.section ?? "").trim();
+    const rc = (form.risk_code ?? "").trim().toLowerCase();
+    if (!secc || !rc) return;
+    const m = ucrs.find((u) => String(u.section ?? "").trim() === secc && (u.risk_code ?? "").trim().toLowerCase() === rc);
+    if (m && form.ucr !== (m.ucr ?? "")) setForm((f) => ({ ...f, ucr: m.ucr ?? "", tpa: m.tpa ?? "" }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nuevo, form.section, form.risk_code, ucrs]);
+
   // Totales = incurrido (pagado + reservas), mismo criterio que el resto de la app (sin "a pagar").
   const n = (k: string) => Number(form[k]) || 0;
   const totIndem = n("paid_indemnity") + n("reserves_indemnity");
   const totFees = n("paid_fees") + n("reserves_fees");
   const totGlobal = totIndem + totFees;
 
+  // Al dar de alta, todos los campos son obligatorios salvo Abogado y Notas (informacion). YOA va oculto
+  // y la Fecha de Cierre solo aplica si el estado es Cerrado.
+  const OPCIONALES_ALTA = new Set(["abogado", "informacion", "yoa", "date_closed"]);
+  function faltanObligatorios(): string[] {
+    const faltan: string[] = [];
+    for (const c of TODOS) {
+      if (OPCIONALES_ALTA.has(c.key as string)) continue;
+      if ((form[c.key as string] ?? "").trim() === "") faltan.push(c.label);
+    }
+    if (estadoSiniestroClase(form.status) === "cerrado" && !(form.date_closed ?? "").trim()) faltan.push("Fecha de Cierre");
+    return faltan;
+  }
+
   async function guardar() {
+    if (nuevo) {
+      const faltan = faltanObligatorios();
+      if (faltan.length) { setError(`Faltan campos obligatorios: ${faltan.join(", ")}.`); return; }
+    }
     setSaving(true);
     setError(null);
     try {
@@ -209,6 +249,31 @@ export default function SiniestroModal({
       bloqueado ||
       (!nuevo && IDENT.some((x) => x.key === c.key)) ||
       (tienePolizas && AUTO_KEYS.has(c.key as string));
+
+    // UCR: desplegable con los UCR del binder (no admite texto libre). Se auto-asigna por Sección+Risk Code.
+    if (c.key === "ucr") {
+      const val = form.ucr ?? "";
+      const codes = ucrs.map((u) => u.ucr ?? "").filter(Boolean);
+      const opts = !val || codes.includes(val) ? codes : [val, ...codes];
+      return (
+        <div className="field" key="ucr">
+          <label>{c.label}</label>
+          <select value={val} disabled={dis} onChange={(e) => elegirUcr(e.target.value)}>
+            <option value="">—</option>
+            {opts.map((code) => <option key={code} value={code}>{code}</option>)}
+          </select>
+        </div>
+      );
+    }
+    // TPA: viene del UCR seleccionado; nunca editable.
+    if (c.key === "tpa") {
+      return (
+        <div className="field full-w" key="tpa" style={{ gridColumn: "1 / -1" }}>
+          <label>{c.label}</label>
+          <input type="text" value={form.tpa ?? ""} disabled readOnly placeholder="(del UCR)" />
+        </div>
+      );
+    }
     return (
       <div className={"field" + (c.full ? " full-w" : "")} key={c.key as string} style={c.full ? { gridColumn: "1 / -1" } : undefined}>
         <label>{c.label}</label>
@@ -247,17 +312,16 @@ export default function SiniestroModal({
     );
   };
 
-  const claseEstado = siniestro?.status ? estadoSiniestroClase(siniestro.status) : null;
-  const umr = siniestro?.binder_umr ?? binderUmr;
+  const estadoPill = siniestro?.status ? estadoSiniestroPill(siniestro.status) : null;
 
   return (
     <FormPanel
       title={
         nuevo ? (
-          "Nuevo siniestro"
+          "🚨 Nuevo siniestro"
         ) : (
           <>
-            Siniestro ·{" "}
+            🚨 Siniestro ·{" "}
             <span style={{ color: "var(--naranja-osc)" }}>
               {siniestro!.reference || siniestro!.certificate || siniestro!.id}
             </span>
@@ -274,8 +338,8 @@ export default function SiniestroModal({
     >
       {/* Barra de estado/acciones bajo el título (mismo patrón que el modal de Recibos) */}
       <div className="recibo-acciones-top">
-        {siniestro?.status ? (
-          <span className={`pill pill-sin-${claseEstado} pill-estado-lg`}>{siniestro.status}</span>
+        {estadoPill ? (
+          <span className={`pill ${estadoPill.clase} pill-estado-lg`}>{estadoPill.label}</span>
         ) : (
           <span className="pill pill-estado-lg">{nuevo ? "Alta nueva" : "Sin estado"}</span>
         )}

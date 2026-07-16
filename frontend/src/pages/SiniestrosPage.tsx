@@ -4,7 +4,7 @@ import type { Siniestro } from "../types";
 import PageHeader from "../components/PageHeader";
 import FormPanel from "../components/FormPanel";
 import TablaDatos, { type Col } from "../components/TablaDatos";
-import { fmtMiles, fmtFechaES, estadoSiniestroClase } from "../format";
+import { fmtMiles, fmtFechaES, estadoSiniestroPill } from "../format";
 
 const STORAGE_KEY = "mayrit.siniestros.global.tabla.v3";
 
@@ -23,7 +23,7 @@ const COLS: Col<Siniestro>[] = [
   { key: "risk_code", label: "Risk Code", tipo: "text" },
   { key: "currency", label: "Moneda", tipo: "text" },
   { key: "status", label: "Estado", tipo: "text",
-    render: (s) => s.status ? <span className={`pill pill-sin-${estadoSiniestroClase(s.status)}`}>{s.status}</span> : <span className="hint">—</span> },
+    render: (s) => { if (!s.status) return <span className="hint">—</span>; const e = estadoSiniestroPill(s.status); return <span className={`pill ${e.clase}`}>{e.label}</span>; } },
   { key: "claimant", label: "Reclamante", tipo: "text", width: 160 },
   { key: "reporting_period", label: "Periodo", tipo: "text" },
   { key: "risk_inception", label: "Inicio riesgo", tipo: "date" },

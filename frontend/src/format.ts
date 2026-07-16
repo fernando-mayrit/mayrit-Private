@@ -63,3 +63,13 @@ export function estadoSiniestroClase(estado?: string | null): string {
   if (s.includes("open") || s.includes("abiert")) return "abierto";
   return "otro"; // Denied / Declined / Withdrawn / Nil / desconocido
 }
+
+// Pastilla de estado de un siniestro: MISMO criterio de color que los UCR (verde Abierto, rojo
+// Cerrado) y etiqueta en español. Ámbar para revisión y gris para el resto (legado: Denied, etc.).
+export function estadoSiniestroPill(estado?: string | null): { label: string; clase: string } {
+  const c = estadoSiniestroClase(estado);
+  if (c === "abierto") return { label: "Abierto", clase: "pill-cobrado" };
+  if (c === "cerrado") return { label: "Cerrado", clase: "pill-pendiente" };
+  if (c === "revision") return { label: (estado ?? "").trim() || "Reabierto", clase: "pill-parcial" };
+  return { label: (estado ?? "").trim() || "—", clase: "pill-anulado" };
+}

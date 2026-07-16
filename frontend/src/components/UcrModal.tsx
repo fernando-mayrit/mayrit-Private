@@ -64,9 +64,12 @@ export default function UcrModal({
   const [error, setError] = useState<string | null>(null);
   const [bloqueado, setBloqueado] = useState(!nuevo);   // edición abre bloqueada; alta no
   const [tpas, setTpas] = useState<string[]>([]);
+  // Solo se considera "sucio" (aviso al cerrar) si el usuario edita algo de verdad; los prefills
+  // automáticos (sugerencia de UCR, lista de TPA) no cuentan porque no pasan por estos handlers.
+  const [tocado, setTocado] = useState(false);
   const dis = bloqueado;
 
-  const set = (k: keyof UcrWrite, v: string) => setForm((f) => ({ ...f, [k]: v }));
+  const set = (k: keyof UcrWrite, v: string) => { setTocado(true); setForm((f) => ({ ...f, [k]: v })); };
 
   // Opciones de TPA (desplegable con alta).
   useEffect(() => {
@@ -99,12 +102,14 @@ export default function UcrModal({
 
   function cambiarSufijo(v: string) {
     const s = v.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 2);
+    setTocado(true);
     setSufijo(s);
     setForm((f) => ({ ...f, ucr: umrPrefijo + s }));
   }
 
   // Al elegir un FDO: Sección + Risk Code + Signing (invertido) se ponen solos.
   function vincularFdo(key: string) {
+    setTocado(true);
     const rc = fdos.find((f) => `${f.section}|${f.risk_code}` === key);
     setForm((f) => ({
       ...f,
@@ -116,6 +121,14 @@ export default function UcrModal({
 
   async function guardar() {
     if (sufError) { setError(sufError); return; }
+    // Todos los campos son obligatorios salvo Notas.
+    const faltan: string[] = [];
+    if (!(form.coverholder ?? "").trim()) faltan.push("Coverholder");
+    if (!(form.umr ?? "").trim()) faltan.push("UMR");
+    if (!(form.section ?? "").trim() || !(form.risk_code ?? "").trim()) faltan.push("FDO vinculado");
+    if (!(form.signing ?? "").trim()) faltan.push("Signing");
+    if (!(form.tpa ?? "").trim()) faltan.push("TPA");
+    if (faltan.length) { setError(`Faltan campos obligatorios: ${faltan.join(", ")}.`); return; }
     setSaving(true); setError(null);
     try {
       const datos = { ...form, ucr: umrPrefijo + sufijo };
@@ -137,11 +150,12 @@ export default function UcrModal({
   const estado = form.estado ?? "Abierto";
   const cerrado = /cerrad/i.test(estado);
   const fdoKey = form.section && form.risk_code ? `${form.section}|${form.risk_code}` : "";
+  const req = <span style={{ color: "#c0392b" }}> *</span>;   // marca de campo obligatorio
 
   return (
     <FormPanel
-      title={nuevo ? "Nuevo UCR" : <>UCR · <span style={{ color: "var(--naranja-osc)" }}>{ucr!.ucr || ucr!.id}</span></>}
-      dirty saving={saving} error={error}
+      title={nuevo ? "🔖 Nuevo UCR" : <>🔖 UCR · <span style={{ color: "var(--naranja-osc)" }}>{ucr!.ucr || ucr!.id}</span></>}
+      dirty={tocado} saving={saving} error={error}
       saveLabel={nuevo ? "Crear UCR" : "Guardar"}
       onSave={guardar} onClose={onClose}
       onDelete={ucr ? borrar : undefined}
@@ -158,7 +172,7 @@ export default function UcrModal({
         </div>
       )}
 
-      <div className="field"><label>UCR <span className="hint">(solo se editan las 2 últimas letras)</span></label>
+      <div className="field"><label>UCR{req} <span className="hint">(solo se editan las 2 últimas letras)</span></label>
         <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
           <span style={{ fontFamily: "monospace", fontWeight: 600, whiteSpace: "nowrap" }}>{umrPrefijo}</span>
           <input type="text" value={sufijo} disabled={dis} maxLength={2}
@@ -168,23 +182,23 @@ export default function UcrModal({
         {!dis && sufError && sufijo !== "" && <div className="hint" style={{ color: "var(--rojo, #c0392b)" }}>{sufError}</div>}
       </div>
       <div className="field-row" style={{ display: "flex", gap: 10, alignItems: "flex-end" }}>
-        <div className="field" style={{ flex: 3 }}><label>UMR</label>
+        <div className="field" style={{ flex: 3 }}><label>UMR{req}</label>
           <input type="text" value={form.umr ?? ""} disabled onChange={(e) => set("umr", e.target.value)} />
         </div>
         <div className="field" style={{ flex: 1 }}><label>Estado</label>
           <button
             type="button"
-            className={`pill ${cerrado ? "pill-anulado" : "pill-cobrado"}`}
-            style={{ border: "none", cursor: dis ? "default" : "pointer", width: "100%" }}
+            className={`pill ${cerrado ? "pill-pendiente" : "pill-cobrado"}`}
+            style={{ width: "100%", boxSizing: "border-box", padding: "8px 10px", fontSize: 14, border: "1px solid transparent", cursor: dis ? "default" : "pointer" }}
             disabled={dis}
             onClick={() => set("estado", cerrado ? "Abierto" : "Cerrado")}
           >{cerrado ? "Cerrado" : "Abierto"}</button>
         </div>
       </div>
-      <div className="field"><label>Coverholder</label>
+      <div className="field"><label>Coverholder{req}</label>
         <input type="text" value={form.coverholder ?? ""} disabled onChange={(e) => set("coverholder", e.target.value)} />
       </div>
-      <div className="field"><label>FDO vinculado</label>
+      <div className="field"><label>FDO vinculado{req}</label>
         <select value={fdoKey} disabled={dis} onChange={(e) => vincularFdo(e.target.value)}>
           <option value="">— Elige un FDO —</option>
           {fdos.map((f) => (
@@ -195,17 +209,17 @@ export default function UcrModal({
         </select>
       </div>
       <div className="field-row" style={{ display: "flex", gap: 10 }}>
-        <div className="field" style={{ flex: 1 }}><label>Sección</label>
+        <div className="field" style={{ flex: 1 }}><label>Sección{req}</label>
           <input type="text" value={form.section ?? ""} disabled readOnly />
         </div>
-        <div className="field" style={{ flex: 1 }}><label>Risk Code</label>
+        <div className="field" style={{ flex: 1 }}><label>Risk Code{req}</label>
           <input type="text" value={form.risk_code ?? ""} disabled readOnly />
         </div>
-        <div className="field" style={{ flex: 2 }}><label>Signing</label>
+        <div className="field" style={{ flex: 2 }}><label>Signing{req}</label>
           <input type="text" value={form.signing ?? ""} disabled readOnly placeholder="2020/01/14*22619" />
         </div>
       </div>
-      <div className="field"><label>TPA</label>
+      <div className="field"><label>TPA{req}</label>
         {dis ? (
           <input type="text" value={form.tpa ?? ""} disabled />
         ) : (
