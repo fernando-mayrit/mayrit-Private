@@ -207,6 +207,15 @@ def actualizar(siniestro_id: int, datos: sch.SiniestroUpdate, db: Session = Depe
     return _con_contexto(s)
 
 
+@router.delete("/siniestros/{siniestro_id}", status_code=204)
+def borrar(siniestro_id: int, db: Session = Depends(get_db)):
+    """Elimina un siniestro."""
+    s = db.get(Siniestro, siniestro_id)
+    if s is not None:
+        db.delete(s)
+        db.commit()
+
+
 @router.get("/binders/{binder_id}/siniestros/next-ucr")
 def next_ucr(binder_id: int, db: Session = Depends(get_db)):
     """Siguiente UCR libre del binder: UMR + sufijo correlativo de 2 letras (AA, AB, … AZ, BA…).

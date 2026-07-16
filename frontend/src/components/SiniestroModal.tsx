@@ -116,6 +116,7 @@ export default function SiniestroModal({
   polizas = [],
   onClose,
   onSaved,
+  onDeleted,
 }: {
   siniestro: Siniestro | null;   // null = alta de un siniestro nuevo
   binderId: number;
@@ -123,6 +124,7 @@ export default function SiniestroModal({
   polizas?: PolizaBinder[];      // pólizas del Risk BDX (solo para el alta)
   onClose: () => void;
   onSaved: (s: Siniestro) => void;
+  onDeleted?: (id: number) => void;
 }) {
   const nuevo = siniestro == null;
   const umr = siniestro?.binder_umr ?? binderUmr;
@@ -238,6 +240,20 @@ export default function SiniestroModal({
     }
   }
 
+  async function borrar() {
+    if (!siniestro) return;
+    if (!confirm("¿Borrar este siniestro? Esta acción no se puede deshacer.")) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await siniestrosApi.borrar(siniestro.id);
+      onDeleted?.(siniestro.id);
+    } catch (e) {
+      setError((e as Error).message);
+      setSaving(false);
+    }
+  }
+
   // Campo según su tipo. El bloque Información (campos de IDENT) NO es editable nunca: solo se
   // habilita el resto al pulsar "Editar".
   const Campo = (c: Campo) => {
@@ -332,6 +348,7 @@ export default function SiniestroModal({
       saving={saving}
       error={error}
       onSave={guardar}
+      onDelete={siniestro ? borrar : undefined}
       onClose={onClose}
       readOnly={bloqueado}
       wide

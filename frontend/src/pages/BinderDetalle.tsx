@@ -1683,6 +1683,11 @@ export default function BinderDetalle({ binder }: { binder: Binder }) {
                 setEditSin(null);
                 setNuevoSin(false);
               }}
+              onDeleted={(id) => {
+                setSiniestros((arr) => arr.filter((x) => x.id !== id));
+                setEditSin(null);
+                setNuevoSin(false);
+              }}
             />
           )}
         </>

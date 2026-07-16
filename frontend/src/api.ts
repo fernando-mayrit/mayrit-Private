@@ -81,6 +81,7 @@ export const siniestrosApi = {
       method: "POST",
       body: JSON.stringify(datos),
     }),
+  borrar: (id: number) => request<void>(`/siniestros/${id}`, { method: "DELETE" }),
   nextUcr: (binderId: number) =>
     request<{ ucr: string; sufijo: string; umr: string }>(`/binders/${binderId}/siniestros/next-ucr`),
   // Compara un Claims BDX subido con los siniestros de la app; devuelve un Excel (diferencias en azul).
