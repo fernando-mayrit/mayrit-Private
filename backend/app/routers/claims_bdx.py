@@ -91,10 +91,8 @@ def _bloqueado(db: Session, binder_id: int, periodo: str) -> bool:
     ) is not None
 
 
-def _construir(db: Session, b: Binder, periodo: str, crudo: bool = False) -> tuple[list[dict], list[dict]]:
-    """Filas (32 col) + meta (por siniestro) del Claims BDX del binder para ese periodo.
-    `crudo=True` (comparativa): trae los importes TAL CUAL están en la app; en concreto el Total Incurred
-    es el campo guardado (`total_indemnity`/`total_fees`), sin la suma de respaldo pagado+reservas."""
+def _construir(db: Session, b: Binder, periodo: str) -> tuple[list[dict], list[dict]]:
+    """Filas (32 col) + meta (por siniestro) del Claims BDX del binder para ese periodo."""
     siniestros = db.scalars(
         select(Siniestro).where(Siniestro.binder_id == b.id).order_by(Siniestro.certificate, Siniestro.reference, Siniestro.id)
     ).all()
@@ -144,11 +142,11 @@ def _construir(db: Session, b: Binder, periodo: str, crudo: bool = False) -> tup
             "Previously Paid - Fees": prev_f,
             "Reserve - Indemnity": res_i,
             "Reserve - Fees": res_f,
-            # Total Incurred. En modo `crudo` (comparativa) = LO QUE SE VE EN PANTALLA: pagado + reservas
-            # (el campo `total_indemnity` de la BD no se muestra en la app y puede estar desfasado por la
-            # importación, así que se ignora). En el BDX real se usa el campo guardado si existe.
-            "Total Incurred - Indemnity": (paid_i + res_i) if crudo else (_f(s.total_indemnity) if s.total_indemnity is not None else paid_i + res_i),
-            "Total Incurred - Fees": (paid_f + res_f) if crudo else (_f(s.total_fees) if s.total_fees is not None else paid_f + res_f),
+            # Total Incurred = LO QUE SE VE EN PANTALLA: pagado + reservas (igual que la app/front). El
+            # campo `total_indemnity`/`total_fees` de la BD (import de SharePoint) NO se usa: puede estar
+            # desfasado y no se muestra en ningún sitio de la app.
+            "Total Incurred - Indemnity": paid_i + res_i,
+            "Total Incurred - Fees": paid_f + res_f,
             "Date Claim Opened": s.date_opened,
             "Date Closed": s.date_closed,
         }
@@ -534,7 +532,7 @@ def comparar(binder_id: int, file: UploadFile = File(...), db: Session = Depends
     if not file_rows:
         raise HTTPException(status_code=400, detail="El fichero no contiene filas de siniestros reconocibles.")
     periodo = _periodo_de_filas(file_rows)
-    app_filas, _ = _construir(db, b, periodo, crudo=True)   # comparativa: importes/totales tal cual en la app
+    app_filas, _ = _construir(db, b, periodo)
     file_by_key: dict[tuple, dict] = {}
     for d in file_rows:
         file_by_key.setdefault(_clave_fila(d), d)
