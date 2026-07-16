@@ -459,41 +459,49 @@ def _excel_comparacion(app_filas: list[dict], file_by_key: dict[tuple, dict]) ->
             elif h in H_NUM:
                 c.number_format = "#,##0.00"
 
-    usados, r = set(), 2
+    # Se MANTIENE la información del BDX SUBIDO: se escriben los valores del fichero y se sombrea en azul
+    # (con comentario del valor de la app) lo que difiere. Las filas que solo están en la app se listan
+    # al final con TODAS sus celdas en azul.
+    app_by_key: dict[tuple, dict] = {}
     for fila in app_filas:
-        k = _clave_fila(fila)
-        fr = file_by_key.get(k)
-        if fr is not None:
+        app_by_key.setdefault(_clave_fila(fila), fila)
+
+    usados, r = set(), 2
+    for k, fr in file_by_key.items():
+        af = app_by_key.get(k)
+        if af is not None:
             usados.add(k)
-        difs = [h for h in HEADERS if not _igual(h, fila.get(h), fr.get(h))] if fr is not None else []
-        estado = "Difiere" if difs else ("Coincide" if fr is not None else "Solo en la app")
-        ws.append([estado] + [fila.get(h) for h in HEADERS])
+        difs = [h for h in HEADERS if not _igual(h, fr.get(h), af.get(h))] if af is not None else []
+        estado = "Difiere" if difs else ("Coincide" if af is not None else "Solo en el BDX subido")
+        ws.append([estado] + [fr.get(h) for h in HEADERS])
         fila_xl = ws[r]
         fila_xl[0].font = BODY_FONT
         _formatos(fila_xl)
         for h in difs:
             c = fila_xl[HEADERS.index(h) + 1]
             c.fill = BLUE_FILL
-            fv = fr.get(h)
-            c.comment = Comment(f"BDX subido: {fv if fv not in (None, '') else '(vacío)'}", "Mayrit")
+            av = af.get(h)
+            c.comment = Comment(f"En la app: {av if av not in (None, '') else '(vacío)'}", "Mayrit")
         r += 1
 
-    # Filas del fichero subido que no tienen siniestro en la app: todas sus celdas en azul.
-    for k, fr in file_by_key.items():
+    # Siniestros que están en la app pero NO en el fichero subido: todas sus celdas en azul.
+    for fila in app_filas:
+        k = _clave_fila(fila)
         if k in usados:
             continue
-        ws.append(["Solo en el BDX subido"] + [fr.get(h) for h in HEADERS])
+        ws.append(["Solo en la app"] + [fila.get(h) for h in HEADERS])
         fila_xl = ws[r]
         fila_xl[0].font = BODY_FONT
         _formatos(fila_xl)
         for j, h in enumerate(HEADERS):
-            if fr.get(h) not in (None, ""):
+            if fila.get(h) not in (None, ""):
                 fila_xl[j + 1].fill = BLUE_FILL
         r += 1
 
     ws.column_dimensions["A"].width = 20
+    _todas = list(file_by_key.values()) + app_filas
     for j, h in enumerate(HEADERS, start=2):
-        ancho = max([len(h)] + [len(_norm(f.get(h))) for f in app_filas]) if app_filas else len(h)
+        ancho = max([len(h)] + [len(_norm(f.get(h))) for f in _todas]) if _todas else len(h)
         ws.column_dimensions[get_column_letter(j)].width = min(max(ancho + 1, 10), 45)
     ws.freeze_panes = "B2"
     ws.auto_filter.ref = f"A1:{get_column_letter(len(cols))}{max(ws.max_row, 1)}"
@@ -505,8 +513,9 @@ def _excel_comparacion(app_filas: list[dict], file_by_key: dict[tuple, dict]) ->
 
 @router.post("/binders/{binder_id}/claims-bdx/comparar")
 def comparar(binder_id: int, file: UploadFile = File(...), db: Session = Depends(get_db)):
-    """Compara un Claims BDX (Excel) subido con los siniestros de la app y devuelve un Excel con las
-    celdas que difieren resaltadas en azul (con comentario del valor del fichero)."""
+    """Compara un Claims BDX (Excel) subido con los siniestros de la app y devuelve un Excel que MANTIENE
+    los valores del fichero SUBIDO, con las celdas que difieren de la app resaltadas en azul (y un
+    comentario con el valor que hay en la app)."""
     b = _binder_o_404(binder_id, db)
     contenido = file.file.read()
     if not contenido:
