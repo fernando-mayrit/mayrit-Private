@@ -554,12 +554,12 @@ export default function TareasBinder({ binderId }: { binderId?: number }) {
     <>
       <div className="toolbar" style={{ marginBottom: 8, justifyContent: "flex-start", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
         <button className="btn-primary btn-sm" onClick={abrirNuevo}>✅ Nueva tarea</button>
-        <button className="btn-secondary btn-sm" onClick={sincronizar} disabled={sincronizando}
+        <button className="btn-primary btn-sm" onClick={sincronizar} disabled={sincronizando}
           title="Crea/actualiza las tareas Risk/Premium/Claims desde el intervalo y plazo de BDX del binder">
           {sincronizando ? "Generando…" : "🔄 Generar automáticas"}
         </button>
         {puedeCopiar && (
-          <button className="btn-secondary btn-sm" onClick={copiarEsquema} disabled={saving}
+          <button className="btn-primary btn-sm" onClick={copiarEsquema} disabled={saving}
             title={`Copia el esquema de tareas (con su checklist) del binder anterior del mismo programa: ${prevInfo?.binder_umr ?? ""}`}>
             📋 Copiar esquema del anterior
           </button>

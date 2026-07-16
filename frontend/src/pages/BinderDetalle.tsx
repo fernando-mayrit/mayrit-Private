@@ -1588,7 +1588,7 @@ export default function BinderDetalle({ binder }: { binder: Binder }) {
                 🚨 Nuevo siniestro
               </button>
               <button
-                className="btn-secondary btn-sm"
+                className="btn-primary btn-sm"
                 onClick={() => claimsBdxRef.current?.click()}
                 disabled={subiendoClaims}
                 title="Sube un Claims BDX (Excel) y descarga un Excel con las celdas que difieren de los siniestros de la app (en azul)"
