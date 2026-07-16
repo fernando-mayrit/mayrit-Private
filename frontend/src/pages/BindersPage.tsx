@@ -53,7 +53,6 @@ type SeccionForm = {
   comision: string;
   comision_mayrit: string;  // override de la comisión Mayrit del binder (a nivel sección)
   sujeto_pc: boolean;
-  tpa: string;              // TPA de la sección (preasigna el del siniestro)
   mercados: LineaForm[];
 };
 type FormState = {
@@ -104,7 +103,6 @@ const SECCION_VACIA: SeccionForm = {
   comision: "",
   comision_mayrit: "",
   sujeto_pc: false,
-  tpa: "",
   mercados: [{ mercado_id: "", participacion: "" }],
 };
 
@@ -454,7 +452,6 @@ export default function BindersPage() {
             comision: s.comision != null ? String(s.comision) : "",
             comision_mayrit: s.comision_mayrit != null ? String(s.comision_mayrit) : "",
             sujeto_pc: !!s.sujeto_pc,
-            tpa: s.tpa ?? "",
             mercados:
               s.mercados.length > 0
                 ? s.mercados.map((m) => ({
@@ -574,7 +571,7 @@ export default function BindersPage() {
     // al cambiar de ramo se resetean los risk codes (dependen del ramo)
     if (form) setSecciones(form.secciones.map((s, idx) => (idx === i ? { ...s, ramo, risk_codes: [] } : s)));
   }
-  function setSeccionCampo(i: number, campo: "comision" | "comision_mayrit" | "tpa", valor: string) {
+  function setSeccionCampo(i: number, campo: "comision" | "comision_mayrit", valor: string) {
     if (form) setSecciones(form.secciones.map((s, idx) => (idx === i ? { ...s, [campo]: valor } : s)));
   }
   function setSeccionFlag(i: number, campo: "sujeto_pc", valor: boolean) {
@@ -782,7 +779,6 @@ export default function BindersPage() {
         comision: num(s.comision),
         comision_mayrit: nivelComision === "seccion" ? num(s.comision_mayrit) : null,
         sujeto_pc: s.sujeto_pc,
-        tpa: s.tpa.trim() || null,
         mercados: s.mercados
           .filter((m) => m.mercado_id)
           .map((m) => ({ mercado_id: Number(m.mercado_id), participacion: num(m.participacion) })),
@@ -1527,15 +1523,6 @@ export default function BindersPage() {
                   />
                   Sujeto a PC?
                 </label>
-              </div>
-
-              <div className="field-row">
-                <div className="field" style={{ flex: 1 }}>
-                  <label>TPA <span className="hint">(preasigna el del siniestro)</span></label>
-                  <input type="text" value={s.tpa}
-                    onChange={(e) => setSeccionCampo(i, "tpa", e.target.value)}
-                    placeholder="Third Party Administrator de la sección" />
-                </div>
               </div>
 
               <label className="mini-label">Mercados y participación</label>

@@ -476,7 +476,6 @@ class BinderSeccionIn(BaseModel):
     comision: Decimal | None = None
     comision_mayrit: Decimal | None = None   # override de la comisión Mayrit del binder
     sujeto_pc: bool = False
-    tpa: str | None = None                    # TPA de la sección (preasigna el del siniestro)
     mercados: list[SeccionMercadoIn] = []
 
 
@@ -491,7 +490,6 @@ class BinderSeccionOut(BaseModel):
     comision: Decimal | None = None
     comision_mayrit: Decimal | None = None
     sujeto_pc: bool = False
-    tpa: str | None = None
     mercados: list[SeccionMercadoOut] = []
 
 

@@ -270,7 +270,6 @@ class BinderSeccion(Base):
     comision: Mapped[Decimal | None] = mapped_column(Numeric(7, 4))       # % comisión de la sección
     comision_mayrit: Mapped[Decimal | None] = mapped_column(Numeric(7, 4))  # % comisión Mayrit (override de la del binder)
     sujeto_pc: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
-    tpa: Mapped[str | None] = mapped_column(String(255))   # TPA (Third Party Administrator) de la sección; preasigna el del siniestro
 
     binder: Mapped["Binder"] = relationship(back_populates="secciones")
     limite: Mapped["BinderLimite | None"] = relationship(back_populates="secciones")

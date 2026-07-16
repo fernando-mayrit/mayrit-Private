@@ -391,7 +391,6 @@ export default function BinderDetalle({ binder }: { binder: Binder }) {
         risk_code: risk,
         risk_inception: l.risk_inception_date ?? null,
         risk_expiry: l.risk_expiry_date ?? null,
-        tpa: section != null ? (binder.secciones[section - 1]?.tpa ?? null) : null,   // TPA de la sección
       });
     }
     return [...por.values()].sort(
@@ -439,7 +438,7 @@ export default function BinderDetalle({ binder }: { binder: Binder }) {
     // Los Claims se usan en la pestaña Siniestros y en la siniestralidad del PC.
     // Se recarga al abrir la pestaña (refleja correcciones sin re-importar de SharePoint).
     if (tab === "siniestros" || tab === "calculos") cargarSiniestros();
-    if (tab === "ucr") cargarUcr();
+    if (tab === "ucr") { cargarUcr(); cargarLpan(); }   // cargarLpan → FDO disponibles para vincular el UCR
     if (tab === "lpan") cargarLpan();
     if (tab === "resumen") {
       resumenBinder(binder.id).then(setResumen).catch(() => {});
@@ -1665,16 +1664,21 @@ export default function BinderDetalle({ binder }: { binder: Binder }) {
         </>
       )}
 
-      {tab === "ucr" && (
+      {tab === "ucr" && (() => {
+        const fdosAlta = lpanData?.fdos.filter((f) => f.fdo) ?? [];   // FDO dados de alta (generados)
+        const sinFdo = fdosAlta.length === 0;
+        return (
         <div style={{ marginTop: 12 }}>
           <div className="toolbar" style={{ marginBottom: 8 }}>
-            <button className="btn-primary btn-sm" onClick={() => setUcrModal({ ucr: null })}>＋ Nuevo UCR</button>
-            <span className="hint" style={{ marginLeft: 8 }}>UCR de este binder (UMR {binder.umr ?? "—"}).</span>
+            <button className="btn-primary btn-sm" disabled={sinFdo} onClick={() => setUcrModal({ ucr: null })}>🔖 Nuevo UCR</button>
+            <span className="hint" style={{ marginLeft: 8 }}>
+              {sinFdo ? "Necesitas al menos un FDO dado de alta para crear UCRs." : `UCR de este binder (UMR ${binder.umr ?? "—"}).`}
+            </span>
           </div>
           {!ucrCargado ? (
             <div className="loading">Cargando…</div>
           ) : ucrs.length === 0 ? (
-            <div className="empty">Este binder no tiene UCR asignados. Pulsa «＋ Nuevo UCR» para añadir uno.</div>
+            <div className="empty">Este binder no tiene UCR asignados. Pulsa «🔖 Nuevo UCR» para añadir uno.</div>
           ) : (
             <TablaDatos
               filas={ucrs}
@@ -1689,12 +1693,16 @@ export default function BinderDetalle({ binder }: { binder: Binder }) {
             <UcrModal
               ucr={ucrModal.ucr}
               umrDefault={binder.umr}
+              fdos={fdosAlta}
+              coverholder={binder.coverholder_nombre}
+              ucrsExistentes={ucrs.map((u) => u.ucr ?? "")}
               onClose={() => setUcrModal(null)}
               onSaved={() => { setUcrModal(null); cargarUcr(); }}
             />
           )}
         </div>
-      )}
+        );
+      })()}
 
       {tab === "claimsbdx" && (
         !cbVista ? (

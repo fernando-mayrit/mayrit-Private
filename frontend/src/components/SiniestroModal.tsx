@@ -15,7 +15,6 @@ export type PolizaBinder = {
   risk_code: string | null;
   risk_inception: string | null;
   risk_expiry: string | null;
-  tpa: string | null;   // TPA de la sección del binder (preasigna el del siniestro)
 };
 // Campos que en el alta se autocompletan desde la póliza y NO son editables.
 const AUTO_KEYS = new Set(["certificate", "section", "risk_code", "risk_inception", "risk_expiry"]);
@@ -162,7 +161,6 @@ export default function SiniestroModal({
       risk_code: pol?.risk_code ?? "",
       risk_inception: pol?.risk_inception ? String(pol.risk_inception).slice(0, 10) : "",
       risk_expiry: pol?.risk_expiry ? String(pol.risk_expiry).slice(0, 10) : "",
-      tpa: pol?.tpa ?? "",   // preasignado por la sección del binder (editable)
     }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selAseg, selClave]);
@@ -209,7 +207,6 @@ export default function SiniestroModal({
     // · En alta sin pólizas (no hay Risk BDX): Identificación editable a mano.
     const dis =
       bloqueado ||
-      c.key === "tpa" ||   // TPA no editable: siempre viene de la sección del binder
       (!nuevo && IDENT.some((x) => x.key === c.key)) ||
       (tienePolizas && AUTO_KEYS.has(c.key as string));
     return (

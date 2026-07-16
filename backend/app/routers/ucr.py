@@ -41,6 +41,7 @@ class UcrOpciones(BaseModel):
     umrs: list[str]
     estados: list[str]
     coverholders: list[str]
+    tpas: list[str] = []
 
 
 class UcrWrite(BaseModel):
@@ -89,8 +90,33 @@ def opciones(db: Session = Depends(get_db)):
     def distintos(col):
         return [v for (v,) in db.execute(select(col).where(col.is_not(None), col != "").distinct().order_by(col)).all()]
     return UcrOpciones(
-        umrs=distintos(Ucr.umr), estados=distintos(Ucr.estado), coverholders=distintos(Ucr.coverholder),
+        umrs=distintos(Ucr.umr), estados=distintos(Ucr.estado),
+        coverholders=distintos(Ucr.coverholder), tpas=distintos(Ucr.tpa),
     )
+
+
+@router.get("/next")
+def siguiente_ucr(umr: str, db: Session = Depends(get_db)):
+    """Siguiente UCR libre para un UMR: UMR + sufijo de 2 letras (AA, AB, …), rellenando huecos.
+
+    Si ya existe p.ej. …AB pero no …AA, devuelve …AA (primer índice libre), no el siguiente al máximo.
+    """
+    umr = (umr or "").strip()
+    if not umr:
+        raise HTTPException(status_code=400, detail="Falta el UMR; no se puede generar el UCR.")
+    usados: set[int] = set()
+    for (u,) in db.execute(select(Ucr.ucr).where(Ucr.umr == umr, Ucr.ucr.is_not(None))).all():
+        suf = (u or "").strip()
+        suf = suf[len(umr):] if suf.startswith(umr) else suf[-2:]
+        if len(suf) == 2 and suf.isalpha():
+            usados.add((ord(suf[0].upper()) - 65) * 26 + (ord(suf[1].upper()) - 65))
+    nxt = 0
+    while nxt in usados:
+        nxt += 1
+    if nxt > 26 * 26 - 1:
+        raise HTTPException(status_code=409, detail="Se ha agotado el rango de sufijos de 2 letras (ZZ).")
+    suf = chr(65 + nxt // 26) + chr(65 + nxt % 26)
+    return {"ucr": f"{umr}{suf}", "sufijo": suf, "umr": umr}
 
 
 @router.post("", response_model=UcrRead, status_code=201)

@@ -1415,7 +1415,7 @@ export interface UcrRegistro {
   tpa: string | null;
 }
 export interface UcrListado { items: UcrRegistro[]; n_total: number; }
-export interface UcrOpciones { umrs: string[]; estados: string[]; coverholders: string[]; }
+export interface UcrOpciones { umrs: string[]; estados: string[]; coverholders: string[]; tpas: string[]; }
 export type UcrFiltros = { umr?: string | null; estado?: string | null; coverholder?: string | null; q?: string | null; limit?: number };
 export type UcrWrite = Partial<Omit<UcrRegistro, "id">>;
 export const ucrApi = {
@@ -1430,6 +1430,7 @@ export const ucrApi = {
     return request<UcrListado>(`/ucr${s ? `?${s}` : ""}`);
   },
   opciones: () => request<UcrOpciones>("/ucr/opciones"),
+  nextUcr: (umr: string) => request<{ ucr: string; sufijo: string; umr: string }>(`/ucr/next?umr=${encodeURIComponent(umr)}`),
   crear: (d: UcrWrite) => request<UcrRegistro>("/ucr", { method: "POST", body: JSON.stringify(d) }),
   actualizar: (id: number, d: UcrWrite) => request<UcrRegistro>(`/ucr/${id}`, { method: "PUT", body: JSON.stringify(d) }),
   borrar: (id: number) => request<void>(`/ucr/${id}`, { method: "DELETE" }),

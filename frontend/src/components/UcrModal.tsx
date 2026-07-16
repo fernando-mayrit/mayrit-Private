@@ -1,39 +1,126 @@
-import { useState } from "react";
-import { ucrApi, type UcrRegistro, type UcrWrite } from "../api";
+import { useEffect, useMemo, useState } from "react";
+import { ucrApi, type RiskCodeFdo, type UcrRegistro, type UcrWrite } from "../api";
+import { signingUcrDesdeFdo } from "../format";
 import FormPanel from "./FormPanel";
 
-const ESTADOS = ["Abierto", "Cerrado"];
+const OPCION_NUEVA = "__nueva__";
 
-// Alta/edición de un UCR. Se usa desde la pestaña UCR de un binder (el UMR viene por defecto del binder).
-// En edición abre BLOQUEADO (solo consulta); «Editar» desbloquea. En alta abre desbloqueado.
+// Desplegable de TPA que además permite añadir uno nuevo (patrón de CredencialesPage: «➕ Añadir nuevo…»).
+function SelectorTpa({ valor, opciones, onChange }: { valor: string; opciones: string[]; onChange: (v: string) => void }) {
+  const [modoNuevo, setModoNuevo] = useState(valor !== "" && !opciones.includes(valor));
+  if (modoNuevo) {
+    return (
+      <div style={{ display: "flex", gap: 6 }}>
+        <input type="text" style={{ flex: 1 }} value={valor} placeholder="Nombre del TPA…" autoFocus onChange={(e) => onChange(e.target.value)} />
+        <button type="button" className="btn-secondary" title="Volver a la lista" onClick={() => { setModoNuevo(false); onChange(""); }}>↩ Lista</button>
+      </div>
+    );
+  }
+  return (
+    <select value={valor} onChange={(e) => { if (e.target.value === OPCION_NUEVA) { setModoNuevo(true); onChange(""); } else onChange(e.target.value); }}>
+      <option value="">— (ninguno) —</option>
+      {opciones.map((o) => <option key={o} value={o}>{o}</option>)}
+      <option value={OPCION_NUEVA}>➕ Añadir nuevo…</option>
+    </select>
+  );
+}
+
+// Sufijo de 2 letras de un UCR = lo que sigue al UMR (o los 2 últimos caracteres si no empieza por el UMR).
+function sufijoDe(ucr: string | null | undefined, umr: string | null | undefined): string {
+  const u = (ucr ?? "").toUpperCase();
+  const p = (umr ?? "").toUpperCase();
+  return p && u.startsWith(p) ? u.slice(p.length) : u.slice(-2);
+}
+
+// Alta/edición de un UCR. El UCR nace de un FDO: UMR y Coverholder vienen fijos del binder; del nº de UCR
+// solo se editan las DOS últimas letras (el resto = UMR) y no pueden duplicar otro UCR del binder. Al elegir
+// un FDO se rellenan (y bloquean) Sección, Risk Code y Signing (este invertido). En edición abre BLOQUEADO.
 export default function UcrModal({
   ucr,
   umrDefault,
+  fdos,
+  coverholder,
+  ucrsExistentes,
   onClose,
   onSaved,
 }: {
-  ucr: UcrRegistro | null;      // null = alta
-  umrDefault?: string | null;   // UMR del binder (para el alta)
+  ucr: UcrRegistro | null;         // null = alta
+  umrDefault?: string | null;      // UMR del binder (fijo)
+  fdos: RiskCodeFdo[];             // FDO generados del binder (para vincular)
+  coverholder?: string | null;     // Coverholder del binder (fijo)
+  ucrsExistentes: string[];        // UCR ya existentes del binder (para no duplicar el sufijo)
   onClose: () => void;
   onSaved: () => void;
 }) {
   const nuevo = ucr == null;
+  const umrPrefijo = (ucr?.umr ?? umrDefault ?? "").toUpperCase();
   const [form, setForm] = useState<UcrWrite>(
     ucr
       ? { coverholder: ucr.coverholder, umr: ucr.umr, section: ucr.section, risk_code: ucr.risk_code, signing: ucr.signing, ucr: ucr.ucr, notas: ucr.notas, estado: ucr.estado, tpa: ucr.tpa }
-      : { estado: "Abierto", umr: umrDefault ?? "" },
+      : { estado: "Abierto", umr: umrDefault ?? "", coverholder: coverholder ?? "" },
   );
+  const [sufijo, setSufijo] = useState<string>(nuevo ? "" : sufijoDe(ucr!.ucr, ucr!.umr));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [bloqueado, setBloqueado] = useState(!nuevo);   // edición abre bloqueada; alta no
+  const [tpas, setTpas] = useState<string[]>([]);
   const dis = bloqueado;
+
   const set = (k: keyof UcrWrite, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
+  // Opciones de TPA (desplegable con alta).
+  useEffect(() => {
+    ucrApi.opciones().then((o) => setTpas(o.tpas)).catch(() => {});
+  }, []);
+
+  // En alta: sugerir el siguiente sufijo libre del UMR (rellena huecos). Editable a mano después.
+  useEffect(() => {
+    if (!nuevo || !umrPrefijo) return;
+    ucrApi.nextUcr(umrPrefijo).then((r) => {
+      setSufijo((prev) => prev || r.sufijo);
+      setForm((f) => (f.ucr ? f : { ...f, ucr: r.ucr }));
+    }).catch(() => {});
+  }, [nuevo, umrPrefijo]);
+
+  // Sufijos ya usados en el binder (excluye el propio al editar) → para no duplicar.
+  const usados = useMemo(() => {
+    const propio = nuevo ? "" : sufijoDe(ucr!.ucr, ucr!.umr);
+    const s = new Set<string>();
+    for (const code of ucrsExistentes) {
+      const suf = sufijoDe(code, umrPrefijo);
+      if (suf && suf !== propio) s.add(suf);
+    }
+    return s;
+  }, [ucrsExistentes, umrPrefijo, nuevo, ucr]);
+
+  const sufValido = /^[A-Z]{2}$/.test(sufijo);
+  const sufDuplicado = usados.has(sufijo);
+  const sufError = !sufijo ? "Indica las 2 letras del UCR." : (!sufValido ? "Deben ser 2 letras (A–Z)." : (sufDuplicado ? `El UCR ${umrPrefijo}${sufijo} ya existe en este binder.` : null));
+
+  function cambiarSufijo(v: string) {
+    const s = v.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 2);
+    setSufijo(s);
+    setForm((f) => ({ ...f, ucr: umrPrefijo + s }));
+  }
+
+  // Al elegir un FDO: Sección + Risk Code + Signing (invertido) se ponen solos.
+  function vincularFdo(key: string) {
+    const rc = fdos.find((f) => `${f.section}|${f.risk_code}` === key);
+    setForm((f) => ({
+      ...f,
+      section: rc ? String(rc.section) : "",
+      risk_code: rc ? rc.risk_code : "",
+      signing: rc ? signingUcrDesdeFdo(rc.fdo?.signing_number) : "",
+    }));
+  }
+
   async function guardar() {
+    if (sufError) { setError(sufError); return; }
     setSaving(true); setError(null);
     try {
-      if (ucr) await ucrApi.actualizar(ucr.id, form);
-      else await ucrApi.crear(form);
+      const datos = { ...form, ucr: umrPrefijo + sufijo };
+      if (ucr) await ucrApi.actualizar(ucr.id, datos);
+      else await ucrApi.crear(datos);
       onSaved();
     } catch (e) { setError((e as Error).message); }
     finally { setSaving(false); }
@@ -46,6 +133,10 @@ export default function UcrModal({
     catch (e) { setError((e as Error).message); }
     finally { setSaving(false); }
   }
+
+  const estado = form.estado ?? "Abierto";
+  const cerrado = /cerrad/i.test(estado);
+  const fdoKey = form.section && form.risk_code ? `${form.section}|${form.risk_code}` : "";
 
   return (
     <FormPanel
@@ -67,35 +158,59 @@ export default function UcrModal({
         </div>
       )}
 
-      <div className="field-row" style={{ display: "flex", gap: 10 }}>
-        <div className="field" style={{ flex: 2 }}><label>UCR</label>
-          <input type="text" value={form.ucr ?? ""} disabled={dis} onChange={(e) => set("ucr", e.target.value)} placeholder="B1634…AA" />
+      <div className="field"><label>UCR <span className="hint">(solo se editan las 2 últimas letras)</span></label>
+        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          <span style={{ fontFamily: "monospace", fontWeight: 600, whiteSpace: "nowrap" }}>{umrPrefijo}</span>
+          <input type="text" value={sufijo} disabled={dis} maxLength={2}
+                 style={{ width: 60, textAlign: "center", textTransform: "uppercase", fontWeight: 700, letterSpacing: 2 }}
+                 onChange={(e) => cambiarSufijo(e.target.value)} placeholder="AA" />
         </div>
-        <div className="field" style={{ flex: 2 }}><label>UMR</label>
-          <input type="text" value={form.umr ?? ""} disabled={dis} onChange={(e) => set("umr", e.target.value)} />
+        {!dis && sufError && sufijo !== "" && <div className="hint" style={{ color: "var(--rojo, #c0392b)" }}>{sufError}</div>}
+      </div>
+      <div className="field-row" style={{ display: "flex", gap: 10, alignItems: "flex-end" }}>
+        <div className="field" style={{ flex: 3 }}><label>UMR</label>
+          <input type="text" value={form.umr ?? ""} disabled onChange={(e) => set("umr", e.target.value)} />
         </div>
         <div className="field" style={{ flex: 1 }}><label>Estado</label>
-          <select value={form.estado ?? "Abierto"} disabled={dis} onChange={(e) => set("estado", e.target.value)}>
-            {ESTADOS.map((s) => <option key={s} value={s}>{s}</option>)}
-          </select>
+          <button
+            type="button"
+            className={`pill ${cerrado ? "pill-anulado" : "pill-cobrado"}`}
+            style={{ border: "none", cursor: dis ? "default" : "pointer", width: "100%" }}
+            disabled={dis}
+            onClick={() => set("estado", cerrado ? "Abierto" : "Cerrado")}
+          >{cerrado ? "Cerrado" : "Abierto"}</button>
         </div>
       </div>
       <div className="field"><label>Coverholder</label>
-        <input type="text" value={form.coverholder ?? ""} disabled={dis} onChange={(e) => set("coverholder", e.target.value)} />
+        <input type="text" value={form.coverholder ?? ""} disabled onChange={(e) => set("coverholder", e.target.value)} />
+      </div>
+      <div className="field"><label>FDO vinculado</label>
+        <select value={fdoKey} disabled={dis} onChange={(e) => vincularFdo(e.target.value)}>
+          <option value="">— Elige un FDO —</option>
+          {fdos.map((f) => (
+            <option key={`${f.section}|${f.risk_code}`} value={`${f.section}|${f.risk_code}`}>
+              S{f.section} · {f.risk_code}{f.broker_reference ? ` — ${f.broker_reference}` : ""}
+            </option>
+          ))}
+        </select>
       </div>
       <div className="field-row" style={{ display: "flex", gap: 10 }}>
         <div className="field" style={{ flex: 1 }}><label>Sección</label>
-          <input type="text" value={form.section ?? ""} disabled={dis} onChange={(e) => set("section", e.target.value)} />
+          <input type="text" value={form.section ?? ""} disabled readOnly />
         </div>
         <div className="field" style={{ flex: 1 }}><label>Risk Code</label>
-          <input type="text" value={form.risk_code ?? ""} disabled={dis} onChange={(e) => set("risk_code", e.target.value)} />
+          <input type="text" value={form.risk_code ?? ""} disabled readOnly />
         </div>
         <div className="field" style={{ flex: 2 }}><label>Signing</label>
-          <input type="text" value={form.signing ?? ""} disabled={dis} onChange={(e) => set("signing", e.target.value)} placeholder="22619*14/01/2020" />
+          <input type="text" value={form.signing ?? ""} disabled readOnly placeholder="2020/01/14*22619" />
         </div>
       </div>
       <div className="field"><label>TPA</label>
-        <input type="text" value={form.tpa ?? ""} disabled={dis} onChange={(e) => set("tpa", e.target.value)} />
+        {dis ? (
+          <input type="text" value={form.tpa ?? ""} disabled />
+        ) : (
+          <SelectorTpa valor={form.tpa ?? ""} opciones={tpas} onChange={(v) => set("tpa", v)} />
+        )}
       </div>
       <div className="field"><label>Notas</label>
         <textarea rows={2} value={form.notas ?? ""} disabled={dis} onChange={(e) => set("notas", e.target.value)} />

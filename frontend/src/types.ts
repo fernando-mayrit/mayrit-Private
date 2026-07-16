@@ -123,7 +123,6 @@ export interface BinderSeccion {
   comision: number | null;
   comision_mayrit: number | null; // override de la comisión Mayrit del binder
   sujeto_pc: boolean;
-  tpa: string | null;             // TPA de la sección (preasigna el del siniestro)
   mercados: SeccionMercadoLinea[];
 }
 // Datos comunes del binder (no por sección).
@@ -189,7 +188,6 @@ export interface BinderWrite extends BinderComun {
     comision: number | null;
     comision_mayrit: number | null;
     sujeto_pc: boolean;
-    tpa: string | null;
     mercados: { mercado_id: number; participacion: number | null }[];
   }[];
 }

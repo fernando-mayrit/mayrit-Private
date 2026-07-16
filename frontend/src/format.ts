@@ -42,6 +42,16 @@ export function estadoCobro(importe: unknown, cobrado: unknown, estado?: string 
   return { label: "Cobrado", clase: "cobrado" };
 }
 
+// Signing de un FDO → formato UCR (convención Xchanging, al revés). El FDO viene como
+// `XXXXX*DD/MM/YYYY` (nº, asterisco, fecha); en los UCR el criterio es la fecha delante:
+// `YYYY/MM/DD*XXXXX`. Devuelve "" si el signing es nulo o no casa el patrón (FDO sin signing).
+export function signingUcrDesdeFdo(s: string | null | undefined): string {
+  const m = /^\s*(\d+)\s*\*\s*(\d{1,2})\/(\d{1,2})\/(\d{4})\s*$/.exec(s ?? "");
+  if (!m) return "";
+  const [, num, d, mo, y] = m;
+  return `${y}/${mo.padStart(2, "0")}/${d.padStart(2, "0")}*${num}`;
+}
+
 // Clase de color para el ESTADO de un siniestro (Open/Closed/Reopened/Denied…). Devuelve el
 // sufijo de la clase CSS `pill-sin-<x>`: abierto (rojo), cerrado (verde), revision (ámbar),
 // otro (gris). Tolerante a inglés/español y variantes.
