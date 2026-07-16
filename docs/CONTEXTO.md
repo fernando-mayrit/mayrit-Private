@@ -1865,3 +1865,27 @@ Section/RiskCode/**Signing**/UCR/Notas/Estado/**TPA**).
 - **Lección de método:** en operaciones destructivas sobre PROD, **hacer SIEMPRE una foto (dump) del estado
   original ANTES de tocar** (se guardó `snapshot_bdx_lineas.json`), y **no tocar las líneas sin cobrar**
   (ambiguas). Detector de la huella: línea COBRADA con `premium_payment_date < premium_bdx`.
+
+### UI: botones de acción en naranja (+ emoji) y otros retoques
+- Regla: **todos los botones de acción en naranja** (`btn-primary`) con emoji; **Cancelar/Cerrar/Volver/«↩
+  Lista», toggles y «Limpiar filtros» se quedan en gris** (`btn-secondary`). Aplicado por toda la app
+  (Añadir sección/mercado/grupo/risk code/ajuste/paso/suplemento, Renovar, Reabrir, Adjuntar/Subir,
+  Generar justificante, Importar/Conciliar, Descargar/Excel, Marcar cancelación, Paquete mensual…).
+- Pestaña BDX: **📤 Subir Risk**, **💷 Subir Premium**. Transferencias/Contabilidad: botones con `btn-sm`
+  (misma altura) y emoji.
+
+### Siniestros: botón Borrar en el modal
+- Endpoint **`DELETE /siniestros/{id}`** + `siniestrosApi.borrar`. `SiniestroModal` usa `onDelete` de
+  `FormPanel` → el botón **Borrar** aparece **solo al editar** un siniestro existente (tras «Editar»), no en
+  el alta. Pide confirmación y lo quita de la lista.
+
+### Claims BDX: comparativa INVERTIDA + Total Incurred correcto
+- La comparativa (subir un Claims BDX y contrastar con la app) ahora **mantiene los valores del fichero
+  SUBIDO** (antes eran los de la app): azul en las celdas que difieren de la app (comentario *«En la app:
+  …»*), y **siniestros nuevos (solo en el fichero) y «solo en la app» con todas las celdas en azul**.
+  (`_excel_comparacion` en `claims_bdx.py`; itera por las filas de la app para no colapsar por clave.)
+- **Total Incurred = pagado + reservas SIEMPRE** (comparativa y BDX real). Los campos `total_indemnity`/
+  `total_fees` de la BD (columnas rellenadas por el import de SharePoint, `MAPEO` en `sharepoint.py`) **NO
+  se usan en la app**: el front ya calcula el total como pagado+reservas ([BinderDetalle.tsx:294]) y esos
+  campos no se muestran en ninguna pantalla. Están **sin uso** (candidatos a borrar en el futuro; de momento
+  se dejan, son inofensivos). Botón renombrado a **«Comparar Claims Bdx»**.
