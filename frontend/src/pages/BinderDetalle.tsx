@@ -1274,17 +1274,17 @@ export default function BinderDetalle({ binder }: { binder: Binder }) {
               ) : (
                 <div className="toolbar">
                   <button className="btn-primary" onClick={() => elegirExcel("risk")}>
-                    ⬆ Subir Risk
+                    📤 Subir Risk
                   </button>
-                  <button className="btn-secondary" onClick={() => elegirExcel("premium")}>
-                    ⬆ Subir Premium
+                  <button className="btn-primary" onClick={() => elegirExcel("premium")}>
+                    💷 Subir Premium
                   </button>
                   {!importado && (
-                    <button className="btn-secondary" onClick={abrirImport}>
+                    <button className="btn-primary" onClick={abrirImport}>
                       ⤓ Importar de SharePoint
                     </button>
                   )}
-                  <button className="btn-secondary" title="Captura el formato (columnas y orden) del Risk Excel del coverholder para reproducirlo en las descargas de Premium/LPAN. Solo lee cabeceras: no importa líneas." onClick={() => plantillaRef.current?.click()}>
+                  <button className="btn-primary" title="Captura el formato (columnas y orden) del Risk Excel del coverholder para reproducirlo en las descargas de Premium/LPAN. Solo lee cabeceras: no importa líneas." onClick={() => plantillaRef.current?.click()}>
                     📐 Capturar plantilla del Risk
                   </button>
                 </div>
@@ -1311,14 +1311,14 @@ export default function BinderDetalle({ binder }: { binder: Binder }) {
                   ) : (
                     <>
                       <button className="btn-primary btn-sm" onClick={() => elegirExcel("risk")}>
-                        ⬆ Subir Risk
+                        📤 Subir Risk
                       </button>
-                      <button className="btn-secondary btn-sm" onClick={() => elegirExcel("premium")}>
-                        ⬆ Subir Premium
+                      <button className="btn-primary btn-sm" onClick={() => elegirExcel("premium")}>
+                        💷 Subir Premium
                       </button>
                     </>
                   )}
-                  <button className="btn-secondary btn-sm" title="Captura el formato (columnas y orden) del Risk Excel del coverholder para reproducirlo en las descargas de Premium/LPAN. Solo lee cabeceras: no importa líneas." onClick={() => plantillaRef.current?.click()}>
+                  <button className="btn-primary btn-sm" title="Captura el formato (columnas y orden) del Risk Excel del coverholder para reproducirlo en las descargas de Premium/LPAN. Solo lee cabeceras: no importa líneas." onClick={() => plantillaRef.current?.click()}>
                     📐 Plantilla del Risk
                   </button>
                   {selMeses.size > 0 && (
