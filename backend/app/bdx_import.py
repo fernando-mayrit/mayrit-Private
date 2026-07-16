@@ -437,6 +437,16 @@ def _bloqueantes(meta: dict, coerced: list[dict], sec_unica: int | None = None) 
     if sin_periodo:
         problemas.append(f"{sin_periodo} de {len(coerced)} líneas no tienen «Reporting Period» válido "
                          "(la columna falta o las fechas están en un formato no soportado).")
+    # Cada subida de Risk debe corresponder a UN ÚNICO periodo: todas las líneas con la MISMA
+    # «Reporting Period Start Date» (misma fecha exacta: día, mes y año). Si hay más de una fecha
+    # distinta, se ABORTA para que el usuario corrija el Excel (evita mezclar periodos por error).
+    fechas = [d["reporting_period_start"] for d in coerced if d.get("reporting_period_start")]
+    distintas = sorted(set(fechas))
+    if len(distintas) > 1:
+        detalle = ", ".join(f"{f.strftime('%d/%m/%Y')} ({fechas.count(f)} línea/s)" for f in distintas)
+        problemas.append("Todas las líneas deben tener la MISMA «Reporting Period Start Date». Se han "
+                         f"encontrado {len(distintas)} fechas distintas: {detalle}. Corrige el Excel "
+                         "(cada subida debe ser de un único periodo) y vuelve a intentarlo.")
     return problemas
 
 
@@ -474,10 +484,19 @@ def preview_risk_excel(db: Session, binder: Binder, content: bytes, hoja: str | 
         ya = {l.reporting_period_start.strftime("%Y-%m") for l in bdx.lineas if l.reporting_period_start}
     periodos_ya_cargados = sorted(p for p in periodos if p in ya)
 
+    # Neto real que se importará vs lo que se OMITIRÁ por "mes ya cargado" (para que el preview no
+    # prometa de más). Una línea se omite si su mes de reporting ya está presente en el Risk.
+    def _pm(d):
+        rp = d.get("reporting_period_start")
+        return rp.strftime("%Y-%m") if rp else None
+    n_omitiran = sum(1 for d in coerced if _pm(d) and _pm(d) in ya)
+    n_importaran = sum(1 for d in coerced if _pm(d) and _pm(d) not in ya)
+
     muestra = [{
         "certificado": d.get("certificate_ref"), "asegurado": d.get("insured_name"),
         "section_no": _seccion_de(d, rc2sec, rc_amb, sec_unica), "risk_code": d.get("risk_code"),
         "reporting": d["reporting_period_start"].isoformat() if d.get("reporting_period_start") else None,
+        "omitir": bool(_pm(d) and _pm(d) in ya),   # esta línea NO se importará (mes ya cargado)
         "gwp_our_line": float(d["total_gwp_our_line"]) if d.get("total_gwp_our_line") is not None else None,
         "net_premium_broker": float(d["net_premium_to_broker"]) if d.get("net_premium_to_broker") is not None else None,
         "comision_pct": float((d.get("commission_coverholder_pct") or 0) + (d.get("brokerage_pct") or 0)),
@@ -494,11 +513,14 @@ def preview_risk_excel(db: Session, binder: Binder, content: bytes, hoja: str | 
     if meta["sin_mapear"]:
         problemas.append({"nivel": "aviso", "texto": f"{len(meta['sin_mapear'])} columna(s) del Excel no reconocida(s): se guardan íntegras en «Extra» (no se pierde nada), pero no van a su campo."})
     if periodos_ya_cargados:
-        problemas.append({"nivel": "aviso", "texto": f"Mes(es) ya cargado(s) que se OMITIRÁN al importar: {', '.join(periodos_ya_cargados)}."})
+        problemas.append({"nivel": "aviso", "texto": f"El/los mes(es) {', '.join(periodos_ya_cargados)} YA se "
+                          f"habían cargado antes en este Risk: esas {n_omitiran} línea(s) NO se importarán "
+                          "(se omiten para no duplicar). Se importarán solo las líneas de meses nuevos."})
 
     return {
         "hojas": meta["hojas"], "hoja": meta["hoja"],
-        "n_lineas": meta["n_filas"], "periodos": periodos,
+        "n_lineas": meta["n_filas"], "n_importaran": n_importaran, "n_omitiran": n_omitiran,
+        "periodos": periodos,
         "total_gwp_our_line": float(round(tot_our, 2)), "total_gwp_100": float(round(tot_100, 2)),
         "total_prima_traspasar": float(round(tot_traspasar, 2)), "total_liquidar": float(round(tot_liquidar, 2)),
         "total_net_premium_broker": float(round(tot_net_broker, 2)),

@@ -74,8 +74,8 @@ export default function RiskExcelImport({
     <FormPanel
       title={`Subir Risk · ${file.name}`}
       dirty={false} saving={busy}
-      saveLabel={res ? "Cerrar" : `Importar ${prev ? `(${prev.n_lineas})` : ""}`}
-      saveDisabled={!res && !!prev?.bloqueado}
+      saveLabel={res ? "Cerrar" : `Importar ${prev ? `(${prev.n_importaran})` : ""}`}
+      saveDisabled={!res && (!!prev?.bloqueado || prev?.n_importaran === 0)}
       error={error}
       onSave={res ? () => { onImported(); } : importar}
       onClose={onClose}
@@ -142,10 +142,19 @@ export default function RiskExcelImport({
               ✅ Columnas clave reconocidas. Revisa igualmente que las cifras cuadran antes de importar.
             </div>
           )}
+          {!prev.bloqueado && prev.n_importaran === 0 && (
+            <div className="import-aviso" style={{ marginBottom: 10 }}>
+              <b>ℹ️ Nada que importar.</b> Todas las líneas corresponden a un periodo <b>ya cargado</b> en este
+              Risk, así que <b>no se añadirá ninguna</b> (se omiten para no duplicar).
+            </div>
+          )}
 
           <table className="compacto" style={{ marginBottom: 12 }}>
             <tbody>
-              <tr><td>Líneas a añadir</td><td className="num"><b>{prev.n_lineas}</b></td></tr>
+              <tr><td>Líneas a importar</td><td className="num"><b>{prev.n_importaran}</b>{prev.n_lineas !== prev.n_importaran && <span className="hint"> de {prev.n_lineas}</span>}</td></tr>
+              {prev.n_omitiran > 0 && (
+                <tr><td>Se omitirán (mes ya cargado)</td><td className="num" style={{ color: "#b45309" }}>{prev.n_omitiran}</td></tr>
+              )}
               <tr><td>Σ GWP (our line)</td><td className="num">{fmtMiles(prev.total_gwp_our_line)} €</td></tr>
               <tr><td>Σ Prima a Traspasar (comisión)</td><td className="num">{fmtMiles(prev.total_prima_traspasar)} €</td></tr>
               <tr><td>Σ a Liquidar (neto al UW)</td><td className="num">{fmtMiles(prev.total_liquidar)} €</td></tr>
@@ -175,8 +184,8 @@ export default function RiskExcelImport({
               </thead>
               <tbody>
                 {prev.muestra.map((m, i) => (
-                  <tr key={i} className={m.reporting ? undefined : "fila-sin-periodo"}>
-                    <td>{m.certificado ?? "—"}</td>
+                  <tr key={i} className={m.reporting ? undefined : "fila-sin-periodo"} style={m.omitir ? { opacity: 0.5 } : undefined}>
+                    <td>{m.certificado ?? "—"}{m.omitir && <span className="pill pill-anulado" style={{ marginLeft: 6, fontSize: 10, padding: "1px 6px" }}>ya cargado</span>}</td>
                     <td>{m.asegurado ?? "—"}</td>
                     <td className="num">{m.gwp_our_line != null ? fmtMiles(m.gwp_our_line) : "—"}</td>
                     <td className="num">{m.net_premium_broker != null ? fmtMiles(m.net_premium_broker) : "—"}</td>

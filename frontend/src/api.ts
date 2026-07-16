@@ -987,6 +987,8 @@ export interface RiskExcelPreview {
   sin_seccion: number;
   periodos_ya_cargados: string[];
   n_lineas: number;
+  n_importaran: number;
+  n_omitiran: number;
   periodos: string[];
   total_gwp_our_line: number;
   total_gwp_100: number;
@@ -998,7 +1000,7 @@ export interface RiskExcelPreview {
   sin_periodo: number;
   problemas: { nivel: "bloqueante" | "aviso"; texto: string }[];
   bloqueado: boolean;
-  muestra: { certificado: string | null; asegurado: string | null; section_no: number | null; risk_code: string | null; reporting: string | null; gwp_our_line: number | null; net_premium_broker: number | null; comision_pct: number; prima_traspasar: number | null; liquidar: number | null }[];
+  muestra: { certificado: string | null; asegurado: string | null; section_no: number | null; risk_code: string | null; reporting: string | null; omitir: boolean; gwp_our_line: number | null; net_premium_broker: number | null; comision_pct: number; prima_traspasar: number | null; liquidar: number | null }[];
 }
 export interface RiskExcelImportResult {
   bdx_id: number;

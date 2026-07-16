@@ -552,34 +552,30 @@ export default function TareasBinder({ binderId }: { binderId?: number }) {
 
   return (
     <>
-      <div className="toolbar" style={{ marginBottom: 8, justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          {/* La vista 'Por mes' solo tiene sentido en la página global (control del mes en conjunto). */}
-          {esGlobal && (
-            <span style={{ display: "inline-flex", gap: 4 }}>
-              <button className={vista === "bloques" ? "btn-primary btn-sm" : "btn-secondary btn-sm"} onClick={() => setVista("bloques")}>Bloques</button>
-              <button className={vista === "mes" ? "btn-primary btn-sm" : "btn-secondary btn-sm"} onClick={() => setVista("mes")}>📅 Por mes</button>
-            </span>
-          )}
-          {esGlobal && vista === "mes" && (
-            <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 13 }}>
-              <input type="checkbox" checked={soloPend} onChange={(e) => setSoloPend(e.target.checked)} /> Solo pendientes
-            </label>
-          )}
-        </div>
-        <div style={{ display: "flex", gap: 8 }}>
-          {puedeCopiar && (
-            <button className="btn-secondary" onClick={copiarEsquema} disabled={saving}
-              title={`Copia el esquema de tareas (con su checklist) del binder anterior del mismo programa: ${prevInfo?.binder_umr ?? ""}`}>
-              📋 Copiar esquema del anterior
-            </button>
-          )}
-          <button className="btn-secondary" onClick={sincronizar} disabled={sincronizando}
-            title="Crea/actualiza las tareas Risk/Premium/Claims desde el intervalo y plazo de BDX del binder">
-            {sincronizando ? "Generando…" : "🔄 Generar automáticas"}
+      <div className="toolbar" style={{ marginBottom: 8, justifyContent: "flex-start", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+        <button className="btn-primary btn-sm" onClick={abrirNuevo}>✅ Nueva tarea</button>
+        <button className="btn-secondary btn-sm" onClick={sincronizar} disabled={sincronizando}
+          title="Crea/actualiza las tareas Risk/Premium/Claims desde el intervalo y plazo de BDX del binder">
+          {sincronizando ? "Generando…" : "🔄 Generar automáticas"}
+        </button>
+        {puedeCopiar && (
+          <button className="btn-secondary btn-sm" onClick={copiarEsquema} disabled={saving}
+            title={`Copia el esquema de tareas (con su checklist) del binder anterior del mismo programa: ${prevInfo?.binder_umr ?? ""}`}>
+            📋 Copiar esquema del anterior
           </button>
-          <button className="btn-primary" onClick={abrirNuevo}>＋ Nueva tarea</button>
-        </div>
+        )}
+        {/* La vista 'Por mes' solo tiene sentido en la página global (control del mes en conjunto). */}
+        {esGlobal && (
+          <span style={{ display: "inline-flex", gap: 4, marginLeft: 6 }}>
+            <button className={vista === "bloques" ? "btn-primary btn-sm" : "btn-secondary btn-sm"} onClick={() => setVista("bloques")}>Bloques</button>
+            <button className={vista === "mes" ? "btn-primary btn-sm" : "btn-secondary btn-sm"} onClick={() => setVista("mes")}>📅 Por mes</button>
+          </span>
+        )}
+        {esGlobal && vista === "mes" && (
+          <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 13 }}>
+            <input type="checkbox" checked={soloPend} onChange={(e) => setSoloPend(e.target.checked)} /> Solo pendientes
+          </label>
+        )}
       </div>
       {error && <div className="error">{error}</div>}
 
