@@ -270,6 +270,7 @@ class BinderSeccion(Base):
     comision: Mapped[Decimal | None] = mapped_column(Numeric(7, 4))       # % comisión de la sección
     comision_mayrit: Mapped[Decimal | None] = mapped_column(Numeric(7, 4))  # % comisión Mayrit (override de la del binder)
     sujeto_pc: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
+    tpa: Mapped[str | None] = mapped_column(String(255))   # TPA (Third Party Administrator) de la sección; preasigna el del siniestro
 
     binder: Mapped["Binder"] = relationship(back_populates="secciones")
     limite: Mapped["BinderLimite | None"] = relationship(back_populates="secciones")
@@ -952,6 +953,7 @@ class Siniestro(Base):
     date_opened: Mapped[dt.date | None] = mapped_column(Date)
     date_closed: Mapped[dt.date | None] = mapped_column(Date)
     ucr: Mapped[str | None] = mapped_column(String(120))
+    tpa: Mapped[str | None] = mapped_column(String(255))   # Third Party Administrator (preasignado por sección del binder)
     abogado: Mapped[str | None] = mapped_column(String(255))
     last_bdx_change: Mapped[dt.date | None] = mapped_column(Date)
     ultima_revision: Mapped[dt.date | None] = mapped_column(Date)
@@ -974,6 +976,27 @@ class Siniestro(Base):
     )
 
     binder: Mapped["Binder"] = relationship()
+
+
+class Ucr(Base):
+    """UCR (Unique Claims Reference): tabla traída de Access/SharePoint (`Mayrit - TUCR`). Una fila por UCR
+    asignado, con su UMR / sección / risk code / signing / TPA / estado. Idempotente por `sp_old_id`."""
+
+    __tablename__ = "ucrs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    sp_old_id: Mapped[int | None] = mapped_column(Integer, index=True)   # _OldID de Access/SharePoint
+    titulo: Mapped[str | None] = mapped_column(String(255))              # Title de la lista
+    coverholder: Mapped[str | None] = mapped_column(String(255))
+    umr: Mapped[str | None] = mapped_column(String(120), index=True)
+    section: Mapped[str | None] = mapped_column(String(40))
+    risk_code: Mapped[str | None] = mapped_column(String(40))
+    signing: Mapped[str | None] = mapped_column(String(120))
+    ucr: Mapped[str | None] = mapped_column(String(120), index=True)
+    notas: Mapped[str | None] = mapped_column(Text)
+    estado: Mapped[str | None] = mapped_column(String(60))
+    tpa: Mapped[str | None] = mapped_column(String(255))
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class ClaimsPresentacion(Base):

@@ -94,6 +94,7 @@ def _terminos(b: Binder) -> dict:
                 "comision": _f(s.comision),
                 "comision_mayrit": _f(s.comision_mayrit),
                 "sujeto_pc": s.sujeto_pc,
+                "tpa": s.tpa,
                 "mercados": [
                     {"mercado_id": m.mercado_id, "participacion": _f(m.participacion)} for m in s.mercados
                 ],
@@ -263,6 +264,7 @@ def _serializar(b: Binder, met: dict | None = None) -> dict:
                 "comision": s.comision,
                 "comision_mayrit": s.comision_mayrit,
                 "sujeto_pc": s.sujeto_pc,
+                "tpa": s.tpa,
                 "mercados": [
                     {
                         "mercado_id": m.mercado_id,
@@ -295,7 +297,7 @@ def _aplicar(
         grupos.append(g)
     for s in secciones:
         seccion = BinderSeccion(
-            ramo=s.ramo, comision=s.comision, comision_mayrit=s.comision_mayrit, sujeto_pc=s.sujeto_pc
+            ramo=s.ramo, comision=s.comision, comision_mayrit=s.comision_mayrit, sujeto_pc=s.sujeto_pc, tpa=s.tpa
         )
         gi = s.limite_grupo
         if grupos and gi is not None and 0 <= gi < len(grupos):

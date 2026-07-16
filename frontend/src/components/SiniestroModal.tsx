@@ -15,6 +15,7 @@ export type PolizaBinder = {
   risk_code: string | null;
   risk_inception: string | null;
   risk_expiry: string | null;
+  tpa: string | null;   // TPA de la sección del binder (preasigna el del siniestro)
 };
 // Campos que en el alta se autocompletan desde la póliza y NO son editables.
 const AUTO_KEYS = new Set(["certificate", "section", "risk_code", "risk_inception", "risk_expiry"]);
@@ -24,7 +25,7 @@ const AUTO_KEYS = new Set(["certificate", "section", "risk_code", "risk_inceptio
 //  · abre BLOQUEADO (solo consulta); "Editar" desbloquea los campos
 //  · maqueta: izquierda Identificación · derecha Siniestro + Importes · abajo Textos
 
-type Tipo = "text" | "date" | "num" | "int" | "yesno" | "estado";
+type Tipo = "text" | "date" | "month" | "num" | "int" | "yesno" | "estado";
 type Campo = { key: keyof Siniestro; label: string; tipo: Tipo; full?: boolean; center?: boolean };
 
 const IDENT: Campo[] = [
@@ -34,21 +35,21 @@ const IDENT: Campo[] = [
   { key: "section", label: "Sección", tipo: "int" },
   { key: "yoa", label: "YOA", tipo: "int" },
   { key: "risk_code", label: "Risk Code", tipo: "text" },
-  { key: "reporting_period", label: "Periodo", tipo: "date" },
+  { key: "reporting_period", label: "Periodo", tipo: "month" },   // siempre día 1 de un mes
   { key: "risk_inception", label: "Inicio riesgo", tipo: "date" },
   { key: "risk_expiry", label: "Fin riesgo", tipo: "date" },
 ];
 const DETALLE: Campo[] = [
   { key: "status", label: "Estado", tipo: "estado" },
+  { key: "date_closed", label: "Fecha de Cierre", tipo: "date" },
+  { key: "date_opened", label: "Fecha de Apertura", tipo: "date" },
+  { key: "reference", label: "Referencia", tipo: "text", full: true },
   { key: "claimant", label: "Reclamante", tipo: "text", full: true },
+  { key: "tpa", label: "TPA", tipo: "text", full: true },
   { key: "abogado", label: "Abogado", tipo: "text", full: true },
-  { key: "claim_first_advised", label: "1er aviso", tipo: "date" },
-  { key: "date_opened", label: "Abierto", tipo: "date" },
-  { key: "date_closed", label: "Cerrado", tipo: "date" },
-  { key: "last_bdx_change", label: "Últ. cambio BDX", tipo: "date" },
-  { key: "ultima_revision", label: "Últ. revisión", tipo: "date" },
-  { key: "refer", label: "Refer", tipo: "yesno" },
-  { key: "denial", label: "Denial", tipo: "yesno" },
+  { key: "last_bdx_change", label: "Últ. cambio BDX", tipo: "date", full: true },
+  { key: "refer", label: "Referido al Mercado", tipo: "yesno" },
+  { key: "denial", label: "Rechazado", tipo: "yesno" },
 ];
 const IMPORTES: Campo[] = [
   { key: "amount_claimed", label: "Reclamado", tipo: "num", full: true },
@@ -66,8 +67,8 @@ const TEXTOS: Campo[] = [
 const TODOS = [...IDENT, ...DETALLE, ...IMPORTES, ...TEXTOS];
 const identCampo = (k: keyof Siniestro) => IDENT.find((c) => c.key === k)!;
 const detCampo = (k: keyof Siniestro) => DETALLE.find((c) => c.key === k)!;
-// Detalle sin los 4 campos que se colocan a mano arriba (Estado/Cerrado y debajo 1er aviso/Abierto).
-const DETALLE_COLOCADOS = ["status", "date_closed", "claim_first_advised", "date_opened"];
+// Detalle sin los campos que se colocan a mano arriba (Estado/Cerrado, Abierto y Referencia).
+const DETALLE_COLOCADOS = ["status", "date_closed", "date_opened", "reference"];
 const DETALLE_RESTO = DETALLE.filter((c) => !DETALLE_COLOCADOS.includes(c.key as string));
 
 type Form = Record<string, string>;
@@ -87,19 +88,25 @@ function aForm(s: Siniestro): Form {
       c.tipo === "yesno"
         ? siNo(v)
         : c.tipo === "estado"
-          ? (estadoSiniestroClase(v as string) === "cerrado" ? "Closed" : estadoSiniestroClase(v as string) === "abierto" ? "Open" : "")
+          ? (estadoSiniestroClase(v as string) === "cerrado" ? "Cerrado" : estadoSiniestroClase(v as string) === "abierto" ? "Abierto" : "")
           : v == null
             ? ""
             : c.tipo === "date"
               ? String(v).slice(0, 10)
-              : String(v);
+              : c.tipo === "month"
+                ? String(v).slice(0, 7)     // 'YYYY-MM' para el selector de mes
+                : String(v);
   }
   return f;
 }
-// Formulario vacío para el alta de un siniestro nuevo.
+// Formulario vacío para el alta de un siniestro nuevo. Por defecto: Periodo = día 1 del mes en curso,
+// Estado = Open, y todas las cantidades a 0 (se cambian a mano si hace falta).
 function formVacio(): Form {
   const f: Form = {};
-  for (const c of TODOS) f[c.key as string] = "";
+  for (const c of TODOS) f[c.key as string] = c.tipo === "num" ? "0" : "";
+  const hoy = new Date();
+  f["reporting_period"] = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, "0")}`;
+  f["status"] = "Abierto";
   return f;
 }
 
@@ -155,6 +162,7 @@ export default function SiniestroModal({
       risk_code: pol?.risk_code ?? "",
       risk_inception: pol?.risk_inception ? String(pol.risk_inception).slice(0, 10) : "",
       risk_expiry: pol?.risk_expiry ? String(pol.risk_expiry).slice(0, 10) : "",
+      tpa: pol?.tpa ?? "",   // preasignado por la sección del binder (editable)
     }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selAseg, selClave]);
@@ -178,6 +186,7 @@ export default function SiniestroModal({
         if (raw === "") payload[c.key as string] = null;
         else if (c.tipo === "int") payload[c.key as string] = Number.parseInt(raw, 10);
         else if (c.tipo === "num") payload[c.key as string] = raw.replace(",", ".");
+        else if (c.tipo === "month") payload[c.key as string] = `${raw}-01`;   // Periodo = siempre día 1 del mes
         else payload[c.key as string] = raw;
       }
       const guardado = nuevo
@@ -200,6 +209,7 @@ export default function SiniestroModal({
     // · En alta sin pólizas (no hay Risk BDX): Identificación editable a mano.
     const dis =
       bloqueado ||
+      c.key === "tpa" ||   // TPA no editable: siempre viene de la sección del binder
       (!nuevo && IDENT.some((x) => x.key === c.key)) ||
       (tienePolizas && AUTO_KEYS.has(c.key as string));
     return (
@@ -209,13 +219,14 @@ export default function SiniestroModal({
           <NumberInput value={form[c.key as string] ?? ""} onChange={(v) => set(c.key as string, v)} suffix="€" disabled={dis} />
         ) : c.tipo === "date" ? (
           <input type="date" className="inp-fecha" value={form[c.key as string]} disabled={dis} style={c.center ? { textAlign: "center" } : undefined} onChange={(e) => set(c.key as string, e.target.value)} />
+        ) : c.tipo === "month" ? (
+          <input type="month" className="inp-fecha" value={form[c.key as string]} disabled={dis} onChange={(e) => set(c.key as string, e.target.value)} />
         ) : c.tipo === "int" ? (
           <NumberInput value={form[c.key as string] ?? ""} onChange={(v) => set(c.key as string, v)} decimals={0} thousands={false} disabled={dis} className={c.center ? "center" : undefined} />
         ) : c.tipo === "estado" ? (
-          <select value={form[c.key as string]} disabled={dis} onChange={(e) => set(c.key as string, e.target.value)}>
-            <option value="">—</option>
-            <option value="Open">Open</option>
-            <option value="Closed">Closed</option>
+          <select value={form[c.key as string] || "Abierto"} disabled={dis} onChange={(e) => set(c.key as string, e.target.value)}>
+            <option value="Abierto">Abierto</option>
+            <option value="Cerrado">Cerrado</option>
           </select>
         ) : c.tipo === "yesno" ? (
           <div className="radio-sino">
@@ -345,15 +356,17 @@ export default function SiniestroModal({
           <div className="recibo-box">
             <h4>Siniestro</h4>
             <div className="campos-grid campos-fill" style={{ gridTemplateColumns: "1fr 1fr" }}>
-              {/* Fila 1: Estado | Cerrado (solo si el estado es cerrado; si no, hueco) */}
+              {/* Fila 1: Estado (solo) */}
               {Campo(detCampo("status"))}
+              <div key="sp-estado" />
+              {/* Fila 2: Fecha de Apertura | Fecha de Cierre (solo si el estado es Cerrado) */}
+              {Campo({ ...detCampo("date_opened"), center: true })}
               {estadoSiniestroClase(form.status) === "cerrado"
                 ? Campo({ ...detCampo("date_closed"), center: true })
-                : <div key="sp-cerrado" />}
-              {/* Fila 2: 1er aviso (bajo Estado) | Abierto (bajo Cerrado) */}
-              {Campo({ ...detCampo("claim_first_advised"), center: true })}
-              {Campo({ ...detCampo("date_opened"), center: true })}
-              {/* Descripción: ancho completo y más alta, debajo del 1er aviso */}
+                : <div key="sp-cierre" />}
+              {/* Referencia del siniestro (campo libre, ancho completo) */}
+              {Campo(detCampo("reference"))}
+              {/* Descripción: ancho completo y más alta */}
               <div className="field" key="description" style={{ gridColumn: "1 / -1" }}>
                 <label>Descripción</label>
                 <textarea rows={5} value={form.description} disabled={bloqueado} onChange={(e) => set("description", e.target.value)} />

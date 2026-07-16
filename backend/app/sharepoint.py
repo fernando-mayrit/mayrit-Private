@@ -284,6 +284,27 @@ def leer_lista_polizas(list_title: str = "Mayrit - TPolizas") -> list[dict]:
     return leer_lista(list_title, MAPEO_POLIZAS, DATE_FIELDS_POLIZAS)
 
 
+# ── UCR (Unique Claims Reference): lista `Mayrit - TUCR` → campos del modelo Ucr ──
+MAPEO_UCR: dict[str, str] = {
+    "sp_old_id": "_OldID",
+    "titulo": "Título",
+    "coverholder": "Coverholder",
+    "umr": "UMR",
+    "section": "Section",
+    "risk_code": "RiskCode",
+    "signing": "Signing",
+    "ucr": "UCR",
+    "notas": "Notas",
+    "estado": "Estado",
+    "tpa": "TPA",
+}
+
+
+def leer_lista_ucr(list_title: str = "Mayrit - TUCR") -> list[dict]:
+    """UCR (Unique Claims Reference) mapeados a los campos del modelo Ucr."""
+    return leer_lista(list_title, MAPEO_UCR, set())
+
+
 # ── Tomadores (TClientes) → campos del modelo Tomador ──
 MAPEO_CLIENTES: dict[str, str] = {
     "nombre": "NombreCliente",

@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
-import { bdxApi, recibosApi, siniestrosApi, claimsBdxApi, triangulacionApi, lpanApi, resumenBinder, evolucionPrograma, type BdxDetalle, type BdxPreview, type BdxImportResult, type PremiumGrupo, type ClaimsBdxVista, type Triangulacion, type MetricaTriangulo, type VistaLpan, type ResumenBinder, type ResumenItem, type EvolucionPrograma, type EvolucionSerie } from "../api";
+import { bdxApi, recibosApi, siniestrosApi, claimsBdxApi, triangulacionApi, lpanApi, ucrApi, resumenBinder, evolucionPrograma, type BdxDetalle, type BdxPreview, type BdxImportResult, type PremiumGrupo, type ClaimsBdxVista, type Triangulacion, type MetricaTriangulo, type VistaLpan, type ResumenBinder, type ResumenItem, type EvolucionPrograma, type EvolucionSerie, type UcrRegistro } from "../api";
 import type { Binder, Bdx, BdxLinea, Recibo, Siniestro } from "../types";
 import BdxLineaPanel from "../components/BdxLineaPanel";
 import BdxTabla from "../components/BdxTabla";
@@ -7,6 +7,7 @@ import TablaDatos, { type Col } from "../components/TablaDatos";
 import NumberInput from "../components/NumberInput";
 import ReciboModal from "../components/ReciboModal";
 import SiniestroModal, { type PolizaBinder } from "../components/SiniestroModal";
+import UcrModal from "../components/UcrModal";
 import LpanFdoRow from "../components/LpanFdoRow";
 import LpanRow from "../components/LpanRow";
 import { pedirDestino, guardarEn } from "../download";
@@ -306,8 +307,24 @@ const SIN_DEFAULT = [
   "total_fees", "total_indemnity", "total", "date_closed", "status",
 ];
 
+// Columnas de la pestaña UCR del binder (sin UMR: es el del propio binder).
+const UCR_COLS: Col<UcrRegistro>[] = [
+  { key: "ucr", label: "UCR", tipo: "text", width: 175 },
+  { key: "section", label: "Secc.", tipo: "text", width: 55 },
+  { key: "risk_code", label: "Risk Code", tipo: "text", width: 85 },
+  { key: "signing", label: "Signing", tipo: "text", width: 150 },
+  { key: "tpa", label: "TPA", tipo: "text", width: 140 },
+  {
+    key: "estado", label: "Estado", tipo: "text", width: 95,
+    render: (u) => u.estado
+      ? <span className={`pill ${/cerrad/i.test(u.estado) ? "pill-anulado" : "pill-cobrado"}`}>{u.estado}</span>
+      : <span className="hint">—</span>,
+  },
+  { key: "notas", label: "Notas", tipo: "text", width: 240 },
+];
+
 export default function BinderDetalle({ binder }: { binder: Binder }) {
-  const [tab, setTab] = useState<"resumen" | "datos" | "bloqueo" | "bdx" | "lpan" | "premium" | "calculos" | "recibos" | "siniestros" | "claimsbdx" | "triangulacion" | "tareas">("resumen");
+  const [tab, setTab] = useState<"resumen" | "datos" | "bloqueo" | "bdx" | "lpan" | "premium" | "calculos" | "recibos" | "siniestros" | "ucr" | "claimsbdx" | "triangulacion" | "tareas">("resumen");
   const [resumen, setResumen] = useState<ResumenBinder | null>(null);
   const [evolucion, setEvolucion] = useState<EvolucionPrograma | null>(null);
 
@@ -318,6 +335,15 @@ export default function BinderDetalle({ binder }: { binder: Binder }) {
   const [error, setError] = useState<string | null>(null);
   const [linea, setLinea] = useState<BdxLinea | "nueva" | null>(null);
 
+  // ── UCR del binder (por UMR) ──
+  const [ucrs, setUcrs] = useState<UcrRegistro[]>([]);
+  const [ucrCargado, setUcrCargado] = useState(false);
+  const [ucrModal, setUcrModal] = useState<{ ucr: UcrRegistro | null } | null>(null);
+  async function cargarUcr() {
+    try { setUcrs((await ucrApi.listar({ umr: binder.umr ?? undefined, limit: 5000 })).items); }
+    catch { /* ignore */ } finally { setUcrCargado(true); }
+  }
+
   // ── Siniestros (Claims BDX del binder) ──
   const [siniestros, setSiniestros] = useState<Siniestro[]>([]);
   // Filas visibles de la tabla tras los filtros por columna (para que el cuadro de totales cuadre
@@ -326,14 +352,9 @@ export default function BinderDetalle({ binder }: { binder: Binder }) {
   const [sinCargado, setSinCargado] = useState(false);
   const [editSin, setEditSin] = useState<Siniestro | null>(null);
   const [nuevoSin, setNuevoSin] = useState(false);
-  const [ucrGen, setUcrGen] = useState<string | null>(null);
   const [subiendoClaims, setSubiendoClaims] = useState(false);
   const claimsBdxRef = useRef<HTMLInputElement>(null);
 
-  async function generarUcr() {
-    try { setUcrGen((await siniestrosApi.nextUcr(binder.id)).ucr); }
-    catch (e) { setError((e as Error).message); }
-  }
   async function subirClaimsBdx(file: File) {
     setSubiendoClaims(true);
     setError(null);
@@ -370,6 +391,7 @@ export default function BinderDetalle({ binder }: { binder: Binder }) {
         risk_code: risk,
         risk_inception: l.risk_inception_date ?? null,
         risk_expiry: l.risk_expiry_date ?? null,
+        tpa: section != null ? (binder.secciones[section - 1]?.tpa ?? null) : null,   // TPA de la sección
       });
     }
     return [...por.values()].sort(
@@ -417,6 +439,7 @@ export default function BinderDetalle({ binder }: { binder: Binder }) {
     // Los Claims se usan en la pestaña Siniestros y en la siniestralidad del PC.
     // Se recarga al abrir la pestaña (refleja correcciones sin re-importar de SharePoint).
     if (tab === "siniestros" || tab === "calculos") cargarSiniestros();
+    if (tab === "ucr") cargarUcr();
     if (tab === "lpan") cargarLpan();
     if (tab === "resumen") {
       resumenBinder(binder.id).then(setResumen).catch(() => {});
@@ -1013,6 +1036,9 @@ export default function BinderDetalle({ binder }: { binder: Binder }) {
         <button className={"tab" + (tab === "siniestros" ? " active" : "")} onClick={() => setTab("siniestros")}>
           Siniestros
         </button>
+        <button className={"tab" + (tab === "ucr" ? " active" : "")} onClick={() => setTab("ucr")}>
+          UCR
+        </button>
         <button className={"tab" + (tab === "claimsbdx" ? " active" : "")} onClick={() => setTab("claimsbdx")}>
           Claims BDX
         </button>
@@ -1528,13 +1554,6 @@ export default function BinderDetalle({ binder }: { binder: Binder }) {
         <>
           <div className="bdx-topbar" style={{ alignItems: "flex-start", marginBottom: 10 }}>
             <div className="bdx-acciones" style={{ position: "relative" }}>
-              {ucrGen && (
-                <span style={{ position: "absolute", top: "100%", left: 0, marginTop: 4, zIndex: 20, display: "inline-flex", alignItems: "center", gap: 6, background: "#fff7f3", border: "1px solid #f3d4c6", borderRadius: 999, padding: "4px 10px", fontSize: 13, whiteSpace: "nowrap", boxShadow: "0 2px 8px rgba(0,0,0,.12)" }}>
-                  Nuevo UCR: <b>{ucrGen}</b>
-                  <button className="btn-link btn-sm" onClick={() => navigator.clipboard?.writeText(ucrGen)}>Copiar</button>
-                  <button className="btn-link btn-sm" onClick={() => setUcrGen(null)}>✕</button>
-                </span>
-              )}
               <button
                 className="btn-primary btn-sm"
                 onClick={() => setNuevoSin(true)}
@@ -1544,9 +1563,6 @@ export default function BinderDetalle({ binder }: { binder: Binder }) {
                   : "Alta manual de un siniestro a partir de una póliza del binder"}
               >
                 ＋ Nuevo siniestro
-              </button>
-              <button className="btn-secondary btn-sm" onClick={generarUcr} title="Genera el siguiente UCR libre del binder (para copiar)">
-                🔖 Nuevo UCR
               </button>
               <button
                 className="btn-secondary btn-sm"
@@ -1647,6 +1663,37 @@ export default function BinderDetalle({ binder }: { binder: Binder }) {
             />
           )}
         </>
+      )}
+
+      {tab === "ucr" && (
+        <div style={{ marginTop: 12 }}>
+          <div className="toolbar" style={{ marginBottom: 8 }}>
+            <button className="btn-primary btn-sm" onClick={() => setUcrModal({ ucr: null })}>＋ Nuevo UCR</button>
+            <span className="hint" style={{ marginLeft: 8 }}>UCR de este binder (UMR {binder.umr ?? "—"}).</span>
+          </div>
+          {!ucrCargado ? (
+            <div className="loading">Cargando…</div>
+          ) : ucrs.length === 0 ? (
+            <div className="empty">Este binder no tiene UCR asignados. Pulsa «＋ Nuevo UCR» para añadir uno.</div>
+          ) : (
+            <TablaDatos
+              filas={ucrs}
+              columnas={UCR_COLS}
+              defaultKeys={UCR_COLS.map((c) => c.key)}
+              storageKey="mayrit.binder.ucr.tabla.v1"
+              defaultSort={{ key: "ucr", dir: 1 }}
+              rowAction={(u) => <button className="btn-icono" title="Editar" aria-label="Editar" onClick={() => setUcrModal({ ucr: u })}>✏️</button>}
+            />
+          )}
+          {ucrModal && (
+            <UcrModal
+              ucr={ucrModal.ucr}
+              umrDefault={binder.umr}
+              onClose={() => setUcrModal(null)}
+              onSaved={() => { setUcrModal(null); cargarUcr(); }}
+            />
+          )}
+        </div>
       )}
 
       {tab === "claimsbdx" && (

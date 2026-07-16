@@ -1400,3 +1400,37 @@ export const manualApi = {
   reordenar: (ids: number[]) =>
     request<import("./types").ManualSeccion[]>(`/manual/reordenar`, { method: "PUT", body: JSON.stringify({ ids }) }),
 };
+
+// ── UCR (Unique Claims Reference): tabla traída de SharePoint (Mayrit - TUCR) ──
+export interface UcrRegistro {
+  id: number;
+  coverholder: string | null;
+  umr: string | null;
+  section: string | null;
+  risk_code: string | null;
+  signing: string | null;
+  ucr: string | null;
+  notas: string | null;
+  estado: string | null;
+  tpa: string | null;
+}
+export interface UcrListado { items: UcrRegistro[]; n_total: number; }
+export interface UcrOpciones { umrs: string[]; estados: string[]; coverholders: string[]; }
+export type UcrFiltros = { umr?: string | null; estado?: string | null; coverholder?: string | null; q?: string | null; limit?: number };
+export type UcrWrite = Partial<Omit<UcrRegistro, "id">>;
+export const ucrApi = {
+  listar: (f: UcrFiltros = {}) => {
+    const qs = new URLSearchParams();
+    if (f.umr) qs.set("umr", f.umr);
+    if (f.estado) qs.set("estado", f.estado);
+    if (f.coverholder) qs.set("coverholder", f.coverholder);
+    if (f.q) qs.set("q", f.q);
+    if (f.limit) qs.set("limit", String(f.limit));
+    const s = qs.toString();
+    return request<UcrListado>(`/ucr${s ? `?${s}` : ""}`);
+  },
+  opciones: () => request<UcrOpciones>("/ucr/opciones"),
+  crear: (d: UcrWrite) => request<UcrRegistro>("/ucr", { method: "POST", body: JSON.stringify(d) }),
+  actualizar: (id: number, d: UcrWrite) => request<UcrRegistro>(`/ucr/${id}`, { method: "PUT", body: JSON.stringify(d) }),
+  borrar: (id: number) => request<void>(`/ucr/${id}`, { method: "DELETE" }),
+};

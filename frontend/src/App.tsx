@@ -24,7 +24,7 @@ import CuentasBancariasPage from "./pages/CuentasBancariasPage";
 import UsuariosPage from "./pages/UsuariosPage";
 import CredencialesPage from "./pages/CredencialesPage";
 import ManualPage from "./pages/ManualPage";
-import EnConstruccion from "./components/EnConstruccion";
+import UcrPage from "./pages/UcrPage";
 import Inicio from "./components/Inicio";
 import LoginUsuario from "./components/LoginUsuario";
 import { usuariosApi, usuarioEquipo, avisosApi, type Aviso, type AvisoNivel } from "./api";
@@ -543,7 +543,7 @@ export default function App() {
           {page === "siniestros" && <SiniestrosPage />}
           {page === "tareas" && <TareasPage />}
           {page === "triangulacion" && <TriangulacionPage />}
-          {page === "ucr" && <EnConstruccion titulo="UCR" />}
+          {page === "ucr" && <UcrPage />}
           {page === "cierre" && <CierreContablePage />}
           {page === "financiero" && <FinancieroPage />}
           {page === "kpis" && <KpisPage />}

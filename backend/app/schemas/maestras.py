@@ -123,6 +123,7 @@ class SiniestroRead(BaseModel):
     date_opened: dt.date | None = None
     date_closed: dt.date | None = None
     ucr: str | None = None
+    tpa: str | None = None
     abogado: str | None = None
     last_bdx_change: dt.date | None = None
     ultima_revision: dt.date | None = None
@@ -166,6 +167,7 @@ class SiniestroUpdate(BaseModel):
     date_opened: dt.date | None = None
     date_closed: dt.date | None = None
     ucr: str | None = None
+    tpa: str | None = None
     abogado: str | None = None
     last_bdx_change: dt.date | None = None
     ultima_revision: dt.date | None = None
@@ -474,6 +476,7 @@ class BinderSeccionIn(BaseModel):
     comision: Decimal | None = None
     comision_mayrit: Decimal | None = None   # override de la comisión Mayrit del binder
     sujeto_pc: bool = False
+    tpa: str | None = None                    # TPA de la sección (preasigna el del siniestro)
     mercados: list[SeccionMercadoIn] = []
 
 
@@ -488,6 +491,7 @@ class BinderSeccionOut(BaseModel):
     comision: Decimal | None = None
     comision_mayrit: Decimal | None = None
     sujeto_pc: bool = False
+    tpa: str | None = None
     mercados: list[SeccionMercadoOut] = []
 
 

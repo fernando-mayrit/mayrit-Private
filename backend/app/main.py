@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from .routers import avisos, bdx, binders, cierre, claims_bdx, codigos_postales, comisiones, consultoria, contabilidad, credenciales, dgsfp, kpis, lpan, maestras, manual, ramos, recibos, siniestros, tareas, transferencias, triangulacion
+from .routers import avisos, bdx, binders, cierre, claims_bdx, codigos_postales, comisiones, consultoria, contabilidad, credenciales, dgsfp, kpis, lpan, maestras, manual, ramos, recibos, siniestros, tareas, transferencias, triangulacion, ucr
 
 app = FastAPI(title="Mayrit API", version="0.1.0")
 
@@ -68,6 +68,7 @@ app.include_router(binders.router)
 app.include_router(bdx.router)
 app.include_router(cierre.router)
 app.include_router(siniestros.router)
+app.include_router(ucr.router)
 app.include_router(claims_bdx.router)
 app.include_router(triangulacion.router)
 app.include_router(consultoria.router)
