@@ -555,11 +555,20 @@ Motivos de NO usar Power BI como motor único: es solo lectura (la app necesita 
 flujos), evita acoplar un sistema crítico a una licencia BI + Azure AD, y evita duplicar los cálculos
 en DAX (la fuente de verdad de los cálculos es la API).
 
-Para la conexión de Power BI a Postgres: **rol de solo lectura dedicado** (p.ej. `mayrit_bi`, NUNCA
-`mayrit_app`/`aleaadmin`) y **vistas de reporting** en la BD que entreguen los datos ya aplanados/
-calculados (desacoplar el esquema interno de los informes). **PENDIENTE**: hoy el informe conecta con
-`mayrit_app` (lectura+escritura), y esa credencial ya está guardada en el Service para el refresco
-desatendido. Crear el rol exige `aleaadmin` (`mayrit_app` no tiene CREATEROLE).
+Para la conexión de Power BI a Postgres: **rol de solo lectura dedicado** y **vistas de reporting** en la
+BD que entreguen los datos ya aplanados/calculados (desacoplar el esquema interno de los informes; esto
+último **sigue pendiente**, hoy el informe ataca las tablas).
+
+**HECHO (17/07/2026): rol `mayrit_bi` creado y EN USO** por el informe (antes conectaba con
+`mayrit_app`, que puede escribir). Permisos: `CONNECT` + `USAGE` en `public` + `SELECT ON ALL TABLES`, y
+`ALTER DEFAULT PRIVILEGES FOR ROLE mayrit_app` para que **las tablas nuevas se lean solas** (si no, cada
+tabla que añada una migración habría que darla a mano). Verificado conectando como `mayrit_bi`: lee, y
+`update` / `delete` / `create table` salen **denegados**. Su contraseña, en el gestor de Contraseñas de
+la app. Crearlo exige `aleaadmin` (`mayrit_app` no tiene CREATEROLE); se pasó por `~/.mayrit/.env` de
+forma temporal y se borró después.
+- Detalle por si vuelve a confundir: `aleaadmin` **es miembro de `mayrit_app`** (y de `mayrit_bi`) por
+  obra de **`azuresu`**, el superusuario de Azure, desde que se creó el servidor. No lo hicimos nosotros
+  y `aleaadmin` **no puede revocarlo** (el `REVOKE` no da error pero no hace nada).
 
 ⚠️ **CORRECCIÓN (17/07/2026): NO hace falta On-premises Data Gateway.** Lo de arriba decía que sí y es
 **falso** — se instaló uno para nada y se desinstaló. Al ser la BD **Azure** Database for PostgreSQL, es
@@ -1944,4 +1953,5 @@ candidatos a borrar; de momento se dejan, son inofensivos.
     refresca el dato.**
   - **NO usar «Publicar en la web»** del mismo menú de Power BI: eso es público sin login.
 - **Refresco automático**: ver la corrección en «Estrategia BI / reporting» — **no hace falta gateway**
-  (origen en la nube), programado **diario a las 8:00**. Pendiente: rol `mayrit_bi` de solo lectura.
+  (origen en la nube), programado **diario a las 8:00**, y el informe ya conecta con el rol de solo
+  lectura **`mayrit_bi`** (verificado: no puede escribir). El gateway que se instaló por error, quitado.
