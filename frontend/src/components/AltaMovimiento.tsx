@@ -321,14 +321,17 @@ export default function AltaMovimiento({ cuenta, cats, movimiento, onClose, onSa
                 <div key={a.id} className="adj-item">
                   <span aria-hidden>🧾</span>
                   <a href={contabilidadApi.urlAdjunto(a.id)} target="_blank" rel="noopener noreferrer" className="adj-nombre" title="Abrir el fichero">{a.nombre_export}</a>
-                  <button type="button" className="btn-link btn-sm" title="Quitar" onClick={() => quitarTicket(a.id)}>✕</button>
+                  <button type="button" className="btn-link btn-sm" title={dis ? "Pulsa «Corregir» para quitarlo" : "Quitar"}
+                    disabled={dis} onClick={() => quitarTicket(a.id)}>✕</button>
                 </div>
               ))}
             </div>
           )}
-          <label className="btn-primary btn-sm adj-subir">
+          {/* Bloqueado hasta pulsar «Corregir», igual que los campos: adjuntar es modificar el apunte. */}
+          <label className={"btn-primary btn-sm adj-subir" + (dis ? " adj-subir-dis" : "")}
+            title={dis ? "Pulsa «Corregir» para adjuntar" : undefined}>
             {subiendoAdj ? "Subiendo…" : "📎 Adjuntar ticket"}
-            <input type="file" accept="image/*,application/pdf" style={{ display: "none" }} disabled={subiendoAdj}
+            <input type="file" accept="image/*,application/pdf" style={{ display: "none" }} disabled={subiendoAdj || dis}
               onChange={(e) => { const f = e.target.files?.[0]; if (f) subirTicket(f); e.target.value = ""; }} />
           </label>
           {adjuntos.length === 0 && <span className="hint" style={{ marginLeft: 8 }}>aún sin comprobante</span>}

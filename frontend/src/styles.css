@@ -1310,6 +1310,9 @@ tr.fila-inactiva td { opacity: 0.55; }
 .adj-nombre { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--naranja-osc, #b9530f); text-decoration: none; }
 .adj-nombre:hover { text-decoration: underline; }
 .adj-subir { display: inline-flex; align-items: center; cursor: pointer; }
+/* Bloqueado (apunte en solo consulta): un <label> no admite :disabled, así que se apaga a mano y se
+   ignora el clic — el <input file> va disabled aparte, esto es solo el aspecto. */
+.adj-subir-dis { background: #e3a892; cursor: default; pointer-events: none; }
 .paq-mes { display: flex; gap: 12px; margin-bottom: 10px; }
 .paq-mes .field { flex: 0 0 auto; }
 
