@@ -1879,13 +1879,34 @@ Section/RiskCode/**Signing**/UCR/Notas/Estado/**TPA**).
   `FormPanel` → el botón **Borrar** aparece **solo al editar** un siniestro existente (tras «Editar»), no en
   el alta. Pide confirmación y lo quita de la lista.
 
-### Claims BDX: comparativa INVERTIDA + Total Incurred correcto
-- La comparativa (subir un Claims BDX y contrastar con la app) ahora **mantiene los valores del fichero
-  SUBIDO** (antes eran los de la app): azul en las celdas que difieren de la app (comentario *«En la app:
-  …»*), y **siniestros nuevos (solo en el fichero) y «solo en la app» con todas las celdas en azul**.
-  (`_excel_comparacion` en `claims_bdx.py`; itera por las filas de la app para no colapsar por clave.)
-- **Total Incurred = pagado + reservas SIEMPRE** (comparativa y BDX real). Los campos `total_indemnity`/
-  `total_fees` de la BD (columnas rellenadas por el import de SharePoint, `MAPEO` en `sharepoint.py`) **NO
-  se usan en la app**: el front ya calcula el total como pagado+reservas ([BinderDetalle.tsx:294]) y esos
-  campos no se muestran en ninguna pantalla. Están **sin uso** (candidatos a borrar en el futuro; de momento
-  se dejan, son inofensivos). Botón renombrado a **«Comparar Claims Bdx»**.
+### Claims BDX: flujo «Comparar» → «Subir» (solo las celdas AZULES)
+Dos botones en la pestaña **Siniestros** del binder, pensados para encadenarse. El **azul** es el lenguaje
+común: lo pinta el Comparar (o lo marca el gestor a mano) y el Subir solo aplica eso.
+
+**1) 📤 Comparar Claims Bdx** — `POST /binders/{id}/claims-bdx/comparar` (hecho en el PC "ferna", 16/07):
+- Devuelve un Excel que **MANTIENE los valores del fichero SUBIDO** (antes traía los de la app), con **azul
+  en las celdas que difieren** de la app y comentario *«En la app: …»*. Los **siniestros nuevos** (solo en el
+  fichero) y los **«solo en la app»** salen con **TODAS las celdas en azul**.
+- `_excel_comparacion` itera sobre las **filas de la app** (no las agrupa por clave) para traer siempre bien
+  su dato en el comentario. Columna A: *Difiere / Coincide / Solo en el BDX subido / Solo en la app*.
+
+**2) 📥 Subir Claims Bdx** — `POST /binders/{id}/claims-bdx/aplicar` (hecho en el OTRO PC, commit `c4f57eb`):
+- Toma la plantilla de Lloyd's con celdas en AZUL y **copia SOLO esas celdas** al campo del siniestro
+  (`_H2F` mapea cabecera → campo del `Siniestro`).
+- **Emparejamiento**: por (Certificate + Claim Reference); si no casa, por Claim Reference sola **si es
+  única**. Misma referencia en varios siniestros y sin casar por certificado → **fila ambigua, se omite**.
+  Fila que no casa con ninguno → **siniestro NUEVO** (se crea con TODOS sus campos; ahí el azul no importa).
+- **`dry_run=true` por defecto**: NO escribe, solo devuelve el resumen. El front **simula primero**, enseña un
+  `confirm` con el detalle (N nuevos, M campos en K siniestros, ambiguas omitidas) y **solo escribe si
+  confirmas**. Binder en estado **«Cerrado» → 409** (no admite escrituras).
+- **Detección del azul** (`_es_azul`): acepta el `9BC2E6` del Comparar y **cualquier azul parecido** (azul
+  dominante, ni gris ni blanco). Necesita los ESTILOS del xlsx → `_leer_bdx_con_azules` **no** usa `read_only`.
+- **Importes (clave para no duplicar)**: las reservas vienen **ya netas** de los pagos → se copian tal cual;
+  el **pagado**, si el flujo de pago viene en azul, se recalcula como **Previously Paid + Paid this month**;
+  y el **Total Incurred NO se guarda** (se deduce = pagado+reservas).
+
+**Total Incurred = pagado + reservas SIEMPRE** (comparativa y BDX real). Los campos `total_indemnity` /
+`total_fees` de la BD (los rellena el import de SharePoint, `MAPEO` en `sharepoint.py`) **NO se usan en la
+app**: el front ya calcula el total como pagado+reservas ([BinderDetalle.tsx:294]) y **no se muestran en
+ninguna pantalla** (venían desfasados del import y provocaron un rato de confusión). Quedan **sin uso**:
+candidatos a borrar; de momento se dejan, son inofensivos.
