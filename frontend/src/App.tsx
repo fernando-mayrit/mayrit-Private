@@ -140,9 +140,9 @@ const FACTURACION: { id: Page; label: string }[] = [
 // un aviso de acceso denegado dentro del iframe).
 const FINANCIERO: ItemMenu[] = [
   { id: "kpis", label: "KPIs" },
+  { id: "informes", label: "Power BI", soloUsuarios: ["Fernando"] },
   { id: "financiero", label: "Financiero" },
   { id: "transferencias", label: "Transferencias" },
-  { id: "informes", label: "Power BI", soloUsuarios: ["Fernando"] },
 ];
 
 // Menú lateral: Contabilidad (solo Fernando y Lola).
