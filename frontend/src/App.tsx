@@ -17,6 +17,7 @@ import CierreContablePage from "./pages/CierreContablePage";
 import ContabilidadPage from "./pages/ContabilidadPage";
 import FinancieroPage from "./pages/FinancieroPage";
 import KpisPage from "./pages/KpisPage";
+import InformesPage from "./pages/InformesPage";
 import AgenciasSuscripcionPage from "./pages/AgenciasSuscripcionPage";
 import TransferenciasPage from "./pages/TransferenciasPage";
 import RamosPage from "./pages/RamosPage";
@@ -56,6 +57,7 @@ const EMOJI: Record<string, string> = {
   transferencias: "🔁",
   contabilidad: "📒",
   kpis: "📊",
+  informes: "📈",
   agencias_dgsfp: "🏛️",
   credenciales: "🔐",
   manual: "📖",
@@ -85,6 +87,7 @@ type Page =
   | "transferencias"
   | "contabilidad"
   | "kpis"
+  | "informes"
   | "agencias_dgsfp"
   | "credenciales"
   | "manual";
@@ -133,10 +136,13 @@ const FACTURACION: { id: Page; label: string }[] = [
 ];
 
 // Menú lateral: Financiero / Caja (cuadros de pendientes de cobro/liquidación/traspaso/pago).
-const FINANCIERO: { id: Page; label: string }[] = [
+// Power BI va restringido: el informe exige licencia Pro y solo la tiene Fernando (los demás verían
+// un aviso de acceso denegado dentro del iframe).
+const FINANCIERO: ItemMenu[] = [
   { id: "kpis", label: "KPIs" },
   { id: "financiero", label: "Financiero" },
   { id: "transferencias", label: "Transferencias" },
+  { id: "informes", label: "Power BI", soloUsuarios: ["Fernando"] },
 ];
 
 // Menú lateral: Contabilidad (solo Fernando y Lola).
@@ -547,6 +553,7 @@ export default function App() {
           {page === "cierre" && <CierreContablePage />}
           {page === "financiero" && <FinancieroPage />}
           {page === "kpis" && <KpisPage />}
+          {page === "informes" && puedeVer("informes") && <InformesPage />}
           {page === "agencias_dgsfp" && <AgenciasSuscripcionPage />}
           {page === "transferencias" && <TransferenciasPage />}
           {page === "contabilidad" && puedeVer("contabilidad") && <ContabilidadPage />}

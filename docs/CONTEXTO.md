@@ -555,10 +555,24 @@ Motivos de NO usar Power BI como motor único: es solo lectura (la app necesita 
 flujos), evita acoplar un sistema crítico a una licencia BI + Azure AD, y evita duplicar los cálculos
 en DAX (la fuente de verdad de los cálculos es la API).
 
-Para la conexión de Power BI a Postgres (cuando se haga): **rol de solo lectura dedicado** (p.ej.
-`mayrit_bi`, NUNCA `mayrit_app`/`aleaadmin`), **vistas de reporting** en la BD que entreguen los datos
-ya aplanados/calculados (desacoplar el esquema interno de los informes), abrir firewall de Azure a las
-IPs de Power BI, y para refresco automático en Power BI Service un On-premises Data Gateway.
+Para la conexión de Power BI a Postgres: **rol de solo lectura dedicado** (p.ej. `mayrit_bi`, NUNCA
+`mayrit_app`/`aleaadmin`) y **vistas de reporting** en la BD que entreguen los datos ya aplanados/
+calculados (desacoplar el esquema interno de los informes). **PENDIENTE**: hoy el informe conecta con
+`mayrit_app` (lectura+escritura), y esa credencial ya está guardada en el Service para el refresco
+desatendido. Crear el rol exige `aleaadmin` (`mayrit_app` no tiene CREATEROLE).
+
+⚠️ **CORRECCIÓN (17/07/2026): NO hace falta On-premises Data Gateway.** Lo de arriba decía que sí y es
+**falso** — se instaló uno para nada y se desinstaló. Al ser la BD **Azure** Database for PostgreSQL, es
+un origen **en la nube**: el propio Service lo dice («no necesita una puerta de enlace para este modelo
+semántico, ya que todos sus orígenes de datos están en la nube») y conecta directo. Tampoco hay que
+abrir el firewall a las IPs de Power BI: ya entra por la regla de **«servicios de Azure»** (ver línea 132).
+Consecuencias buenas: el refresco corre **entero en la nube** (el PC puede estar apagado) y **la IP
+dinámica de la oficina no le afecta** (a diferencia del backup del NAS).
+
+**Refresco automático configurado (17/07/2026)**: modelo semántico «Mayrit» (área de trabajo **Mayrit -
+Negocio**, no «Mi área de trabajo») → Configuración → Actualizar: **diaria a las 8:00**, zona Madrid,
+avisos de error al propietario. Con Pro se admiten hasta 8 horas/día. El ciclo manual anterior
+(Desktop → Actualizar → Publicar) ya no es necesario para el dato.
 
 ## Sesión 17/06/2026 (tarde) — listado de binders: GWP, semáforo de notificación y migraciones
 - **Columna GWP en el listado de binders** = **Σ `total_gwp_our_line`** del Risk BDX (our line, siempre),
@@ -1910,3 +1924,24 @@ común: lo pinta el Comparar (o lo marca el gestor a mano) y el Subir solo aplic
 app**: el front ya calcula el total como pagado+reservas ([BinderDetalle.tsx:294]) y **no se muestran en
 ninguna pantalla** (venían desfasados del import y provocaron un rato de confusión). Quedan **sin uso**:
 candidatos a borrar; de momento se dejan, son inofensivos.
+
+## Sesión 17/07/2026 — Claims en el Manual + Power BI incrustado
+- **Manual**: nueva sección **«🚨 Claims: siniestros → BDX de Lloyd's»** (id 12, orden 6, tras «LPAN y
+  FDO»). Recoge en lenguaje de usuario el flujo **Comparar → Subir (solo celdas AZULES)** ya descrito
+  arriba: qué pinta de azul cada botón, emparejamiento (Certificate+Claim Reference → referencia sola si
+  es única → ambigua se omite → sin pareja = siniestro nuevo), la simulación con confirmación, la
+  tolerancia del azul, el 409 si el binder está Cerrado, y los importes (reservas ya netas, pagado =
+  Previously + This month, **Total Incurred no se guarda**: pagado+reservas). Ojo: el Manual vive en la
+  **BD** (`manual_secciones`, cuerpo en Markdown, editable desde la app) → **no está en git**.
+- **Power BI dentro de la app** (pestaña **Financiero → 📈 Power BI**, `soloUsuarios: ["Fernando"]`
+  porque la licencia Pro es suya; los demás verían un acceso denegado dentro del iframe):
+  - `frontend/src/pages/InformesPage.tsx` — **secure embed** en un iframe. La URL sale de Power BI →
+    informe → Archivo → Insertar informe → «Sitio web o portal», y va **hardcodeada** como constante
+    (`reportId` + `ctid` = tenant de SharePoint + `autoAuth=true` + `actionBarEnabled=true`). No es un
+    secreto (sin permisos no se ve nada) y así funciona en los dos equipos con un `git pull`, sin tocar
+    `~/.mayrit/.env` en cada máquina. Para cambiar de informe: sustituir el `reportId`.
+  - Botón **🔄 Recargar informe** = cambia la `key` del iframe (lo remonta). **Recarga la vista, NO
+    refresca el dato.**
+  - **NO usar «Publicar en la web»** del mismo menú de Power BI: eso es público sin login.
+- **Refresco automático**: ver la corrección en «Estrategia BI / reporting» — **no hace falta gateway**
+  (origen en la nube), programado **diario a las 8:00**. Pendiente: rol `mayrit_bi` de solo lectura.
