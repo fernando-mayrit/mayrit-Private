@@ -1949,8 +1949,9 @@ candidatos a borrar; de momento se dejan, son inofensivos.
     (`reportId` + `ctid` = tenant de SharePoint + `autoAuth=true` + `actionBarEnabled=true`). No es un
     secreto (sin permisos no se ve nada) y así funciona en los dos equipos con un `git pull`, sin tocar
     `~/.mayrit/.env` en cada máquina. Para cambiar de informe: sustituir el `reportId`.
-  - Botón **🔄 Recargar informe** = cambia la `key` del iframe (lo remonta). **Recarga la vista, NO
-    refresca el dato.**
+  - Hubo un botón «🔄 Recargar informe» (remontaba el iframe) y **se quitó el mismo día**: con el
+    refresco automático de las 8:00 no aporta (abrir la pestaña ya trae lo último) e **inducía a error**,
+    porque parecía refrescar el dato y solo recargaba la vista.
   - **NO usar «Publicar en la web»** del mismo menú de Power BI: eso es público sin login.
 - **Refresco automático**: ver la corrección en «Estrategia BI / reporting» — **no hace falta gateway**
   (origen en la nube), programado **diario a las 8:00**, y el informe ya conecta con el rol de solo

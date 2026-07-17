@@ -19,29 +19,13 @@ const INFORME_URL =
 
 export default function InformesPage() {
   const [cargando, setCargando] = useState(true);
-  // Cambiar la `key` obliga a React a tirar el iframe y montar uno nuevo: así se vuelve a pedir el
-  // informe a Power BI. OJO: esto RECARGA la vista (trae lo último PUBLICADO), no refresca el dato
-  // (el dato se actualiza desde Power BI Desktop y se publica).
-  const [recarga, setRecarga] = useState(0);
 
   return (
     <div className="container">
       <PageHeader emoji="📈" title="Power BI" />
-      <div className="pbi-barra">
-        <button
-          className="btn btn-primary"
-          onClick={() => { setCargando(true); setRecarga((n) => n + 1); }}
-        >
-          🔄 Recargar informe
-        </button>
-        <span className="hint">
-          Trae la última versión publicada. Para actualizar los datos: Power BI Desktop → Actualizar → Publicar.
-        </span>
-      </div>
       <div className="pbi-marco">
         {cargando && <div className="loading">Cargando el informe…</div>}
         <iframe
-          key={recarga}
           className="pbi-iframe"
           title="Mayrit — Power BI"
           src={INFORME_URL}
@@ -49,6 +33,10 @@ export default function InformesPage() {
           onLoad={() => setCargando(false)}
         />
       </div>
+      <p className="hint">
+        Los datos se actualizan solos cada día a las 8:00 (programado en Power BI). Al abrir esta
+        pestaña siempre ves lo último.
+      </p>
     </div>
   );
 }
