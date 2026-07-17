@@ -137,6 +137,21 @@ Resumen canónico del estado de seguridad (detalle de implementación en la sesi
   que en la revisión del 21-22/06 quedaba PENDIENTE.)*
 - **Dependencias:** vigiladas por **Dependabot** (pip/npm/actions, PR agrupado semanal).
 
+### MEJORA FUTURA (apuntada 17/07/2026): que la app lea la identidad de Easy Auth
+**No falta login** (Easy Auth + MFA ya es la puerta): falta que la app **se entere de quién ha entrado**.
+Hoy la identidad es el nombre del `.env` del equipo (`MAYRIT_USUARIO`), sin contraseña, así que todo lo
+que depende del usuario es **un cartel, no una cerradura**: `soloUsuarios` del menú (Power BI,
+Contabilidad, Presupuesto) y la privacidad del gestor de **Contraseñas** (que su propio docstring ya
+reconoce como «por BUENA FE»).
+
+Idea: leer la cabecera **`X-MS-CLIENT-PRINCIPAL-NAME`** que Easy Auth inyecta (App Service **limpia** esa
+cabecera si llega de fuera, así que no es falsificable) y usarla en vez del `.env`; si no viene (local,
+que no pasa por Easy Auth), seguir con `MAYRIT_USUARIO` y no romper el desarrollo. Haría falta mapear el
+correo de Entra → usuario de Mayrit.
+
+**Prioridad: baja.** Son ~20 líneas y es lo correcto, pero el equipo es pequeño y de confianza y la
+puerta ya lleva MFA. Hacerlo el día que se toque esa zona, no como proyecto propio.
+
 ---
 
 ## Qué es Mayrit
