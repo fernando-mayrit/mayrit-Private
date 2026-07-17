@@ -483,9 +483,10 @@ de tareas: clic derecho → "Anclar a la barra de tareas".
   `frontend/public/favicon.ico`.
 
 **Desarrollo (dos terminales):** requiere venv del backend y `npm install` en el frontend hechos.
-⚠️ El **venv vive FUERA del repo** (en `%USERPROFILE%\.mayrit\venv`), porque el repo está en
-OneDrive y OneDrive deshidrata/borra los venv que tiene dentro. Los lanzadores ya apuntan ahí.
-- Backend:  `cd backend` · `& "$env:USERPROFILE\.mayrit\venv\Scripts\uvicorn.exe" app.main:app --reload`  → http://localhost:8000
+⚠️ **CORREGIDO 17/07/2026: el venv es `backend\.venv`** (Python 3.14.5), DENTRO del repo. Aquí se decía
+que vivía en `%USERPROFILE%\.mayrit\venv` por lo de OneDrive; **esa carpeta ya no existe** y el repo
+tampoco está en OneDrive (está en `C:\Dev\mayrit`), así que dentro no molesta.
+- Backend:  `cd backend` · `.\.venv\Scripts\python.exe -m uvicorn app.main:app --port 8000`  → http://localhost:8000
 - Frontend: `cd frontend` · `npm run dev`  → http://localhost:5173
 
 ## Recibos — comisión de Mayrit (núcleo facturación/contabilidad, 17/06/2026)
@@ -1971,3 +1972,18 @@ candidatos a borrar; de momento se dejan, son inofensivos.
 - **Refresco automático**: ver la corrección en «Estrategia BI / reporting» — **no hace falta gateway**
   (origen en la nube), programado **diario a las 8:00**, y el informe ya conecta con el rol de solo
   lectura **`mayrit_bi`** (verificado: no puede escribir). El gateway que se instaló por error, quitado.
+- **Movimientos (Contabilidad)**: el apunte abre en solo consulta, pero **📎 Adjuntar ticket** y la **✕**
+  de quitar seguían activos → se podía cambiar el comprobante sin desbloquear. Ahora respetan el mismo
+  bloqueo que los campos (`dis`), y se sueltan con **✏️ Corregir**. Detalle: Adjuntar es un `<label>`
+  (no admite `:disabled`) → se capa el `<input type=file>` y se apaga con la clase `.adj-subir-dis`.
+- ⚠️ **TRAMPA que costó un rato (arreglada en la doc, ver «Desarrollo»)**: arrancar el backend con el
+  `python` del sistema **parece que funciona** — la app levanta y casi todo va — pero **le falta
+  `reportlab`**, así que «Generar justificante (PDF)» revienta con `ModuleNotFoundError` y el navegador
+  solo dice **«Failed to fetch»** (síntoma engañoso: parece red, es una dependencia). El venv bueno es
+  **`backend\.venv`**; lo de `~/.mayrit/venv` que decía esta doc ya no existe.
+- **Justificante de un apunte**: busca transferencias con la **fecha EXACTA del apunte** (`dias=0`) y del
+  mismo ámbito. Si sale vacío, lo normal es que **el cobro aún no esté en la app** (el banco va por
+  delante del Premium): las transferencias de `Primas/Cobro` nacen al machear el Premium con el recibo.
+  Comprobado el 17/07 con 3 apuntes de NUVU y 1 de MYRTEA: no existía NINGUNA transferencia con esos
+  importes, ni con otra fecha → no era un fallo. Si algún día existen pero con fecha ±1, hay parámetro
+  `dias` para abrir la ventana.
