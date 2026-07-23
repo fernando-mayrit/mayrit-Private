@@ -42,14 +42,27 @@ export function estadoCobro(importe: unknown, cobrado: unknown, estado?: string 
   return { label: "Cobrado", clase: "cobrado" };
 }
 
-// Signing de un FDO → formato UCR (convención Xchanging, al revés). El FDO viene como
-// `XXXXX*DD/MM/YYYY` (nº, asterisco, fecha); en los UCR el criterio es la fecha delante:
-// `YYYY/MM/DD*XXXXX`. Devuelve "" si el signing es nulo o no casa el patrón (FDO sin signing).
+// Signing de un FDO → formato UCR (convención Xchanging, al revés). En los UCR el criterio es la
+// fecha delante: `YYYY/MM/DD*XXXXX`. El signing guardado viene en DOS formatos (los dos reales en
+// la BD, ~17% son del segundo): `XXXXX*DD/MM/YYYY` (nº, asterisco, fecha) y **solo dígitos**
+// `XXXXXDDMMYYYY` (los 8 últimos son la fecha; lo de delante, el número). Se aceptan ambos.
+// Devuelve "" si el signing es nulo o no casa ninguno de los dos (FDO sin signing).
 export function signingUcrDesdeFdo(s: string | null | undefined): string {
-  const m = /^\s*(\d+)\s*\*\s*(\d{1,2})\/(\d{1,2})\/(\d{4})\s*$/.exec(s ?? "");
-  if (!m) return "";
-  const [, num, d, mo, y] = m;
-  return `${y}/${mo.padStart(2, "0")}/${d.padStart(2, "0")}*${num}`;
+  const t = (s ?? "").trim();
+  const sep = /^(\d+)\s*\*\s*(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(t);
+  if (sep) {
+    const [, num, d, mo, y] = sep;
+    return `${y}/${mo.padStart(2, "0")}/${d.padStart(2, "0")}*${num}`;
+  }
+  const dig = /^(\d+)(\d{2})(\d{2})(\d{4})$/.exec(t);
+  if (dig) {
+    const [, num, d, mo, y] = dig;
+    // Comprobar que los 8 últimos dígitos son de verdad una fecha DDMMYYYY (si no, no es un signing).
+    const fecha = new Date(Number(y), Number(mo) - 1, Number(d));
+    const ok = fecha.getFullYear() === Number(y) && fecha.getMonth() === Number(mo) - 1 && fecha.getDate() === Number(d);
+    if (ok && num) return `${y}/${mo}/${d}*${num}`;
+  }
+  return "";
 }
 
 // Clase de color para el ESTADO de un siniestro (Open/Closed/Reopened/Denied…). Devuelve el

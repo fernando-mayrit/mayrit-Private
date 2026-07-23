@@ -219,6 +219,14 @@ export default function UcrModal({
           <input type="text" value={form.signing ?? ""} disabled readOnly placeholder="2020/01/14*22619" />
         </div>
       </div>
+      {/* El Signing sale solo del FDO: si el FDO elegido no lo tiene (o no se puede leer), decirlo
+          aquí — antes solo se veía «Faltan campos obligatorios: Signing» sin pistas de por qué. */}
+      {fdoKey && !(form.signing ?? "").trim() && (
+        <div className="hint" style={{ color: "var(--rojo, #c0392b)", marginTop: -4 }}>
+          El FDO elegido no tiene signing number (o está en un formato que no se reconoce): ponlo en el
+          FDO (pestaña LPAN del binder) y vuelve a elegirlo aquí.
+        </div>
+      )}
       <div className="field"><label>TPA{req}</label>
         {dis ? (
           <input type="text" value={form.tpa ?? ""} disabled />
