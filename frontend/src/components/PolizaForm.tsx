@@ -378,7 +378,8 @@ export default function PolizaForm({
     } else {
       req.push([form.pago, "El pago es obligatorio."]);
       req.push([form.comision_porc, "La comisión % es obligatoria."]);
-      req.push([form.comision_cedida_porc, "La comisión del corredor (cedida) es obligatoria."]);
+      // La comisión cedida al corredor es OPCIONAL: vacío = sin comisión cedida (Mayrit se la queda
+      // entera). La mayoría de pólizas migradas no la tienen, así que exigirla bloqueaba el guardado.
     }
     for (const [v, msg] of req) if (!String(v ?? "").trim()) return msg;
     if (num(form.comision_cedida_porc) > num(form.comision_porc))
@@ -708,7 +709,7 @@ export default function PolizaForm({
                   <NumberInput value={form.comision_porc} onChange={(v) => set("comision_porc", v)} suffix="%" thousands={false} />
                 </div>
                 <div className="field">
-                  <label>Comisión corredor % (cedida) <span className="required">*</span></label>
+                  <label>Comisión corredor % (cedida)</label>
                   <NumberInput value={form.comision_cedida_porc} onChange={(v) => set("comision_cedida_porc", v)} suffix="%" thousands={false} />
                 </div>
               </div>
