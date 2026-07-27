@@ -152,6 +152,12 @@ def _pct_lpan(v) -> str:
     return f"{s}%"
 
 
+def _tipo_lpan(gross) -> str:
+    """Tipo de transacción del LPAN: **RP** (Return Premium) si la prima es negativa, **AP** (Additional
+    Premium) en otro caso. Es el MISMO criterio que la casilla 1 del Word; el tipo NUNCA es 'PM'."""
+    return "RP" if _d(gross) < 0 else "AP"
+
+
 def _sdd_de(periodo: str) -> dt.date | None:
     """SDD (Settlement Due Date) = último día del 3er mes POSTERIOR al del Premium.
     p.ej. Premium '2025-09' -> 31-dic-2025."""
@@ -186,7 +192,7 @@ def _construir_lpan_docx(nombre: str, signing: str | None, broker_ref1: str,
 
     d = docx.Document(tmp)
     # Casilla 1: AP (Additional Premium) si la prima es positiva; RP (Return Premium) si es negativa.
-    transaccion = "RP" if _d(gross) < 0 else "AP"
+    transaccion = _tipo_lpan(gross)
     # Casilla 19: el % de brokerage sobre la prima (no el importe).
     brk_pct = (_d(brokerage) / _d(gross) * 100) if _d(gross) else 0
     todos = {"Premium": transaccion, "Yes/No": "Yes / No"}   # casilla 6: se deja "Yes / No"
@@ -357,7 +363,7 @@ class LpanCreate(BaseModel):
     periodo: str
     comision_pct: Decimal = Decimal(0)   # comisión total % del grupo a generar
     pais: str | None = None              # 'ES'/'PT' si el grupo se separa por país; None si no
-    tipo: str = "PM"
+    # El tipo (AP/RP) NO se elige: se deriva del signo de la prima al generar (_tipo_lpan).
 
 
 class LpanUpdate(BaseModel):
@@ -692,7 +698,6 @@ def generar_lpan(binder_id: int, payload: LpanCreate, db: Session = Depends(get_
     sec = int(payload.section or 0)
     comm = _d(payload.comision_pct).quantize(Decimal("0.01"))
     pais = (payload.pais or "").strip().upper() or None
-    tipo = payload.tipo or "PM"
     es_lloyds = _binder_es_lloyds(b)
     f = db.scalar(select(Fdo).where(Fdo.binder_id == binder_id, Fdo.section == sec, Fdo.risk_code == rc))
     if es_lloyds:
@@ -707,6 +712,8 @@ def generar_lpan(binder_id: int, payload: LpanCreate, db: Session = Depends(get_
         raise HTTPException(status_code=404, detail=f"No hay líneas de Premium para {rc} (sección {sec}, comisión {comm}%{suf}) en {per}.")
     if g["cobr"] != g["num"]:
         raise HTTPException(status_code=409, detail=f"Hay líneas sin cobrar en {rc} {per}{suf}: no se puede generar el LPAN.")
+    # Tipo de transacción por el signo de la prima: AP (positiva) o RP (negativa). NUNCA 'PM'.
+    tipo = _tipo_lpan(g["gross"])
     # Unicidad por (binder, sección, risk code, periodo, tipo, comisión, país) — vale con y sin FDO.
     if db.scalar(select(Lpan).where(Lpan.binder_id == binder_id, Lpan.section == sec, Lpan.risk_code == rc,
                                     Lpan.periodo == per, Lpan.tipo == tipo, Lpan.comision_pct == comm,
@@ -1197,7 +1204,7 @@ class FdoOmCreate(BaseModel):
 class LpanOmCreate(BaseModel):
     periodo: str
     risk_code: str | None = None       # si no se indica, se toma del FDO de la póliza
-    tipo: str = "PM"
+    # El tipo (AP/RP) NO se elige: se deriva del signo de la prima al generar (_tipo_lpan).
 
 
 def _poliza_o_404(poliza_id: int, db: Session) -> Poliza:
@@ -1321,7 +1328,6 @@ def generar_lpan_om(poliza_id: int, payload: LpanOmCreate, db: Session = Depends
     FDO con signing. Nombra el LPAN (Broker Ref 2) y lo deja «Work in Progress»."""
     p = _poliza_o_404(poliza_id, db)
     per = (payload.periodo or "").strip()
-    tipo = payload.tipo or "PM"
     es_lloyds = _poliza_es_lloyds(p, db)
     fdo = db.scalar(select(Fdo).where(Fdo.poliza_id == poliza_id))
     rc = (payload.risk_code or (fdo.risk_code if fdo else None) or "").strip()
@@ -1336,6 +1342,7 @@ def generar_lpan_om(poliza_id: int, payload: LpanOmCreate, db: Session = Depends
         raise HTTPException(status_code=404, detail=f"No hay recibos de la póliza en {per}.")
     if g["cobr"] != g["num"]:
         raise HTTPException(status_code=409, detail=f"Hay recibos sin cobrar en {per}: no se puede generar el LPAN.")
+    tipo = _tipo_lpan(g["gross"])   # AP (positiva) / RP (negativa); nunca 'PM'
     if db.scalar(select(Lpan).where(Lpan.poliza_id == poliza_id, Lpan.periodo == per, Lpan.tipo == tipo)):
         raise HTTPException(status_code=409, detail=f"Ya existe un LPAN {tipo} de la póliza en {per}.")
     lp = Lpan(

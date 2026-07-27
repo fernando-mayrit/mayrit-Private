@@ -259,7 +259,7 @@ export const lpanApi = {
     const filename = m ? decodeURIComponent(m[1]) : `FDO_${fdoId}.docx`;
     return { blob: await res.blob(), filename };
   },
-  generarLpan: (binderId: number, data: { risk_code: string; section: number; periodo: string; comision_pct: number | string; pais?: string | null; tipo?: string }) =>
+  generarLpan: (binderId: number, data: { risk_code: string; section: number; periodo: string; comision_pct: number | string; pais?: string | null }) =>
     request<LpanRegistro>(`/binders/${binderId}/lpan`, { method: "POST", body: JSON.stringify(data) }),
   // Descarga el Word del LPAN (regenerado desde su registro). Devuelve el blob y el nombre propuesto.
   lpanWord: async (lpanId: number): Promise<{ blob: Blob; filename: string }> => {
@@ -287,7 +287,7 @@ export const lpanApi = {
   vistaOm: (polizaId: number) => request<VistaLpanOM>(`/polizas/${polizaId}/lpan`),
   crearFdoOm: (polizaId: number, risk_code: string) =>
     request<FdoRegistro>(`/polizas/${polizaId}/fdo`, { method: "POST", body: JSON.stringify({ risk_code }) }),
-  generarLpanOm: (polizaId: number, data: { periodo: string; risk_code?: string | null; tipo?: string }) =>
+  generarLpanOm: (polizaId: number, data: { periodo: string; risk_code?: string | null }) =>
     request<LpanRegistro>(`/polizas/${polizaId}/lpan`, { method: "POST", body: JSON.stringify(data) }),
   // Descarga el Excel BDX de un periodo (blob + nombre propuesto), para guardarlo eligiendo carpeta.
   // agrupar=true → LPAN Bdx (agrupado por Risk Code); agrupar=false → Premium Bdx (plano).
