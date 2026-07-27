@@ -12,6 +12,7 @@ import ConfirmDialog from "./ConfirmDialog";
 import TomadorForm from "./TomadorForm";
 import ProductorForm from "./ProductorForm";
 import MercadoForm from "./MercadoForm";
+import PolizaLpanSection from "./PolizaLpanSection";
 import { fmtMiles, fmtFechaES } from "../format";
 
 const tomadoresApi = crud<Tomador, TomadorWrite>("/tomadores");
@@ -916,6 +917,10 @@ export default function PolizaForm({
           </div>
         </div>
       )}
+
+      {/* LPAN de la póliza (Open Market): ver los históricos y generar los nuevos por mes. Solo al
+          editar (necesita el id de la póliza). Fuera del fieldset → funciona también en solo lectura. */}
+      {poliza && <PolizaLpanSection polizaId={poliza.id} numeroPoliza={poliza.numero_poliza ?? null} />}
     </FormPanel>
 
     {confirmSinRecibos && (

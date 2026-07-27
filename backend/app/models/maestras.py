@@ -702,7 +702,10 @@ class Poliza(Base):
     asegurado: Mapped[str | None] = mapped_column(String(300))
     corredor: Mapped[str | None] = mapped_column(String(200))
     ramo: Mapped[str | None] = mapped_column(String(120))
-    mercado: Mapped[str | None] = mapped_column(String(300))
+    mercado: Mapped[str | None] = mapped_column(String(300))                # nombre/alias de mercado (texto libre, de SharePoint)
+    # Enlace al maestro de mercados: da el tipo_mercado (Lloyd's/Compañía…) que decide si la OM
+    # necesita FDO+signing+Word a Xchanging (igual que en binders vía secciones→mercados).
+    mercado_id: Mapped[int | None] = mapped_column(ForeignKey("mercados.id", ondelete="SET NULL"), index=True)
     produccion: Mapped[str | None] = mapped_column(String(120))
     tipo_documento: Mapped[str | None] = mapped_column(String(80))
     estado: Mapped[str | None] = mapped_column(String(40))

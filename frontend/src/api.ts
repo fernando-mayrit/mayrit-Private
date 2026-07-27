@@ -193,6 +193,27 @@ export interface VistaLpan {
   fdos: RiskCodeFdo[];
   periodos: PeriodoLpan[];
 }
+// ── LPAN de pólizas Open Market (OM): un bloque por mes, importes de los recibos ──
+export interface PeriodoLpanOM {
+  periodo: string;
+  periodo_label: string;
+  num_recibos: number;
+  gross_premium: number | string;
+  brokerage: number | string;
+  tax: number | string;
+  net_premium: number | string;
+  cobrado: boolean;
+  lpan: LpanRegistro | null;
+}
+export interface VistaLpanOM {
+  es_lloyds: boolean;             // mercado Lloyd's → FDO+signing obligatorio para generar
+  mercado: string | null;         // nombre del mercado
+  tipo_mercado: string | null;    // Lloyds / Compañía / …
+  risk_code: string | null;       // risk code de la póliza (del FDO o de un LPAN existente)
+  fdo: FdoRegistro | null;        // FDO de la póliza (si existe)
+  moneda: string;
+  periodos: PeriodoLpanOM[];
+}
 export interface LpanGlobal {
   id: number;
   tipo: string;
@@ -262,6 +283,12 @@ export const lpanApi = {
   borrarLpan: (lpanId: number) => request(`/lpan/${lpanId}`, { method: "DELETE" }),
   // LPAN al que pertenece una línea del Risk (o null). Para ver/corregir el LPAN desde el modal de la línea.
   deLinea: (lineId: number) => request<LpanRegistro | null>(`/bdx-lineas/${lineId}/lpan`),
+  // ── LPAN de pólizas Open Market (OM) ──
+  vistaOm: (polizaId: number) => request<VistaLpanOM>(`/polizas/${polizaId}/lpan`),
+  crearFdoOm: (polizaId: number, risk_code: string) =>
+    request<FdoRegistro>(`/polizas/${polizaId}/fdo`, { method: "POST", body: JSON.stringify({ risk_code }) }),
+  generarLpanOm: (polizaId: number, data: { periodo: string; risk_code?: string | null; tipo?: string }) =>
+    request<LpanRegistro>(`/polizas/${polizaId}/lpan`, { method: "POST", body: JSON.stringify(data) }),
   // Descarga el Excel BDX de un periodo (blob + nombre propuesto), para guardarlo eligiendo carpeta.
   // agrupar=true → LPAN Bdx (agrupado por Risk Code); agrupar=false → Premium Bdx (plano).
   bdxExcel: async (binderId: number, periodo: string, agrupar = true, pais?: string | null): Promise<{ blob: Blob; filename: string }> => {
