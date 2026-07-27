@@ -38,6 +38,16 @@ async def cabeceras_seguridad(request, call_next):
     resp.headers.setdefault("X-Frame-Options", "DENY")
     resp.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
     resp.headers.setdefault("Permissions-Policy", "geolocation=(), microphone=(), camera=()")
+    # Caché del frontend: los bundles de /assets llevan hash en el nombre (cambia en cada build) →
+    # se cachean "para siempre". El resto de HTML (index.html, la puerta de entrada del SPA) DEBE
+    # revalidarse siempre; si no, el navegador reutiliza un index.html viejo que apunta al JS viejo
+    # y no se ve el último despliegue hasta un Ctrl+F5. Con ETag, si no cambió, es un 304 barato.
+    path = request.url.path
+    ctype = resp.headers.get("content-type", "")
+    if path.startswith("/assets/"):
+        resp.headers.setdefault("Cache-Control", "public, max-age=31536000, immutable")
+    elif "text/html" in ctype:
+        resp.headers["Cache-Control"] = "no-cache"
     return resp
 
 
