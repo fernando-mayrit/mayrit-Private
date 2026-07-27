@@ -6,14 +6,13 @@ import { pedirDestino, guardarEn } from "../download";
 const WP_STATUS = ["Work in Progress", "Queried", "Completed", "Rejected"];
 
 // Sección LPAN de una póliza Open Market (OM), dentro de la ficha de la póliza. Los importes salen de
-// los RECIBOS de la póliza agrupados por mes (no hay BDX). Si el mercado es Lloyd's, hay FDO+signing y
-// Word a Xchanging; si no, el LPAN es solo control de pago. Calca la mecánica de la pestaña del binder.
+// los RECIBOS de la póliza agrupados por mes (no hay BDX). En OM NO hay FDO (eso es de binders): el
+// LPAN se genera directo; si el mercado es Lloyd's, el signing number se rellena en el propio LPAN y
+// se descarga su Word a Xchanging; si no, es solo control de pago.
 export default function PolizaLpanSection({
   polizaId,
-  numeroPoliza,
 }: {
   polizaId: number;
-  numeroPoliza: string | null;
 }) {
   const [vista, setVista] = useState<VistaLpanOM | null>(null);
   const [cargando, setCargando] = useState(true);
@@ -47,8 +46,6 @@ export default function PolizaLpanSection({
         {vista.mercado && <span className="hint" style={{ marginLeft: 8, fontWeight: 400 }}>{vista.mercado}</span>}
       </h3>
 
-      {lloyds && <FdoPanel vista={vista} polizaId={polizaId} numeroPoliza={numeroPoliza} onChanged={cargar} />}
-
       {vista.periodos.length === 0 ? (
         <div className="hint">Esta póliza no tiene recibos con periodo: no hay meses que liquidar por LPAN.</div>
       ) : (
@@ -64,6 +61,7 @@ export default function PolizaLpanSection({
                 <th className="num">Neto UW</th>
                 <th>Cobro</th>
                 <th>LPAN</th>
+                <th>Signing</th>
                 <th>WP</th>
                 <th>Procesado</th>
                 <th>SDD</th>
@@ -85,132 +83,6 @@ export default function PolizaLpanSection({
   );
 }
 
-// Panel del FDO de la póliza (solo Lloyd's): crear (con risk code), editar signing/WP/estado y Word.
-function FdoPanel({
-  vista,
-  polizaId,
-  numeroPoliza,
-  onChanged,
-}: {
-  vista: VistaLpanOM;
-  polizaId: number;
-  numeroPoliza: string | null;
-  onChanged: () => void | Promise<void>;
-}) {
-  const f = vista.fdo;
-  const [rc, setRc] = useState(vista.risk_code ?? "");
-  const [signing, setSigning] = useState(f?.signing_number ?? "");
-  const [wp, setWp] = useState(f?.work_package ?? "");
-  const [fproc, setFproc] = useState((f?.fecha_proceso ?? "").slice(0, 10));
-  const [wpStatus, setWpStatus] = useState(f?.work_package_status ?? "");
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    setSigning(f?.signing_number ?? "");
-    setWp(f?.work_package ?? "");
-    setFproc((f?.fecha_proceso ?? "").slice(0, 10));
-    setWpStatus(f?.work_package_status ?? "");
-  }, [f?.signing_number, f?.work_package, f?.fecha_proceso, f?.work_package_status]);
-
-  const completado = !!f && (f.work_package_status ?? "") === "Completed";
-  const dirty = !!f && !completado && (
-    signing !== (f.signing_number ?? "") ||
-    wp !== (f.work_package ?? "") ||
-    fproc !== (f.fecha_proceso ?? "").slice(0, 10) ||
-    wpStatus !== (f.work_package_status ?? "")
-  );
-
-  async function generarFdo() {
-    if (!rc.trim()) { alert("Indica el risk code del FDO."); return; }
-    const ref = `${numeroPoliza || "OM"} FDO-${rc.trim()}`;
-    const { handle, cancelado } = await pedirDestino(`${ref}.docx`);
-    if (cancelado) return;
-    setSaving(true);
-    try {
-      const nf = await lpanApi.crearFdoOm(polizaId, rc.trim());
-      const { blob, filename } = await lpanApi.fdoWord(nf.id);
-      await guardarEn(handle, blob, filename);
-      await onChanged();
-    } catch (e) {
-      alert((e as Error).message);
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function descargarWord() {
-    if (!f) return;
-    const { handle, cancelado } = await pedirDestino(`${numeroPoliza || "FDO"}_${f.id}.docx`);
-    if (cancelado) return;
-    setSaving(true);
-    try {
-      const { blob, filename } = await lpanApi.fdoWord(f.id);
-      await guardarEn(handle, blob, filename);
-    } catch (e) {
-      alert((e as Error).message);
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function guardar() {
-    if (!f) return;
-    setSaving(true);
-    try {
-      await lpanApi.actualizarFdo(f.id, {
-        signing_number: signing.trim() || null,
-        work_package: wp.trim() || null,
-        fecha_proceso: fproc || null,
-        work_package_status: wpStatus.trim() || null,
-      });
-      await onChanged();
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <div style={{ border: "1px solid var(--borde)", borderRadius: 8, padding: 10, marginBottom: 12 }}>
-      <h4 style={{ margin: "0 0 8px" }}>FDO (Declaración a Xchanging)</h4>
-      {!f ? (
-        <div className="field-row" style={{ alignItems: "flex-end", gap: 8 }}>
-          <div className="field" style={{ maxWidth: 140 }}>
-            <label>Risk Code <span className="required">*</span></label>
-            <input type="text" value={rc} onChange={(e) => setRc(e.target.value.toUpperCase())} placeholder="p.ej. PC" />
-          </div>
-          <button className="btn-gris btn-sm" disabled={saving} onClick={generarFdo} style={{ marginBottom: 4 }}>
-            Generar FDO
-          </button>
-        </div>
-      ) : (
-        <div className="field-row" style={{ alignItems: "flex-end", flexWrap: "wrap", gap: 8 }}>
-          <div className="field" style={{ maxWidth: 80 }}><label>Risk Code</label><div className="calc-box">{f.risk_code}</div></div>
-          <div className="field" style={{ minWidth: 160 }}><label>Signing</label>
-            <input type="text" value={signing} disabled={completado} onChange={(e) => setSigning(e.target.value)} /></div>
-          <div className="field" style={{ maxWidth: 120 }}><label>Work Package</label>
-            <input type="text" value={wp} disabled={completado} onChange={(e) => setWp(e.target.value)} /></div>
-          <div className="field" style={{ maxWidth: 150 }}><label>Procesado</label>
-            <input type="date" className="inp-fecha" value={fproc} disabled={completado} onChange={(e) => setFproc(e.target.value)} /></div>
-          <div className="field" style={{ maxWidth: 170 }}><label>Status</label>
-            <select value={wpStatus} disabled={completado} onChange={(e) => setWpStatus(e.target.value)}>
-              <option value="">—</option>
-              {WP_STATUS.map((s) => <option key={s} value={s}>{s}</option>)}
-            </select>
-          </div>
-          {!completado && (
-            <button className="btn-icono" title="Guardar el FDO" aria-label="Guardar" disabled={saving || !dirty} onClick={guardar} style={{ marginBottom: 4 }}>💾</button>
-          )}
-          <button className="btn-icono" title="Descargar el Word del FDO" aria-label="Descargar Word" disabled={saving} onClick={descargarWord} style={{ marginBottom: 4 }}>⬇️</button>
-          {completado && <span className="pill pill-cobrado" style={{ marginBottom: 6 }}>Completed 🔒</span>}
-        </div>
-      )}
-      {f && !f.signing_number && (
-        <div className="hint" style={{ marginTop: 6 }}>Para generar los LPAN de los meses hace falta el <b>signing number</b> del FDO.</div>
-      )}
-    </div>
-  );
-}
-
 // Fila de un mes: importes del mes (de sus recibos) y el LPAN (generar o seguimiento liberado/liquidado).
 function PeriodoRow({
   p,
@@ -225,6 +97,7 @@ function PeriodoRow({
 }) {
   const lp = p.lpan;
   const lloyds = vista.es_lloyds;
+  const [signing, setSigning] = useState(lp?.signing_number ?? "");
   const [wp, setWp] = useState(lp?.work_package ?? "");
   const [fproc, setFproc] = useState((lp?.fecha ?? "").slice(0, 10));
   const [sdd, setSdd] = useState((lp?.sdd ?? "").slice(0, 10));
@@ -234,15 +107,17 @@ function PeriodoRow({
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
+    setSigning(lp?.signing_number ?? "");
     setWp(lp?.work_package ?? "");
     setFproc((lp?.fecha ?? "").slice(0, 10));
     setSdd((lp?.sdd ?? "").slice(0, 10));
     setEstado(lp?.estado ?? "Work in Progress");
     setLiberado((lp?.liberado ?? "").slice(0, 10));
     setPagado((lp?.pagado ?? "").slice(0, 10));
-  }, [lp?.work_package, lp?.fecha, lp?.sdd, lp?.estado, lp?.liberado, lp?.pagado]);
+  }, [lp?.signing_number, lp?.work_package, lp?.fecha, lp?.sdd, lp?.estado, lp?.liberado, lp?.pagado]);
 
   const dirty = !!lp && (
+    signing !== (lp.signing_number ?? "") ||
     wp !== (lp.work_package ?? "") ||
     fproc !== (lp.fecha ?? "").slice(0, 10) ||
     sdd !== (lp.sdd ?? "").slice(0, 10) ||
@@ -253,7 +128,6 @@ function PeriodoRow({
 
   const brokeragePct = Number(p.gross_premium)
     ? `${fmtMiles((Number(p.brokerage) / Number(p.gross_premium)) * 100)} %` : "—";
-  const signingFalta = lloyds && !vista.fdo?.signing_number;
 
   // Generar el LPAN del mes. Lloyd's: crea + Word (eligiendo carpeta). No-Lloyd's: solo el registro.
   async function generar() {
@@ -304,6 +178,7 @@ function PeriodoRow({
     setSaving(true);
     try {
       await lpanApi.actualizarLpan(lp.id, {
+        signing_number: signing.trim() || null,
         work_package: wp.trim() || null,
         fecha: fproc || null,
         sdd: sdd || null,
@@ -350,9 +225,8 @@ function PeriodoRow({
           <span className="pill pill-pendiente" title="Prima neta 0 €: no requiere LPAN">Sin prima</span>
         ) : (
           <button className="btn-secondary btn-sm"
-            disabled={saving || !p.cobrado || signingFalta}
-            title={signingFalta ? "Falta el signing number del FDO de la póliza"
-              : !p.cobrado ? "El mes no está cobrado del todo" : "Generar el LPAN de este mes"}
+            disabled={saving || !p.cobrado}
+            title={!p.cobrado ? "El mes no está cobrado del todo" : "Generar el LPAN de este mes"}
             onClick={generar}>
             Generar LPAN
           </button>
@@ -360,6 +234,12 @@ function PeriodoRow({
       </td>
       {lp ? (
         <>
+          {/* Signing: solo aplica a OM Lloyd's; se rellena aquí (no hay FDO). */}
+          <td>{lloyds
+            ? <input type="text" value={signing} disabled={bloqueado} style={{ width: 130 }}
+                title={bloqueado ? "Bloqueado al estar Completed" : "Signing number de Xchanging"}
+                onChange={(e) => setSigning(e.target.value)} />
+            : <span className="hint">—</span>}</td>
           <td><input type="text" value={wp} disabled={bloqueado}
             title={bloqueado ? "Bloqueado al estar Completed" : undefined}
             onChange={(e) => setWp(e.target.value)} /></td>
@@ -390,7 +270,7 @@ function PeriodoRow({
         </>
       ) : (
         <>
-          <td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td></td>
+          <td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td></td>
         </>
       )}
     </tr>

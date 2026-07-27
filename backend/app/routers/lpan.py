@@ -634,17 +634,10 @@ def descargar_fdo_word(fdo_id: int, db: Session = Depends(get_db)):
     if f is None:
         raise HTTPException(status_code=404, detail=f"FDO {fdo_id} no encontrado")
     b = db.get(Binder, f.binder_id) if f.binder_id else None
-    if b is not None:
-        broker_ref = _broker_ref(b.agreement_number, f.section, f.risk_code)
-        ref1, umr = _umr_part(b.agreement_number), b.umr
-    else:
-        # FDO de póliza OM (sin binder): las referencias salen del nº de póliza.
-        p = db.get(Poliza, f.poliza_id) if f.poliza_id else None
-        if p is None:
-            raise HTTPException(status_code=404, detail="El FDO no tiene binder ni póliza asociada.")
-        broker_ref = _broker_ref_om(p, f.risk_code)
-        ref1, umr = (p.numero_poliza or ""), (p.numero_poliza or None)
-    data = _fdo_docx_bytes(broker_ref, ref1, umr, f.signing_number)
+    if b is None:
+        raise HTTPException(status_code=404, detail="El FDO no tiene binder asociado.")
+    broker_ref = _broker_ref(b.agreement_number, f.section, f.risk_code)
+    data = _fdo_docx_bytes(broker_ref, _umr_part(b.agreement_number), b.umr, f.signing_number)
     fname = f"{broker_ref}.docx"
     return StreamingResponse(
         io.BytesIO(data),
@@ -757,8 +750,10 @@ def descargar_lpan_word(lpan_id: int, db: Session = Depends(get_db)):
     else:
         p = db.get(Poliza, lp.poliza_id) if lp.poliza_id else None
         umr = (p.numero_poliza if p else None) or lp.broker_ref1
+    # Signing (casilla 8): del FDO en binder; en OM no hay FDO → el propio LPAN lo guarda.
+    signing = (f.signing_number if f else None) or lp.signing_number
     data = _lpan_docx_bytes(
-        lp.broker_ref2 or f"LPAN_{lp.id}", f.signing_number if f else None, lp.broker_ref1 or "",
+        lp.broker_ref2 or f"LPAN_{lp.id}", signing, lp.broker_ref1 or "",
         umr, lp.gross_premium, lp.brokerage, lp.tax, lp.net_premium, lp.moneda or "EUR", lp.tipo,
     )
     fname = f"{lp.broker_ref2 or ('LPAN_' + str(lp.id))}.docx"
@@ -1177,8 +1172,9 @@ def borrar_lpan(lpan_id: int, db: Session = Depends(get_db)):
 # mes (periodo 'YYYY-MM'). Mapeo validado contra los LPAN históricos migrados:
 #   gross_premium = Σ prima_neta_recibo   ·   tax = Σ (prima_bruta − prima_neta)
 #   brokerage     = Σ (comisión_retenida + comisión_cedida)   ·   net = gross − brokerage
-# Si el mercado (maestro) de la póliza es Lloyd's, exige FDO con signing (igual que un binder Lloyd's);
-# si no, el LPAN es solo control de pago. El FDO/LPAN cuelga de la póliza (poliza_id), no de binder.
+# En OM NO hay FDO (eso es de binders): el LPAN se genera directo. Si el mercado es Lloyd's, el LPAN
+# lleva signing/Word a Xchanging (el signing se rellena en el propio LPAN); si no, es control de pago.
+# El LPAN cuelga de la póliza (poliza_id), no de binder.
 
 class PeriodoLpanOM(BaseModel):
     periodo: str
@@ -1193,23 +1189,18 @@ class PeriodoLpanOM(BaseModel):
 
 
 class VistaLpanOM(BaseModel):
-    es_lloyds: bool                    # mercado Lloyd's → FDO+signing obligatorio para generar
+    es_lloyds: bool                    # mercado Lloyd's → el LPAN lleva signing/Word a Xchanging
     mercado: str | None = None         # nombre del mercado (para mostrar)
     tipo_mercado: str | None = None    # Lloyds / Compañía / …
-    risk_code: str | None = None       # risk code de la póliza (del FDO o de un LPAN existente)
-    fdo: FdoRead | None = None         # FDO de la póliza (si existe)
+    risk_code: str | None = None       # risk code de la póliza (de un LPAN existente), si lo hay
     moneda: str = "EUR"
     periodos: list[PeriodoLpanOM]
 
 
-class FdoOmCreate(BaseModel):
-    risk_code: str
-
-
 class LpanOmCreate(BaseModel):
     periodo: str
-    risk_code: str | None = None       # si no se indica, se toma del FDO de la póliza
-    # El tipo (AP/RP) NO se elige: se deriva del signo de la prima al generar (_tipo_lpan).
+    risk_code: str | None = None       # si no se indica, se toma de un LPAN existente de la póliza
+    # El tipo es siempre PM en OM (no AP/RP).
 
 
 def _poliza_o_404(poliza_id: int, db: Session) -> Poliza:
@@ -1225,11 +1216,6 @@ def _poliza_es_lloyds(p: Poliza, db: Session) -> bool:
         return False
     m = db.get(Mercado, p.mercado_id)
     return bool(m and (m.tipo_mercado or "").strip().lower() == "lloyds")
-
-
-def _broker_ref_om(p: Poliza, risk_code: str) -> str:
-    """Nombre del FDO de una póliza OM: '<nº póliza> FDO-<risk code>' (sin sección; OM no tiene)."""
-    return f"{(p.numero_poliza or 'OM').strip()} FDO-{risk_code}".strip()
 
 
 def _nombre_lpan_om(p: Poliza, periodo: str) -> str:
@@ -1277,8 +1263,8 @@ def vista_om(poliza_id: int, db: Session = Depends(get_db)):
     grupos = _recibos_om_por_periodo(db, poliza_id)
     lpans = db.scalars(select(Lpan).where(Lpan.poliza_id == poliza_id)).all()
     lpan_por_per = {lp.periodo: lp for lp in lpans}
-    fdo = db.scalar(select(Fdo).where(Fdo.poliza_id == poliza_id))
-    rc = (fdo.risk_code if fdo else None) or next((lp.risk_code for lp in lpans if lp.risk_code), None)
+    # En OM no hay FDO (eso es de binders): el risk code, si lo hay, viene de un LPAN existente.
+    rc = next((lp.risk_code for lp in lpans if lp.risk_code), None)
     moneda = (next(iter(grupos.values()))["moneda"] if grupos else None) or p.moneda or "EUR"
 
     periodos: list[PeriodoLpanOM] = []
@@ -1305,42 +1291,20 @@ def vista_om(poliza_id: int, db: Session = Depends(get_db)):
     return VistaLpanOM(
         es_lloyds=es_lloyds, mercado=(m.nombre if m else p.mercado),
         tipo_mercado=(m.tipo_mercado if m else None), risk_code=rc,
-        fdo=FdoRead.model_validate(fdo, from_attributes=True) if fdo else None,
         moneda=moneda, periodos=periodos,
     )
 
 
-@router.post("/polizas/{poliza_id}/fdo", response_model=FdoRead)
-def crear_fdo_om(poliza_id: int, payload: FdoOmCreate, db: Session = Depends(get_db)):
-    """Crea el FDO de una póliza OM (sección 0, a la espera del signing de Xchanging). Uno por póliza."""
-    p = _poliza_o_404(poliza_id, db)
-    rc = (payload.risk_code or "").strip()
-    if not rc:
-        raise HTTPException(status_code=400, detail="Falta el risk code.")
-    if db.scalar(select(Fdo).where(Fdo.poliza_id == poliza_id)):
-        raise HTTPException(status_code=409, detail="La póliza ya tiene un FDO.")
-    f = Fdo(poliza_id=poliza_id, section=0, risk_code=rc, fecha_generado=dt.date.today(),
-            broker_ref1=(p.numero_poliza or None), broker_ref2=_broker_ref_om(p, rc), moneda=(p.moneda or "EUR"))
-    db.add(f)
-    db.commit()
-    db.refresh(f)
-    return FdoRead.model_validate(f, from_attributes=True)
-
-
 @router.post("/polizas/{poliza_id}/lpan", response_model=LpanRead)
 def generar_lpan_om(poliza_id: int, payload: LpanOmCreate, db: Session = Depends(get_db)):
-    """Genera el LPAN de un mes de la póliza OM con sus recibos cobrados. Si el mercado es Lloyd's exige
-    FDO con signing. Nombra el LPAN (Broker Ref 2) y lo deja «Work in Progress»."""
+    """Genera el LPAN de un mes de la póliza OM con sus recibos cobrados. En OM NO hay FDO (eso es de
+    binders): el LPAN se genera directo; el signing number, si el mercado es Lloyd's, se rellena luego
+    en el propio LPAN (seguimiento). Nombra el LPAN (Broker Ref 2) y lo deja «Work in Progress»."""
     p = _poliza_o_404(poliza_id, db)
     per = (payload.periodo or "").strip()
-    es_lloyds = _poliza_es_lloyds(p, db)
-    fdo = db.scalar(select(Fdo).where(Fdo.poliza_id == poliza_id))
-    rc = (payload.risk_code or (fdo.risk_code if fdo else None) or "").strip()
-    if es_lloyds:
-        if fdo is None:
-            raise HTTPException(status_code=409, detail="Genera antes el FDO de la póliza (mercado Lloyd's).")
-        if not fdo.signing_number:
-            raise HTTPException(status_code=409, detail="El FDO de la póliza aún no tiene signing number.")
+    # El risk code, si lo hay, del payload o de un LPAN ya existente de la póliza (OM = un riesgo).
+    rc = (payload.risk_code or "").strip() or next(
+        (lp.risk_code for lp in db.scalars(select(Lpan).where(Lpan.poliza_id == poliza_id)).all() if lp.risk_code), "")
     grupos = _recibos_om_por_periodo(db, poliza_id)
     g = grupos.get(per)
     if not g or g["num"] == 0:
@@ -1351,7 +1315,7 @@ def generar_lpan_om(poliza_id: int, payload: LpanOmCreate, db: Session = Depends
     if db.scalar(select(Lpan).where(Lpan.poliza_id == poliza_id, Lpan.periodo == per, Lpan.tipo == tipo)):
         raise HTTPException(status_code=409, detail=f"Ya existe un LPAN {tipo} de la póliza en {per}.")
     lp = Lpan(
-        fdo_id=fdo.id if fdo else None, poliza_id=poliza_id, binder_id=None,
+        fdo_id=None, poliza_id=poliza_id, binder_id=None,
         risk_code=rc, section=0, periodo=per, tipo=tipo, comision_pct=None, pais=None,
         num_lineas=g["num"], gross_premium=g["gross"], brokerage=g["brk"], tax=g["tax"], net_premium=g["net"],
         broker_ref1=(p.numero_poliza or None), broker_ref2=_nombre_lpan_om(p, per), moneda=g["moneda"],

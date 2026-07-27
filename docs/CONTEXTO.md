@@ -734,15 +734,17 @@ El LPAN estaba montado SOLO por binder/BDX; los 64 LPAN de póliza eran datos hi
   LPAN históricos**: `gross = Σ prima_neta_recibo`, `tax = Σ (prima_bruta − prima_neta)` (ambos exactos);
   `brokerage = Σ (comisión_retenida + comisión_cedida)`, `net = gross − brokerage` (confirmado por
   Fernando). El LPAN de un mes solo se genera si **todos** sus recibos están cobrados (fecha de cobro).
-- **Router `lpan.py`** (endpoints nuevos, calcados del flujo binder): `GET /polizas/{id}/lpan` (vista por
-  mes + FDO/signing si Lloyd's; muestra también los LPAN históricos aunque no casen recibos),
-  `POST /polizas/{id}/fdo` (FDO sección 0, uno por póliza), `POST /polizas/{id}/lpan` (genera el mes;
-  exige FDO+signing si Lloyd's). Desbloqueado el **Word del FDO y del LPAN** para pólizas (usan el nº de
-  póliza como referencia/UMR). El FDO/LPAN OM cuelga de `poliza_id` (binder_id = NULL), `section = 0`,
-  `comision_pct = NULL`.
+- **SIN FDO (corregido 2026-07-27):** el FDO (Declaración de la *facility*) es **de binders**; en Open
+  Market cada riesgo se coloca directo, así que **NO hay FDO**. El LPAN se genera directo; si el mercado
+  es Lloyd's, el **signing number se rellena en el propio LPAN** (seguimiento) y de ahí sale su Word a
+  Xchanging. Quitados el endpoint `POST /polizas/{id}/fdo` y el panel FDO de la ficha.
+- **Router `lpan.py`**: `GET /polizas/{id}/lpan` (vista por mes; muestra también los LPAN históricos
+  aunque no casen recibos), `POST /polizas/{id}/lpan` (genera el mes: solo exige recibos cobrados, sin
+  FDO). El Word del LPAN toma el signing del propio LPAN cuando no hay FDO. El LPAN OM cuelga de
+  `poliza_id` (binder_id/fdo_id = NULL), `section = 0`, `comision_pct = NULL`, `tipo = PM`.
 - **UI**: sección "LPAN" en la ficha (fuera del fieldset → funciona en solo lectura): pastilla
-  Lloyd's/Compañía, panel FDO (crear con risk code / signing / Word), y tabla por mes con Generar / Word
-  / seguimiento liberado-liquidado.
+  Lloyd's/Compañía y tabla por mes con Generar / Word / seguimiento (**signing** —solo Lloyd's—, WP,
+  Procesado, SDD, Status, Liberado, Liquidado).
 - **OJO — historicos**: las cifras de los **64 LPAN migrados NO reconcilian** con sus recibos (venían del
   Excel de SharePoint con otra lógica, probablemente participación/coaseguro; el `brokerage` guardado
   está corrupto, sale `0,28`/`0,25`). No se tocaron: la vista muestra lo calculado de los recibos en la

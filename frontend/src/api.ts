@@ -206,11 +206,10 @@ export interface PeriodoLpanOM {
   lpan: LpanRegistro | null;
 }
 export interface VistaLpanOM {
-  es_lloyds: boolean;             // mercado Lloyd's → FDO+signing obligatorio para generar
+  es_lloyds: boolean;             // mercado Lloyd's → el LPAN lleva signing/Word a Xchanging
   mercado: string | null;         // nombre del mercado
   tipo_mercado: string | null;    // Lloyds / Compañía / …
-  risk_code: string | null;       // risk code de la póliza (del FDO o de un LPAN existente)
-  fdo: FdoRegistro | null;        // FDO de la póliza (si existe)
+  risk_code: string | null;       // risk code de la póliza (de un LPAN existente), si lo hay
   moneda: string;
   periodos: PeriodoLpanOM[];
 }
@@ -283,10 +282,8 @@ export const lpanApi = {
   borrarLpan: (lpanId: number) => request(`/lpan/${lpanId}`, { method: "DELETE" }),
   // LPAN al que pertenece una línea del Risk (o null). Para ver/corregir el LPAN desde el modal de la línea.
   deLinea: (lineId: number) => request<LpanRegistro | null>(`/bdx-lineas/${lineId}/lpan`),
-  // ── LPAN de pólizas Open Market (OM) ──
+  // ── LPAN de pólizas Open Market (OM) — sin FDO (eso es de binders) ──
   vistaOm: (polizaId: number) => request<VistaLpanOM>(`/polizas/${polizaId}/lpan`),
-  crearFdoOm: (polizaId: number, risk_code: string) =>
-    request<FdoRegistro>(`/polizas/${polizaId}/fdo`, { method: "POST", body: JSON.stringify({ risk_code }) }),
   generarLpanOm: (polizaId: number, data: { periodo: string; risk_code?: string | null }) =>
     request<LpanRegistro>(`/polizas/${polizaId}/lpan`, { method: "POST", body: JSON.stringify(data) }),
   // Descarga el Excel BDX de un periodo (blob + nombre propuesto), para guardarlo eligiendo carpeta.
