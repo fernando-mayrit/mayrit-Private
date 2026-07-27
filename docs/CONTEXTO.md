@@ -20,6 +20,21 @@ arreglo del 500 de Pólizas). Hecho hoy:
 - **Para cuadrar al céntimo** con el Excel: la comisión de cada póliza OM debe estar en el valor exacto
   del control (Velaris: 17,38 vs 17,3807 guardado).
 
+**Continuación 2026-07-27 (LPAN OM + alerta nueva):**
+- **Realineados LPAN OM a su mes de recibo** (solo se movió `Lpan.periodo`, NUNCA cifras ni estado de
+  recibo; cambios de DATOS en BD prod, sin commit). La vista OM empareja por *(periodo + risk code)*, así
+  que un LPAN en el mes del pago/cobro (no del recibo) salía como fila huérfana. Corregidas: QBE
+  `061 0004343` (+ risk code NR→**NC**), y 6 pólizas de 2026 (103/104/107/108/109/110). Dos con reparto
+  arreglado por Fernando: **MDAB5XQA005** (Liberty/Sist. Especiales) → todo **NC**; **171403314** (Crouco,
+  RC Prof. de Mayrit) → **CY**. Límite conocido de la vista: solo cabe **1 LPAN por (periodo, risk code)**;
+  Liberty tiene principal+suplemento en el mismo 2025-01 NC → el suplemento se deja en su mes propio para
+  que ambos se vean (colapsarían si no). Cada anualidad/renovación es una **póliza distinta** en BD.
+- **Alerta nueva `recibo_cobrado_sin_lpan`** (avisos.py, commit ee3bd77, desplegado): recibos de póliza OM
+  **cobrados desde 2026** (`prima_fecha_cobro`) SIN LPAN en póliza+periodo → campana 🔔 Alertas, nivel medio
+  (configurable). Todos los mercados (LPAN solo es obligatorio en Lloyd's, pero Mayrit lo hace también para
+  compañías para controlar pagos). Agrupa por (póliza, periodo) para no duplicar con coaseguro. Histórico
+  pre-2026 se ignora (no se rehace). Hoy salen 6. Añadido `poliza_id` al modelo Aviso para navegación futura.
+
 **Pendientes ahora:**
 - **⚠ PRIORITARIO — Triangulación: doble conteo del `to_pay`.** La siniestralidad de Triangulación sale
   INFLADA (los snapshots cuentan pagado+reservas sin restar `to_pay`) y no cuadra con el módulo de
