@@ -6,7 +6,19 @@
 > otro equipo y no se commitearon, **se perdieron** (la memoria de Claude es local de cada equipo).
 > **REGLA: las tareas compartidas van SIEMPRE aquí, en CONTEXTO.md + commit & push.**
 
-### 📌 AL DÍA (2026-07-12) — lista viva de pendientes y mejoras
+### 📌 AL DÍA (2026-07-27) — lista viva de pendientes y mejoras
+
+**Sesión 2026-07-27 (para retomar desde otro PC):** todo commiteado y pusheado a `main` (último:
+arreglo del 500 de Pólizas). Hecho hoy:
+- **LPAN de pólizas OM** completo (ver sección «LPAN de pólizas Open Market»): por **(risk code ×
+  periodo)**, reparto tecleado en la ficha (`codigos_riesgo`), importes cuadrados con `LPANs OM
+  CONTROL.xlsx`. Reparto ya grabado para las **4 pólizas de 2026** (Madrid Trophy PN, Velaris PC/TO,
+  Raíces PC/PN, Río Babel PC). Las de 2025 **no se hacen** (decisión de Fernando).
+- Bug **capacidad** (se perdían decimales, `Numeric(18,2)`→`(18,6)`); **comisión cedida** ya opcional al
+  guardar; **AP/RP en binder / PM en OM**; RP con cifras en positivo; escalado **Aviso→Alerta** de
+  vencimientos; tooltips de importe en Recibos; contraseñas públicas editables por autorizados.
+- **Para cuadrar al céntimo** con el Excel: la comisión de cada póliza OM debe estar en el valor exacto
+  del control (Velaris: 17,38 vs 17,3807 guardado).
 
 **Pendientes ahora:**
 - **⚠ PRIORITARIO — Triangulación: doble conteo del `to_pay`.** La siniestralidad de Triangulación sale
