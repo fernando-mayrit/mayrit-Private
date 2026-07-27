@@ -720,7 +720,10 @@ class Poliza(Base):
 
     limite: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
     franquicia: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
-    capacidad: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    # Capacidad = FRACCIÓN sobre el total (0.5665 = 56,65%). Necesita 6 decimales para representar
+    # porcentajes con hasta 4 decimales (el form la muestra con 4). Con Numeric(18,2) se redondeaba a
+    # 0.57 (57%) y parecía que no guardaba.
+    capacidad: Mapped[Decimal | None] = mapped_column(Numeric(18, 6))
     prima_neta: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
     impuestos_porc: Mapped[Decimal | None] = mapped_column(Numeric(7, 4))
     impuestos: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
