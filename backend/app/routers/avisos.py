@@ -44,6 +44,7 @@ TIPOS_AVISO: dict[str, dict] = {
     "poliza_sin_renovar":  {"etiqueta": "Póliza anual por vencer (aviso)", "defecto": "medio", "categoria": "dia"},
     "poliza_vence_urgente": {"etiqueta": "Póliza a punto de vencer / vencida sin cerrar", "defecto": "alto", "categoria": "alerta"},
     "lpan_mes_incompleto": {"etiqueta": "Mes con LPAN a medias", "defecto": "alto", "categoria": "alerta"},
+    "recibo_cobrado_sin_lpan": {"etiqueta": "Recibo (OM) cobrado sin LPAN", "defecto": "medio", "categoria": "alerta"},
     "tarea_pendiente":     {"etiqueta": "Tarea de binder pendiente", "defecto": "medio", "categoria": "dia"},
     "lpan_sin_procesar":   {"etiqueta": "LPAN sin WP/Procesado", "defecto": "bajo", "categoria": "dia"},
     "comision_sin_reparto": {"etiqueta": "Comisión pendiente de reparto", "defecto": "bajo", "categoria": "dia"},
@@ -58,6 +59,7 @@ class Aviso(BaseModel):
     titulo: str
     detalle: str
     binder_id: int | None = None
+    poliza_id: int | None = None    # póliza OM (aviso 'recibo_cobrado_sin_lpan')
     limite_id: int | None = None    # grupo de límite de primas (aviso 'limite_sin_notificar')
     contrato_id: int | None = None  # para avisos de consultoría
     periodo: str | None = None      # 'YYYY-MM' del cobro/factura (consultoría)
@@ -352,6 +354,66 @@ def _lpan_sin_procesar(db: Session, binders: dict[int, Binder]) -> list[Aviso]:
     return avisos
 
 
+# Solo se vigilan recibos cobrados a partir de este año: el módulo LPAN es reciente y el histórico
+# anterior NO se rehace (decisión de Fernando), así que avisar de él sería puro ruido.
+LPAN_VIGILAR_DESDE_ANYO = 2026
+
+
+def _mes_anyo(periodo: str | None) -> str:
+    """'2026-04' -> 'Abril 2026' (nunca mostrar 'YYYY-MM', se confunde con un nº de recibo)."""
+    if not periodo or "-" not in periodo:
+        return periodo or ""
+    y, m = periodo.split("-")[:2]
+    try:
+        return f"{MESES_ES[int(m)].capitalize()} {y}"
+    except (ValueError, IndexError):
+        return periodo
+
+
+def _recibo_cobrado_sin_lpan(db: Session) -> list[Aviso]:
+    """ALERTA: recibos de póliza OM ya COBRADOS (entró el dinero) que aún no tienen su LPAN.
+    El LPAN solo es obligatorio en Lloyd's, pero Mayrit lo hace también para el resto (compañías)
+    para controlar los pagos → aplica a TODOS los mercados. Un recibo 'tiene su LPAN' si existe un
+    Lpan en su misma póliza y mismo periodo (los LPAN se alinean al mes del recibo). Se agrupa por
+    (póliza, periodo) para no duplicar cuando hay varios recibos en el mismo mes (coaseguro)."""
+    lpan_ok: set[tuple[int, str]] = {
+        (pid, (per or "").strip())
+        for pid, per in db.execute(
+            select(Lpan.poliza_id, Lpan.periodo).where(Lpan.poliza_id.is_not(None))
+        ).all()
+    }
+    polizas = {p.id: p for p in db.scalars(select(Poliza)).all()}
+    # (poliza_id, periodo) -> fecha de cobro más antigua (para el texto del aviso)
+    faltan: dict[tuple[int, str], dt.date] = {}
+    for r in db.scalars(select(Recibo).where(
+            Recibo.poliza_id.is_not(None), Recibo.estado != "Anulado",
+            Recibo.prima_fecha_cobro.is_not(None), Recibo.periodo.is_not(None))).all():
+        if r.prima_fecha_cobro.year < LPAN_VIGILAR_DESDE_ANYO:
+            continue
+        key = (r.poliza_id, (r.periodo or "").strip())
+        if key in lpan_ok:
+            continue
+        prev = faltan.get(key)
+        if prev is None or r.prima_fecha_cobro < prev:
+            faltan[key] = r.prima_fecha_cobro
+
+    avisos: list[Aviso] = []
+    for (pid, per), fcobro in faltan.items():
+        p = polizas.get(pid)
+        if not p:
+            continue
+        aseg = f" ({p.asegurado})" if p.asegurado else ""
+        avisos.append(Aviso(
+            tipo="recibo_cobrado_sin_lpan", severidad="warning",
+            titulo="Recibo cobrado sin LPAN",
+            detalle=f"{p.mercado} · {p.numero_poliza}{aseg}: recibo de {_mes_anyo(per)} "
+                    f"cobrado el {fcobro.strftime('%d/%m/%Y')} y aún sin LPAN.",
+            poliza_id=pid, periodo=per, umr=p.numero_poliza, pagina="polizas",
+        ))
+    avisos.sort(key=lambda a: (a.periodo or "", a.umr or ""))
+    return avisos
+
+
 def _fmt_importe(v) -> str:
     """Importe con separador de miles (es-ES), sin decimales si es entero."""
     try:
@@ -475,6 +537,7 @@ def listar_avisos(db: Session = Depends(get_db)):
     avisos += _vencimientos_sin_renovar(db, binders)
     avisos += _tareas_pendientes(db, binders)
     avisos += _lpan_mes_incompleto(db, binders)
+    avisos += _recibo_cobrado_sin_lpan(db)
     avisos += _lpan_sin_procesar(db, binders)
     avisos += _comision_sin_reparto(db)
     return _aplicar_niveles(db, avisos)
