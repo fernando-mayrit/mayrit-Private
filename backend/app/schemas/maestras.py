@@ -353,9 +353,9 @@ class PolizaBase(BaseModel):
     notas: str | None = None
     sp_old_id: int | None = None
 
-    @field_validator("coaseguro_lineas", mode="before")
+    @field_validator("coaseguro_lineas", "codigos_riesgo", mode="before")
     @classmethod
-    def _coa_no_none(cls, v):
+    def _lista_no_none(cls, v):
         return v or []
 
 
