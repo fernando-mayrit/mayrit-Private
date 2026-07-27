@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { polizasApi, recibosApi, crud } from "../api";
 import type {
   Poliza, PolizaWrite, PolizaEmitir, EmisionPreview, Recibo,
@@ -270,6 +270,12 @@ export default function PolizaForm({
   );
   // Reparto por risk code (para los LPAN OM): la suma de los % debe dar 100 (si se rellena).
   const sumaRiskCodes = form.codigos_riesgo.reduce((a, c) => a + num(c.pct), 0);
+  // Risk codes del ramo elegido: un risk code pertenece a un ramo (BD de Ramos), así el reparto solo
+  // ofrece los del ramo de la póliza. Si el ramo aún no tiene risk codes configurados, se teclea a mano.
+  const riskCodesRamo = useMemo(
+    () => ramos.find((r) => r.nombre === form.ramo)?.risk_codes ?? [],
+    [ramos, form.ramo]
+  );
   const addRiskCode = () =>
     setForm((f) => ({ ...f, codigos_riesgo: [...f.codigos_riesgo, { codigo: "", pct: "" }] }));
   const setRiskCode = (i: number, k: "codigo" | "pct", v: string) =>
@@ -840,9 +846,24 @@ export default function PolizaForm({
               <div className="field-row" key={i} style={{ alignItems: "flex-end" }}>
                 <div className="field" style={{ flex: 1 }}>
                   {i === 0 && <label>Risk Code</label>}
-                  <input type="text" value={c.codigo} placeholder="p.ej. PC"
-                         style={{ textTransform: "uppercase" }}
-                         onChange={(e) => setRiskCode(i, "codigo", e.target.value.toUpperCase())} />
+                  {riskCodesRamo.length > 0 ? (
+                    <select value={c.codigo} onChange={(e) => setRiskCode(i, "codigo", e.target.value)}>
+                      <option value="">— elige —</option>
+                      {riskCodesRamo.map((rc) => (
+                        <option key={rc.id} value={rc.codigo}>
+                          {rc.codigo}{rc.descripcion ? ` — ${rc.descripcion}` : ""}
+                        </option>
+                      ))}
+                      {/* Conserva un código que ya no pertenece al ramo (dato antiguo o ramo cambiado). */}
+                      {c.codigo && !riskCodesRamo.some((rc) => rc.codigo === c.codigo) && (
+                        <option value={c.codigo}>{c.codigo} (no es del ramo)</option>
+                      )}
+                    </select>
+                  ) : (
+                    <input type="text" value={c.codigo} placeholder="p.ej. PC"
+                           style={{ textTransform: "uppercase" }}
+                           onChange={(e) => setRiskCode(i, "codigo", e.target.value.toUpperCase())} />
+                  )}
                 </div>
                 <div className="field" style={{ flex: 1 }}>
                   {i === 0 && <label>% del total</label>}
@@ -852,6 +873,11 @@ export default function PolizaForm({
                         style={{ background: "none", border: "none", color: "var(--rojo)", cursor: "pointer", fontSize: 11, lineHeight: 1, padding: 2, marginBottom: 22 }}>✕</button>
               </div>
             ))}
+            {form.ramo && riskCodesRamo.length === 0 && (
+              <div className="hint" style={{ marginBottom: 4 }}>
+                El ramo «{form.ramo}» no tiene risk codes configurados — se teclean a mano (o añádelos en <b>Ramos</b> para elegirlos del desplegable).
+              </div>
+            )}
             <button type="button" className="btn-secondary" style={{ marginTop: 4 }} onClick={addRiskCode}>+ Añadir risk code</button>
             {form.codigos_riesgo.length > 0 && (
               <div className="hint" style={{ marginTop: 6, color: Math.abs(sumaRiskCodes - 100) > 0.01 ? "var(--rojo)" : undefined }}>
