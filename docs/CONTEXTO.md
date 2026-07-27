@@ -712,6 +712,9 @@ la Fase 3 (Liquidaciones+LPAN), no ahora.
   - **OPEN MARKET**: **siempre 'PM'** (no depende del signo). Los 64 LPAN de póliza son PM.
   - El `tipo` guardado (`Lpan.tipo`) es lo que va en la **casilla 1 del Word** (`_construir_lpan_docx`
     lo recibe; ya no lo recalcula). El payload de generación ya no lleva `tipo`.
+  - **Cifras del Word en magnitud (positivas):** en un **RP** los importes (gross/tax/net/brokerage)
+    salen en **valor absoluto**; el tipo "RP" ya indica que es devolución, un negativo sería redundante.
+    En BD se guardan con su signo real (el RP es prima negativa); solo la presentación del Word usa `abs`.
   - Migraciones: `lpan_tipo_pm_a_ap_0001` (PM→AP/RP por signo) + `lpan_om_tipo_pm_0001` (revierte los
     de OM a PM). Estado final: binder AP 2848 / RP 46; OM PM 64; 0 PM en binders.
 - **PENDIENTE LPAN fase 2**: generar el **Excel** del Premium BDX por risk code junto con sus LPAN por

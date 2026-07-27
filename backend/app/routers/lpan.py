@@ -195,14 +195,17 @@ def _construir_lpan_docx(nombre: str, signing: str | None, broker_ref1: str,
     d = docx.Document(tmp)
     # Casilla 1: el tipo guardado del LPAN (AP/RP en binder, PM en OM). Si no viene, se deriva del signo.
     transaccion = (tipo or "").strip() or _tipo_lpan(gross)
+    # Las cifras van SIEMPRE en positivo (magnitud): en un RP (devolución) el propio tipo ya indica el
+    # sentido, así que un importe en negativo sería redundante. Se muestran en valor absoluto.
+    g_abs, t_abs, n_abs, brk_abs = abs(_d(gross)), abs(_d(tax)), abs(_d(net)), abs(_d(brokerage))
     # Casilla 19: el % de brokerage sobre la prima (no el importe).
-    brk_pct = (_d(brokerage) / _d(gross) * 100) if _d(gross) else 0
+    brk_pct = (brk_abs / g_abs * 100) if g_abs else 0
     todos = {"Premium": transaccion, "Yes/No": "Yes / No"}   # casilla 6: se deja "Yes / No"
     una_vez = {
         "Bureau": signing or "", "BrokerRef1": broker_ref1, "BrokerRef2": nombre,
-        "Line": "100%", "Taxes": _num_lpan(tax), "GrossPremium": _num_lpan(gross),
+        "Line": "100%", "Taxes": _num_lpan(t_abs), "GrossPremium": _num_lpan(g_abs),
         "Brokerage": _pct_lpan(brk_pct), "OCurrency": moneda, "SCurrency": moneda,
-        "BureauPremium": _num_lpan(net), "UMR": umr or "",
+        "BureauPremium": _num_lpan(n_abs), "UMR": umr or "",
     }
     vistos_tok: set[str] = set()
     vistos_tc: set = set()
