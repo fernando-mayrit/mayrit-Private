@@ -1,19 +1,15 @@
 import { useCallback, useEffect, useState } from "react";
-import { lpanApi, type PeriodoLpanOM, type VistaLpanOM } from "../api";
+import { lpanApi, type FilaLpanOM, type VistaLpanOM } from "../api";
 import { fmtMiles } from "../format";
 import { pedirDestino, guardarEn } from "../download";
 
 const WP_STATUS = ["Work in Progress", "Queried", "Completed", "Rejected"];
 
-// Sección LPAN de una póliza Open Market (OM), dentro de la ficha de la póliza. Los importes salen de
-// los RECIBOS de la póliza agrupados por mes (no hay BDX). En OM NO hay FDO (eso es de binders): el
-// LPAN se genera directo; si el mercado es Lloyd's, el signing number se rellena en el propio LPAN y
-// se descarga su Word a Xchanging; si no, es solo control de pago.
-export default function PolizaLpanSection({
-  polizaId,
-}: {
-  polizaId: number;
-}) {
+// Sección LPAN de una póliza Open Market (OM), dentro de la ficha. Los LPAN se parten por RISK CODE
+// (el reparto se teclea en la ficha): una fila = un (periodo × risk code) = un LPAN. Importes: gross
+// al 100% del risk code; impuestos/neto a nuestra participación (line = capacidad). En OM no hay FDO;
+// el signing (si Lloyd's) se rellena en el propio LPAN. Se genera solo con el recibo del mes cobrado.
+export default function PolizaLpanSection({ polizaId }: { polizaId: number }) {
   const [vista, setVista] = useState<VistaLpanOM | null>(null);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -44,20 +40,27 @@ export default function PolizaLpanSection({
           {lloyds ? "Lloyd's" : (vista.tipo_mercado || "No Lloyd's")}
         </span>
         {vista.mercado && <span className="hint" style={{ marginLeft: 8, fontWeight: 400 }}>{vista.mercado}</span>}
+        {vista.capacidad_pct != null && (
+          <span className="hint" style={{ marginLeft: 8, fontWeight: 400 }}>
+            · Participación {fmtMiles(vista.capacidad_pct, 2, false)}%
+          </span>
+        )}
       </h3>
 
-      {vista.periodos.length === 0 ? (
-        <div className="hint">Esta póliza no tiene recibos con periodo: no hay meses que liquidar por LPAN.</div>
+      {vista.aviso && <div className="hint" style={{ color: "var(--rojo)", marginBottom: 8 }}>⚠ {vista.aviso}</div>}
+
+      {vista.filas.length === 0 ? (
+        <div className="hint">Sin datos: esta póliza no tiene recibos con periodo, o falta el reparto por risk code.</div>
       ) : (
         <div className="emision-preview">
           <table className="compacto">
             <thead>
               <tr>
                 <th>Mes</th>
-                <th className="num">Recibos</th>
-                <th className="num">Gross</th>
-                <th className="num">Brokerage</th>
-                <th className="num">Tax</th>
+                <th>Risk Code</th>
+                <th className="num">%</th>
+                <th className="num">Gross 100%</th>
+                <th className="num">Impuestos</th>
                 <th className="num">Neto UW</th>
                 <th>Cobro</th>
                 <th>LPAN</th>
@@ -72,8 +75,8 @@ export default function PolizaLpanSection({
               </tr>
             </thead>
             <tbody>
-              {vista.periodos.map((p) => (
-                <PeriodoRow key={p.periodo} p={p} vista={vista} polizaId={polizaId} onChanged={cargar} />
+              {vista.filas.map((f) => (
+                <FilaRow key={`${f.periodo}|${f.risk_code}`} f={f} vista={vista} polizaId={polizaId} onChanged={cargar} />
               ))}
             </tbody>
           </table>
@@ -83,19 +86,19 @@ export default function PolizaLpanSection({
   );
 }
 
-// Fila de un mes: importes del mes (de sus recibos) y el LPAN (generar o seguimiento liberado/liquidado).
-function PeriodoRow({
-  p,
+// Fila de un (periodo × risk code): importes calculados + el LPAN (generar o seguimiento).
+function FilaRow({
+  f,
   vista,
   polizaId,
   onChanged,
 }: {
-  p: PeriodoLpanOM;
+  f: FilaLpanOM;
   vista: VistaLpanOM;
   polizaId: number;
   onChanged: () => void | Promise<void>;
 }) {
-  const lp = p.lpan;
+  const lp = f.lpan;
   const lloyds = vista.es_lloyds;
   const [signing, setSigning] = useState(lp?.signing_number ?? "");
   const [wp, setWp] = useState(lp?.work_package ?? "");
@@ -126,15 +129,12 @@ function PeriodoRow({
     pagado !== (lp.pagado ?? "").slice(0, 10)
   );
 
-  const brokeragePct = Number(p.gross_premium)
-    ? `${fmtMiles((Number(p.brokerage) / Number(p.gross_premium)) * 100)} %` : "—";
-
-  // Generar el LPAN del mes. Lloyd's: crea + Word (eligiendo carpeta). No-Lloyd's: solo el registro.
+  // Generar el LPAN de este (periodo × risk code). Lloyd's: crea + Word (eligiendo carpeta).
   async function generar() {
     if (!lloyds) {
       setSaving(true);
       try {
-        await lpanApi.generarLpanOm(polizaId, { periodo: p.periodo });
+        await lpanApi.generarLpanOm(polizaId, { periodo: f.periodo, risk_code: f.risk_code });
         await onChanged();
       } catch (e) {
         alert((e as Error).message);
@@ -143,11 +143,11 @@ function PeriodoRow({
       }
       return;
     }
-    const { handle, cancelado } = await pedirDestino(`LPAN ${p.periodo}.docx`);
+    const { handle, cancelado } = await pedirDestino(`LPAN ${f.risk_code} ${f.periodo}.docx`);
     if (cancelado) return;
     setSaving(true);
     try {
-      const nlp = await lpanApi.generarLpanOm(polizaId, { periodo: p.periodo });
+      const nlp = await lpanApi.generarLpanOm(polizaId, { periodo: f.periodo, risk_code: f.risk_code });
       const { blob, filename } = await lpanApi.lpanWord(nlp.id);
       await guardarEn(handle, blob, filename);
       await onChanged();
@@ -194,7 +194,7 @@ function PeriodoRow({
 
   async function borrar() {
     if (!lp) return;
-    if (!confirm(`¿Borrar el LPAN de ${p.periodo_label}?`)) return;
+    if (!confirm(`¿Borrar el LPAN de ${f.risk_code} · ${f.periodo_label}?`)) return;
     setSaving(true);
     try {
       await lpanApi.borrarLpan(lp.id);
@@ -209,24 +209,24 @@ function PeriodoRow({
 
   return (
     <tr>
-      <th>{p.periodo_label}</th>
-      <td className="num">{p.num_recibos}</td>
-      <td className="num">{fmtMiles(p.gross_premium)}</td>
-      <td className="num">{brokeragePct}</td>
-      <td className="num">{fmtMiles(p.tax)}</td>
-      <td className="num">{fmtMiles(p.net_premium)}</td>
-      <td>{p.cobrado
+      <th>{f.periodo_label}</th>
+      <th>{f.risk_code}</th>
+      <td className="num">{fmtMiles(f.pct, 2, false)}%</td>
+      <td className="num">{fmtMiles(f.gross_100)}</td>
+      <td className="num">{fmtMiles(f.tax)}</td>
+      <td className="num">{fmtMiles(f.net_premium)}</td>
+      <td>{f.cobrado
         ? <span className="pill pill-cobrado">Cobrado</span>
         : <span className="pill pill-pendiente">Pendiente</span>}</td>
       <td>
         {lp ? (
           <span className="pill pill-cobrado" title={lp.tipo}>{lp.broker_ref2 || lp.tipo}</span>
-        ) : Number(p.gross_premium) === 0 ? (
-          <span className="pill pill-pendiente" title="Prima neta 0 €: no requiere LPAN">Sin prima</span>
+        ) : Number(f.gross_100) === 0 ? (
+          <span className="pill pill-pendiente" title="Prima 0 €: no requiere LPAN">Sin prima</span>
         ) : (
           <button className="btn-secondary btn-sm"
-            disabled={saving || !p.cobrado}
-            title={!p.cobrado ? "El mes no está cobrado del todo" : "Generar el LPAN de este mes"}
+            disabled={saving || !f.cobrado}
+            title={!f.cobrado ? "El mes no está cobrado del todo" : "Generar el LPAN de este risk code"}
             onClick={generar}>
             Generar LPAN
           </button>
@@ -234,7 +234,6 @@ function PeriodoRow({
       </td>
       {lp ? (
         <>
-          {/* Signing: solo aplica a OM Lloyd's; se rellena aquí (no hay FDO). */}
           <td>{lloyds
             ? <input type="text" value={signing} disabled={bloqueado} style={{ width: 130 }}
                 title={bloqueado ? "Bloqueado al estar Completed" : "Signing number de Xchanging"}

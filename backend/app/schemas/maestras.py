@@ -336,6 +336,7 @@ class PolizaBase(BaseModel):
     renovacion_automatica: bool = False
     coaseguro: bool = False
     coaseguro_lineas: list[dict] = []   # [{mercado, participacion}] cuando hay coaseguro
+    codigos_riesgo: list[dict] = []     # [{codigo, pct}] reparto por risk code para los LPAN (OM); suman 100
     limite: Decimal | None = None
     franquicia: Decimal | None = None
     capacidad: Decimal | None = None
@@ -379,6 +380,7 @@ class PolizaUpdate(BaseModel):
     renovacion_automatica: bool | None = None
     coaseguro: bool | None = None
     coaseguro_lineas: list[dict] | None = None
+    codigos_riesgo: list[dict] | None = None
     limite: Decimal | None = None
     franquicia: Decimal | None = None
     capacidad: Decimal | None = None

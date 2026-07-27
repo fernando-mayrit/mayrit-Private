@@ -489,6 +489,7 @@ export interface Poliza {
   renovacion_automatica: boolean;
   coaseguro: boolean;
   coaseguro_lineas: { mercado: string; participacion: number | string }[];
+  codigos_riesgo: { codigo: string; pct: number | string }[];  // reparto por risk code para LPAN (OM)
   limite: string | number | null;
   franquicia: string | number | null;
   capacidad: string | number | null;

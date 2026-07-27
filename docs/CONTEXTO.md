@@ -737,27 +737,37 @@ El LPAN estaba montado SOLO por binder/BDX; los 64 LPAN de póliza eran datos hi
   Se **siembra sola** casando `polizas.mercado` (texto libre) con el **alias** del maestro (114/115
   enlazadas; 36 Lloyd's, 61 compañía, resto agencia/otros). El tipo Lloyd's sale de
   `mercado.tipo_mercado`, igual que en binders. `polizas.mercado` (texto) se conserva.
-- **Importes: de los RECIBOS de la póliza agrupados por mes** (no hay BDX). Mapeo **validado contra los
-  LPAN históricos**: `gross = Σ prima_neta_recibo`, `tax = Σ (prima_bruta − prima_neta)` (ambos exactos);
-  `brokerage = Σ (comisión_retenida + comisión_cedida)`, `net = gross − brokerage` (confirmado por
-  Fernando). El LPAN de un mes solo se genera si **todos** sus recibos están cobrados (fecha de cobro).
+- **Un LPAN por (RISK CODE × periodo) — rehecho 2026-07-27** (antes: uno por mes). Los LPAN OM se parten
+  por **risk code**, con un reparto que se **teclea en la ficha** (`polizas.codigos_riesgo` = [{codigo,
+  pct}], suman 100). Ojo, son **dos particiones distintas**: los **recibos** se parten por **coaseguro**
+  (Dale/Cincinnati) y los **LPAN** por **risk code** (PC/TO). Migración `lpan_om_riskcodes_0001`
+  (`polizas.codigos_riesgo` + `lpans.linea_pct`).
+  - **Importes** (validados contra `LPANs OM CONTROL.xlsx`): base = prima neta a **nuestra participación**
+    del periodo (Σ prima_neta de los recibos del mes) × %risk code. `tax = base × impuestos_%`,
+    `brokerage = base × comisión_%` (de la ficha, no del recibo), **`net = base + tax − brokerage`** (¡se
+    SUMA el impuesto!). **`gross_100` (casilla 18) = base / capacidad** = 100% del risk code.
+  - **Guardado del LPAN**: `gross_premium` = base (a nuestra parte), `linea_pct` = capacidad (fracción).
+    La casilla 18 al 100% se saca en el Word como `gross/linea_pct`; el Word pone **Line = capacidad %**,
+    Gross(18) al 100%, y tax/neto a nuestra parte.
+  - Solo se genera con el **recibo del mes cobrado**. Endpoint `POST /polizas/{id}/lpan` con `{periodo,
+    risk_code}`; `GET /polizas/{id}/lpan` da filas por (periodo × risk code) con importes calculados.
+  - Diferencias de céntimos con el Excel = `comision_porc` guardada (17,3807) vs 17,38 del Excel; se
+    cuadra al céntimo ajustando la comisión de la póliza.
 - **SIN FDO (corregido 2026-07-27):** el FDO (Declaración de la *facility*) es **de binders**; en Open
   Market cada riesgo se coloca directo, así que **NO hay FDO**. El LPAN se genera directo; si el mercado
   es Lloyd's, el **signing number se rellena en el propio LPAN** (seguimiento) y de ahí sale su Word a
   Xchanging. Quitados el endpoint `POST /polizas/{id}/fdo` y el panel FDO de la ficha.
-- **Router `lpan.py`**: `GET /polizas/{id}/lpan` (vista por mes; muestra también los LPAN históricos
-  aunque no casen recibos), `POST /polizas/{id}/lpan` (genera el mes: solo exige recibos cobrados, sin
-  FDO). El Word del LPAN toma el signing del propio LPAN cuando no hay FDO. El LPAN OM cuelga de
-  `poliza_id` (binder_id/fdo_id = NULL), `section = 0`, `comision_pct = NULL`, `tipo = PM`.
+- El LPAN OM cuelga de `poliza_id` (binder_id/fdo_id = NULL), `section = 0`, `comision_pct = NULL`,
+  `tipo = PM`. El Word toma el signing del propio LPAN (en OM no hay FDO).
 - **UI**: sección "LPAN" en la ficha (fuera del fieldset → funciona en solo lectura): pastilla
-  Lloyd's/Compañía y tabla por mes con Generar / Word / seguimiento (**signing** —solo Lloyd's—, WP,
-  Procesado, SDD, Status, Liberado, Liquidado).
-- **OJO — historicos**: las cifras de los **64 LPAN migrados NO reconcilian** con sus recibos (venían del
-  Excel de SharePoint con otra lógica, probablemente participación/coaseguro; el `brokerage` guardado
-  está corrupto, sale `0,28`/`0,25`). No se tocaron: la vista muestra lo calculado de los recibos en la
-  fila del mes y adjunta el LPAN histórico.
-- **Sin probar en caliente** (no se ensució producción): crear FDO / generar LPAN. La lógica es un calco
-  del binder (que funciona); **conviene una prueba real** con una póliza Lloyd's cobrada y revisar el Word.
+  Lloyd's/Compañía + participación, y tabla **por (mes × risk code)** con Generar / Word / seguimiento
+  (**signing** —solo Lloyd's—, WP, Procesado, SDD, Status, Liberado, Liquidado). El **reparto por risk
+  code** se teclea en la propia ficha (sección "Risk codes (para LPAN)").
+- **OJO — históricos**: las cifras de los **64 LPAN migrados NO reconcilian** con sus recibos (venían del
+  Excel de SharePoint con otra lógica; el `brokerage` guardado está corrupto, `0,28`/`0,25`). No se
+  tocaron; la vista los muestra igualmente aunque su risk code no esté en el reparto.
+- **Probado** contra el caso Velaris (`B1634OMCY00126040`, PC 83,33% / TO 16,67%): cuadra al céntimo con
+  el Excel de control. Falta que Fernando **teclee los risk codes** del resto de pólizas OM.
 
 ### Premium ↔ Recibo (regla añadida)
 No se puede **cobrar/liquidar/traspasar** un periodo de Premium sin **Recibo generado** (la pestaña

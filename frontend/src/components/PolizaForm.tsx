@@ -45,6 +45,7 @@ type FormState = {
   renovacion_automatica: boolean;
   coaseguro: boolean;
   coaseguro_lineas: { mercado: string; participacion: string }[];
+  codigos_riesgo: { codigo: string; pct: string }[];  // reparto por risk code (para LPAN OM)
   limite: string;
   franquicia: string;
   capacidad: string;
@@ -134,6 +135,7 @@ function desde(p: Poliza | null): FormState {
     renovacion_automatica: !!p?.renovacion_automatica,
     coaseguro: !!p?.coaseguro,
     coaseguro_lineas: (p?.coaseguro_lineas ?? []).map((l) => ({ mercado: s(l.mercado), participacion: s(l.participacion) })),
+    codigos_riesgo: (p?.codigos_riesgo ?? []).map((c) => ({ codigo: s(c.codigo), pct: s(c.pct) })),
     limite: s(p?.limite),
     franquicia: s(p?.franquicia),
     capacidad: p?.capacidad != null ? String(num(s(p.capacidad)) * 100) : "100",
@@ -266,6 +268,15 @@ export default function PolizaForm({
   const mercadosFiltrados = mercados.filter(
     (m) => !form.ramo || !m.ramos?.length || m.ramos.includes(form.ramo)
   );
+  // Reparto por risk code (para los LPAN OM): la suma de los % debe dar 100 (si se rellena).
+  const sumaRiskCodes = form.codigos_riesgo.reduce((a, c) => a + num(c.pct), 0);
+  const addRiskCode = () =>
+    setForm((f) => ({ ...f, codigos_riesgo: [...f.codigos_riesgo, { codigo: "", pct: "" }] }));
+  const setRiskCode = (i: number, k: "codigo" | "pct", v: string) =>
+    setForm((f) => ({ ...f, codigos_riesgo: f.codigos_riesgo.map((c, idx) => (idx === i ? { ...c, [k]: v } : c)) }));
+  const delRiskCode = (i: number) =>
+    setForm((f) => ({ ...f, codigos_riesgo: f.codigos_riesgo.filter((_, idx) => idx !== i) }));
+
   const addCoaLinea = () =>
     setForm((f) => ({ ...f, coaseguro_lineas: [...f.coaseguro_lineas, { mercado: "", participacion: "" }] }));
   const setCoaLinea = (i: number, k: "mercado" | "participacion", v: string) =>
@@ -311,6 +322,9 @@ export default function PolizaForm({
       coaseguro_lineas: form.coaseguro
         ? form.coaseguro_lineas.map((l) => ({ mercado: l.mercado, participacion: num(l.participacion) }))
         : [],
+      codigos_riesgo: form.codigos_riesgo
+        .filter((c) => c.codigo.trim())
+        .map((c) => ({ codigo: c.codigo.trim().toUpperCase(), pct: num(c.pct) })),
       limite: form.limite ? num(form.limite) : null,
       franquicia: form.franquicia ? num(form.franquicia) : null,
       capacidad: form.capacidad ? num(form.capacidad) / 100 : null,
@@ -396,6 +410,16 @@ export default function PolizaForm({
       }
       if (Math.abs(sumaCoaseguro - num(form.capacidad)) > 0.0001)
         return `La suma de participaciones de coaseguro (${sumaCoaseguro}%) debe ser igual a la Capacidad (${num(form.capacidad)}%).`;
+    }
+    // Reparto por risk code (opcional): si se rellena, cada línea completa y la suma = 100.
+    const rcs = form.codigos_riesgo.filter((c) => c.codigo.trim() || String(c.pct).trim());
+    if (rcs.length) {
+      for (const c of rcs) {
+        if (!c.codigo.trim()) return "Falta el risk code en una línea del reparto.";
+        if (!String(c.pct).trim()) return "Falta el % en una línea del reparto por risk code.";
+      }
+      if (Math.abs(sumaRiskCodes - 100) > 0.01)
+        return `La suma del reparto por risk code (${fmtMiles(sumaRiskCodes, 2, false)}%) debe ser 100%.`;
     }
     return null;
   }
@@ -808,6 +832,33 @@ export default function PolizaForm({
               )}
             </div>
           )}
+
+          {/* Reparto por RISK CODE (para los LPAN de OM): un LPAN por risk code. Los % suman 100. */}
+          <div style={{ marginTop: 10, borderTop: "1px dashed var(--borde)", paddingTop: 8 }}>
+            <h4 style={{ margin: "4px 0 6px" }}>Risk codes (para LPAN) <span className="hint" style={{ fontWeight: 400 }}>— reparto de la prima; suman 100%</span></h4>
+            {form.codigos_riesgo.map((c, i) => (
+              <div className="field-row" key={i} style={{ alignItems: "flex-end" }}>
+                <div className="field" style={{ flex: 1 }}>
+                  {i === 0 && <label>Risk Code</label>}
+                  <input type="text" value={c.codigo} placeholder="p.ej. PC"
+                         style={{ textTransform: "uppercase" }}
+                         onChange={(e) => setRiskCode(i, "codigo", e.target.value.toUpperCase())} />
+                </div>
+                <div className="field" style={{ flex: 1 }}>
+                  {i === 0 && <label>% del total</label>}
+                  <NumberInput value={c.pct} onChange={(v) => setRiskCode(i, "pct", v)} suffix="%" decimals={4} thousands={false} />
+                </div>
+                <button type="button" title="Quitar" onClick={() => delRiskCode(i)}
+                        style={{ background: "none", border: "none", color: "var(--rojo)", cursor: "pointer", fontSize: 11, lineHeight: 1, padding: 2, marginBottom: 22 }}>✕</button>
+              </div>
+            ))}
+            <button type="button" className="btn-secondary" style={{ marginTop: 4 }} onClick={addRiskCode}>+ Añadir risk code</button>
+            {form.codigos_riesgo.length > 0 && (
+              <div className="hint" style={{ marginTop: 6, color: Math.abs(sumaRiskCodes - 100) > 0.01 ? "var(--rojo)" : undefined }}>
+                Suma: <b>{fmtMiles(sumaRiskCodes, 2, false)}%</b>{Math.abs(sumaRiskCodes - 100) > 0.01 ? " — debe ser 100%" : " ✓"}
+              </div>
+            )}
+          </div>
 
           {!poliza && (
             <label

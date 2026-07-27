@@ -668,11 +668,16 @@ class Lpan(Base):
     # (sección, risk code, periodo) cuando hay líneas con comisiones distintas.
     comision_pct: Mapped[Decimal | None] = mapped_column(Numeric(7, 2))
     num_lineas: Mapped[int] = mapped_column(Integer, server_default="0", default=0)
-    # Importes (campos del LPAN): 18 gross our line, 19 brokerage+coverholder, 17 tax, 25 net a UW
+    # Importes (campos del LPAN): 18 gross our line, 19 brokerage+coverholder, 17 tax, 25 net a UW.
+    # En OM se guardan a NUESTRA participación (gross incluido); la casilla 18 al 100% se deriva en el
+    # Word como gross / linea_pct.
     gross_premium: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
     brokerage: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
     tax: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
     net_premium: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    # Participación (line) del LPAN como FRACCIÓN: en OM = capacidad de la póliza (0.5665 = 56,65%),
+    # con la que se saca la casilla 18 al 100% (gross/linea_pct). NULL = 100% (binders: ya van a línea).
+    linea_pct: Mapped[Decimal | None] = mapped_column(Numeric(9, 6))
     # Datos del LPAN histórico (de SharePoint TLPAN)
     signing_number: Mapped[str | None] = mapped_column(String(60))   # BureauOriginalRef (caja 8)
     work_package: Mapped[str | None] = mapped_column(String(40))
@@ -717,6 +722,9 @@ class Poliza(Base):
     renovacion_automatica: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
     coaseguro: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
     coaseguro_lineas: Mapped[list | None] = mapped_column(JSON, default=list)  # [{mercado, participacion}] cuando hay coaseguro
+    # Reparto de la prima por RISK CODE para los LPAN (OM): [{codigo, pct}], los pct suman 100.
+    # Un LPAN por (risk code, periodo). P.ej. Velaris: [{PC, 83.33}, {TO, 16.67}].
+    codigos_riesgo: Mapped[list | None] = mapped_column(JSON, default=list)
 
     limite: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
     franquicia: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))

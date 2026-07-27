@@ -193,15 +193,17 @@ export interface VistaLpan {
   fdos: RiskCodeFdo[];
   periodos: PeriodoLpan[];
 }
-// ── LPAN de pólizas Open Market (OM): un bloque por mes, importes de los recibos ──
-export interface PeriodoLpanOM {
+// ── LPAN de pólizas OM: una fila por (periodo × risk code) del reparto de la póliza ──
+export interface FilaLpanOM {
   periodo: string;
   periodo_label: string;
-  num_recibos: number;
-  gross_premium: number | string;
-  brokerage: number | string;
-  tax: number | string;
-  net_premium: number | string;
+  risk_code: string;
+  pct: number | string;           // % del risk code sobre el total (83.33)
+  linea_pct: number | string;     // nuestra participación (fracción, 0.5665)
+  gross_100: number | string;     // casilla 18 (100% del risk code)
+  tax: number | string;           // impuestos (nuestra parte)
+  brokerage: number | string;     // comisión (nuestra parte)
+  net_premium: number | string;   // neto a bureau (nuestra parte)
   cobrado: boolean;
   lpan: LpanRegistro | null;
 }
@@ -209,9 +211,11 @@ export interface VistaLpanOM {
   es_lloyds: boolean;             // mercado Lloyd's → el LPAN lleva signing/Word a Xchanging
   mercado: string | null;         // nombre del mercado
   tipo_mercado: string | null;    // Lloyds / Compañía / …
-  risk_code: string | null;       // risk code de la póliza (de un LPAN existente), si lo hay
+  capacidad_pct: number | string | null;   // nuestra participación en % (56.65)
+  codigos_riesgo: { codigo: string; pct: number | string }[];  // reparto por risk code
+  aviso: string | null;           // p.ej. falta el reparto por risk code
   moneda: string;
-  periodos: PeriodoLpanOM[];
+  filas: FilaLpanOM[];
 }
 export interface LpanGlobal {
   id: number;
@@ -284,7 +288,7 @@ export const lpanApi = {
   deLinea: (lineId: number) => request<LpanRegistro | null>(`/bdx-lineas/${lineId}/lpan`),
   // ── LPAN de pólizas Open Market (OM) — sin FDO (eso es de binders) ──
   vistaOm: (polizaId: number) => request<VistaLpanOM>(`/polizas/${polizaId}/lpan`),
-  generarLpanOm: (polizaId: number, data: { periodo: string; risk_code?: string | null }) =>
+  generarLpanOm: (polizaId: number, data: { periodo: string; risk_code: string }) =>
     request<LpanRegistro>(`/polizas/${polizaId}/lpan`, { method: "POST", body: JSON.stringify(data) }),
   // Descarga el Excel BDX de un periodo (blob + nombre propuesto), para guardarlo eligiendo carpeta.
   // agrupar=true → LPAN Bdx (agrupado por Risk Code); agrupar=false → Premium Bdx (plano).
