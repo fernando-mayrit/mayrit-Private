@@ -13,6 +13,13 @@
   INFLADA (los snapshots cuentan pagado+reservas sin restar `to_pay`) y no cuadra con el módulo de
   Siniestros. Decidir con Fernando si aplicar `− to_pay` (afecta IBNR/Ultimate de TODA la app).
 - **Triangulación por programa** — hoy básico, ampliar.
+- **Coaseguro fantasma en 8 pólizas (apuntado 2026-07-27)** — 8 pólizas **Temporal-Vencidas** tienen la
+  casilla **coaseguro marcada pero 0 líneas** de participación (suma 0% ≠ capacidad) → si se editan, la
+  validación de coaseguro las bloquea. Parecen NO ser coaseguro real (un solo mercado; se quedó la marca
+  en la migración): lo suyo es **quitarles la marca de coaseguro**. Son: `B1634OMCY00123027` (Madrid
+  Trophy Promotion), `123028` (Fund. San Pablo CEU), `123029` (Ávoris Retail), `123030` (Sun Music Bcn),
+  `123031` (Concert Studios), `123032` (Velaris-Kena), `123033` (Río Babel), `123035` (Low Festival).
+  Confirmar con Fernando antes de tocar (por si alguna sí era coaseguro y hay que ponerle las líneas).
 - **Helix MA0222HEL** — snapshots de Claims en pausa por un cambio de esquema de columnas que no reconcilia.
 - **Power BI — Ingresos** — pipeline montado (tabla `ppto_ingresos` + vista + Excel sembrado + cargador);
   falta que Fernando rellene/cargue y crear el usuario de BD `mayrit_bi`.
