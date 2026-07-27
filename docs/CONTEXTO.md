@@ -63,6 +63,16 @@ arreglo del 500 de Pólizas). Hecho hoy:
   integración y la historia de cumplimiento/seguridad (relevante para una correduría). El stack es **estándar
   y portable** (Python/React/PostgreSQL) → no hay lock-in real; se podría mover si algún día la factura se
   disparara o hiciera falta algo que Azure no dé, pero a este tamaño ninguna de esas dos cosas está cerca.
+- **BD de pruebas / staging: NO, a esta escala no compensa (decisión razonada, 2026-07-27).** Hoy el backend
+  LOCAL escribe DIRECTAMENTE en la BD de PRODUCCIÓN (no hay entorno de pruebas). Se valoró crear una
+  `mayrit_test` en el mismo servidor `alea-db` (casi gratis: solo almacenamiento) para probar migraciones y
+  operaciones destructivas sin tocar datos reales. **Descartado**: el coste no es dinero sino DISCIPLINA
+  (recordar en qué BD estás, refrescar la copia con datos reales, fricción diaria), y a vuestra escala pesa
+  más que el riesgo — 3 personas de confianza + redes de seguridad ya existentes (preview/simulación antes de
+  escribir, snapshots antes de destructivas, «nada silencioso», backups Azure 35d + NAS). Tocar producción
+  directamente es una decisión asumida, no una dejadez. (Si algún día crece el equipo o los sustos, se
+  reabre.) El riesgo residual conocido: cuando un PC aplica una migración a la BD compartida, el otro ve
+  errores hasta hacer `git pull` + esperar el deploy (pasó el 27/07 con «LPAN OM» → 500 en Pólizas).
 - **Gestor documental: SEGUIR CON SHAREPOINT para archivos de personas (decisión razonada, 2026-07-14).**
   Distinguir dos usos: (1) SharePoint como "base de datos" (listas con los BDX fila a fila) = MAL uso, es
   justo lo que Mayrit+PostgreSQL está sustituyendo → seguir migrando. (2) SharePoint como repositorio de
