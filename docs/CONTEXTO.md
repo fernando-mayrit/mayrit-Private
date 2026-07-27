@@ -13,8 +13,6 @@
   INFLADA (los snapshots cuentan pagado+reservas sin restar `to_pay`) y no cuadra con el módulo de
   Siniestros. Decidir con Fernando si aplicar `− to_pay` (afecta IBNR/Ultimate de TODA la app).
 - **Triangulación por programa** — hoy básico, ampliar.
-- **LPAN en Pólizas OM** — el LPAN solo existe por binder/BDX; falta el flujo para pólizas Open Market
-  (Lpan ya tiene `poliza_id`, 64 ligados; falta decidir alcance ver/generar/asociar).
 - **Helix MA0222HEL** — snapshots de Claims en pausa por un cambio de esquema de columnas que no reconcilia.
 - **Power BI — Ingresos** — pipeline montado (tabla `ppto_ingresos` + vista + Excel sembrado + cargador);
   falta que Fernando rellene/cargue y crear el usuario de BD `mayrit_bi`.
@@ -707,6 +705,34 @@ la Fase 3 (Liquidaciones+LPAN), no ahora.
   sección y risk code; afinar el documento Word. Definiciones de campos:
   `…\Xchanging\Application 2020\LPAN Template Definitions.xlsx`. Plantilla:
   `…\Documentacion\Plantillas\Plantilla LPAN.dotx`.
+
+### LPAN de pólizas Open Market (OM) — HECHO (2026-07-27)
+El LPAN estaba montado SOLO por binder/BDX; los 64 LPAN de póliza eran datos históricos migrados
+(SharePoint TLPAN), sin flujo vivo. Ahora la **ficha de la póliza** tiene una sección LPAN completa
+(componente `PolizaLpanSection.tsx`). **Alcance acordado: VER + GENERAR, con soporte Lloyd's.**
+- **Marcado Lloyd's**: nueva FK **`polizas.mercado_id` → `mercados.id`** (migración `poliza_mercado_id_0001`).
+  Se **siembra sola** casando `polizas.mercado` (texto libre) con el **alias** del maestro (114/115
+  enlazadas; 36 Lloyd's, 61 compañía, resto agencia/otros). El tipo Lloyd's sale de
+  `mercado.tipo_mercado`, igual que en binders. `polizas.mercado` (texto) se conserva.
+- **Importes: de los RECIBOS de la póliza agrupados por mes** (no hay BDX). Mapeo **validado contra los
+  LPAN históricos**: `gross = Σ prima_neta_recibo`, `tax = Σ (prima_bruta − prima_neta)` (ambos exactos);
+  `brokerage = Σ (comisión_retenida + comisión_cedida)`, `net = gross − brokerage` (confirmado por
+  Fernando). El LPAN de un mes solo se genera si **todos** sus recibos están cobrados (fecha de cobro).
+- **Router `lpan.py`** (endpoints nuevos, calcados del flujo binder): `GET /polizas/{id}/lpan` (vista por
+  mes + FDO/signing si Lloyd's; muestra también los LPAN históricos aunque no casen recibos),
+  `POST /polizas/{id}/fdo` (FDO sección 0, uno por póliza), `POST /polizas/{id}/lpan` (genera el mes;
+  exige FDO+signing si Lloyd's). Desbloqueado el **Word del FDO y del LPAN** para pólizas (usan el nº de
+  póliza como referencia/UMR). El FDO/LPAN OM cuelga de `poliza_id` (binder_id = NULL), `section = 0`,
+  `comision_pct = NULL`.
+- **UI**: sección "LPAN" en la ficha (fuera del fieldset → funciona en solo lectura): pastilla
+  Lloyd's/Compañía, panel FDO (crear con risk code / signing / Word), y tabla por mes con Generar / Word
+  / seguimiento liberado-liquidado.
+- **OJO — historicos**: las cifras de los **64 LPAN migrados NO reconcilian** con sus recibos (venían del
+  Excel de SharePoint con otra lógica, probablemente participación/coaseguro; el `brokerage` guardado
+  está corrupto, sale `0,28`/`0,25`). No se tocaron: la vista muestra lo calculado de los recibos en la
+  fila del mes y adjunta el LPAN histórico.
+- **Sin probar en caliente** (no se ensució producción): crear FDO / generar LPAN. La lógica es un calco
+  del binder (que funciona); **conviene una prueba real** con una póliza Lloyd's cobrada y revisar el Word.
 
 ### Premium ↔ Recibo (regla añadida)
 No se puede **cobrar/liquidar/traspasar** un periodo de Premium sin **Recibo generado** (la pestaña
