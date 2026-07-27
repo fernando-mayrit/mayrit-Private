@@ -53,6 +53,15 @@ const etiquetaEstado = (p: PendDef, r: Recibo) => {
   const ec = estadoCobro(total, hecho, r.estado);
   return { descuadre: false, clase: ec.clase, label: ec.clase === "cobrado" ? p.verde : ec.label };
 };
+// Importe de cada acción de gestión por recibo (lo mismo que se enseña en el diálogo de confirmar).
+type AccionGestion = "cobrar" | "liquidar" | "traspasar" | "pagar";
+const importeAccion = (r: Recibo, accion: AccionGestion): number => ({
+  // En comisiones se cobra la comisión (deduccion_total), no la prima (que es 0).
+  cobrar: num(r.tipo_poliza === "Comisiones" ? r.deduccion_total : r.prima_adeudada),
+  liquidar: num(r.liquidar_cobrado),
+  traspasar: num(r.comision_retenida_cobrada),
+  pagar: num(r.comision_cedida_a_pagar) || num(r.comision_cedida),
+}[accion]);
 // Etiqueta de la cuenta según el movimiento.
 const LBL_CUENTA: Record<string, string> = {
   cobrar: "Cuenta de cobro",
@@ -246,18 +255,11 @@ export default function RecibosPage() {
     }
   }
   // Pide confirmación antes de una acción íntegra (evita clics accidentales).
-  function pedirGestion(r: Recibo, accion: "cobrar" | "liquidar" | "traspasar" | "pagar", deshacer: boolean, lbl: string) {
-    const importe: Record<typeof accion, number> = {
-      // En comisiones se cobra la comisión (deduccion_total), no la prima (que es 0).
-      cobrar: num(r.tipo_poliza === "Comisiones" ? r.deduccion_total : r.prima_adeudada),
-      liquidar: num(r.liquidar_cobrado),
-      traspasar: num(r.comision_retenida_cobrada),
-      pagar: num(r.comision_cedida_a_pagar) || num(r.comision_cedida),
-    } as Record<typeof accion, number>;
+  function pedirGestion(r: Recibo, accion: AccionGestion, deshacer: boolean, lbl: string) {
     const titulo = deshacer ? `Deshacer: ${lbl}` : lbl;
     const mensaje = deshacer
       ? `Vas a deshacer "${lbl}" del recibo ${r.numero}.`
-      : `Vas a ${lbl.toLowerCase()} el recibo ${r.numero} por ${eur(importe[accion])}.`;
+      : `Vas a ${lbl.toLowerCase()} el recibo ${r.numero} por ${eur(importeAccion(r, accion))}.`;
     // Preselección de la cuenta ya usada en ese movimiento (si existe).
     const ctaPrev: Record<typeof accion, number | null> = {
       cobrar: r.cuenta_cobro_id,
@@ -478,10 +480,11 @@ export default function RecibosPage() {
             const traspasado = !!r.comision_fecha_traspaso;
             const pagado = !!r.comision_cedida_fecha_pago;
             const tieneCedida = num(r.comision_cedida) > 0 || num(r.comision_cedida_a_pagar) > 0;
-            const chip = (on: boolean, emoji: string, acc: "cobrar" | "liquidar" | "traspasar" | "pagar", lbl: string, hecho: string) => (
+            const chip = (on: boolean, emoji: string, acc: AccionGestion, lbl: string, hecho: string) => (
               <button
                 className={"acc-chip" + (on ? " on" : "")}
-                title={on ? `${hecho} ✓ — clic para deshacer` : lbl}
+                // Pendiente: además de la etiqueta (Cobrar…), el importe a mover (como en el diálogo).
+                title={on ? `${hecho} ✓ — clic para deshacer` : `${lbl}: ${eur(importeAccion(r, acc))}`}
                 onClick={() => pedirGestion(r, acc, on, lbl)}
               >
                 {emoji}
