@@ -40,6 +40,13 @@ def _puede_ver(c: Credencial, u: str) -> bool:
     return c.propietario == u or any(p.usuario == u for p in c.permisos)
 
 
+def _puede_editar(c: Credencial, u: str) -> bool:
+    """Quién puede EDITAR el contenido de una credencial: el propietario siempre; y en las PÚBLICAS,
+    cualquier usuario autorizado a verla (los de la lista de permisos). Borrar y el reparto de
+    permisos/visibilidad siguen siendo exclusivos del propietario."""
+    return c.propietario == u or (c.visibilidad == "publica" and _puede_ver(c, u))
+
+
 def _limpiar_permisos(permisos: list[str] | None, propietario: str) -> list[str]:
     """Normaliza la lista de usuarios con permiso: recorta, quita vacíos, duplicados y al propietario
     (que siempre ve las suyas)."""
@@ -89,7 +96,8 @@ class CredencialRead(BaseModel):
     notas: str | None = None
     visibilidad: str
     permisos: list[str] = []
-    es_propia: bool = False            # el usuario actual es el propietario → puede editar/borrar
+    es_propia: bool = False            # el usuario actual es el propietario → puede borrar y repartir permisos
+    puede_editar: bool = False         # puede editar el contenido (propietario, o pública compartida con él)
     created_at: dt.datetime | None = None
     updated_at: dt.datetime | None = None
 
@@ -109,6 +117,7 @@ def _read(c: Credencial, actual: str) -> CredencialRead:
         visibilidad=c.visibilidad,
         permisos=sorted(p.usuario for p in c.permisos),
         es_propia=c.propietario == actual,
+        puede_editar=_puede_editar(c, actual),
         created_at=c.created_at,
         updated_at=c.updated_at,
     )
@@ -230,8 +239,9 @@ def editar(cred_id: int, payload: CredencialUpdate, usuario: str = Query(...), d
     c = db.get(Credencial, cred_id)
     if c is None:
         raise HTTPException(status_code=404, detail="Credencial no encontrada.")
-    if c.propietario != u:
-        raise HTTPException(status_code=403, detail="Solo el propietario puede editar esta credencial.")
+    if not _puede_editar(c, u):
+        raise HTTPException(status_code=403, detail="No puedes editar esta credencial.")
+    es_propietario = c.propietario == u
     data = payload.model_dump(exclude_unset=True)
 
     if "titulo" in data and data["titulo"] is not None:
@@ -253,18 +263,20 @@ def editar(cred_id: int, payload: CredencialUpdate, usuario: str = Query(...), d
             c.secreto_cifrado = seguridad.cifrar(data["secreto"])
         except seguridad.VaultKeyMissing as e:
             raise HTTPException(status_code=503, detail=str(e))
-    if "visibilidad" in data and data["visibilidad"] in ("privada", "publica"):
-        c.visibilidad = data["visibilidad"]
-
-    # Permisos: si queda privada, se vacían; si es pública y mandan lista, se reemplaza.
-    if c.visibilidad == "privada":
-        c.permisos.clear()
-    elif "permisos" in data and data["permisos"] is not None:
-        deseados = _limpiar_permisos(data["permisos"], c.propietario)
-        c.permisos.clear()
-        db.flush()                     # aplica el borrado antes de reinsertar (evita choque con la unique)
-        for nombre in deseados:
-            c.permisos.append(CredencialPermiso(usuario=nombre))
+    # Visibilidad y reparto de permisos: SOLO el propietario los cambia. Un autorizado que edita una
+    # pública toca el contenido (título, usuario, contraseña…), no con quién se comparte.
+    if es_propietario:
+        if "visibilidad" in data and data["visibilidad"] in ("privada", "publica"):
+            c.visibilidad = data["visibilidad"]
+        # Permisos: si queda privada, se vacían; si es pública y mandan lista, se reemplaza.
+        if c.visibilidad == "privada":
+            c.permisos.clear()
+        elif "permisos" in data and data["permisos"] is not None:
+            deseados = _limpiar_permisos(data["permisos"], c.propietario)
+            c.permisos.clear()
+            db.flush()                 # aplica el borrado antes de reinsertar (evita choque con la unique)
+            for nombre in deseados:
+                c.permisos.append(CredencialPermiso(usuario=nombre))
 
     db.commit()
     db.refresh(c)

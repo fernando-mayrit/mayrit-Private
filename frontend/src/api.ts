@@ -1424,7 +1424,8 @@ export interface Credencial {
   notas: string | null;
   visibilidad: "privada" | "publica";
   permisos: string[];              // usuarios que pueden verla (si es pública)
-  es_propia: boolean;              // el usuario actual es el propietario → puede editar/borrar
+  es_propia: boolean;              // el usuario actual es el propietario → puede borrar y repartir permisos
+  puede_editar: boolean;           // puede editar el contenido (propietario, o pública compartida con él)
   created_at: string | null;
   updated_at: string | null;
 }

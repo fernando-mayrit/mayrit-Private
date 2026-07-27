@@ -15,11 +15,13 @@ type FormState = {
   notas: string;
   visibilidad: "privada" | "publica";
   permisos: string[];     // usuarios que pueden verla (si es pública)
+  esPropia: boolean;      // el usuario actual es el propietario (puede borrar y repartir permisos)
+  propietario: string;    // dueño de la credencial (para el aviso al editar una pública ajena)
 };
 
 const VACIO: FormState = {
   titulo: "", grupo: "", categoria: "", usuario: "", url: "", secreto: "", notas: "",
-  visibilidad: "privada", permisos: [],
+  visibilidad: "privada", permisos: [], esPropia: true, propietario: "",
 };
 
 // Grupos que aparecen siempre en el desplegable, aunque aún no tengan credenciales.
@@ -167,6 +169,8 @@ export default function CredencialesPage({ usuario }: { usuario: string | null }
       notas: c.notas ?? "",
       visibilidad: c.visibilidad,
       permisos: c.permisos ?? [],
+      esPropia: c.es_propia,
+      propietario: c.propietario,
     });
   }
 
@@ -372,7 +376,7 @@ export default function CredencialesPage({ usuario }: { usuario: string | null }
                             {!c.es_propia && <span className="hint" style={{ marginLeft: 6 }}>· de {c.propietario}</span>}
                           </td>
                           <td className="acciones">
-                            {c.es_propia
+                            {c.puede_editar
                               ? <button className="btn-link" onClick={() => abrirEdicion(c)}>Editar</button>
                               : <span className="hint">solo lectura</span>}
                           </td>
@@ -395,8 +399,14 @@ export default function CredencialesPage({ usuario }: { usuario: string | null }
           error={error}
           onSave={guardar}
           onClose={cerrar}
-          onDelete={form.id ? borrarActual : undefined}
+          onDelete={form.id && form.esPropia ? borrarActual : undefined}
         >
+          {form.id && !form.esPropia && (
+            <div className="hint" style={{ marginBottom: 8 }}>
+              ✏️ Editando una contraseña <b>pública</b> de <b>{form.propietario}</b>. Puedes cambiar su
+              contenido; con quién se comparte lo decide {form.propietario}.
+            </div>
+          )}
           <div className="field">
             <label>Título <span className="required">*</span></label>
             <input type="text" value={form.titulo} placeholder="p. ej. Correo, Banco Sabadell…"
@@ -452,6 +462,7 @@ export default function CredencialesPage({ usuario }: { usuario: string | null }
             <span className="hint">Las notas NO se cifran: no pongas aquí otros secretos.</span>
           </div>
 
+          {form.esPropia && (
           <div className="field">
             <label>Visibilidad</label>
             <label className="check-inline">
@@ -465,8 +476,9 @@ export default function CredencialesPage({ usuario }: { usuario: string | null }
               👥 Pública — la ve quien elijas
             </label>
           </div>
+          )}
 
-          {form.visibilidad === "publica" && (
+          {form.esPropia && form.visibilidad === "publica" && (
             <div className="field">
               <label>¿Quién puede verla?</label>
               {equipo.length === 0 ? (
