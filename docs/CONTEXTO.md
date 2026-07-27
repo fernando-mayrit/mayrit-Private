@@ -747,8 +747,18 @@ Premium muestra "Falta recibo"). El recibo se indexa por `reporting_period_start
   **chip sutil** en Inicio que abre la campana.
 - Generadores: **`risk_sin_recibo`** (hay Risk BDX en un mes sin Recibo; excluye
   `PRODUCTORES_SIN_RECIBO={"insurart"}` — honorarios → Consultoría) y **`vencimientos_sin_renovar`**
-  (binders En Vigor último de su programa, y pólizas anuales En Vigor, que vencen en ≤1 mes sin
-  renovación).
+  (binders En Vigor último de su programa, y pólizas En Vigor por vencimiento — ver abajo).
+- **Vencimiento de pólizas OM (regla 2026-07-27, decidida con Fernando):** las pólizas solo se evalúan
+  mientras están **En Vigor** (el estado es manual; la app no lo cambia sola). Dos casos:
+  - **ANUAL** (renovable, `_es_anual` = duración ~1 año): si NO hay renovación (mismo asegurado+ramo con
+    efecto = vencimiento o +1 día) → **AVISO** (`poliza_sin_renovar`, campana **Avisos**) desde 1 mes
+    antes; a **≤15 días o ya vencida** ESCALA a **ALERTA** (`poliza_vence_urgente`, campana **Alertas**).
+  - **TEMPORAL** (no anual → no renovable): sin fase de aviso; salta a **ALERTA**
+    (`poliza_vence_urgente`, campana **Alertas**) a **≤2 días o vencida**, y **persiste** hasta que se
+    cambie el estado a **«Temporal-Vencida»** (por eso solo se miran las En Vigor).
+  El «pase de Aviso a Alerta» = cambio de **campana** (Avisos→Alertas), no de color. `poliza_sin_renovar`
+  pasó de categoría `alerta` a `dia`. El tipo nuevo `poliza_vence_urgente` (defecto alto/alerta) sale
+  solo en el ⚙️ de niveles (frontend genérico, sin cambios).
 - **PENDIENTE avisos**: más generadores (premium sin LPAN, FDO sin signing, límites cerca del umbral,
   snapshots de Claims que faltan, secreto Entra por caducar); refrescar al instante tras generar un
   recibo; sustituir el `{"insurart"}` hardcodeado por un **flag "factura por honorarios"** al hacer

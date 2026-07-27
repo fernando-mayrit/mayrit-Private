@@ -39,7 +39,10 @@ TIPOS_AVISO: dict[str, dict] = {
     "binder_sin_renovar":  {"etiqueta": "Binder por vencer sin renovar", "defecto": "alto", "categoria": "alerta"},
     "limite_sin_notificar": {"etiqueta": "Límite de primas excedido sin notificar", "defecto": "alto", "categoria": "alerta"},
     "risk_sin_recibo":     {"etiqueta": "Recibo pendiente de generar", "defecto": "medio", "categoria": "alerta"},
-    "poliza_sin_renovar":  {"etiqueta": "Póliza por vencer sin renovar", "defecto": "medio", "categoria": "alerta"},
+    # Pólizas por vencimiento: fase AVISO (anual, 30→15 días → campana Avisos) que escala a ALERTA
+    # (anual ≤15 días o vencida; temporal ≤2 días o vencida → campana Alertas).
+    "poliza_sin_renovar":  {"etiqueta": "Póliza anual por vencer (aviso)", "defecto": "medio", "categoria": "dia"},
+    "poliza_vence_urgente": {"etiqueta": "Póliza a punto de vencer / vencida sin cerrar", "defecto": "alto", "categoria": "alerta"},
     "lpan_mes_incompleto": {"etiqueta": "Mes con LPAN a medias", "defecto": "alto", "categoria": "alerta"},
     "tarea_pendiente":     {"etiqueta": "Tarea de binder pendiente", "defecto": "medio", "categoria": "dia"},
     "lpan_sin_procesar":   {"etiqueta": "LPAN sin WP/Procesado", "defecto": "bajo", "categoria": "dia"},
@@ -148,7 +151,12 @@ def _vencimientos_sin_renovar(db: Session, binders: dict[int, Binder]) -> list[A
             binder_id=b.id, umr=b.umr, pagina="binders",
         ))
 
-    # ── Pólizas anuales en vigor que vencen pronto y no tienen renovación (mismo asegurado+ramo) ──
+    # ── Pólizas EN VIGOR por vencimiento ─────────────────────────────────────────────────────
+    # Dos casos, con criterio distinto (decidido con Fernando):
+    #  · ANUAL (renovable): AVISO desde 1 mes antes (campana Avisos); a ≤15 días o ya vencida ESCALA a
+    #    ALERTA (campana Alertas). Si ya hay renovación (mismo asegurado+ramo), no avisa.
+    #  · TEMPORAL (no anual → no renovable): sin fase de aviso; salta a ALERTA a ≤2 días o vencida y
+    #    PERSISTE hasta que se cambie el estado a «Temporal-Vencida» (por eso solo miramos las En Vigor).
     polizas = list(db.scalars(select(Poliza)).all())
     def _k(s):
         return (str(s).strip().lower() if s else "")
@@ -157,21 +165,47 @@ def _vencimientos_sin_renovar(db: Session, binders: dict[int, Binder]) -> list[A
     for x in polizas:
         efectos_por_key[(_k(x.asegurado), _k(x.ramo))].add(x.fecha_efecto)
     for p in polizas:
-        if (p.estado or "") != "En Vigor" or not p.fecha_vencimiento or p.fecha_vencimiento > limite:
+        if (p.estado or "") != "En Vigor" or not p.fecha_vencimiento:
             continue
-        if not _es_anual(p.fecha_efecto, p.fecha_vencimiento):
-            continue
-        # La renovación empieza el día siguiente al vencimiento o el mismo día (según convención).
-        objetivo = p.fecha_vencimiento + dt.timedelta(days=1)
-        renovada = bool({p.fecha_vencimiento, objetivo} & efectos_por_key[(_k(p.asegurado), _k(p.ramo))])
-        if renovada:
-            continue
-        avisos.append(Aviso(
-            tipo="poliza_sin_renovar", severidad="warning",
-            titulo="Póliza por vencer sin renovar",
-            detalle=f"{p.asegurado + ': ' if p.asegurado else ''}vence el {p.fecha_vencimiento.strftime('%d/%m/%Y')} y no tiene renovación.",
-            umr=p.numero_poliza, pagina="polizas",
-        ))
+        dias = (p.fecha_vencimiento - hoy).days
+        venc_txt = p.fecha_vencimiento.strftime("%d/%m/%Y")
+        pref = f"{p.asegurado}: " if p.asegurado else ""
+        cuando = f"vence el {venc_txt}" if dias >= 0 else f"venció el {venc_txt}"
+
+        if _es_anual(p.fecha_efecto, p.fecha_vencimiento):
+            if dias > 30:
+                continue
+            # ¿ya renovada? La renovación empieza el día del vencimiento o el siguiente (según convención).
+            objetivo = p.fecha_vencimiento + dt.timedelta(days=1)
+            if {p.fecha_vencimiento, objetivo} & efectos_por_key[(_k(p.asegurado), _k(p.ramo))]:
+                continue
+            if dias > 15:
+                # Fase AVISO (campana Avisos).
+                avisos.append(Aviso(
+                    tipo="poliza_sin_renovar", severidad="warning",
+                    titulo="Póliza anual por vencer sin renovar",
+                    detalle=f"{pref}{cuando} y no tiene renovación.",
+                    umr=p.numero_poliza, pagina="polizas",
+                ))
+            else:
+                # Fase ALERTA (≤15 días o ya vencida) → campana Alertas.
+                avisos.append(Aviso(
+                    tipo="poliza_vence_urgente", severidad="danger",
+                    titulo="Póliza vencida sin renovar" if dias < 0 else "Póliza a punto de vencer sin renovar",
+                    detalle=f"{pref}{cuando} y no tiene renovación.",
+                    umr=p.numero_poliza, pagina="polizas",
+                ))
+        else:
+            # TEMPORAL (no renovable): solo ALERTA a ≤2 días o vencida; persiste hasta «Temporal-Vencida».
+            if dias > 2:
+                continue
+            extra = " — cámbiala a «Temporal-Vencida» al cerrarla." if dias < 0 else "."
+            avisos.append(Aviso(
+                tipo="poliza_vence_urgente", severidad="danger",
+                titulo="Póliza temporal vencida sin cerrar" if dias < 0 else "Póliza temporal a punto de vencer",
+                detalle=f"{pref}póliza temporal (no renovable): {cuando}{extra}",
+                umr=p.numero_poliza, pagina="polizas",
+            ))
     return avisos
 
 
