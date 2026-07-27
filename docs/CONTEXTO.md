@@ -705,11 +705,15 @@ la Fase 3 (Liquidaciones+LPAN), no ahora.
 - **Listado general** en el menú (opción **LPAN** de Facturación): `LpanPage`. Misma tabla `lpans`.
 - **Migración TLPAN** (`tools/migrar_lpan.py`): `Mayrit - TLPAN` (3078) → 224 FDO + 2854 LPAN,
   **0 colgados** (3014 a binder + 64 a póliza OM). Idempotente por sp_old_id.
-- **Tipo de transacción AP/RP (corregido 2026-07-27):** el `tipo` de un LPAN es **AP** (Additional
-  Premium, prima ≥ 0) o **RP** (Return Premium, prima < 0), **nunca 'PM'**. La generación fijaba 'PM'
-  por defecto → 168 LPAN mal (todos AP). Ahora el tipo se **deriva del signo** al generar
-  (`_tipo_lpan`, misma regla que la casilla 1 del Word), tanto en binder como en OM; el payload ya no
-  lleva `tipo`. Datos corregidos (migración `lpan_tipo_pm_a_ap_0001`): 168 PM → AP (0 PM restantes).
+- **Tipo de transacción (corregido 2026-07-27):** distinto según el origen:
+  - **BINDER**: **AP** (Additional Premium, prima ≥ 0) o **RP** (Return Premium, prima < 0), **nunca
+    'PM'**. Se **deriva del signo** al generar (`_tipo_lpan`). La generación fijaba 'PM' por defecto →
+    104 LPAN de binder mal, corregidos a AP.
+  - **OPEN MARKET**: **siempre 'PM'** (no depende del signo). Los 64 LPAN de póliza son PM.
+  - El `tipo` guardado (`Lpan.tipo`) es lo que va en la **casilla 1 del Word** (`_construir_lpan_docx`
+    lo recibe; ya no lo recalcula). El payload de generación ya no lleva `tipo`.
+  - Migraciones: `lpan_tipo_pm_a_ap_0001` (PM→AP/RP por signo) + `lpan_om_tipo_pm_0001` (revierte los
+    de OM a PM). Estado final: binder AP 2848 / RP 46; OM PM 64; 0 PM en binders.
 - **PENDIENTE LPAN fase 2**: generar el **Excel** del Premium BDX por risk code junto con sus LPAN por
   sección y risk code; afinar el documento Word. Definiciones de campos:
   `…\Xchanging\Application 2020\LPAN Template Definitions.xlsx`. Plantilla:

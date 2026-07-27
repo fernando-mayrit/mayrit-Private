@@ -153,8 +153,9 @@ def _pct_lpan(v) -> str:
 
 
 def _tipo_lpan(gross) -> str:
-    """Tipo de transacción del LPAN: **RP** (Return Premium) si la prima es negativa, **AP** (Additional
-    Premium) en otro caso. Es el MISMO criterio que la casilla 1 del Word; el tipo NUNCA es 'PM'."""
+    """Tipo de transacción de un LPAN de **binder**: **RP** (Return Premium) si la prima es negativa,
+    **AP** (Additional Premium) en otro caso. En **Open Market** el tipo es siempre **PM** (no depende
+    del signo). El tipo guardado (`Lpan.tipo`) es lo que va en la casilla 1 del Word."""
     return "RP" if _d(gross) < 0 else "AP"
 
 
@@ -171,10 +172,11 @@ def _sdd_de(periodo: str) -> dt.date | None:
 
 
 def _construir_lpan_docx(nombre: str, signing: str | None, broker_ref1: str,
-                         umr: str | None, gross, brokerage, tax, net, moneda: str):
+                         umr: str | None, gross, brokerage, tax, net, moneda: str, tipo: str | None = None):
     """Rellena la plantilla LPAN con las cifras reales del bloque y devuelve el objeto Document
     (sin guardarlo). `broker_ref1` (casilla 10) = código completo del agreement, con las 3 letras
-    del coverholder al final."""
+    del coverholder al final. `tipo` = transacción de la casilla 1 (AP/RP en binder, PM en OM); si no
+    se pasa, se deriva del signo (compatibilidad)."""
     import docx  # carga perezosa
 
     plantilla = settings.lpan_plantilla
@@ -191,8 +193,8 @@ def _construir_lpan_docx(nombre: str, signing: str | None, broker_ref1: str,
             zo.writestr(it, data)
 
     d = docx.Document(tmp)
-    # Casilla 1: AP (Additional Premium) si la prima es positiva; RP (Return Premium) si es negativa.
-    transaccion = _tipo_lpan(gross)
+    # Casilla 1: el tipo guardado del LPAN (AP/RP en binder, PM en OM). Si no viene, se deriva del signo.
+    transaccion = (tipo or "").strip() or _tipo_lpan(gross)
     # Casilla 19: el % de brokerage sobre la prima (no el importe).
     brk_pct = (_d(brokerage) / _d(gross) * 100) if _d(gross) else 0
     todos = {"Premium": transaccion, "Yes/No": "Yes / No"}   # casilla 6: se deja "Yes / No"
@@ -220,9 +222,9 @@ def _construir_lpan_docx(nombre: str, signing: str | None, broker_ref1: str,
 
 
 def _lpan_docx_bytes(nombre: str, signing: str | None, broker_ref1: str,
-                     umr: str | None, gross, brokerage, tax, net, moneda: str) -> bytes:
+                     umr: str | None, gross, brokerage, tax, net, moneda: str, tipo: str | None = None) -> bytes:
     """Devuelve el Word del LPAN como bytes en memoria (para descargar por el navegador)."""
-    d = _construir_lpan_docx(nombre, signing, broker_ref1, umr, gross, brokerage, tax, net, moneda)
+    d = _construir_lpan_docx(nombre, signing, broker_ref1, umr, gross, brokerage, tax, net, moneda, tipo)
     buf = io.BytesIO()
     d.save(buf)
     return buf.getvalue()
@@ -754,7 +756,7 @@ def descargar_lpan_word(lpan_id: int, db: Session = Depends(get_db)):
         umr = (p.numero_poliza if p else None) or lp.broker_ref1
     data = _lpan_docx_bytes(
         lp.broker_ref2 or f"LPAN_{lp.id}", f.signing_number if f else None, lp.broker_ref1 or "",
-        umr, lp.gross_premium, lp.brokerage, lp.tax, lp.net_premium, lp.moneda or "EUR",
+        umr, lp.gross_premium, lp.brokerage, lp.tax, lp.net_premium, lp.moneda or "EUR", lp.tipo,
     )
     fname = f"{lp.broker_ref2 or ('LPAN_' + str(lp.id))}.docx"
     return StreamingResponse(
@@ -1342,7 +1344,7 @@ def generar_lpan_om(poliza_id: int, payload: LpanOmCreate, db: Session = Depends
         raise HTTPException(status_code=404, detail=f"No hay recibos de la póliza en {per}.")
     if g["cobr"] != g["num"]:
         raise HTTPException(status_code=409, detail=f"Hay recibos sin cobrar en {per}: no se puede generar el LPAN.")
-    tipo = _tipo_lpan(g["gross"])   # AP (positiva) / RP (negativa); nunca 'PM'
+    tipo = "PM"   # En Open Market el tipo de transacción es siempre PM (a diferencia de binders: AP/RP).
     if db.scalar(select(Lpan).where(Lpan.poliza_id == poliza_id, Lpan.periodo == per, Lpan.tipo == tipo)):
         raise HTTPException(status_code=409, detail=f"Ya existe un LPAN {tipo} de la póliza en {per}.")
     lp = Lpan(
