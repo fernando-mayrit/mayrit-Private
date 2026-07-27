@@ -60,7 +60,11 @@
   encaja mejor que pagar un Bitwarden/1Password (que sería lo correcto si se quisiera autorrelleno/móvil/zero-
   knowledge). Diseño: tabla `credenciales` (+ `credencial_permisos`), contraseña **cifrada en reposo** con
   **Fernet** (clave en `MAYRIT_VAULT_KEY`, ver abajo); cada entrada es **privada** (solo el propietario) o
-  **pública** (propietario + los usuarios elegidos); organización en dos niveles **Grupo → Categoría**
+  **pública** (propietario + los usuarios elegidos). **Edición (regla 2026-07-27):** las **públicas** las
+  puede **editar el contenido** (título, usuario, URL, notas, contraseña) **cualquier usuario autorizado a
+  verlas**, no solo el dueño (`_puede_editar` en el router; `CredencialRead.puede_editar`); **BORRAR y el
+  reparto** (visibilidad + con quién se comparte) siguen siendo **exclusivos del propietario**. Organización
+  en dos niveles **Grupo → Categoría**
   (desplegables que permiten añadir valores nuevos; grupos semilla Alea/Mayrit/Lloyds/Novacover); generador de
   contraseñas en el **cliente** (opcional); ver/copiar bajo demanda (el listado NO lleva contraseñas en claro).
   Módulo: `credenciales.py` (router) + `seguridad.py` (cifrado) + `CredencialesPage.tsx`. Acceso **discreto**
