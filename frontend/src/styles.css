@@ -1081,8 +1081,10 @@ tr.fila-inactiva td { opacity: 0.55; }
   /* Panel lateral de formularios: ancho completo y menos padding. */
   .panel { width: 100%; padding: 16px; }
 
-  /* Barra de pestañas del detalle de binder: scroll horizontal si no cabe. */
-  .detalle-tabs { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  /* Barra de pestañas del detalle de binder: scroll horizontal si no cabe. Los botones NO deben
+     encogerse (flex-shrink: 0) o se aplastarían hasta desaparecer en vez de desbordar y scrollear. */
+  .detalle-tabs { overflow-x: auto; -webkit-overflow-scrolling: touch; flex-wrap: nowrap; }
+  .detalle-tabs .tab { flex-shrink: 0; }
 
   /* Formularios de dos columnas (pólizas, binders, transferencias) → apilados;
      filas de campos que envuelven en lugar de apretarse. */
