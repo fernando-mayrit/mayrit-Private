@@ -29,7 +29,7 @@ from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, computed_field
 from sqlalchemy import select
 from sqlalchemy.orm import Session, load_only, selectinload
 
@@ -285,6 +285,13 @@ class LpanRead(BaseModel):
     pagado: dt.date | None = None
     estado: str                              # WP Status
 
+    @computed_field  # Net net = Net to UW SIN impuestos (= net_premium − tax = base − comisión).
+    @property
+    def net_net(self) -> Decimal | None:
+        if self.net_premium is None:
+            return None
+        return self.net_premium - (self.tax or Decimal(0))
+
 
 class RiskCodeFdo(BaseModel):
     section: int
@@ -356,6 +363,13 @@ class LpanGlobal(BaseModel):
     liberado: dt.date | None = None
     pagado: dt.date | None = None
     estado: str
+
+    @computed_field  # Net net = Net to UW SIN impuestos (= net_premium − tax = base − comisión).
+    @property
+    def net_net(self) -> Decimal | None:
+        if self.net_premium is None:
+            return None
+        return self.net_premium - (self.tax or Decimal(0))
 
 
 class FdoCreate(BaseModel):

@@ -145,6 +145,7 @@ export interface LpanRegistro {
   brokerage: number | string | null;
   tax: number | string | null;
   net_premium: number | string | null;
+  net_net: number | string | null;    // Net to UW sin impuestos (= net_premium − tax)
   broker_ref2: string | null;
   work_package: string | null;
   signing_number: string | null;
@@ -235,6 +236,7 @@ export interface LpanGlobal {
   brokerage: number | string | null;
   tax: number | string | null;
   net_premium: number | string | null;
+  net_net: number | string | null;    // Net to UW sin impuestos (= net_premium − tax)
   fecha: string | null;
   sdd: string | null;
   liberado: string | null;

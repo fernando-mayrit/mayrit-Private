@@ -28,6 +28,7 @@ const COLS: Col<LpanGlobal>[] = [
   { key: "brokerage", label: "Brokerage", tipo: "num" },
   { key: "tax", label: "Tax", tipo: "num" },
   { key: "net_premium", label: "Neto a UW", tipo: "num" },
+  { key: "net_net", label: "Net net", tipo: "num" },
   { key: "fecha", label: "Procesado", tipo: "date" },
   { key: "sdd", label: "SDD", tipo: "date" },
   { key: "liberado", label: "Liberado", tipo: "date" },
@@ -36,7 +37,7 @@ const COLS: Col<LpanGlobal>[] = [
 ];
 const DEFAULT_KEYS = [
   "tipo", "periodo", "binder_poliza", "section", "risk_code",
-  "signing_number", "work_package", "gross_premium", "tax", "net_premium", "fecha", "estado",
+  "signing_number", "work_package", "gross_premium", "tax", "net_premium", "net_net", "fecha", "estado",
   "sdd", "liberado", "pagado",
 ];
 
@@ -180,6 +181,7 @@ export default function LpanPage() {
     gross: base.reduce((a, l) => a + n(l.gross_premium), 0),
     tax: base.reduce((a, l) => a + n(l.tax), 0),
     net: base.reduce((a, l) => a + n(l.net_premium), 0),
+    netNet: base.reduce((a, l) => a + n(l.net_net), 0),
   }), [base]);
 
   function abrirExport() {
@@ -264,6 +266,7 @@ export default function LpanPage() {
                 <div className="tot-row"><span>Gross</span><b>{fmtMiles(tot.gross)}</b></div>
                 <div className="tot-row"><span>Tax</span><b>{fmtMiles(tot.tax)}</b></div>
                 <div className="tot-row tot-pdte"><span>Neto a UW</span><b>{fmtMiles(tot.net)}</b></div>
+                <div className="tot-row"><span>Net net</span><b>{fmtMiles(tot.netNet)}</b></div>
               </div>
             </div>
           </div>

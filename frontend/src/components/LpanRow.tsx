@@ -155,6 +155,7 @@ export default function LpanRow({
       <td className="num">{brokeragePct}</td>
       <td className="num">{fmtMiles(r.tax)}</td>
       <td className="num">{fmtMiles(r.net_premium)}</td>
+      <td className="num" title="Net to UW sin impuestos (Net to UW − IPT)">{fmtMiles(Number(r.net_premium) - Number(r.tax))}</td>
       <td>{r.cobrado
         ? <span className="pill pill-cobrado">Cobrado</span>
         : <span className="pill pill-pendiente">Pendiente</span>}</td>

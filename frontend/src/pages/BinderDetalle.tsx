@@ -1932,7 +1932,7 @@ export default function BinderDetalle({ binder }: { binder: Binder }) {
                       <colgroup>
                         <col style={{ width: 80 }} /><col style={{ width: 60 }} />
                         <col style={{ width: 110 }} /><col style={{ width: 85 }} />
-                        <col style={{ width: 95 }} /><col style={{ width: 110 }} />
+                        <col style={{ width: 95 }} /><col style={{ width: 110 }} /><col style={{ width: 110 }} />
                         <col style={{ width: 90 }} /><col style={{ width: 150 }} />
                         <col style={{ width: 100 }} /><col style={{ width: 118 }} />
                         <col style={{ width: 118 }} /><col style={{ width: 110 }} />
@@ -1944,6 +1944,7 @@ export default function BinderDetalle({ binder }: { binder: Binder }) {
                           <th>Risk Code</th><th className="num">Nº líneas</th>
                           <th className="num">GWP Our Line</th><th className="num">Brokerage %</th>
                           <th className="num">IPT</th><th className="num">Net to UW</th>
+                          <th className="num" title="Net to UW sin impuestos (Net to UW − IPT)">Net net</th>
                           <th>Cobrado</th><th>LPAN</th>
                           <th>WP</th><th>Procesado</th><th>SDD</th><th>WP Status</th>
                           <th>Liberado</th><th>Liquidado</th><th></th>
