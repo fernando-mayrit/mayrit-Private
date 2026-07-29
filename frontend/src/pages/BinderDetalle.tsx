@@ -16,6 +16,7 @@ import PremiumMatch from "../components/PremiumMatch";
 import RiskExcelImport from "../components/RiskExcelImport";
 import TareasBinder from "../components/TareasBinder";
 import ConfirmDialog from "../components/ConfirmDialog";
+import AvisoDialog from "../components/AvisoDialog";
 import FormPanel from "../components/FormPanel";
 import type { ReactNode } from "react";
 import type { ReciboPreview, ReciboUpdate } from "../types";
@@ -666,6 +667,8 @@ export default function BinderDetalle({ binder }: { binder: Binder }) {
   const [confirmar, setConfirmar] = useState<
     { titulo: string; mensaje: ReactNode; importe?: ReactNode; detalle?: ReactNode; confirmLabel?: string; doble?: boolean; accion: () => void } | null
   >(null);
+  // Aviso modal (sustituye al alert() nativo): mismo estilo que la app, centrado, imposible de ignorar.
+  const [aviso, setAviso] = useState<{ titulo: string; mensaje: ReactNode } | null>(null);
 
   // ── Importación desde SharePoint ──
   const [importAbierto, setImportAbierto] = useState(false);
@@ -883,7 +886,14 @@ export default function BinderDetalle({ binder }: { binder: Binder }) {
           setError(msg);
           // Aviso imposible de no ver: el error del banner queda arriba y puede caer fuera de vista
           // si la pestaña Premium está scrolleada (p. ej. "no se puede liquidar: LPAN sin liberar").
-          alert(msg);
+          // Modal a juego con la app en vez del alert() nativo. El título toma la acción y el cuerpo
+          // quita el prefijo redundante "No se puede liquidar: …" si el backend lo trae.
+          const tituloAviso =
+            etapa === "liquidacion" ? "No se puede liquidar"
+            : etapa === "cobro" ? "No se puede cobrar"
+            : "No se puede traspasar";
+          const cuerpo = msg.replace(/^No se puede \w+[^:]*:\s*/i, "");
+          setAviso({ titulo: tituloAviso, mensaje: cuerpo });
         }
       },
     });
@@ -1989,6 +1999,10 @@ export default function BinderDetalle({ binder }: { binder: Binder }) {
           }}
           onClose={() => setLpanABorrar(null)}
         />
+      )}
+
+      {aviso && (
+        <AvisoDialog titulo={aviso.titulo} mensaje={aviso.mensaje} onClose={() => setAviso(null)} />
       )}
 
       {tab === "triangulacion" && (
