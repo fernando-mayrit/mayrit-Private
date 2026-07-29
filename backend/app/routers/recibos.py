@@ -1249,9 +1249,14 @@ def liquidar_premium(binder_id: int, payload: AccionPremium, db: Session = Depen
     # mercado. Su neto (Σ net_premium) debe cuadrar con el neto a pagar del Premium (Σ Final Net Premium
     # to UW de sus líneas), con el que se construye el propio LPAN. Si no hay LPAN, o su neto no cuadra
     # (falta/sobra un LPAN, o cambiaron las líneas), no se liquida.
-    neto_premium = _q2(sum((l.final_net_premium_uw or D0) for l in _lineas_premium(db, binder_id, payload.periodo)))
+    lineas_prem = _lineas_premium(db, binder_id, payload.periodo)
+    neto_premium = _q2(sum((l.final_net_premium_uw or D0) for l in lineas_prem))
     neto_lpan = _q2(sum((lp.net_premium or D0) for lp in lpans))
-    tol = Decimal("0.01") * max(len(lpans), 1)   # solo absorbe céntimos de redondeo
+    # Tolerancia = ruido de redondeo. Ese ruido vive en las LÍNEAS del Premium (un re-redondeo/backfill
+    # puede mover cada línea una fracción de céntimo → sumadas, unos pocos céntimos), NO en el nº de
+    # LPAN. Por eso escala con el nº de líneas: 1 céntimo por cada 10 líneas, con un suelo de 0,05 €.
+    # Un error real (una línea que falta o sobra) es de órdenes de magnitud mayor y sigue bloqueando.
+    tol = max(Decimal("0.05"), _q2(Decimal("0.001") * len(lineas_prem)))
     if abs(neto_premium - neto_lpan) > tol:
         b = db.get(Binder, binder_id)
         moneda = (b.moneda if b else None) or "EUR"
