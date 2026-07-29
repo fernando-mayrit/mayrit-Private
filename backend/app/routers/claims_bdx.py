@@ -41,7 +41,7 @@ HEADERS = [
     "Insured Country", "Risk Inception Date", "Risk Expiry Date", "Location of loss Country",
     "Loss Description", "Date Claim First Advised/Date Claim Made", "Claim Status",
     "Refer to Underwriters", "Denial (Y/N)", "Claimant Name", "Amount Claimed",
-    "Paid this month - Indemnity", "Paid this month - Fees",
+    "To Pay this month - Indemnity", "To Pay this month - Fees",
     "Previously Paid - Indemnity", "Previously Paid - Fees",
     "Reserve - Indemnity", "Reserve - Fees",
     "Total Incurred - Indemnity", "Total Incurred - Fees",
@@ -54,7 +54,7 @@ H_FECHA = {
     "Date Claim First Advised/Date Claim Made", "Date Claim Opened", "Date Closed",
 }
 H_NUM = {
-    "Amount Claimed", "Paid this month - Indemnity", "Paid this month - Fees",
+    "Amount Claimed", "To Pay this month - Indemnity", "To Pay this month - Fees",
     "Previously Paid - Indemnity", "Previously Paid - Fees", "Reserve - Indemnity",
     "Reserve - Fees", "Total Incurred - Indemnity", "Total Incurred - Fees",
 }
@@ -136,8 +136,8 @@ def _construir(db: Session, b: Binder, periodo: str) -> tuple[list[dict], list[d
             "Denial (Y/N)": _yn(s.denial),
             "Claimant Name": s.claimant,
             "Amount Claimed": _f(s.amount_claimed),
-            "Paid this month - Indemnity": paid_i - prev_i,
-            "Paid this month - Fees": paid_f - prev_f,
+            "To Pay this month - Indemnity": paid_i - prev_i,
+            "To Pay this month - Fees": paid_f - prev_f,
             "Previously Paid - Indemnity": prev_i,
             "Previously Paid - Fees": prev_f,
             "Reserve - Indemnity": res_i,
@@ -194,7 +194,7 @@ def _baseline(db: Session, binder_id: int, antes_de_ord: int | None = None) -> d
     for r in rows:
         if r.periodo_ord != ult or not r.fila_json:
             continue
-        fila = json.loads(r.fila_json)
+        fila = _fila_json(r.fila_json)
         base[(fila.get("Certificate Reference") or "", fila.get("Claim Reference / Number") or "")] = fila
     return base
 
@@ -331,7 +331,7 @@ def excel(binder_id: int, periodo: str, modo: str = "vivo", db: Session = Depend
         rows = db.scalars(
             select(ClaimsPresentacion).where(ClaimsPresentacion.binder_id == b.id, ClaimsPresentacion.periodo == periodo).order_by(ClaimsPresentacion.id)
         ).all()
-        filas = [json.loads(r.fila_json) for r in rows if r.fila_json]
+        filas = [_fila_json(r.fila_json) for r in rows if r.fila_json]
         # Diff respecto a la presentación ANTERIOR a este periodo.
         cambios = _diff(filas, _baseline(db, b.id, _ord(periodo)))
     else:
@@ -356,6 +356,34 @@ def _hk(v) -> str:
     tolerante (paréntesis, barras, etc.)."""
     s = "" if v is None else str(v).strip().lower()
     return re.sub(r"[^a-z0-9]+", " ", s).strip()
+
+
+# El "pagado del mes" de Lloyd's se llama SIEMPRE «To Pay this month» (nunca «Paid this month»; si
+# alguna vez lo pusimos así, fue un error). Se MUESTRA «To Pay this month», pero al LEER un fichero se
+# aceptan como alias otros nombres equivalentes (el antiguo «Paid this month») → misma columna.
+_ALIAS_HEADER = {
+    "paid this month indemnity": "To Pay this month - Indemnity",
+    "paid this month fees": "To Pay this month - Fees",
+}
+
+
+def _norm_headers() -> dict[str, str]:
+    """Cabecera normalizada (_hk) → cabecera canónica de HEADERS, incluyendo los alias conocidos."""
+    m = {_hk(h): h for h in HEADERS}
+    m.update(_ALIAS_HEADER)
+    return m
+
+
+def _fila_json(raw: str) -> dict:
+    """Carga una fila guardada (`fila_json` de una presentación) normalizando nombres de columna
+    antiguos al canónico (p. ej. «Paid this month» → «To Pay this month»), para que las fotos
+    históricas presentadas antes del renombrado sigan mostrando bien esas columnas."""
+    fila = json.loads(raw)
+    for suf in ("Indemnity", "Fees"):
+        viejo = f"Paid this month - {suf}"
+        if viejo in fila:
+            fila.setdefault(f"To Pay this month - {suf}", fila.pop(viejo))
+    return fila
 
 
 def _hv(v) -> str:
@@ -410,7 +438,7 @@ def _leer_bdx_subido(contenido: bytes) -> list[dict]:
         raise HTTPException(status_code=400, detail=f"No se pudo leer el Excel: {e}")
     ws = wb.active
     filas = list(ws.iter_rows(values_only=True))
-    norm_h = {_hk(h): h for h in HEADERS}
+    norm_h = _norm_headers()
     hdr_idx, colmap = None, {}
     for i, row in enumerate(filas[:25]):
         cells = [_hk(c) for c in row]
@@ -593,7 +621,7 @@ def _leer_bdx_con_azules(contenido: bytes) -> list[dict]:
         raise HTTPException(status_code=400, detail=f"No se pudo leer el Excel: {e}")
     ws = wb.active
     filas = list(ws.iter_rows())
-    norm_h = {_hk(h): h for h in HEADERS}
+    norm_h = _norm_headers()
     hdr_idx, colmap = None, {}
     for i, row in enumerate(filas[:25]):
         cells = [_hk(c.value) for c in row]
@@ -646,8 +674,8 @@ def _es_az(d: dict, h: str) -> bool:
 
 
 def _paid_nuevo(d: dict, suf: str) -> Decimal:
-    """Pagado acumulado = «Previously Paid» + «Paid this month» del fichero (el Total Incurred NO se toca)."""
-    return Decimal(f"{_to_num(_val(d.get(f'Previously Paid - {suf}'))) + _to_num(_val(d.get(f'Paid this month - {suf}'))):.2f}")
+    """Pagado acumulado = «Previously Paid» + «To Pay this month» del fichero (el Total Incurred NO se toca)."""
+    return Decimal(f"{_to_num(_val(d.get(f'Previously Paid - {suf}'))) + _to_num(_val(d.get(f'To Pay this month - {suf}'))):.2f}")
 
 
 def _aplicar_claims(db: Session, b: Binder, file_rows: list[dict], dry_run: bool) -> dict:
@@ -698,7 +726,7 @@ def _aplicar_claims(db: Session, b: Binder, file_rows: list[dict], dry_run: bool
                     setattr(s, campo, nuevo)
         # Pagado: si el flujo de pago viene en azul, recalcula el acumulado (Previously + This month).
         for suf, campo in (("Indemnity", "paid_indemnity"), ("Fees", "paid_fees")):
-            if _es_az(d, f"Paid this month - {suf}") or _es_az(d, f"Previously Paid - {suf}"):
+            if _es_az(d, f"To Pay this month - {suf}") or _es_az(d, f"Previously Paid - {suf}"):
                 nuevo = _paid_nuevo(d, suf)
                 if round(_to_num(getattr(s, campo)), 2) != round(_to_num(nuevo), 2):
                     cambios.append({"campo": campo, "de": _fmt_val(getattr(s, campo)), "a": _fmt_val(nuevo)})
