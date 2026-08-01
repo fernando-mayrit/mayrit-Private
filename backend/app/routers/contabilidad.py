@@ -1157,7 +1157,17 @@ def ver_adjunto(aid: int, db: Session = Depends(get_db)):
 def borrar_adjunto(aid: int, db: Session = Depends(get_db)):
     a = db.get(MovimientoAdjunto, aid)
     if a is not None:
-        db.delete(a); db.commit()
+        mid = a.movimiento_id
+        db.delete(a); db.flush()
+        # Si era el último adjunto, el apunte se queda sin justificante → desmarcar 'factura'
+        # (dispara la fila gris y la casilla desactivada en el listado).
+        quedan = db.scalar(select(func.count()).select_from(MovimientoAdjunto)
+                           .where(MovimientoAdjunto.movimiento_id == mid))
+        if not quedan:
+            m = db.get(MovimientoBancario, mid)
+            if m is not None:
+                m.factura = False
+        db.commit()
 
 
 @router.post("/extractos", response_model=ExtractoRead, status_code=201)

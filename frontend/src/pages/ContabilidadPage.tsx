@@ -213,7 +213,7 @@ export default function ContabilidadPage() {
           cuenta={editando?.cuenta ?? cuenta}
           cats={cats}
           movimiento={editando}
-          onClose={() => { setAlta(false); setEditando(null); }}
+          onClose={() => { setAlta(false); setEditando(null); cargar(); }}
           onSaved={() => { setAlta(false); setEditando(null); cargar(); contabilidadApi.opciones().then(setOpciones).catch(() => {}); }}
         />
       )}

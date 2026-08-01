@@ -112,7 +112,12 @@ export default function AltaMovimiento({ cuenta, cats, movimiento, onClose, onSa
   }
   async function quitarTicket(aid: number) {
     setError(null);
-    try { await contabilidadApi.borrarAdjunto(aid); setAdjuntos((s) => s.filter((x) => x.id !== aid)); }
+    try {
+      await contabilidadApi.borrarAdjunto(aid);
+      const rest = adjuntos.filter((x) => x.id !== aid);
+      setAdjuntos(rest);
+      if (rest.length === 0) setFactura(false);   // sin adjuntos → deja de estar justificado (el backend también lo desmarca)
+    }
     catch (e) { setError((e as Error).message); }
   }
   // Vista previa de las filas heredadas del apunte espejado (su desglose por recibo).
