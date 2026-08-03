@@ -197,11 +197,12 @@ function CuadriculaVista({ cuad, cargando, mesLabel, onMarcar }: {
     g.cols.push(c);
   }
   const cls = (est: string) => "pastilla " + (est === "ok" ? "ok" : est === "pend" ? "pend" : "na");
+  const lab = (est: string) => est === "ok" ? "Sí" : est === "pend" ? "Pendiente" : "No aplica";
 
   return (
     <>
       <div className="hint" style={{ marginBottom: 8 }}>
-        {mesLabel} · pipeline por binder — <span className={cls("ok")} /> hecho · <span className={cls("pend")} /> pendiente · <span className={cls("na")} /> no aplica.
+        {mesLabel} · pipeline por binder — <span className={cls("ok")}>Sí</span> hecho · <span className={cls("pend")}>Pendiente</span> · <span className={cls("na")}>No aplica</span>.
         Las de <b>Enviado</b> (✎) se marcan con un clic.
       </div>
       <div className="cuad-scroll">
@@ -229,11 +230,11 @@ function CuadriculaVista({ cuad, cargando, mesLabel, onMarcar }: {
                   return (
                     <td key={c.id} className="cuad-celda">
                       {editable ? (
-                        <button className={cls(est) + " clic"} aria-label={est === "ok" ? "Hecho" : "Pendiente"}
+                        <button className={cls(est) + " clic"}
                           title={est === "ok" ? "Hecho (clic para desmarcar)" : "Pendiente (clic para marcar hecho)"}
-                          onClick={() => onMarcar(f.binder_id, c.id, est !== "ok")} />
+                          onClick={() => onMarcar(f.binder_id, c.id, est !== "ok")}>{lab(est)}</button>
                       ) : (
-                        <span className={cls(est)} />
+                        <span className={cls(est)}>{lab(est)}</span>
                       )}
                     </td>
                   );
