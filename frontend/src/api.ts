@@ -139,6 +139,7 @@ export interface LpanRegistro {
   id: number;
   tipo: string;
   periodo: string;
+  mercado: string | null;         // grupo de mercado (OM coaseguro): "Lloyd's" o la compañía
   pais: string | null;
   num_lineas: number;
   gross_premium: number | string | null;
@@ -199,6 +200,8 @@ export interface FilaLpanOM {
   periodo: string;
   periodo_label: string;
   risk_code: string;
+  mercado: string;                // grupo de mercado: "Lloyd's" o la compañía no-Lloyd's
+  es_lloyds: boolean;             // este grupo va por el flujo Lloyd's (signing/Word)
   pct: number | string;           // % del risk code sobre el total (83.33)
   linea_pct: number | string;     // nuestra participación (fracción, 0.5665)
   gross_100: number | string;     // casilla 18 (100% del risk code)
@@ -290,7 +293,7 @@ export const lpanApi = {
   deLinea: (lineId: number) => request<LpanRegistro | null>(`/bdx-lineas/${lineId}/lpan`),
   // ── LPAN de pólizas Open Market (OM) — sin FDO (eso es de binders) ──
   vistaOm: (polizaId: number) => request<VistaLpanOM>(`/polizas/${polizaId}/lpan`),
-  generarLpanOm: (polizaId: number, data: { periodo: string; risk_code: string }) =>
+  generarLpanOm: (polizaId: number, data: { periodo: string; risk_code: string; mercado?: string }) =>
     request<LpanRegistro>(`/polizas/${polizaId}/lpan`, { method: "POST", body: JSON.stringify(data) }),
   // Descarga el Excel BDX de un periodo (blob + nombre propuesto), para guardarlo eligiendo carpeta.
   // agrupar=true → LPAN Bdx (agrupado por Risk Code); agrupar=false → Premium Bdx (plano).

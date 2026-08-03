@@ -270,6 +270,7 @@ class LpanRead(BaseModel):
     id: int
     tipo: str
     periodo: str
+    mercado: str | None = None              # grupo de mercado (OM coaseguro): 'Lloyd's' o la compañía
     pais: str | None = None
     num_lineas: int
     gross_premium: Decimal | None = None
@@ -1206,8 +1207,10 @@ class FilaLpanOM(BaseModel):
     periodo: str
     periodo_label: str
     risk_code: str
+    mercado: str = "Lloyd's"        # grupo de mercado: 'Lloyd's' o el nombre de la compañía no-Lloyd's
+    es_lloyds: bool = True          # este grupo va por el flujo Lloyd's (signing/Word)
     pct: Decimal                    # % del risk code sobre el total (83.33)
-    linea_pct: Decimal              # nuestra participación (fracción, 0.5665)
+    linea_pct: Decimal              # participación del grupo de mercado (fracción, 0.20)
     gross_100: Decimal              # casilla 18 (100% del risk code)
     tax: Decimal                    # impuestos (nuestra parte)
     brokerage: Decimal              # comisión (nuestra parte)
@@ -1230,6 +1233,7 @@ class VistaLpanOM(BaseModel):
 class LpanOmCreate(BaseModel):
     periodo: str
     risk_code: str                     # cuál de los risk codes del reparto se genera
+    mercado: str = "Lloyd's"           # grupo de mercado a generar ('Lloyd's' o la compañía no-Lloyd's)
 
 
 def _poliza_o_404(poliza_id: int, db: Session) -> Poliza:
@@ -1247,10 +1251,12 @@ def _poliza_es_lloyds(p: Poliza, db: Session) -> bool:
     return bool(m and (m.tipo_mercado or "").strip().lower() == "lloyds")
 
 
-def _nombre_lpan_om(p: Poliza, risk_code: str, periodo: str) -> str:
-    """Nombre/Broker Ref 2 del LPAN OM: '<asegurado o nº póliza> <risk code> <periodo>'."""
+def _nombre_lpan_om(p: Poliza, risk_code: str, periodo: str, mercado: str | None = None) -> str:
+    """Nombre/Broker Ref 2 del LPAN OM: '<asegurado o nº póliza> [<mercado>] <risk code> <periodo>'. El
+    mercado se incluye solo cuando el LPAN se parte por mercado (coaseguro mixto), para distinguirlos."""
     base = (p.asegurado or p.numero_poliza or "LPAN").strip()
-    return f"{base} {risk_code} {periodo}".strip()
+    merc = f" {mercado}" if mercado else ""
+    return f"{base}{merc} {risk_code} {periodo}".strip()
 
 
 def _recibos_om_por_periodo(db: Session, poliza_id: int) -> dict[str, dict]:
@@ -1277,19 +1283,53 @@ def _recibos_om_por_periodo(db: Session, poliza_id: int) -> dict[str, dict]:
     return grupos
 
 
-def _importes_om(neta_periodo: Decimal, pct: Decimal, capacidad: Decimal,
+def _importes_om(neta_periodo: Decimal, pct: Decimal, capacidad: Decimal, part: Decimal,
                  imp_frac: Decimal, com_frac: Decimal) -> dict:
-    """Importes de un LPAN OM para un (periodo, risk code). `neta_periodo` = prima neta a nuestra
-    participación del periodo (Σ recibos); `pct` = fracción del risk code; `capacidad` = fracción de
-    nuestra participación; `imp_frac`/`com_frac` = impuestos/comisión total en fracción.
-    base = neta×pct (nuestra parte del risk code) · tax = base×imp · brk = base×com ·
-    net = base + tax − brk · gross_100 = base / capacidad (casilla 18)."""
-    base = (neta_periodo * pct).quantize(Decimal("0.01"))
+    """Importes de un LPAN OM para un (periodo × risk code × grupo de mercado). `neta_periodo` = prima
+    neta a NUESTRA participación del periodo (Σ recibos, = capacidad); `pct` = fracción del risk code;
+    `capacidad` = nuestra participación total (fracción); `part` = participación del grupo de mercado
+    (fracción; = capacidad si no hay coaseguro mixto). La prima del grupo es su cuota de la nuestra:
+    base = neta×pct×(part/cap) · tax = base×imp · brk = base×com · net = base+tax−brk ·
+    gross_100 = base / part (casilla 18, el 100% del riesgo)."""
+    cuota = (part / capacidad) if capacidad and capacidad != 0 else Decimal(1)
+    base = (neta_periodo * pct * cuota).quantize(Decimal("0.01"))
     tax = (base * imp_frac).quantize(Decimal("0.01"))
     brk = (base * com_frac).quantize(Decimal("0.01"))
     net = (base + tax - brk).quantize(Decimal("0.01"))
-    gross_100 = (base / capacidad).quantize(Decimal("0.01")) if capacidad and capacidad != 0 else base
+    gross_100 = (base / part).quantize(Decimal("0.01")) if part and part != 0 else base
     return {"base": base, "tax": tax, "brk": brk, "net": net, "gross_100": gross_100}
+
+
+def _grupos_mercado_om(p: Poliza, db: Session) -> list[dict]:
+    """Grupos de LPAN de una póliza OM. REGLA (Fernando): todo lo Lloyd's va en UN grupo (nombre
+    'Lloyd's'); cada compañía NO Lloyd's en su propio grupo. Así se pueden liquidar por separado.
+    Devuelve [{nombre, es_lloyds, part}] con part = fracción de participación del grupo. Sin coaseguro
+    (o sin líneas) → un solo grupo con la capacidad de la póliza (comportamiento de antes)."""
+    cap = _d(p.capacidad) if p.capacidad is not None else Decimal("1")
+    lineas = p.coaseguro_lineas if (p.coaseguro and p.coaseguro_lineas) else None
+    if not lineas:
+        es_ll = _poliza_es_lloyds(p, db)
+        nombre = "Lloyd's" if es_ll else (((db.get(Mercado, p.mercado_id).nombre if p.mercado_id else None) or p.mercado) or "Compañía")
+        return [{"nombre": nombre, "es_lloyds": es_ll, "part": cap}]
+    lloyds_part = Decimal(0)
+    grupos: list[dict] = []
+    for ln in lineas:
+        nombre_m = str(ln.get("mercado", "")).strip()
+        part = _d(ln.get("participacion")) / 100
+        if part <= 0:
+            continue
+        m = db.scalars(select(Mercado).where(Mercado.nombre == nombre_m)).first()
+        es_ll = bool(m and (m.tipo_mercado or "").strip().lower() == "lloyds")
+        if es_ll:
+            lloyds_part += part
+        else:
+            grupos.append({"nombre": nombre_m, "es_lloyds": False, "part": part})
+    if lloyds_part > 0:
+        grupos.insert(0, {"nombre": "Lloyd's", "es_lloyds": True, "part": lloyds_part})
+    if not grupos:   # coaseguro marcado pero sin líneas útiles → caer al comportamiento simple
+        es_ll = _poliza_es_lloyds(p, db)
+        grupos = [{"nombre": "Lloyd's" if es_ll else (p.mercado or "Compañía"), "es_lloyds": es_ll, "part": cap}]
+    return grupos
 
 
 @router.get("/polizas/{poliza_id}/lpan", response_model=VistaLpanOM)
@@ -1302,42 +1342,56 @@ def vista_om(poliza_id: int, db: Session = Depends(get_db)):
     m = db.get(Mercado, p.mercado_id) if p.mercado_id else None
     grupos = _recibos_om_por_periodo(db, poliza_id)
     lpans = db.scalars(select(Lpan).where(Lpan.poliza_id == poliza_id)).all()
-    lpan_por = {(lp.periodo, (lp.risk_code or "").strip()): lp for lp in lpans}
+    lpan_por = {(lp.periodo, (lp.risk_code or "").strip(), (lp.mercado or None)): lp for lp in lpans}
     codigos = [c for c in (p.codigos_riesgo or []) if str(c.get("codigo", "")).strip()]
     capacidad = _d(p.capacidad) if p.capacidad is not None else Decimal("1")
     imp_frac = _d(p.impuestos_porc) / 100
     com_frac = _d(p.comision_porc) / 100
+    grupos_m = _grupos_mercado_om(p, db)               # Lloyd's junto + una compañía no-Lloyd's por grupo
+    un_solo_grupo = len(grupos_m) == 1
     moneda = (next(iter(grupos.values()))["moneda"] if grupos else None) or p.moneda or "EUR"
 
-    filas_map: dict[tuple[str, str], FilaLpanOM] = {}
-    # Rejilla periodo × risk code del reparto (importes calculados).
+    usados: set[int] = set()                           # ids de LPAN ya casados en la rejilla
+    filas_map: dict[tuple[str, str, str], FilaLpanOM] = {}
+    # Rejilla periodo × risk code × grupo de mercado (importes calculados a la parte del grupo).
     for per, g in grupos.items():
         cobrado = g["num"] > 0 and g["cobr"] == g["num"]
         for c in codigos:
             codigo = str(c["codigo"]).strip()
             pct = _d(c.get("pct")) / 100
-            imp = _importes_om(g["neta"], pct, capacidad, imp_frac, com_frac)
-            lp = lpan_por.get((per, codigo))
-            filas_map[(per, codigo)] = FilaLpanOM(
-                periodo=per, periodo_label=_periodo_label(per), risk_code=codigo,
-                pct=_d(c.get("pct")), linea_pct=capacidad,
-                gross_100=imp["gross_100"], tax=imp["tax"], brokerage=imp["brk"], net_premium=imp["net"],
-                cobrado=cobrado, lpan=LpanRead.model_validate(lp, from_attributes=True) if lp else None,
-            )
-    # LPAN ya existentes fuera de la rejilla (históricos, o risk code que ya no está en el reparto).
-    for (per, codigo), lp in lpan_por.items():
-        if (per, codigo) in filas_map:
+            for grp in grupos_m:
+                imp = _importes_om(g["neta"], pct, capacidad, grp["part"], imp_frac, com_frac)
+                lp = lpan_por.get((per, codigo, grp["nombre"]))
+                if lp is None and un_solo_grupo:        # LPAN histórico sin `mercado` (columna nueva)
+                    lp = lpan_por.get((per, codigo, None))
+                if lp is not None:
+                    usados.add(lp.id)
+                filas_map[(per, codigo, grp["nombre"])] = FilaLpanOM(
+                    periodo=per, periodo_label=_periodo_label(per), risk_code=codigo,
+                    mercado=grp["nombre"], es_lloyds=grp["es_lloyds"],
+                    pct=_d(c.get("pct")), linea_pct=grp["part"],
+                    gross_100=imp["gross_100"], tax=imp["tax"], brokerage=imp["brk"], net_premium=imp["net"],
+                    cobrado=cobrado, lpan=LpanRead.model_validate(lp, from_attributes=True) if lp else None,
+                )
+    # LPAN ya existentes fuera de la rejilla (históricos, risk code que ya no está, o mercado suelto).
+    for lp in lpans:
+        if lp.id in usados:
             continue
         lin = _d(lp.linea_pct) if lp.linea_pct is not None else capacidad
         gross_100 = (_d(lp.gross_premium) / lin).quantize(Decimal("0.01")) if lin and lin != 0 else _d(lp.gross_premium)
-        filas_map[(per, codigo)] = FilaLpanOM(
-            periodo=per, periodo_label=_periodo_label(per), risk_code=codigo,
+        merc = lp.mercado or ("Lloyd's" if es_lloyds else ((p.mercado or "Compañía")))
+        es_ll = (merc == "Lloyd's") if lp.mercado else es_lloyds
+        filas_map[(lp.periodo, (lp.risk_code or "").strip(), merc)] = FilaLpanOM(
+            periodo=lp.periodo, periodo_label=_periodo_label(lp.periodo), risk_code=(lp.risk_code or "").strip(),
+            mercado=merc, es_lloyds=es_ll,
             pct=Decimal("0"), linea_pct=lin,
             gross_100=gross_100, tax=_d(lp.tax), brokerage=_d(lp.brokerage), net_premium=_d(lp.net_premium),
             cobrado=True, lpan=LpanRead.model_validate(lp, from_attributes=True),
         )
 
-    filas = sorted(filas_map.values(), key=lambda f: (f.periodo, f.risk_code), reverse=True)
+    # Lloyd's primero y luego alfabético dentro de cada (periodo, risk code); periodos recientes arriba.
+    filas = sorted(filas_map.values(), key=lambda f: (0 if f.es_lloyds else 1, f.mercado))
+    filas.sort(key=lambda f: (f.periodo, f.risk_code), reverse=True)
     aviso = None
     if not codigos:
         aviso = "Falta el reparto por risk code: añádelo en la ficha de la póliza para poder generar los LPAN."
@@ -1357,26 +1411,34 @@ def generar_lpan_om(poliza_id: int, payload: LpanOmCreate, db: Session = Depends
     p = _poliza_o_404(poliza_id, db)
     per = (payload.periodo or "").strip()
     codigo = (payload.risk_code or "").strip()
+    mercado = (payload.mercado or "Lloyd's").strip()
     match = next((c for c in (p.codigos_riesgo or []) if str(c.get("codigo", "")).strip() == codigo), None)
     if match is None:
         raise HTTPException(status_code=409, detail=f"El risk code «{codigo}» no está en el reparto de la póliza. Añádelo en la ficha.")
+    grupos_m = _grupos_mercado_om(p, db)
+    grp = next((x for x in grupos_m if x["nombre"] == mercado), None)
+    if grp is None:
+        raise HTTPException(status_code=409, detail=f"El mercado «{mercado}» no está en el reparto de coaseguro de la póliza.")
     grupos = _recibos_om_por_periodo(db, poliza_id)
     g = grupos.get(per)
     if not g or g["num"] == 0:
         raise HTTPException(status_code=404, detail=f"No hay recibos de la póliza en {per}.")
     if g["cobr"] != g["num"]:
         raise HTTPException(status_code=409, detail=f"Hay recibos sin cobrar en {per}: no se puede generar el LPAN.")
-    if db.scalar(select(Lpan).where(Lpan.poliza_id == poliza_id, Lpan.periodo == per, Lpan.risk_code == codigo)):
-        raise HTTPException(status_code=409, detail=f"Ya existe el LPAN de «{codigo}» en {per}.")
+    # Duplicado: mismo mercado, o un LPAN histórico sin mercado cuando la póliza es de un solo grupo.
+    for e in db.scalars(select(Lpan).where(Lpan.poliza_id == poliza_id, Lpan.periodo == per, Lpan.risk_code == codigo)).all():
+        if (e.mercado or None) == mercado or (e.mercado is None and len(grupos_m) == 1):
+            raise HTTPException(status_code=409, detail=f"Ya existe el LPAN de «{codigo}» ({mercado}) en {per}.")
     capacidad = _d(p.capacidad) if p.capacidad is not None else Decimal("1")
     pct = _d(match.get("pct")) / 100
-    imp = _importes_om(g["neta"], pct, capacidad, _d(p.impuestos_porc) / 100, _d(p.comision_porc) / 100)
+    imp = _importes_om(g["neta"], pct, capacidad, grp["part"], _d(p.impuestos_porc) / 100, _d(p.comision_porc) / 100)
+    nombre = _nombre_lpan_om(p, codigo, per, mercado if len(grupos_m) > 1 else None)
     lp = Lpan(
-        fdo_id=None, poliza_id=poliza_id, binder_id=None,
+        fdo_id=None, poliza_id=poliza_id, binder_id=None, mercado=mercado,
         risk_code=codigo, section=0, periodo=per, tipo="PM", comision_pct=None, pais=None,
         num_lineas=g["num"], gross_premium=imp["base"], brokerage=imp["brk"], tax=imp["tax"],
-        net_premium=imp["net"], linea_pct=capacidad,
-        broker_ref1=(p.numero_poliza or None), broker_ref2=_nombre_lpan_om(p, codigo, per), moneda=g["moneda"],
+        net_premium=imp["net"], linea_pct=grp["part"],
+        broker_ref1=(p.numero_poliza or None), broker_ref2=nombre, moneda=g["moneda"],
         work_package=None, fecha=None, sdd=_sdd_de(per), estado="Work in Progress",
     )
     db.add(lp)

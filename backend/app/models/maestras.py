@@ -657,6 +657,10 @@ class Lpan(Base):
     # Apunta a un binder O a una póliza OM (uno de los dos).
     binder_id: Mapped[int | None] = mapped_column(ForeignKey("binders.id", ondelete="CASCADE"), index=True)
     poliza_id: Mapped[int | None] = mapped_column(ForeignKey("polizas.id", ondelete="SET NULL"), index=True)
+    # Grupo de mercado del LPAN OM (coaseguro con mercados mixtos): 'Lloyd's' (todos los Lloyd's juntos)
+    # o el nombre de la compañía no-Lloyd's. NULL en binder y en OM de un solo mercado. Separa LPAN
+    # distintos del mismo (poliza, risk code, periodo) por mercado.
+    mercado: Mapped[str | None] = mapped_column(String(80))
     risk_code: Mapped[str] = mapped_column(String(20))
     section: Mapped[int] = mapped_column(Integer, server_default="0", default=0)  # nº de sección del bordereau
     periodo: Mapped[str] = mapped_column(String(7))     # 'YYYY-MM' del Premium BDX

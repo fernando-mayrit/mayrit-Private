@@ -31,15 +31,21 @@ export default function PolizaLpanSection({ polizaId }: { polizaId: number }) {
   if (error) return <div className="error" style={{ marginTop: 16 }}>⚠ {error}</div>;
   if (!vista) return null;
 
-  const lloyds = vista.es_lloyds;
+  // El LPAN se parte por grupo de mercado (todo Lloyd's junto + una compañía no-Lloyd's por LPAN).
+  const mercados = [...new Set(vista.filas.map((f) => f.mercado))];
+  const mixto = mercados.length > 1;
   return (
     <div style={{ marginTop: 16 }}>
       <h3 style={{ marginBottom: 8 }}>
         LPAN{" "}
-        <span className={`pill ${lloyds ? "pill-cobrado" : "pill-anulado"}`} title={vista.tipo_mercado ?? ""}>
-          {lloyds ? "Lloyd's" : (vista.tipo_mercado || "No Lloyd's")}
-        </span>
-        {vista.mercado && <span className="hint" style={{ marginLeft: 8, fontWeight: 400 }}>{vista.mercado}</span>}
+        {mixto ? (
+          <span className="pill pill-pendiente" title={mercados.join(" · ")}>Coaseguro · {mercados.length} mercados</span>
+        ) : (
+          <span className={`pill ${vista.es_lloyds ? "pill-cobrado" : "pill-anulado"}`} title={vista.tipo_mercado ?? ""}>
+            {vista.es_lloyds ? "Lloyd's" : (vista.tipo_mercado || "No Lloyd's")}
+          </span>
+        )}
+        {!mixto && vista.mercado && <span className="hint" style={{ marginLeft: 8, fontWeight: 400 }}>{vista.mercado}</span>}
         {vista.capacidad_pct != null && (
           <span className="hint" style={{ marginLeft: 8, fontWeight: 400 }}>
             · Participación {fmtMiles(vista.capacidad_pct, 2, false)}%
@@ -58,6 +64,7 @@ export default function PolizaLpanSection({ polizaId }: { polizaId: number }) {
               <tr>
                 <th>Mes</th>
                 <th>Risk Code</th>
+                <th>Mercado</th>
                 <th className="num">%</th>
                 <th className="num">Gross 100%</th>
                 <th className="num">Impuestos</th>
@@ -76,7 +83,7 @@ export default function PolizaLpanSection({ polizaId }: { polizaId: number }) {
             </thead>
             <tbody>
               {vista.filas.map((f) => (
-                <FilaRow key={`${f.periodo}|${f.risk_code}`} f={f} vista={vista} polizaId={polizaId} onChanged={cargar} />
+                <FilaRow key={`${f.periodo}|${f.risk_code}|${f.mercado}`} f={f} polizaId={polizaId} onChanged={cargar} />
               ))}
             </tbody>
           </table>
@@ -89,17 +96,15 @@ export default function PolizaLpanSection({ polizaId }: { polizaId: number }) {
 // Fila de un (periodo × risk code): importes calculados + el LPAN (generar o seguimiento).
 function FilaRow({
   f,
-  vista,
   polizaId,
   onChanged,
 }: {
   f: FilaLpanOM;
-  vista: VistaLpanOM;
   polizaId: number;
   onChanged: () => void | Promise<void>;
 }) {
   const lp = f.lpan;
-  const lloyds = vista.es_lloyds;
+  const lloyds = f.es_lloyds;   // por fila: cada grupo de mercado va (o no) por el flujo Lloyd's
   const [signing, setSigning] = useState(lp?.signing_number ?? "");
   const [wp, setWp] = useState(lp?.work_package ?? "");
   const [fproc, setFproc] = useState((lp?.fecha ?? "").slice(0, 10));
@@ -134,7 +139,7 @@ function FilaRow({
     if (!lloyds) {
       setSaving(true);
       try {
-        await lpanApi.generarLpanOm(polizaId, { periodo: f.periodo, risk_code: f.risk_code });
+        await lpanApi.generarLpanOm(polizaId, { periodo: f.periodo, risk_code: f.risk_code, mercado: f.mercado });
         await onChanged();
       } catch (e) {
         alert((e as Error).message);
@@ -147,7 +152,7 @@ function FilaRow({
     if (cancelado) return;
     setSaving(true);
     try {
-      const nlp = await lpanApi.generarLpanOm(polizaId, { periodo: f.periodo, risk_code: f.risk_code });
+      const nlp = await lpanApi.generarLpanOm(polizaId, { periodo: f.periodo, risk_code: f.risk_code, mercado: f.mercado });
       const { blob, filename } = await lpanApi.lpanWord(nlp.id);
       await guardarEn(handle, blob, filename);
       await onChanged();
@@ -211,6 +216,9 @@ function FilaRow({
     <tr>
       <th>{f.periodo_label}</th>
       <th>{f.risk_code}</th>
+      <td>
+        <span className={`pill ${lloyds ? "pill-cobrado" : "pill-anulado"}`} style={{ fontWeight: 500 }}>{f.mercado}</span>
+      </td>
       <td className="num">{fmtMiles(f.pct, 2, false)}%</td>
       <td className="num">{fmtMiles(f.gross_100)}</td>
       <td className="num">{fmtMiles(f.tax)}</td>
