@@ -1422,6 +1422,19 @@ class DgsfpVinculo(Base):
     agencia: Mapped["DgsfpAgencia"] = relationship()
 
 
+class DgsfpInforme(Base):
+    """Informe de cambios de una sincronización del registro DGSFP (vínculos nuevos / desaparecidos…).
+    Antes era un fichero .md local (solo visible en el PC que corría la sync); ahora se guarda en BD
+    para que la alerta salga también en la app de Azure. `revisado` = ya visto (quita la alerta)."""
+    __tablename__ = "dgsfp_informes"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    fecha: Mapped[dt.date] = mapped_column(Date, index=True)   # día de la sincronización
+    contenido: Mapped[str] = mapped_column(Text)               # el informe en markdown
+    revisado: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
+    creado: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class Credencial(Base):
     """Entrada del gestor de contraseñas. La contraseña (`secreto_cifrado`) se guarda CIFRADA
     (Fernet, ver ``app/seguridad.py``); el resto de campos en claro. `notas` NO se cifra (es para

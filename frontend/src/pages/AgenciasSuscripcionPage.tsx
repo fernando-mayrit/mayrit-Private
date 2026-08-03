@@ -184,7 +184,7 @@ export default function AgenciasSuscripcionPage() {
         <div className="as-alerta">
           <span className="as-alerta-txt">📋 El listado se actualizó — <b>informe de cambios del {informe.fecha}</b> pendiente de revisar.</span>
           <button className="btn-link" onClick={() => setVerInforme((s) => !s)}>{verInforme ? "ocultar" : "ver aquí"}</button>
-          <button className="btn-link" onClick={abrirInforme} title={informe.ruta}>abrir en el PC</button>
+          {informe.ruta && <button className="btn-link" onClick={abrirInforme} title={informe.ruta}>abrir en el PC</button>}
           <button className="btn-primary btn-mini" onClick={eliminarInforme}>Revisado, eliminar</button>
           {verInforme && <pre className="as-alerta-cont">{informe.contenido}</pre>}
         </div>

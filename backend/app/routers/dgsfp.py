@@ -17,7 +17,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..db import get_db
-from ..models.maestras import DgsfpAgencia, DgsfpAseguradora, DgsfpVinculo, Parametro
+from ..models.maestras import DgsfpAgencia, DgsfpAseguradora, DgsfpInforme, DgsfpVinculo, Parametro
 
 router = APIRouter(prefix="/dgsfp", tags=["DGSFP"])
 
@@ -196,10 +196,11 @@ def editar_vinculo(vinculo_id: int, payload: VinculoUpdate, db: Session = Depend
     return _vinculo_dto(v)
 
 
-# ── Informe de cambios: existe un fichero mientras haya cambios sin revisar ──
+# ── Informe de cambios: fila en BD mientras haya cambios sin revisar. Antes era un fichero .md local
+#    (solo lo veía el backend del PC que corría la sync); en BD la alerta sale también en la app de Azure. ──
 class InformeDgsfp(BaseModel):
     fecha: str
-    ruta: str
+    ruta: str = ""            # ruta del fichero local (solo para "abrir en el PC"); vacío en Azure
     contenido: str
 
 
@@ -208,13 +209,16 @@ def _informes() -> list[Path]:
 
 
 @router.get("/informe", response_model=InformeDgsfp | None)
-def informe_pendiente():
-    """El informe de cambios más reciente pendiente de revisar (existe como fichero). None si no hay."""
-    files = _informes()
-    if not files:
+def informe_pendiente(db: Session = Depends(get_db)):
+    """El informe de cambios más reciente pendiente de revisar (fila en BD sin revisar). None si no hay."""
+    inf = db.scalars(
+        select(DgsfpInforme).where(DgsfpInforme.revisado.is_(False))
+        .order_by(DgsfpInforme.fecha.desc(), DgsfpInforme.id.desc()).limit(1)
+    ).first()
+    if inf is None:
         return None
-    f = files[-1]
-    return InformeDgsfp(fecha=f.stem.replace("informe_", ""), ruta=str(f), contenido=f.read_text(encoding="utf-8"))
+    files = _informes()
+    return InformeDgsfp(fecha=inf.fecha.isoformat(), ruta=(str(files[-1]) if files else ""), contenido=inf.contenido)
 
 
 @router.post("/informe/abrir")
@@ -222,7 +226,7 @@ def abrir_informe():
     """Abre el informe en el visor por defecto del PC (solo funciona en local, donde está el fichero)."""
     files = _informes()
     if not files:
-        raise HTTPException(status_code=404, detail="No hay informe pendiente.")
+        raise HTTPException(status_code=404, detail="No hay fichero de informe en este equipo (míralo con «ver aquí»).")
     try:
         os.startfile(str(files[-1]))   # noqa: type-checker (solo Windows/local)
     except Exception:
@@ -231,12 +235,16 @@ def abrir_informe():
 
 
 @router.delete("/informe")
-def eliminar_informe():
-    """Elimina los informes pendientes (tras revisarlos) → desaparece la alerta."""
+def eliminar_informe(db: Session = Depends(get_db)):
+    """Marca los informes pendientes como revisados (BD) y borra los ficheros locales → quita la alerta."""
     n = 0
-    for f in _informes():
+    for inf in db.scalars(select(DgsfpInforme).where(DgsfpInforme.revisado.is_(False))).all():
+        inf.revisado = True
+        n += 1
+    db.commit()
+    for f in _informes():        # limpia también el fichero local (si estamos en el PC de la sync)
         try:
-            f.unlink(); n += 1
+            f.unlink()
         except OSError:
             pass
     return {"eliminados": n}

@@ -23,7 +23,7 @@ import sys
 from playwright.async_api import async_playwright
 
 from app.db import SessionLocal
-from app.models.maestras import DgsfpAgencia, DgsfpAseguradora, DgsfpVinculo, Parametro
+from app.models.maestras import DgsfpAgencia, DgsfpAseguradora, DgsfpInforme, DgsfpVinculo, Parametro
 
 BASE = "https://rrpp.dgsfp.mineco.es"
 BUSQUEDA_ACTIVAS = ("OperadorClave=4&Clave=&OperadorCif=4&Cif=&OperadorDescripcion=3&Descripcion="
@@ -204,11 +204,16 @@ def main(limite: int | None = None):
     if n_cambios == 0:
         print("Sin cambios respecto al mes anterior: no se genera informe.")
         return
+    md = _informe(cambios)
+    # En BD (para que la alerta salga también en la app de Azure) Y en fichero local (para "abrir en el PC").
+    with SessionLocal() as db:
+        db.add(DgsfpInforme(fecha=dt.date.today(), contenido=md))
+        db.commit()
     carpeta = Path(__file__).parent / "informes_dgsfp"
     carpeta.mkdir(exist_ok=True)
     ruta = carpeta / f"informe_{dt.date.today().isoformat()}.md"
-    ruta.write_text(_informe(cambios), encoding="utf-8")
-    print(f"Informe de cambios ({n_cambios}): {ruta}")
+    ruta.write_text(md, encoding="utf-8")
+    print(f"Informe de cambios ({n_cambios}) guardado en BD y en {ruta}")
 
 
 if __name__ == "__main__":
