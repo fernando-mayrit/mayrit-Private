@@ -45,6 +45,7 @@ TIPOS_AVISO: dict[str, dict] = {
     "poliza_vence_urgente": {"etiqueta": "Póliza a punto de vencer / vencida sin cerrar", "defecto": "alto", "categoria": "alerta"},
     "lpan_mes_incompleto": {"etiqueta": "Mes con LPAN a medias", "defecto": "alto", "categoria": "alerta"},
     "recibo_cobrado_sin_lpan": {"etiqueta": "Recibo (OM) cobrado sin LPAN", "defecto": "medio", "categoria": "alerta"},
+    "comision_cedida_sin_marcar": {"etiqueta": "Comisión cedida sin marcar (ni pagada ni pendiente)", "defecto": "alto", "categoria": "alerta"},
     "tarea_pendiente":     {"etiqueta": "Tarea de binder pendiente", "defecto": "medio", "categoria": "dia"},
     "lpan_sin_procesar":   {"etiqueta": "LPAN sin WP/Procesado", "defecto": "bajo", "categoria": "dia"},
     "comision_sin_reparto": {"etiqueta": "Comisión pendiente de reparto", "defecto": "bajo", "categoria": "dia"},
@@ -354,9 +355,9 @@ def _lpan_sin_procesar(db: Session, binders: dict[int, Binder]) -> list[Aviso]:
     return avisos
 
 
-# Solo se vigilan recibos cobrados a partir de este año: el módulo LPAN es reciente y el histórico
-# anterior NO se rehace (decisión de Fernando), así que avisar de él sería puro ruido.
-LPAN_VIGILAR_DESDE_ANYO = 2026
+# Solo se vigilan operaciones a partir de este año: el histórico anterior NO se rehace (decisión de
+# Fernando), así que avisar de él sería puro ruido. Compartido por varias alertas (LPAN, comisión…).
+MONITOR_DESDE_ANYO = 2026
 
 
 def _mes_anyo(periodo: str | None) -> str:
@@ -388,7 +389,7 @@ def _recibo_cobrado_sin_lpan(db: Session) -> list[Aviso]:
     for r in db.scalars(select(Recibo).where(
             Recibo.poliza_id.is_not(None), Recibo.estado != "Anulado",
             Recibo.prima_fecha_cobro.is_not(None), Recibo.periodo.is_not(None))).all():
-        if r.prima_fecha_cobro.year < LPAN_VIGILAR_DESDE_ANYO:
+        if r.prima_fecha_cobro.year < MONITOR_DESDE_ANYO:
             continue
         key = (r.poliza_id, (r.periodo or "").strip())
         if key in lpan_ok:
@@ -408,6 +409,44 @@ def _recibo_cobrado_sin_lpan(db: Session) -> list[Aviso]:
             titulo="Recibo cobrado sin LPAN",
             detalle=f"{p.mercado} · {p.numero_poliza}{aseg}: recibo de {_mes_anyo(per)} "
                     f"cobrado el {fcobro.strftime('%d/%m/%Y')} y aún sin LPAN.",
+            poliza_id=pid, periodo=per, umr=p.numero_poliza, pagina="polizas",
+        ))
+    avisos.sort(key=lambda a: (a.periodo or "", a.umr or ""))
+    return avisos
+
+
+def _comision_cedida_sin_marcar(db: Session) -> list[Aviso]:
+    """ALERTA (control): recibos de póliza OM ya COBRADOS cuya comisión CEDIDA al corredor quedó en un
+    estado inválido: `comision_cedida` > 0 pero NI pagada NI pendiente de pago (los dos campos a 0). Una
+    comisión o está pagada o está pendiente, nunca en el limbo. Pasa p. ej. en clientes 'por diferencia'
+    (el corredor se descuenta la comisión al liquidar la prima) cuando se cobra pero se olvida marcarla
+    pagada. Se agrupa por (póliza, periodo). Solo pólizas OM: en binders estos campos no se usan."""
+    polizas = {p.id: p for p in db.scalars(select(Poliza)).all()}
+    grupos: dict[tuple[int, str], dt.date] = {}
+    for r in db.scalars(select(Recibo).where(
+            Recibo.poliza_id.is_not(None), Recibo.estado != "Anulado",
+            Recibo.prima_fecha_cobro.is_not(None), Recibo.periodo.is_not(None),
+            Recibo.comision_cedida > 0,
+            Recibo.comision_cedida_pagada == 0,
+            Recibo.comision_cedida_a_pagar == 0)).all():
+        if r.prima_fecha_cobro.year < MONITOR_DESDE_ANYO:
+            continue
+        key = (r.poliza_id, (r.periodo or "").strip())
+        prev = grupos.get(key)
+        if prev is None or r.prima_fecha_cobro < prev:
+            grupos[key] = r.prima_fecha_cobro
+
+    avisos: list[Aviso] = []
+    for (pid, per), fcobro in grupos.items():
+        p = polizas.get(pid)
+        if not p:
+            continue
+        aseg = f" ({p.asegurado})" if p.asegurado else ""
+        avisos.append(Aviso(
+            tipo="comision_cedida_sin_marcar", severidad="danger",
+            titulo="Comisión cedida sin marcar (ni pagada ni pendiente)",
+            detalle=f"{p.mercado} · {p.numero_poliza}{aseg}: recibo de {_mes_anyo(per)} cobrado el "
+                    f"{fcobro.strftime('%d/%m/%Y')}, pero la comisión cedida no está ni pagada ni pendiente.",
             poliza_id=pid, periodo=per, umr=p.numero_poliza, pagina="polizas",
         ))
     avisos.sort(key=lambda a: (a.periodo or "", a.umr or ""))
@@ -538,6 +577,7 @@ def listar_avisos(db: Session = Depends(get_db)):
     avisos += _tareas_pendientes(db, binders)
     avisos += _lpan_mes_incompleto(db, binders)
     avisos += _recibo_cobrado_sin_lpan(db)
+    avisos += _comision_cedida_sin_marcar(db)
     avisos += _lpan_sin_procesar(db, binders)
     avisos += _comision_sin_reparto(db)
     return _aplicar_niveles(db, avisos)

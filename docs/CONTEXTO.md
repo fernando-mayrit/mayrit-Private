@@ -40,6 +40,11 @@ arreglo del 500 de Pólizas). Hecho hoy:
   INFLADA (los snapshots cuentan pagado+reservas sin restar `to_pay`) y no cuadra con el módulo de
   Siniestros. Decidir con Fernando si aplicar `− to_pay` (afecta IBNR/Ultimate de TODA la app).
 - **Triangulación por programa** — hoy básico, ampliar.
+- **Impuestos del LPAN OM: la vista los calcula con un % de póliza fijo, NO cuadra con el recibo.** Detectado
+  en pol 103 (Adelte/Liberty, MDABNZ1J009): el cuadro pinta 5.297,50 en todos los trimestres, pero el recibo
+  real da 5.590 en Enero y 5.200 en el resto (bruta − neta). Mejora: que `_importes_om` saque los impuestos
+  del recibo (bruta − neta por periodo), no del `imp_frac` de póliza. Comentario en `lpan.py` dice que se hizo
+  por % "para cuadrar con el control", pero Fernando confirma que **manda el recibo**. Revisar para más adelante.
 - **Coaseguro fantasma en 8 pólizas (apuntado 2026-07-27)** — 8 pólizas **Temporal-Vencidas** tienen la
   casilla **coaseguro marcada pero 0 líneas** de participación (suma 0% ≠ capacidad) → si se editan, la
   validación de coaseguro las bloquea. Parecen NO ser coaseguro real (un solo mercado; se quedó la marca
