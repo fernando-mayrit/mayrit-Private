@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { tareasApi, type TareaAgendaItem } from "../api";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { tareasApi, type TareaAgendaItem, type Cuadricula, type CuadriculaColumna } from "../api";
 import PageHeader from "../components/PageHeader";
 import TareasBinder from "../components/TareasBinder";
 import { fmtFechaES } from "../format";
@@ -32,13 +32,15 @@ type Grupo = {
 };
 
 export default function TareasPage() {
-  const [vista, setVista] = useState<"resumen" | "detalle">("resumen");
+  const [vista, setVista] = useState<"resumen" | "cuadricula" | "detalle">("cuadricula");
   const [agenda, setAgenda] = useState<TareaAgendaItem[]>([]);
   const [mes, setMes] = useState(mesActual());
   const [soloPend, setSoloPend] = useState(true);
   const [abiertos, setAbiertos] = useState<Set<number>>(new Set());
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [cuad, setCuad] = useState<Cuadricula | null>(null);
+  const [cargandoCuad, setCargandoCuad] = useState(false);
 
   useEffect(() => {
     tareasApi.agenda()
@@ -46,6 +48,20 @@ export default function TareasPage() {
       .catch((e) => setError(e instanceof Error ? e.message : "No se pudieron cargar las tareas."))
       .finally(() => setCargando(false));
   }, []);
+
+  const cargarCuad = useCallback(() => {
+    setCargandoCuad(true);
+    tareasApi.cuadricula(mes).then(setCuad).catch(() => setCuad(null)).finally(() => setCargandoCuad(false));
+  }, [mes]);
+  useEffect(() => { if (vista === "cuadricula") cargarCuad(); }, [vista, cargarCuad]);
+
+  // Marcar/desmarcar una pastilla MANUAL (optimista).
+  const marcar = async (binder_id: number, columna_id: number, hecho: boolean) => {
+    setCuad((c) => c && ({ ...c, filas: c.filas.map((f) => f.binder_id === binder_id
+      ? { ...f, celdas: { ...f.celdas, [columna_id]: hecho ? "ok" : "pend" } } : f) }));
+    try { await tareasApi.marcarManual({ binder_id, periodo: cuad?.periodo ?? mes, columna_id, hecho }); }
+    catch { cargarCuad(); }
+  };
 
   const grupos = useMemo(() => {
     // Se muestra lo del mes elegido + TODAS las vencidas (aunque sean de meses anteriores, para que
@@ -87,21 +103,24 @@ export default function TareasPage() {
 
       <div className="toolbar" style={{ marginBottom: 12, gap: 8, flexWrap: "wrap", alignItems: "center" }}>
         <div className="btn-toggle-group">
+          <button className={"btn-toggle" + (vista === "cuadricula" ? " active" : "")} onClick={() => setVista("cuadricula")}>Cuadrícula</button>
           <button className={"btn-toggle" + (vista === "resumen" ? " active" : "")} onClick={() => setVista("resumen")}>Resumen</button>
           <button className={"btn-toggle" + (vista === "detalle" ? " active" : "")} onClick={() => setVista("detalle")}>Detalle</button>
         </div>
+        {vista !== "detalle" && (
+          <input type="month" className="filtro" value={mes} onChange={(e) => setMes(e.target.value || mesActual())} title="Mes a revisar" />
+        )}
         {vista === "resumen" && (
-          <>
-            <input type="month" className="filtro" value={mes} onChange={(e) => setMes(e.target.value || mesActual())} title="Mes a revisar" />
-            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 14 }}>
-              <input type="checkbox" checked={soloPend} onChange={(e) => setSoloPend(e.target.checked)} /> Solo con pendientes
-            </label>
-          </>
+          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 14 }}>
+            <input type="checkbox" checked={soloPend} onChange={(e) => setSoloPend(e.target.checked)} /> Solo con pendientes
+          </label>
         )}
       </div>
 
       {vista === "detalle" ? (
         <TareasBinder />
+      ) : vista === "cuadricula" ? (
+        <CuadriculaVista cuad={cuad} cargando={cargandoCuad} mesLabel={labelMes(mes)} onMarcar={marcar} />
       ) : cargando ? (
         <div className="loading">Cargando…</div>
       ) : error ? (
@@ -157,5 +176,73 @@ export default function TareasPage() {
         </>
       )}
     </div>
+  );
+}
+
+// Vista CUADRÍCULA: matriz binders (filas) × fases del pipeline (columnas), con pastillas de estado
+// (verde=hecho · rojo=pendiente · gris=no aplica). Las columnas "manuales" (Enviado) se marcan con clic.
+function CuadriculaVista({ cuad, cargando, mesLabel, onMarcar }: {
+  cuad: Cuadricula | null;
+  cargando: boolean;
+  mesLabel: string;
+  onMarcar: (binder_id: number, columna_id: number, hecho: boolean) => void;
+}) {
+  if (cargando && !cuad) return <div className="loading">Cargando…</div>;
+  if (!cuad || cuad.filas.length === 0) return <div className="empty">Sin binders con pipeline este mes.</div>;
+
+  const grupos: { grupo: string; cols: CuadriculaColumna[] }[] = [];
+  for (const c of cuad.columnas) {
+    let g = grupos.find((x) => x.grupo === c.grupo);
+    if (!g) { g = { grupo: c.grupo, cols: [] }; grupos.push(g); }
+    g.cols.push(c);
+  }
+  const cls = (est: string) => "pastilla " + (est === "ok" ? "ok" : est === "pend" ? "pend" : "na");
+
+  return (
+    <>
+      <div className="hint" style={{ marginBottom: 8 }}>
+        {mesLabel} · pipeline por binder — <span className={cls("ok")} /> hecho · <span className={cls("pend")} /> pendiente · <span className={cls("na")} /> no aplica.
+        Las de <b>Enviado</b> (✎) se marcan con un clic.
+      </div>
+      <div className="cuad-scroll">
+        <table className="cuad-tabla">
+          <thead>
+            <tr>
+              <th className="cuad-esq" rowSpan={2}>Binder</th>
+              {grupos.map((g) => <th key={g.grupo} colSpan={g.cols.length} className="cuad-grupo">{g.grupo}</th>)}
+            </tr>
+            <tr>
+              {cuad.columnas.map((c) => (
+                <th key={c.id} className="cuad-col" title={c.tipo === "manual" ? "Manual (clic para marcar)" : "Automático (del dato)"}>
+                  {c.nombre}{c.tipo === "manual" ? " ✎" : ""}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {cuad.filas.map((f) => (
+              <tr key={f.binder_id}>
+                <th className="cuad-bind"><b>{f.umr}</b>{f.agencia && <span className="hint"> · {f.agencia}</span>}</th>
+                {cuad.columnas.map((c) => {
+                  const est = f.celdas[c.id] ?? "na";
+                  const editable = c.tipo === "manual" && est !== "na";
+                  return (
+                    <td key={c.id} className="cuad-celda">
+                      {editable ? (
+                        <button className={cls(est) + " clic"} aria-label={est === "ok" ? "Hecho" : "Pendiente"}
+                          title={est === "ok" ? "Hecho (clic para desmarcar)" : "Pendiente (clic para marcar hecho)"}
+                          onClick={() => onMarcar(f.binder_id, c.id, est !== "ok")} />
+                      ) : (
+                        <span className={cls(est)} />
+                      )}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
   );
 }

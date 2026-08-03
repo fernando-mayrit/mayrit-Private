@@ -17,7 +17,8 @@ from sqlalchemy.orm import Session, selectinload
 
 from ..db import get_db
 from ..models.maestras import (
-    Bdx, BdxLinea, Binder, ClaimsPresentacion, Lpan, Tarea, TareaHecha, TareaPaso, TareaPasoHecho,
+    Bdx, BdxLinea, Binder, ClaimsPresentacion, Lpan, Recibo, Tarea, TareaColumna, TareaHecha,
+    TareaMatrizManual, TareaPaso, TareaPasoHecho,
 )
 
 router = APIRouter(tags=["Tareas"])
@@ -524,6 +525,164 @@ def agenda(binder_id: int | None = None, solo_pendientes: bool = False, db: Sess
             ))
     out.sort(key=lambda x: (x.fecha, x.binder_umr or "", x.categoria))
     return out
+
+
+# ══════════ CUADRÍCULA (binders × fases del pipeline, pastillas del dato) ══════════
+class CuadriculaColumna(BaseModel):
+    id: int
+    grupo: str
+    nombre: str
+    tipo: str                       # auto | manual
+    regla: str | None = None
+
+
+class CuadriculaFila(BaseModel):
+    binder_id: int
+    umr: str
+    agencia: str | None = None
+    programa: str | None = None
+    celdas: dict[int, str]          # columna_id -> 'ok' | 'pend' | 'na'
+    n_pend: int = 0
+
+
+class Cuadricula(BaseModel):
+    periodo: str
+    columnas: list[CuadriculaColumna]
+    filas: list[CuadriculaFila]
+
+
+def _cobro_por_periodo(db: Session, binder_ids: set[int]) -> dict[int, set[str]]:
+    """Meses (YYYY-MM) con al menos un recibo del binder cobrado (prima_fecha_cobro)."""
+    out: dict[int, set[str]] = defaultdict(set)
+    if not binder_ids:
+        return out
+    for bid, per in db.execute(
+        select(Recibo.binder_id, Recibo.periodo).where(
+            Recibo.binder_id.in_(binder_ids), Recibo.periodo.is_not(None),
+            Recibo.prima_fecha_cobro.is_not(None), Recibo.estado != "Anulado")
+    ).all():
+        out[bid].add(per)
+    return out
+
+
+@router.get("/tareas/cuadricula", response_model=Cuadricula)
+def cuadricula(mes: str | None = None, db: Session = Depends(get_db)):
+    """Matriz binders × columnas (fases del pipeline). Celda: 'ok' (verde, hecho) · 'pend' (rojo,
+    pendiente) · 'na' (gris, no aplica). Auto = del DATO (risk/premium/claims/lpan/cobro); manual = a
+    mano. 'na' cuando el binder no hace esa fase (no tiene tarea de esa categoría) o el flujo está dormido."""
+    per = (mes or dt.date.today().strftime("%Y-%m")).strip()
+    columnas = db.scalars(select(TareaColumna).where(TareaColumna.activa.is_(True))
+                          .order_by(TareaColumna.orden, TareaColumna.id)).all()
+    # Binders que participan = los que tienen alguna tarea AUTO (el pipeline les aplica).
+    cats_binder: dict[int, set[str]] = defaultdict(set)
+    for t in db.scalars(select(Tarea).where(Tarea.origen == "auto")).all():
+        cats_binder[t.binder_id].add(t.categoria)
+    binder_ids = set(cats_binder)
+    binders = {b.id: b for b in db.scalars(select(Binder).where(Binder.id.in_(binder_ids))
+               .options(selectinload(Binder.productor), selectinload(Binder.programa))).all()}
+    datos = _periodos_datos(db, binder_ids)
+    cobro = _cobro_por_periodo(db, binder_ids)
+    manual = {(m.binder_id, m.columna_id): m for m in db.scalars(select(TareaMatrizManual).where(
+        TareaMatrizManual.periodo == per, TareaMatrizManual.binder_id.in_(binder_ids))).all()}
+
+    filas: list[CuadriculaFila] = []
+    for bid in binder_ids:
+        b = binders.get(bid)
+        if not b:
+            continue
+        celdas: dict[int, str] = {}
+        n_pend = 0
+        for c in columnas:
+            if c.grupo not in cats_binder[bid]:          # el binder no hace esa fase
+                celdas[c.id] = "na"; continue
+            if c.tipo == "auto":
+                if c.regla == "cobro":
+                    existe, dormido = per in cobro.get(bid, set()), _dato_dormido(datos, "premium", b, per)
+                else:
+                    existe, dormido = per in datos.get(c.regla, {}).get(bid, set()), _dato_dormido(datos, c.regla, b, per)
+                estado = "ok" if existe else ("na" if dormido else "pend")
+            else:
+                m = manual.get((bid, c.id))
+                estado = "ok" if (m and m.hecho) else ("na" if _dato_dormido(datos, _CAT_REGLA.get(c.grupo), b, per) else "pend")
+            celdas[c.id] = estado
+            if estado == "pend":
+                n_pend += 1
+        filas.append(CuadriculaFila(
+            binder_id=bid, umr=(b.umr or b.agreement_number or f"#{bid}"),
+            agencia=(b.productor.nombre if b.productor else None),
+            programa=(b.programa.nombre if b.programa else None), celdas=celdas, n_pend=n_pend))
+    filas.sort(key=lambda f: (-f.n_pend, f.umr))
+    return Cuadricula(
+        periodo=per,
+        columnas=[CuadriculaColumna(id=c.id, grupo=c.grupo, nombre=c.nombre, tipo=c.tipo, regla=c.regla) for c in columnas],
+        filas=filas)
+
+
+class MarcarManualIn(BaseModel):
+    binder_id: int
+    periodo: str
+    columna_id: int
+    hecho: bool
+
+
+@router.post("/tareas/matriz/marcar")
+def marcar_manual(payload: MarcarManualIn, db: Session = Depends(get_db)):
+    """Marca/desmarca una pastilla MANUAL de la cuadrícula (p. ej. 'Enviado')."""
+    col = db.get(TareaColumna, payload.columna_id)
+    if col is None or col.tipo != "manual":
+        raise HTTPException(status_code=400, detail="Esa columna no es manual.")
+    m = db.scalar(select(TareaMatrizManual).where(
+        TareaMatrizManual.binder_id == payload.binder_id, TareaMatrizManual.periodo == payload.periodo,
+        TareaMatrizManual.columna_id == payload.columna_id))
+    if m is None:
+        m = TareaMatrizManual(binder_id=payload.binder_id, periodo=payload.periodo, columna_id=payload.columna_id)
+        db.add(m)
+    m.hecho = payload.hecho
+    m.fecha = dt.date.today() if payload.hecho else None
+    db.commit()
+    return {"ok": True, "hecho": m.hecho}
+
+
+# ── Config de columnas de la cuadrícula (editable, común a todos los binders) ──
+class ColumnaIn(BaseModel):
+    grupo: str
+    nombre: str
+    tipo: str                       # auto | manual
+    regla: str | None = None
+    orden: int = 0
+    activa: bool = True
+
+
+@router.get("/tareas/columnas", response_model=list[CuadriculaColumna])
+def listar_columnas(db: Session = Depends(get_db)):
+    cols = db.scalars(select(TareaColumna).order_by(TareaColumna.orden, TareaColumna.id)).all()
+    return [CuadriculaColumna(id=c.id, grupo=c.grupo, nombre=c.nombre, tipo=c.tipo, regla=c.regla) for c in cols]
+
+
+@router.post("/tareas/columnas", response_model=CuadriculaColumna, status_code=201)
+def crear_columna(payload: ColumnaIn, db: Session = Depends(get_db)):
+    c = TareaColumna(grupo=payload.grupo.strip(), nombre=payload.nombre.strip(), tipo=payload.tipo,
+                     regla=(payload.regla or None), orden=payload.orden, activa=payload.activa)
+    db.add(c); db.commit(); db.refresh(c)
+    return CuadriculaColumna(id=c.id, grupo=c.grupo, nombre=c.nombre, tipo=c.tipo, regla=c.regla)
+
+
+@router.put("/tareas/columnas/{col_id}", response_model=CuadriculaColumna)
+def editar_columna(col_id: int, payload: ColumnaIn, db: Session = Depends(get_db)):
+    c = db.get(TareaColumna, col_id)
+    if c is None:
+        raise HTTPException(status_code=404, detail="Columna no encontrada.")
+    c.grupo, c.nombre, c.tipo = payload.grupo.strip(), payload.nombre.strip(), payload.tipo
+    c.regla, c.orden, c.activa = (payload.regla or None), payload.orden, payload.activa
+    db.commit()
+    return CuadriculaColumna(id=c.id, grupo=c.grupo, nombre=c.nombre, tipo=c.tipo, regla=c.regla)
+
+
+@router.delete("/tareas/columnas/{col_id}", status_code=204)
+def borrar_columna(col_id: int, db: Session = Depends(get_db)):
+    c = db.get(TareaColumna, col_id)
+    if c is not None:
+        db.delete(c); db.commit()
 
 
 @router.get("/binders/{binder_id}/tareas", response_model=list[TareaRead])

@@ -1153,6 +1153,36 @@ class TareaPasoHecho(Base):
     paso: Mapped["TareaPaso"] = relationship(back_populates="hechos")
 
 
+class TareaColumna(Base):
+    """Columna de la CUADRÍCULA de tareas: común a TODOS los binders y editable (poner/quitar/reordenar).
+    Agrupada por fase (Risk/Premium/Claims). `tipo`='auto' → la pastilla sale del DATO (`regla` =
+    risk|premium|claims|lpan|cobro); `tipo`='manual' → se marca a mano por binder/mes (TareaMatrizManual).
+    Pastilla en la vista: verde=hecho · rojo=pendiente · gris=no aplica (flujo dormido/inexistente)."""
+    __tablename__ = "tarea_columnas"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    grupo: Mapped[str] = mapped_column(String(30))              # Risk | Premium | Claims
+    nombre: Mapped[str] = mapped_column(String(40))             # Procesado | Cobrado | Enviado | LPANs
+    orden: Mapped[int] = mapped_column(Integer, server_default="0", default=0)
+    tipo: Mapped[str] = mapped_column(String(10))              # 'auto' | 'manual'
+    regla: Mapped[str | None] = mapped_column(String(20))      # auto: risk|premium|claims|lpan|cobro
+    activa: Mapped[bool] = mapped_column(Boolean, server_default=text("true"), default=True)
+
+
+class TareaMatrizManual(Base):
+    """Estado de una pastilla MANUAL de la cuadrícula, por (binder, periodo, columna). Marcado = hecho."""
+    __tablename__ = "tarea_matriz_manual"
+    __table_args__ = (UniqueConstraint("binder_id", "periodo", "columna_id", name="uq_tarea_matriz"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    binder_id: Mapped[int] = mapped_column(ForeignKey("binders.id", ondelete="CASCADE"), index=True)
+    periodo: Mapped[str] = mapped_column(String(7))            # 'YYYY-MM'
+    columna_id: Mapped[int] = mapped_column(ForeignKey("tarea_columnas.id", ondelete="CASCADE"), index=True)
+    hecho: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
+    fecha: Mapped[dt.date | None] = mapped_column(Date)        # cuándo se marcó
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class ComisionLiquidacion(Base):
     """Liquidación mensual de comisiones de una fuente (p. ej. Iberian). Se PREPARA con la comisión
     estimada del Premium (coverholder) y queda PENDIENTE DE RATIFICAR hasta que la fuente envía las

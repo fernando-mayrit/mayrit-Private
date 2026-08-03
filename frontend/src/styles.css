@@ -1371,3 +1371,19 @@ tr.fila-inactiva td { opacity: 0.55; }
 .tr-item { display: flex; align-items: center; gap: 10px; padding: 6px 14px 6px 34px; font-size: 13px; }
 .tr-item-tit { flex: 1 1 auto; min-width: 0; }
 .tr-venc { color: var(--rojo); font-weight: 600; }
+
+/* ── Tareas: vista CUADRÍCULA (matriz binders × fases, pastillas) ── */
+.pastilla { display: inline-block; width: 14px; height: 14px; border-radius: 50%; vertical-align: middle; }
+.pastilla.ok { background: #2e9b52; }
+.pastilla.pend { background: var(--rojo); }
+.pastilla.na { background: #d5d8dd; }
+button.pastilla.clic { border: none; padding: 0; cursor: pointer; }
+button.pastilla.clic:hover { box-shadow: 0 0 0 3px rgba(0,0,0,.14); }
+.cuad-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; border: 1px solid var(--borde); border-radius: 10px; }
+.cuad-tabla { border-collapse: collapse; font-size: 13px; width: 100%; }
+.cuad-tabla th, .cuad-tabla td { border: 1px solid var(--borde); padding: 6px 9px; text-align: center; }
+.cuad-grupo { background: var(--gris-claro); font-weight: 600; color: var(--gris); }
+.cuad-col { font-weight: 500; font-size: 12px; white-space: nowrap; color: var(--gris-medio); }
+.cuad-esq, .cuad-bind { text-align: left; white-space: nowrap; position: sticky; left: 0; background: #fff; z-index: 1; }
+.cuad-bind b { color: #333; }
+.cuad-celda { width: 40px; }

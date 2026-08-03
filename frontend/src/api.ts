@@ -897,7 +897,17 @@ export const tareasApi = {
     const qs = q.toString();
     return request<TareaAgendaItem[]>(`/tareas/agenda${qs ? `?${qs}` : ""}`);
   },
+  cuadricula: (mes?: string) => request<Cuadricula>(`/tareas/cuadricula${mes ? `?mes=${mes}` : ""}`),
+  marcarManual: (d: { binder_id: number; periodo: string; columna_id: number; hecho: boolean }) =>
+    request<{ ok: boolean; hecho: boolean }>(`/tareas/matriz/marcar`, { method: "POST", body: JSON.stringify(d) }),
 };
+export interface CuadriculaColumna { id: number; grupo: string; nombre: string; tipo: string; regla: string | null }
+export interface CuadriculaFila {
+  binder_id: number; umr: string; agencia: string | null; programa: string | null;
+  celdas: Record<number, string>;   // columna_id -> 'ok' | 'pend' | 'na'
+  n_pend: number;
+}
+export interface Cuadricula { periodo: string; columnas: CuadriculaColumna[]; filas: CuadriculaFila[] }
 export interface TareaAgendaItem {
   tarea_id: number;
   titulo: string;
