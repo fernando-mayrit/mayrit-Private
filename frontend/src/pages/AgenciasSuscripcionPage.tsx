@@ -210,7 +210,7 @@ export default function AgenciasSuscripcionPage() {
         {resumen && (
           <span className="as-sello" title="Fuente: Registro DGSFP + ficha manual">
             {resumen.n_agencias} agencias ({resumen.n_agencias_activas} activas)
-            {resumen.actualizado && <> · DGSFP {fmtFechaES(resumen.actualizado)}</>}
+            {resumen.actualizado && <> · Última actualización {fmtFechaES(resumen.actualizado)}</>}
           </span>
         )}
       </div>
