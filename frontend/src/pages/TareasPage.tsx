@@ -223,7 +223,7 @@ function CuadriculaVista({ cuad, cargando, mesLabel, onMarcar }: {
           <tbody>
             {cuad.filas.map((f) => (
               <tr key={f.binder_id}>
-                <th className="cuad-bind"><b>{f.umr}</b>{f.agencia && <span className="hint"> · {f.agencia}</span>}</th>
+                <th className="cuad-bind"><b>{f.umr}</b></th>
                 {cuad.columnas.map((c) => {
                   const est = f.celdas[c.id] ?? "na";
                   const editable = c.tipo === "manual" && est !== "na";
