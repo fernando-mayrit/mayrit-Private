@@ -857,6 +857,7 @@ export interface TareaPasoEstado {
 }
 export interface TareaOcurrencia {
   fecha: string;
+  periodo?: string | null;   // mes del dato (BDX) que cubre la entrega, 'YYYY-MM' (igual que la parrilla)
   hecha: boolean;
   fecha_hecha?: string | null;
   notas?: string | null;
@@ -935,6 +936,7 @@ export interface TareaAgendaItem {
   agencia?: string | null;
   programa?: string | null;
   fecha: string;
+  periodo?: string | null;       // mes del dato (BDX) que cubre la entrega, 'YYYY-MM' (igual que la parrilla)
   estado: string;
   fecha_hecha?: string | null;
   sin_mov_manual?: boolean;      // 'sin movimiento' puesto a mano (se puede deshacer)

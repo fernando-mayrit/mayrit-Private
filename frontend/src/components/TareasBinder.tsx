@@ -379,7 +379,7 @@ export default function TareasBinder({ binderId }: { binderId?: number }) {
   const meses = useMemo(() => {
     const m = new Map<string, Map<string, Map<string, TareaAgendaItem[]>>>();
     for (const a of agenda) {
-      const k = a.fecha.slice(0, 7);          // YYYY-MM
+      const k = a.periodo ?? a.fecha.slice(0, 7);   // mes del DATO (BDX), igual que la parrilla
       const cat = a.categoria || "General";
       const bnd = a.binder_umr || "—";
       if (!m.has(k)) m.set(k, new Map());
@@ -474,7 +474,7 @@ export default function TareasBinder({ binderId }: { binderId?: number }) {
       ) : (
         <table className="compacto" style={{ width: "100%" }}>
           <thead>
-            <tr><th>Fecha</th><th>Estado</th><th>Hecha el</th><th></th></tr>
+            <tr><th>Periodo (BDX)</th><th>Estado</th><th>Hecha el</th><th></th></tr>
           </thead>
           <tbody>
             {[...ocs].reverse().map((o) => {
@@ -493,7 +493,8 @@ export default function TareasBinder({ binderId }: { binderId?: number }) {
                           {abierto ? "▾" : "▸"}
                         </button>
                       )}
-                      {fmtFechaES(o.fecha)}
+                      {o.periodo ? mesAnyo(o.periodo) : fmtFechaES(o.fecha)}
+                      {o.periodo && <span className="hint" style={{ marginLeft: 6 }}>· vence {fmtFechaES(o.fecha)}</span>}
                     </td>
                     <td>
                       <span className={`pill ${cls}`}>{txt}</span>
@@ -618,7 +619,7 @@ export default function TareasBinder({ binderId }: { binderId?: number }) {
                               <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                                 <span style={{ fontWeight: 600 }}>{a.titulo}</span>
                                 {a.origen === "auto" && <span className="hint">· auto</span>}
-                                <span className="hint">· {fmtFechaES(a.fecha)}</span>
+                                <span className="hint">· vence {fmtFechaES(a.fecha)}</span>
                                 <span className={`pill ${cls}`}>{txt}</span>
                                 {tienePasos && <span className="hint">{a.n_pasos_hechos}/{a.n_pasos}</span>}
                                 <span style={{ marginLeft: "auto", whiteSpace: "nowrap", display: "inline-flex", gap: 8, alignItems: "center" }}>

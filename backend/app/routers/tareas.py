@@ -475,6 +475,7 @@ class AgendaItem(BaseModel):
     agencia: str | None = None
     programa: str | None = None
     fecha: dt.date            # fecha (límite) de la ocurrencia
+    periodo: str | None = None   # MES DEL DATO (BDX) que cubre la entrega, 'YYYY-MM' (igual que la parrilla)
     estado: str               # hecha | vencida | pendiente | futura | sin_movimiento
     fecha_hecha: dt.date | None = None
     sin_mov_manual: bool = False   # 'sin movimiento' puesto A MANO (se puede deshacer; el auto no)
@@ -524,7 +525,7 @@ def agenda(binder_id: int | None = None, solo_pendientes: bool = False, db: Sess
                 binder_id=t.binder_id, binder_umr=(binder.umr or binder.agreement_number),
                 agencia=(binder.productor.nombre if binder.productor else None),
                 programa=(binder.programa.nombre if binder.programa else None),
-                fecha=f, estado=estado, fecha_hecha=(h.fecha_hecha if h else None),
+                fecha=f, periodo=_periodo_de(binder, t, f, _paso(t)), estado=estado, fecha_hecha=(h.fecha_hecha if h else None),
                 sin_mov_manual=(h is not None and h.sin_movimiento),
                 pasos=pasos, n_pasos=len(pasos), n_pasos_hechos=sum(1 for p in pasos if p.hecho),
             ))
@@ -1075,7 +1076,8 @@ def borrar(tarea_id: int, db: Session = Depends(get_db)):
 
 # ── Ocurrencias (calendario de la tarea) ──
 class OcurrenciaOut(BaseModel):
-    fecha: dt.date
+    fecha: dt.date                 # FECHA LÍMITE de la entrega (fin de periodo + plazo)
+    periodo: str | None = None     # MES DEL DATO (BDX) que cubre esta entrega, 'YYYY-MM' (igual que la parrilla)
     hecha: bool
     fecha_hecha: dt.date | None = None
     notas: str | None = None
@@ -1115,7 +1117,7 @@ def ocurrencias(tarea_id: int, incluir_futuras: bool = False, db: Session = Depe
         if estado == "futura" and not incluir_futuras:
             continue
         out.append(OcurrenciaOut(
-            fecha=f, hecha=hecha,
+            fecha=f, periodo=(_periodo_de(binder, t, f, _paso(t)) if binder else None), hecha=hecha,
             fecha_hecha=(h.fecha_hecha if h else None), notas=(h.notas if h else None),
             estado=estado, pasos=pasos,
         ))
