@@ -596,6 +596,9 @@ def cuadricula(mes: str | None = None, db: Session = Depends(get_db)):
         b = binders.get(bid)
         if not b:
             continue
+        # El binder solo aparece DESDE su fecha de efecto (antes no existe → nada pendiente).
+        if b.fecha_efecto and per < b.fecha_efecto.strftime("%Y-%m"):
+            continue
         celdas: dict[int, str] = {}
         n_pend = 0
         for c in columnas:

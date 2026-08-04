@@ -46,8 +46,9 @@ export default function ColumnasConfigBinder({ binderId }: { binderId: number })
       {abierto && (
         <div className="fases-cuerpo">
           <p className="hint" style={{ margin: "0 0 10px" }}>
-            Por defecto cada fase es <b>Automática</b> (la app la decide por el dato). Marca <b>No aplica</b> si este
-            binder no hace esa fase, o pon un mes en <b>hasta</b> para que deje de pedirse a partir del mes siguiente.
+            Por defecto cada fase es <b>Automática</b> (la app la decide por el dato, y el binder solo aparece desde su
+            fecha de efecto). Marca <b>No aplica</b> si este binder no hace esa fase, o acota con <b>desde</b>/<b>hasta</b>
+            los meses en que aplica (run-off).
           </p>
           {grupos.map((g) => (
             <div key={g.grupo} className="fases-grupo">
@@ -61,6 +62,11 @@ export default function ColumnasConfigBinder({ binderId }: { binderId: number })
                     No aplica
                   </label>
                   <label className={"fases-hasta" + (c.aplica ? "" : " off")}>
+                    desde
+                    <input type="month" value={c.desde ?? ""} disabled={!c.aplica}
+                      onChange={(e) => guardar(c, { desde: e.target.value || null })} />
+                  </label>
+                  <label className={"fases-hasta" + (c.aplica ? "" : " off")}>
                     hasta
                     <input type="month" value={c.hasta ?? ""} disabled={!c.aplica}
                       onChange={(e) => guardar(c, { hasta: e.target.value || null })} />
@@ -68,7 +74,7 @@ export default function ColumnasConfigBinder({ binderId }: { binderId: number })
                   <span className="fases-estado hint">
                     {guardando === c.columna_id ? "guardando…"
                       : !c.aplica ? "No aplica"
-                      : c.hasta ? `Aplica hasta ${c.hasta}`
+                      : (c.desde || c.hasta) ? `Aplica${c.desde ? ` desde ${c.desde}` : ""}${c.hasta ? ` hasta ${c.hasta}` : ""}`
                       : "Automático"}
                   </span>
                 </div>
