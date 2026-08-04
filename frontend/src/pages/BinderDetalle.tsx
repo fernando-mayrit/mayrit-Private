@@ -1559,7 +1559,7 @@ export default function BinderDetalle({ binder }: { binder: Binder }) {
         })()
       )}
 
-      {tab === "tareas" && <><CuadriculaBinder binderId={binder.id} /><ColumnasConfigBinder binderId={binder.id} /><TareasBinder binderId={binder.id} /></>}
+      {tab === "tareas" && <><ColumnasConfigBinder binderId={binder.id} /><CuadriculaBinder binderId={binder.id} /><TareasBinder binderId={binder.id} /></>}
 
       {tab === "recibos" && (
         <>
