@@ -900,13 +900,16 @@ export const tareasApi = {
   cuadricula: (mes?: string) => request<Cuadricula>(`/tareas/cuadricula${mes ? `?mes=${mes}` : ""}`),
   marcarManual: (d: { binder_id: number; periodo: string; columna_id: number; hecho: boolean }) =>
     request<{ ok: boolean; hecho: boolean }>(`/tareas/matriz/marcar`, { method: "POST", body: JSON.stringify(d) }),
-  columnasConfig: (binderId: number) => request<ColumnaBinderCfg[]>(`/binders/${binderId}/columnas-config`),
+  columnasConfig: (binderId: number) => request<ColumnasConfigResp>(`/binders/${binderId}/columnas-config`),
   setColumnaConfig: (binderId: number, columnaId: number, d: { aplica: boolean; desde?: string | null; hasta?: string | null }) =>
     request<ColumnaBinderCfg>(`/binders/${binderId}/columnas-config/${columnaId}`, { method: "PUT", body: JSON.stringify(d) }),
 };
 export interface ColumnaBinderCfg {
   columna_id: number; grupo: string; nombre: string; tipo: string;
   aplica: boolean; desde: string | null; hasta: string | null; auto: boolean;
+}
+export interface ColumnasConfigResp {
+  efecto: string | null; vencimiento: string | null; columnas: ColumnaBinderCfg[];
 }
 export interface CuadriculaColumna { id: number; grupo: string; nombre: string; tipo: string; regla: string | null }
 export interface CuadriculaFila {

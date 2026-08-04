@@ -596,14 +596,17 @@ def cuadricula(mes: str | None = None, db: Session = Depends(get_db)):
         b = binders.get(bid)
         if not b:
             continue
-        # El binder solo aparece DESDE su fecha de efecto (antes no existe → nada pendiente).
-        if b.fecha_efecto and per < b.fecha_efecto.strftime("%Y-%m"):
-            continue
+        # Por defecto una fase aplica en el periodo del binder: efecto → vencimiento (antes no existe,
+        # después está vencido). Un override por fase (desde/hasta) puede acotarlo o extenderlo (run-off).
+        efecto_m = b.fecha_efecto.strftime("%Y-%m") if b.fecha_efecto else None
+        venc_m = b.fecha_vencimiento.strftime("%Y-%m") if b.fecha_vencimiento else None
         celdas: dict[int, str] = {}
         n_pend = 0
         for c in columnas:
             cfg = cfgs.get((bid, c.id))
-            if cfg is not None:                          # config manual del binder → manda
+            if efecto_m and per < efecto_m:              # antes del efecto: el binder no existe
+                estado = "na"
+            elif cfg is not None:                        # config manual del binder → manda
                 fuera = (not cfg.aplica) or (cfg.hasta and per > cfg.hasta) or (cfg.desde and per < cfg.desde)
                 if fuera:
                     estado = "na"
@@ -611,7 +614,9 @@ def cuadricula(mes: str | None = None, db: Session = Depends(get_db)):
                     estado = "ok" if _existe_dato(c, bid) else "pend"    # sin grisear por dormido: manda la config
                 else:
                     m = manual.get((bid, c.id)); estado = "ok" if (m and m.hecho) else "pend"
-            elif c.grupo not in cats_binder[bid]:        # sin config: el binder no hace esa fase
+            elif venc_m and per > venc_m:                # sin override: por defecto aplica hasta el vencimiento
+                estado = "na"
+            elif c.grupo not in cats_binder[bid]:        # el binder no hace esa fase
                 estado = "na"
             elif c.tipo == "auto":
                 dormido = _dato_dormido(datos, "premium" if c.regla == "cobro" else c.regla, b, per)
@@ -622,6 +627,8 @@ def cuadricula(mes: str | None = None, db: Session = Depends(get_db)):
             celdas[c.id] = estado
             if estado == "pend":
                 n_pend += 1
+        if all(v == "na" for v in celdas.values()):      # nada aplica este mes → no se muestra el binder
+            continue
         filas.append(CuadriculaFila(
             binder_id=bid, umr=(b.umr or b.agreement_number or f"#{bid}"),
             agencia=(b.productor.nombre if b.productor else None),
@@ -718,10 +725,17 @@ class ColumnaBinderIn(BaseModel):
     hasta: str | None = None
 
 
-@router.get("/binders/{binder_id}/columnas-config", response_model=list[ColumnaBinderRead])
+class ColumnasConfigResp(BaseModel):
+    efecto: str | None = None        # 'YYYY-MM' del binder (default de "Desde")
+    vencimiento: str | None = None   # 'YYYY-MM' del binder (default de "Hasta")
+    columnas: list[ColumnaBinderRead]
+
+
+@router.get("/binders/{binder_id}/columnas-config", response_model=ColumnasConfigResp)
 def columnas_config(binder_id: int, db: Session = Depends(get_db)):
-    """Las columnas de la cuadrícula con la config de ESTE binder (aplica + desde/hasta). `auto`=True
-    cuando no hay override (la app decide sola por el dato)."""
+    """Las columnas de la cuadrícula con la config de ESTE binder (aplica + desde/hasta) y el periodo
+    del binder (efecto/vencimiento) como defaults de Desde/Hasta. `auto`=True cuando no hay override."""
+    b = db.get(Binder, binder_id)
     cols = db.scalars(select(TareaColumna).where(TareaColumna.activa.is_(True))
                       .order_by(TareaColumna.orden, TareaColumna.id)).all()
     cfg = {cb.columna_id: cb for cb in db.scalars(select(TareaColumnaBinder).where(
@@ -732,7 +746,10 @@ def columnas_config(binder_id: int, db: Session = Depends(get_db)):
         out.append(ColumnaBinderRead(columna_id=c.id, grupo=c.grupo, nombre=c.nombre, tipo=c.tipo,
             aplica=(cb.aplica if cb else True), desde=(cb.desde if cb else None),
             hasta=(cb.hasta if cb else None), auto=(cb is None)))
-    return out
+    return ColumnasConfigResp(
+        efecto=(b.fecha_efecto.strftime("%Y-%m") if b and b.fecha_efecto else None),
+        vencimiento=(b.fecha_vencimiento.strftime("%Y-%m") if b and b.fecha_vencimiento else None),
+        columnas=out)
 
 
 @router.put("/binders/{binder_id}/columnas-config/{columna_id}", response_model=ColumnaBinderRead)
