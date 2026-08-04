@@ -612,13 +612,15 @@ def _estado_celda(c, per: str, b: Binder, cfg, cats: set[str], datos, cobro, man
 
 
 def _meses_binder(b: Binder, tope: int = 36) -> list[str]:
-    """Meses YYYY-MM del binder para su cuadrícula: del efecto al vencimiento (su vida). Si no tiene
-    vencimiento, hasta hoy. MÁS RECIENTE primero, con tope de seguridad."""
+    """Meses YYYY-MM del binder para su cuadrícula: del efecto hasta el mes ACTUAL (o el vencimiento si ya
+    pasó). NUNCA meses futuros: aún no han vencido, no son 'pendientes'. MÁS RECIENTE primero."""
     if not b.fecha_efecto:
         return []
     hoy = dt.date.today().replace(day=1)
     ini = b.fecha_efecto.replace(day=1)
     fin = b.fecha_vencimiento.replace(day=1) if b.fecha_vencimiento else hoy
+    if fin > hoy:            # binder en vigor: no mostrar más allá del mes actual
+        fin = hoy
     if fin < ini:
         fin = ini
     out: list[str] = []
