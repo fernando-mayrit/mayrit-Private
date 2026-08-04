@@ -1388,6 +1388,10 @@ button.pastilla.clic:hover { filter: brightness(0.96); }
 .cuad-tabla .cuad-esq, .cuad-tabla .cuad-bind { text-align: left; white-space: nowrap; position: sticky; left: 0; background: #fff; z-index: 1; }
 .cuad-bind b { color: #333; }
 .cuad-celda { white-space: nowrap; }
+.cuad-agencia th { text-align: left; background: var(--gris-claro); cursor: pointer; font-weight: 600;
+  padding: 8px 12px; color: var(--gris); }
+.cuad-agencia:hover th { background: #e7e9ee; }
+.cuad-ag-flecha { display: inline-block; width: 18px; color: var(--gris-medio); }
 
 /* Config de fases de la cuadrícula por binder (pestaña Tareas) */
 .fases-cfg { border: 1px solid var(--borde); border-radius: 10px; margin-bottom: 14px; background: #fff; }

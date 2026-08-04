@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { tareasApi, type TareaAgendaItem, type Cuadricula, type CuadriculaColumna } from "../api";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { tareasApi, type TareaAgendaItem, type Cuadricula, type CuadriculaColumna, type CuadriculaFila } from "../api";
 import PageHeader from "../components/PageHeader";
 import TareasBinder from "../components/TareasBinder";
 import { fmtFechaES } from "../format";
@@ -187,6 +187,9 @@ function CuadriculaVista({ cuad, cargando, mesLabel, onMarcar }: {
   mesLabel: string;
   onMarcar: (binder_id: number, columna_id: number, hecho: boolean) => void;
 }) {
+  const [colapsadas, setColapsadas] = useState<Set<string>>(new Set());
+  const toggleAg = (ag: string) => setColapsadas((s) => { const n = new Set(s); n.has(ag) ? n.delete(ag) : n.add(ag); return n; });
+
   if (cargando && !cuad) return <div className="loading">Cargando…</div>;
   if (!cuad || cuad.filas.length === 0) return <div className="empty">Sin binders con pipeline este mes.</div>;
 
@@ -198,6 +201,38 @@ function CuadriculaVista({ cuad, cargando, mesLabel, onMarcar }: {
   }
   const cls = (est: string) => "pastilla " + (est === "ok" ? "ok" : est === "pend" ? "pend" : "na");
   const lab = (est: string) => est === "ok" ? "Sí" : est === "pend" ? "Pendiente" : "No aplica";
+
+  // Agrupar los binders por AGENCIA (cabecera desplegable).
+  const porAg: { agencia: string; filas: CuadriculaFila[] }[] = [];
+  for (const f of cuad.filas) {
+    const ag = f.agencia || "(Sin agencia)";
+    let g = porAg.find((x) => x.agencia === ag);
+    if (!g) { g = { agencia: ag, filas: [] }; porAg.push(g); }
+    g.filas.push(f);
+  }
+  porAg.sort((a, b) => a.agencia.localeCompare(b.agencia, "es"));
+  const ncols = 1 + cuad.columnas.length;
+
+  const filaBinder = (f: CuadriculaFila) => (
+    <tr key={f.binder_id}>
+      <th className="cuad-bind"><b>{f.umr}</b></th>
+      {cuad.columnas.map((c) => {
+        const est = f.celdas[c.id] ?? "na";
+        const editable = c.tipo === "manual" && est !== "na";
+        return (
+          <td key={c.id} className="cuad-celda">
+            {editable ? (
+              <button className={cls(est) + " clic"}
+                title={est === "ok" ? "Hecho (clic para desmarcar)" : "Pendiente (clic para marcar hecho)"}
+                onClick={() => onMarcar(f.binder_id, c.id, est !== "ok")}>{lab(est)}</button>
+            ) : (
+              <span className={cls(est)}>{lab(est)}</span>
+            )}
+          </td>
+        );
+      })}
+    </tr>
+  );
 
   return (
     <>
@@ -221,26 +256,22 @@ function CuadriculaVista({ cuad, cargando, mesLabel, onMarcar }: {
             </tr>
           </thead>
           <tbody>
-            {cuad.filas.map((f) => (
-              <tr key={f.binder_id}>
-                <th className="cuad-bind"><b>{f.umr}</b></th>
-                {cuad.columnas.map((c) => {
-                  const est = f.celdas[c.id] ?? "na";
-                  const editable = c.tipo === "manual" && est !== "na";
-                  return (
-                    <td key={c.id} className="cuad-celda">
-                      {editable ? (
-                        <button className={cls(est) + " clic"}
-                          title={est === "ok" ? "Hecho (clic para desmarcar)" : "Pendiente (clic para marcar hecho)"}
-                          onClick={() => onMarcar(f.binder_id, c.id, est !== "ok")}>{lab(est)}</button>
-                      ) : (
-                        <span className={cls(est)}>{lab(est)}</span>
-                      )}
-                    </td>
-                  );
-                })}
-              </tr>
-            ))}
+            {porAg.map((g) => {
+              const abierta = !colapsadas.has(g.agencia);
+              const pend = g.filas.reduce((s, f) => s + f.n_pend, 0);
+              return (
+                <Fragment key={g.agencia}>
+                  <tr className="cuad-agencia" onClick={() => toggleAg(g.agencia)}>
+                    <th colSpan={ncols}>
+                      <span className="cuad-ag-flecha">{abierta ? "▾" : "▸"}</span>
+                      <b>{g.agencia}</b>
+                      <span className="hint"> · {g.filas.length} binder{g.filas.length !== 1 ? "s" : ""}{pend ? ` · ${pend} pendiente${pend !== 1 ? "s" : ""}` : ""}</span>
+                    </th>
+                  </tr>
+                  {abierta && g.filas.map(filaBinder)}
+                </Fragment>
+              );
+            })}
           </tbody>
         </table>
       </div>
