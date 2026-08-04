@@ -651,15 +651,17 @@ def _estado_celda(c, per: str, b: Binder, cfg, cats: set[str], datos, cobro, man
 
 
 def _meses_binder(b: Binder, tope: int = 36) -> list[str]:
-    """Meses YYYY-MM del binder para su cuadrícula: del efecto hasta el mes ACTUAL (o el vencimiento si ya
-    pasó). NUNCA meses futuros: aún no han vencido, no son 'pendientes'. MÁS RECIENTE primero."""
+    """Meses YYYY-MM del binder para su cuadrícula. Cada fila = MES DEL DATO (el periodo del BDX), NO el
+    mes en que se trabaja: el BDX de un mes se recibe/procesa el mes siguiente. Por eso el último periodo
+    visible es el mes ANTERIOR al actual (su BDX ya vence); el del mes en curso aún no toca. Del efecto a
+    ese tope (o al vencimiento si ya pasó). MÁS RECIENTE primero."""
     if not b.fecha_efecto:
         return []
-    hoy = dt.date.today().replace(day=1)
+    tope_mes = _add_months(dt.date.today().replace(day=1), -1)   # el dato del mes actual aún no vence
     ini = b.fecha_efecto.replace(day=1)
-    fin = b.fecha_vencimiento.replace(day=1) if b.fecha_vencimiento else hoy
-    if fin > hoy:            # binder en vigor: no mostrar más allá del mes actual
-        fin = hoy
+    fin = b.fecha_vencimiento.replace(day=1) if b.fecha_vencimiento else tope_mes
+    if fin > tope_mes:      # binder en vigor: no mostrar el mes en curso (su BDX no vence hasta el siguiente)
+        fin = tope_mes
     if fin < ini:
         fin = ini
     out: list[str] = []
@@ -676,8 +678,10 @@ def _meses_binder(b: Binder, tope: int = 36) -> list[str]:
 def cuadricula(mes: str | None = None, db: Session = Depends(get_db)):
     """Matriz binders × columnas (fases del pipeline). Celda: 'ok' (verde, hecho) · 'pend' (rojo,
     pendiente) · 'na' (gris, no aplica). Auto = del DATO (risk/premium/claims/lpan/cobro); manual = a
-    mano. 'na' cuando el binder no hace esa fase (no tiene tarea de esa categoría) o el flujo está dormido."""
-    per = (mes or dt.date.today().strftime("%Y-%m")).strip()
+    mano. 'na' cuando el binder no hace esa fase (no tiene tarea de esa categoría) o el flujo está dormido.
+    Por defecto el mes = el ANTERIOR al actual (la fila es el mes del dato, y el del mes en curso aún no
+    vence: su BDX se recibe/procesa el mes siguiente)."""
+    per = (mes or _add_months(dt.date.today().replace(day=1), -1).strftime("%Y-%m")).strip()
     columnas = db.scalars(select(TareaColumna).where(TareaColumna.activa.is_(True))
                           .order_by(TareaColumna.orden, TareaColumna.id)).all()
     # Qué categorías hace cada binder = de sus flags DURABLES (no de que existan tareas auto, que se pueden

@@ -47,7 +47,8 @@ export default function CuadriculaBinder({ binderId }: { binderId: number }) {
   return (
     <div className="binder-cuad">
       <div className="hint" style={{ marginBottom: 8 }}>
-        Pipeline de este binder, mes a mes (igual que la cuadrícula de Tareas): <span className={cls("ok")}>Sí</span> hecho ·{" "}
+        Pipeline de este binder, mes a mes. Cada fila es el <b>mes del dato</b> (el BDX de un mes se recibe/procesa el
+        mes siguiente), así que el último es el mes anterior al actual. <span className={cls("ok")}>Sí</span> hecho ·{" "}
         <span className={cls("pend")}>Pendiente</span> · <span className={cls("na")}>No aplica</span>. Las de <b>Enviado</b> (✎) se marcan con un clic.
       </div>
       <div className="cuad-scroll">
