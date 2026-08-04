@@ -218,7 +218,8 @@ function CuadriculaVista({ cuad, cargando, mesLabel, onMarcar }: {
       <th className="cuad-bind"><b>{f.umr}</b></th>
       {cuad.columnas.map((c) => {
         const est = f.celdas[c.id] ?? "na";
-        const editable = c.tipo === "manual" && est !== "na";
+        const enlazada = (f.enlazadas ?? []).includes(c.id);
+        const editable = c.tipo === "manual" && est !== "na" && !enlazada;
         return (
           <td key={c.id} className="cuad-celda">
             {editable ? (
@@ -226,7 +227,8 @@ function CuadriculaVista({ cuad, cargando, mesLabel, onMarcar }: {
                 title={est === "ok" ? "Hecho (clic para desmarcar)" : "Pendiente (clic para marcar hecho)"}
                 onClick={() => onMarcar(f.binder_id, c.id, est !== "ok")}>{lab(est)}</button>
             ) : (
-              <span className={cls(est)}>{lab(est)}</span>
+              <span className={cls(est)}
+                title={enlazada ? "Enlazada a un paso del checklist: se marca ahí" : undefined}>{lab(est)}{enlazada ? " 🔗" : ""}</span>
             )}
           </td>
         );

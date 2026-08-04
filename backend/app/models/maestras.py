@@ -1134,6 +1134,10 @@ class TareaPaso(Base):
     # Regla de auto-marcado: el paso se da por hecho cuando el dato del periodo ya existe en la app.
     # Valores: 'risk' | 'premium' | 'lpan' | 'claims' (claims = claims/snapshot). NULL = manual.
     regla_auto: Mapped[str | None] = mapped_column(String(20))
+    # Enlace OPCIONAL a una fase (columna) de la cuadrícula: "este paso corresponde a esa pastilla".
+    # Si está puesto, la pastilla de la parrilla REFLEJA este paso (un solo sitio donde marcar). NULL = sin
+    # enlace (la parrilla va por su cuenta). Renombrar el paso no rompe el enlace (es por id).
+    columna_id: Mapped[int | None] = mapped_column(ForeignKey("tarea_columnas.id", ondelete="SET NULL"), index=True)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     tarea: Mapped["Tarea"] = relationship(back_populates="pasos")

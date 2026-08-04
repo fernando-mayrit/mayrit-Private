@@ -548,6 +548,7 @@ class CuadriculaFila(BaseModel):
     programa: str | None = None
     celdas: dict[int, str]          # columna_id -> 'ok' | 'pend' | 'na'
     n_pend: int = 0
+    enlazadas: list[int] = []       # columnas cuya pastilla la gobierna un paso del checklist (no clicable)
 
 
 class Cuadricula(BaseModel):
@@ -581,14 +582,51 @@ def _cats_de_binder(b: Binder, legacy_cats: set[str]) -> set[str]:
     return {cat for cat, campo in _FLAG_CAT if getattr(b, campo)}
 
 
-def _estado_celda(c, per: str, b: Binder, cfg, cats: set[str], datos, cobro, manual_map) -> str:
+def _enlaces_hechos(db: Session, binder_ids: set[int], datos: dict):
+    """Pasos del checklist ENLAZADOS a una fase (columna) de la parrilla. Devuelve:
+    - enlazadas: {(binder_id, columna_id)} con ≥1 paso enlazado (la pastilla la gobierna el checklist).
+    - hechos: {(binder_id, columna_id): set(periodos 'YYYY-MM') en los que ese paso está hecho}.
+    Un paso está 'hecho' en un periodo si su ocurrencia de ese mes está marcada a mano o su regla auto se cumple."""
+    enlazadas: set[tuple[int, int]] = set()
+    hechos: dict[tuple[int, int], set[str]] = defaultdict(set)
+    if not binder_ids:
+        return enlazadas, hechos
+    pasos = db.scalars(select(TareaPaso).where(TareaPaso.columna_id.is_not(None))
+                       .options(selectinload(TareaPaso.hechos), selectinload(TareaPaso.tarea))).all()
+    for p in pasos:
+        t = p.tarea
+        if not t or t.binder_id not in binder_ids or t.estado == "Pausada":
+            continue
+        binder = db.get(Binder, t.binder_id)
+        if not binder:
+            continue
+        enlazadas.add((t.binder_id, p.columna_id))
+        marcadas = {ph.fecha_ocurrencia for ph in p.hechos}
+        paso_m = _paso(t)
+        for f in _ocurrencias(t, binder):
+            periodo = _periodo_de(binder, t, f, paso_m)
+            if periodo and (f in marcadas or _auto_ok(p, periodo, datos, binder.id)):
+                hechos[(t.binder_id, p.columna_id)].add(periodo)
+    return enlazadas, hechos
+
+
+def _estado_celda(c, per: str, b: Binder, cfg, cats: set[str], datos, cobro, manual_map,
+                  enlazadas: set | None = None, hechos: dict | None = None) -> str:
     """Estado de una celda (columna c, mes per) para el binder b: 'ok' | 'pend' | 'na'. ÚNICA fuente de
     verdad, compartida por la cuadrícula global (un mes × todos los binders) y la del binder (un binder ×
     todos los meses), para que coincidan exactamente."""
+    enlazadas = enlazadas or set()
+    hechos = hechos or {}
     def existe() -> bool:
         if c.regla == "cobro":
             return per in cobro.get(b.id, set())
         return per in datos.get(c.regla, {}).get(b.id, set())
+    def manual_estado() -> str:
+        # Fase enlazada a un paso del checklist → la pastilla REFLEJA ese paso (un solo sitio donde marcar).
+        if (b.id, c.id) in enlazadas:
+            return "ok" if per in hechos.get((b.id, c.id), set()) else "pend"
+        m = manual_map.get((b.id, c.id))
+        return "ok" if (m and m.hecho) else "pend"
     efecto_m = b.fecha_efecto.strftime("%Y-%m") if b.fecha_efecto else None
     venc_m = b.fecha_vencimiento.strftime("%Y-%m") if b.fecha_vencimiento else None
     if efecto_m and per < efecto_m:                  # antes del efecto: el binder no existe
@@ -598,8 +636,7 @@ def _estado_celda(c, per: str, b: Binder, cfg, cats: set[str], datos, cobro, man
             return "na"
         if c.tipo == "auto":
             return "ok" if existe() else "pend"      # sin grisear por dormido: manda la config
-        m = manual_map.get((b.id, c.id))
-        return "ok" if (m and m.hecho) else "pend"
+        return manual_estado()
     if venc_m and per > venc_m:                       # sin override: por defecto aplica hasta el vencimiento
         return "na"
     if c.grupo not in cats:                           # el binder no hace esa fase
@@ -607,6 +644,8 @@ def _estado_celda(c, per: str, b: Binder, cfg, cats: set[str], datos, cobro, man
     if c.tipo == "auto":
         dormido = _dato_dormido(datos, "premium" if c.regla == "cobro" else c.regla, b, per)
         return "ok" if existe() else ("na" if dormido else "pend")
+    if (b.id, c.id) in enlazadas:
+        return manual_estado()
     m = manual_map.get((b.id, c.id))
     return "ok" if (m and m.hecho) else ("na" if _dato_dormido(datos, _CAT_REGLA.get(c.grupo), b, per) else "pend")
 
@@ -662,6 +701,7 @@ def cuadricula(mes: str | None = None, db: Session = Depends(get_db)):
     # Config por binder (aplica + desde/hasta): si existe, MANDA ella (anula la adivinación por dormido).
     cfgs = {(cb.binder_id, cb.columna_id): cb for cb in db.scalars(select(TareaColumnaBinder).where(
         TareaColumnaBinder.binder_id.in_(binder_ids))).all()}
+    enlazadas, hechos = _enlaces_hechos(db, binder_ids, datos)
 
     filas: list[CuadriculaFila] = []
     for bid in binder_ids:
@@ -671,7 +711,7 @@ def cuadricula(mes: str | None = None, db: Session = Depends(get_db)):
         celdas: dict[int, str] = {}
         n_pend = 0
         for c in columnas:
-            estado = _estado_celda(c, per, b, cfgs.get((bid, c.id)), cats_binder[bid], datos, cobro, manual)
+            estado = _estado_celda(c, per, b, cfgs.get((bid, c.id)), cats_binder[bid], datos, cobro, manual, enlazadas, hechos)
             celdas[c.id] = estado
             if estado == "pend":
                 n_pend += 1
@@ -680,7 +720,8 @@ def cuadricula(mes: str | None = None, db: Session = Depends(get_db)):
         filas.append(CuadriculaFila(
             binder_id=bid, umr=(b.umr or b.agreement_number or f"#{bid}"),
             agencia=(b.productor.nombre if b.productor else None),
-            programa=(b.programa.nombre if b.programa else None), celdas=celdas, n_pend=n_pend))
+            programa=(b.programa.nombre if b.programa else None), celdas=celdas, n_pend=n_pend,
+            enlazadas=[c.id for c in columnas if (bid, c.id) in enlazadas]))
     filas.sort(key=lambda f: (-f.n_pend, f.umr))
     return Cuadricula(
         periodo=per,
@@ -696,6 +737,7 @@ class BinderCuadriculaMes(BaseModel):
 class BinderCuadricula(BaseModel):
     columnas: list[CuadriculaColumna]
     meses: list[BinderCuadriculaMes]
+    enlazadas: list[int] = []       # columnas cuya pastilla la gobierna un paso del checklist (no clicable)
 
 
 @router.get("/binders/{binder_id}/cuadricula", response_model=BinderCuadricula)
@@ -716,16 +758,17 @@ def binder_cuadricula(binder_id: int, db: Session = Depends(get_db)):
         TareaMatrizManual.binder_id == binder_id)).all()}
     cfgs = {(cb.binder_id, cb.columna_id): cb for cb in db.scalars(select(TareaColumnaBinder).where(
         TareaColumnaBinder.binder_id == binder_id)).all()}
+    enlazadas, hechos = _enlaces_hechos(db, {binder_id}, datos)
     meses: list[BinderCuadriculaMes] = []
     for per in _meses_binder(b):
-        celdas = {c.id: _estado_celda(c, per, b, cfgs.get((binder_id, c.id)), cats, datos, cobro, manual_map)
+        celdas = {c.id: _estado_celda(c, per, b, cfgs.get((binder_id, c.id)), cats, datos, cobro, manual_map, enlazadas, hechos)
                   for c in columnas}
         if all(v == "na" for v in celdas.values()):      # ese mes no aplica nada → no se muestra
             continue
         meses.append(BinderCuadriculaMes(periodo=per, celdas=celdas))
     return BinderCuadricula(
         columnas=[CuadriculaColumna(id=c.id, grupo=c.grupo, nombre=c.nombre, tipo=c.tipo, regla=c.regla) for c in columnas],
-        meses=meses)
+        meses=meses, enlazadas=[c.id for c in columnas if (binder_id, c.id) in enlazadas])
 
 
 class MarcarManualIn(BaseModel):
@@ -1191,12 +1234,14 @@ class PasoIn(BaseModel):
     titulo: str
     orden: int | None = None        # None = al final
     regla_auto: str | None = None   # risk | premium | lpan | claims | None (manual)
+    columna_id: int | None = None   # enlace a una fase de la parrilla (None = sin enlace)
 
 
 class PasoUpdate(BaseModel):
     titulo: str | None = None
     orden: int | None = None
     regla_auto: str | None = None
+    columna_id: int | None = None
 
 
 class PasoRead(BaseModel):
@@ -1206,6 +1251,7 @@ class PasoRead(BaseModel):
     orden: int
     titulo: str
     regla_auto: str | None = None
+    columna_id: int | None = None
 
 
 @router.get("/tareas/{tarea_id}/pasos", response_model=list[PasoRead])
@@ -1227,7 +1273,7 @@ def crear_paso(tarea_id: int, payload: PasoIn, db: Session = Depends(get_db)):
         ultimo = db.scalar(select(func.max(TareaPaso.orden)).where(TareaPaso.tarea_id == tarea_id))
         orden = (ultimo or 0) + 1
     p = TareaPaso(tarea_id=tarea_id, titulo=payload.titulo.strip(), orden=orden,
-                  regla_auto=_valida_regla(payload.regla_auto))
+                  regla_auto=_valida_regla(payload.regla_auto), columna_id=payload.columna_id)
     db.add(p)
     db.commit()
     db.refresh(p)

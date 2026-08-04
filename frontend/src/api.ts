@@ -841,6 +841,7 @@ export interface TareaPaso {
   orden: number;
   titulo: string;
   regla_auto?: string | null;   // risk | premium | lpan | claims | null (manual)
+  columna_id?: number | null;   // enlace a una fase de la parrilla (null = sin enlace)
 }
 export interface TareaPasoEstado {
   paso_id: number;
@@ -878,10 +879,12 @@ export const tareasApi = {
     request(`/tareas/${id}/sin-movimiento`, { method: "POST", body: JSON.stringify(body) }),
   // ── Pasos (checklist) ──
   pasos: (id: number) => request<TareaPaso[]>(`/tareas/${id}/pasos`),
-  crearPaso: (id: number, body: { titulo: string; orden?: number; regla_auto?: string | null }) =>
+  crearPaso: (id: number, body: { titulo: string; orden?: number; regla_auto?: string | null; columna_id?: number | null }) =>
     request<TareaPaso>(`/tareas/${id}/pasos`, { method: "POST", body: JSON.stringify(body) }),
-  editarPaso: (pasoId: number, body: { titulo?: string; orden?: number; regla_auto?: string | null }) =>
+  editarPaso: (pasoId: number, body: { titulo?: string; orden?: number; regla_auto?: string | null; columna_id?: number | null }) =>
     request<TareaPaso>(`/pasos/${pasoId}`, { method: "PUT", body: JSON.stringify(body) }),
+  // Catálogo de columnas (fases) de la parrilla, común a todos los binders (para enlazar pasos).
+  columnas: () => request<CuadriculaColumna[]>("/tareas/columnas"),
   borrarPaso: (pasoId: number) => request(`/pasos/${pasoId}`, { method: "DELETE" }),
   marcarPaso: (pasoId: number, body: { fecha_ocurrencia: string; deshacer?: boolean }) =>
     request(`/pasos/${pasoId}/hecho`, { method: "POST", body: JSON.stringify(body) }),
@@ -917,10 +920,11 @@ export interface CuadriculaFila {
   binder_id: number; umr: string; agencia: string | null; programa: string | null;
   celdas: Record<number, string>;   // columna_id -> 'ok' | 'pend' | 'na'
   n_pend: number;
+  enlazadas?: number[];             // columnas cuya pastilla la gobierna un paso del checklist (no clicable)
 }
 export interface Cuadricula { periodo: string; columnas: CuadriculaColumna[]; filas: CuadriculaFila[] }
 export interface BinderCuadriculaMes { periodo: string; celdas: Record<number, string> }
-export interface BinderCuadricula { columnas: CuadriculaColumna[]; meses: BinderCuadriculaMes[] }
+export interface BinderCuadricula { columnas: CuadriculaColumna[]; meses: BinderCuadriculaMes[]; enlazadas?: number[] }
 export interface TareaAgendaItem {
   tarea_id: number;
   titulo: string;

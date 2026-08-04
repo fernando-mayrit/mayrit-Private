@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
-import { tareasApi, crud, type Tarea, type TareaOcurrencia, type TareaPasoEstado, type TareaAgendaItem } from "../api";
+import { tareasApi, crud, type Tarea, type TareaOcurrencia, type TareaPasoEstado, type TareaAgendaItem, type CuadriculaColumna } from "../api";
 import type { Binder } from "../types";
 import { fmtFechaES, mesAnyo } from "../format";
 import FormPanel from "./FormPanel";
@@ -80,10 +80,12 @@ export default function TareasBinder({ binderId }: { binderId?: number }) {
   // Cada uno lleva su id si ya existe en el servidor; sin id = nuevo.
   // `paralelo` = este paso va en el MISMO grupo que el de arriba (mismo `orden`): se pueden hacer a la
   // vez, sin orden entre ellos. `orden` guarda el valor cargado del servidor (para detectar cambios).
-  type PasoEdit = { id?: number; titulo: string; regla_auto?: string | null; orden?: number; paralelo?: boolean };
+  type PasoEdit = { id?: number; titulo: string; regla_auto?: string | null; orden?: number; paralelo?: boolean; columna_id?: number | null };
   const [formPasos, setFormPasos] = useState<PasoEdit[]>([]);
   const [pasosIni, setPasosIni] = useState<PasoEdit[]>([]);   // snapshot para detectar cambios / diff al guardar
   const [nuevoPaso, setNuevoPaso] = useState("");
+  // Fases (columnas) de la parrilla, para el desplegable "corresponde a esta fase" de cada paso.
+  const [colsParrilla, setColsParrilla] = useState<CuadriculaColumna[]>([]);
 
   const [vista, setVista] = useState<"bloques" | "mes">("bloques");
   const [soloPend, setSoloPend] = useState(true);
@@ -102,6 +104,7 @@ export default function TareasBinder({ binderId }: { binderId?: number }) {
   }
   useEffect(() => {
     cargar();
+    tareasApi.columnas().then(setColsParrilla).catch(() => setColsParrilla([]));
     if (esGlobal) {
       bindersApi.list(undefined, 5000)
         .then((bs) => setBinders(bs as Binder[]))
@@ -190,7 +193,7 @@ export default function TareasBinder({ binderId }: { binderId?: number }) {
     try {
       const raw = (await tareasApi.pasos(t.id)).slice().sort((a, b) => a.orden - b.orden || a.id - b.id);
       const ps: PasoEdit[] = raw.map((p, i) => ({
-        id: p.id, titulo: p.titulo, regla_auto: p.regla_auto ?? null,
+        id: p.id, titulo: p.titulo, regla_auto: p.regla_auto ?? null, columna_id: p.columna_id ?? null,
         orden: p.orden, paralelo: i > 0 && p.orden === raw[i - 1].orden,   // mismo orden que el anterior = grupo
       }));
       setFormPasos(ps); setPasosIni(ps);
@@ -249,18 +252,20 @@ export default function TareasBinder({ binderId }: { binderId?: number }) {
       const orden = i > 0 && p.paralelo ? curOrden : curOrden + 1;
       curOrden = orden;
       if (p.id == null) {
-        await tareasApi.crearPaso(tareaId, { titulo, orden, regla_auto: p.regla_auto || null });
+        await tareasApi.crearPaso(tareaId, { titulo, orden, regla_auto: p.regla_auto || null, columna_id: p.columna_id ?? null });
         continue;
       }
       const o = pasosIni.find((x) => x.id === p.id);
       const renombrado = !o || o.titulo !== titulo;
       const reglaCambia = (o?.regla_auto ?? null) !== (p.regla_auto ?? null);
+      const columnaCambia = (o?.columna_id ?? null) !== (p.columna_id ?? null);
       const ordenCambia = (o?.orden ?? -1) !== orden;
-      if (renombrado || ordenCambia || reglaCambia) {
+      if (renombrado || ordenCambia || reglaCambia || columnaCambia) {
         await tareasApi.editarPaso(p.id, {
           ...(renombrado ? { titulo } : {}),
           ...(ordenCambia ? { orden } : {}),
           ...(reglaCambia ? { regla_auto: p.regla_auto || null } : {}),
+          ...(columnaCambia ? { columna_id: p.columna_id ?? null } : {}),
         });
       }
     }
@@ -321,6 +326,9 @@ export default function TareasBinder({ binderId }: { binderId?: number }) {
   }
   function setPasoParalelo(i: number, v: boolean) {
     setFormPasos((s) => s.map((p, k) => (k === i ? { ...p, paralelo: v } : p)));
+  }
+  function setPasoColumna(i: number, colId: string) {
+    setFormPasos((s) => s.map((p, k) => (k === i ? { ...p, columna_id: colId ? Number(colId) : null } : p)));
   }
   function delPaso(i: number) {
     setFormPasos((s) => s.filter((_, k) => k !== i));
@@ -812,6 +820,15 @@ export default function TareasBinder({ binderId }: { binderId?: number }) {
                         <select value={p.regla_auto ?? ""} onChange={(e) => setPasoRegla(i, e.target.value)}
                           title="Cómo se marca este paso" style={{ fontSize: 12, padding: "2px 4px" }}>
                           {REGLAS_AUTO.map((r) => <option key={r.v} value={r.v}>{r.v ? `Auto · ${r.label}` : "Manual"}</option>)}
+                        </select>
+                      </span>
+                      <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <span className="hint">Corresponde a fase:</span>
+                        <select value={p.columna_id ?? ""} onChange={(e) => setPasoColumna(i, e.target.value)}
+                          title="Enlaza este paso con una pastilla de la parrilla: marcar aquí = marcar allí (un solo sitio)"
+                          style={{ fontSize: 12, padding: "2px 4px" }}>
+                          <option value="">— sin enlace —</option>
+                          {colsParrilla.map((c) => <option key={c.id} value={c.id}>{c.grupo} · {c.nombre}</option>)}
                         </select>
                       </span>
                       {form.secuencial && i > 0 && (

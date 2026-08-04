@@ -71,7 +71,8 @@ export default function CuadriculaBinder({ binderId }: { binderId: number }) {
                 <th className="cuad-bind"><b>{mesAnyo(m.periodo)}</b></th>
                 {data.columnas.map((c) => {
                   const est = m.celdas[c.id] ?? "na";
-                  const editable = c.tipo === "manual" && est !== "na";
+                  const enlazada = (data.enlazadas ?? []).includes(c.id);
+                  const editable = c.tipo === "manual" && est !== "na" && !enlazada;
                   return (
                     <td key={c.id} className="cuad-celda">
                       {editable ? (
@@ -79,7 +80,8 @@ export default function CuadriculaBinder({ binderId }: { binderId: number }) {
                           title={est === "ok" ? "Hecho (clic para desmarcar)" : "Pendiente (clic para marcar hecho)"}
                           onClick={() => marcar(m.periodo, c.id, est !== "ok")}>{lab(est)}</button>
                       ) : (
-                        <span className={cls(est)}>{lab(est)}</span>
+                        <span className={cls(est)}
+                          title={enlazada ? "Enlazada a un paso del checklist: se marca ahí" : undefined}>{lab(est)}{enlazada ? " 🔗" : ""}</span>
                       )}
                     </td>
                   );
