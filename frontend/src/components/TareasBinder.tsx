@@ -86,6 +86,9 @@ export default function TareasBinder({ binderId }: { binderId?: number }) {
   const [nuevoPaso, setNuevoPaso] = useState("");
   // Fases (columnas) de la parrilla, para el desplegable "corresponde a esta fase" de cada paso.
   const [colsParrilla, setColsParrilla] = useState<CuadriculaColumna[]>([]);
+  // Fecha elegida al marcar un paso manual (por clave de paso+entrega). Por defecto hoy.
+  const [fechasPaso, setFechasPaso] = useState<Record<string, string>>({});
+  const hoyISO = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
 
   const [vista, setVista] = useState<"bloques" | "mes">("bloques");
   const [soloPend, setSoloPend] = useState(true);
@@ -301,11 +304,11 @@ export default function TareasBinder({ binderId }: { binderId?: number }) {
       await cargar();
     } catch (e) { setError((e as Error).message); } finally { setBusyOc(null); }
   }
-  async function togglePaso(o: TareaOcurrencia, ps: TareaPasoEstado) {
+  async function togglePaso(o: TareaOcurrencia, ps: TareaPasoEstado, fecha?: string) {
     if (!ocDe) return;
     setBusyOc(o.fecha + ps.paso_id);
     try {
-      await tareasApi.marcarPaso(ps.paso_id, { fecha_ocurrencia: o.fecha, deshacer: ps.hecho });
+      await tareasApi.marcarPaso(ps.paso_id, { fecha_ocurrencia: o.fecha, deshacer: ps.hecho, fecha_hecha: ps.hecho ? null : fecha });
       await recargarOcs();
       await cargar();
     } catch (e) { setError((e as Error).message); } finally { setBusyOc(null); }
@@ -419,10 +422,10 @@ export default function TareasBinder({ binderId }: { binderId?: number }) {
       await Promise.all([cargar(), cargarAgenda()]);
     } catch (e) { setError((e as Error).message); } finally { setBusyOc(null); }
   }
-  async function togglePasoAgenda(a: TareaAgendaItem, ps: TareaPasoEstado) {
+  async function togglePasoAgenda(a: TareaAgendaItem, ps: TareaPasoEstado, fecha?: string) {
     setBusyOc(a.tarea_id + a.fecha + ps.paso_id);
     try {
-      await tareasApi.marcarPaso(ps.paso_id, { fecha_ocurrencia: a.fecha, deshacer: ps.hecho });
+      await tareasApi.marcarPaso(ps.paso_id, { fecha_ocurrencia: a.fecha, deshacer: ps.hecho, fecha_hecha: ps.hecho ? null : fecha });
       await Promise.all([cargar(), cargarAgenda()]);
     } catch (e) { setError((e as Error).message); } finally { setBusyOc(null); }
   }
@@ -430,7 +433,7 @@ export default function TareasBinder({ binderId }: { binderId?: number }) {
   // Lista de pasos (checklist) de una entrega. Los pasos auto salen bloqueados; los manuales se marcan.
   const listaPasos = (
     pasos: TareaPasoEstado[],
-    onToggle: (ps: TareaPasoEstado) => void,
+    onToggle: (ps: TareaPasoEstado, fecha?: string) => void,
     busyKey: (ps: TareaPasoEstado) => string,
   ) => (
     <div style={{ display: "flex", flexDirection: "column", gap: 4, padding: "6px 0 6px 26px" }}>
@@ -440,14 +443,25 @@ export default function TareasBinder({ binderId }: { binderId?: number }) {
         // Secuencial: un paso aún no hecho con algún anterior pendiente sale bloqueado (gris + 🔒).
         const bloqueado = !!ps.bloqueado && !ps.hecho;
         const inerte = esAuto || bloqueado || sinMov;   // no marcable a mano (auto, bloqueado o sin movimiento)
+        const k = busyKey(ps);
+        const marcable = !inerte && !ps.hecho;          // manual, pendiente → se marca a mano con fecha
+        const fecha = fechasPaso[k] ?? hoyISO();
+        const avisa = !!ps.avisar_orden && !ps.hecho;   // una fase posterior ya está hecha
         return (
-          <label key={ps.paso_id} style={{ display: "flex", alignItems: "center", gap: 6, cursor: inerte ? "default" : "pointer", opacity: (bloqueado || sinMov) ? 0.55 : 1 }}>
-            <input type="checkbox" checked={ps.hecho && !sinMov}
-              disabled={inerte || busyOc === busyKey(ps)}
-              onChange={() => { if (!inerte) onToggle(ps); }} />
-            <span style={{ textDecoration: (ps.hecho && !sinMov) ? "line-through" : "none", color: (ps.hecho || sinMov) ? "var(--texto-suave, #888)" : undefined }}>
-              {ps.titulo}
-            </span>
+          <div key={ps.paso_id} style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap",
+            padding: avisa ? "2px 6px" : undefined, background: avisa ? "#fff6e6" : undefined, borderRadius: avisa ? 6 : undefined }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: inerte ? "default" : "pointer", opacity: (bloqueado || sinMov) ? 0.55 : 1 }}>
+              <input type="checkbox" checked={ps.hecho && !sinMov}
+                disabled={inerte || busyOc === k}
+                onChange={() => { if (!inerte) onToggle(ps, fecha); }} />
+              <span style={{ textDecoration: (ps.hecho && !sinMov) ? "line-through" : "none", color: (ps.hecho || sinMov) ? "var(--texto-suave, #888)" : undefined }}>
+                {ps.titulo}
+              </span>
+            </label>
+            {avisa && (
+              <span className="hint" style={{ color: "#b45309", fontWeight: 600 }}
+                title="Una fase posterior ya está hecha: marca este paso con la fecha en que se hizo.">⚠ márcalo con fecha</span>
+            )}
             {sinMov && (
               <span className="hint" title={`Sin movimiento: no hay ${reglaLabel(ps.regla_auto) || "dato"} desde hace ≥6 meses. Si vuelve a llegar, se marca solo.`}>· ⊘ sin movimiento</span>
             )}
@@ -455,12 +469,18 @@ export default function TareasBinder({ binderId }: { binderId?: number }) {
               <span className="hint" title="Se desbloquea al completar el paso anterior">· 🔒 bloqueado</span>
             )}
             {esAuto && !sinMov && (
-              <span className="hint" title={`Se marca solo: ${reglaLabel(ps.regla_auto)}${ps.periodo ? ` · ${mesAnyo(ps.periodo)}` : ""}`}>
-                · 🔒 auto ({reglaLabel(ps.regla_auto)}{ps.periodo ? ` ${mesAnyo(ps.periodo)}` : ""}) {ps.hecho ? "✓" : "pendiente"}
+              <span className="hint" title={`Se marca solo cuando se carga el dato: ${reglaLabel(ps.regla_auto)}${ps.periodo ? ` · ${mesAnyo(ps.periodo)}` : ""}`}>
+                · 🔒 auto ({reglaLabel(ps.regla_auto)}{ps.periodo ? ` ${mesAnyo(ps.periodo)}` : ""}) {ps.hecho ? (ps.fecha_hecha ? `✓ ${fmtFechaES(ps.fecha_hecha)}` : "✓") : "pendiente"}
               </span>
             )}
             {!esAuto && ps.hecho && ps.fecha_hecha && <span className="hint">· {fmtFechaES(ps.fecha_hecha)}</span>}
-          </label>
+            {marcable && (
+              <input type="date" value={fecha} disabled={busyOc === k}
+                onChange={(e) => setFechasPaso((s) => ({ ...s, [k]: e.target.value }))}
+                title="Fecha en que se hizo (se guarda al marcar)"
+                style={{ fontSize: 11, padding: "1px 4px", border: "1px solid var(--borde)", borderRadius: 5 }} />
+            )}
+          </div>
         );
       })}
     </div>
@@ -510,7 +530,7 @@ export default function TareasBinder({ binderId }: { binderId?: number }) {
                   {tienePasos && abierto && (
                     <tr>
                       <td colSpan={4} style={{ background: "var(--fondo-suave, #f7f8fa)" }}>
-                        {listaPasos(pasos, (ps) => togglePaso(o, ps), (ps) => o.fecha + ps.paso_id)}
+                        {listaPasos(pasos, (ps, fecha) => togglePaso(o, ps, fecha), (ps) => o.fecha + ps.paso_id)}
                       </td>
                     </tr>
                   )}
@@ -637,7 +657,7 @@ export default function TareasBinder({ binderId }: { binderId?: number }) {
                               </div>
                               {tienePasos && listaPasos(
                                 soloPend ? a.pasos.filter((p) => !p.hecho) : a.pasos,
-                                (ps) => togglePasoAgenda(a, ps),
+                                (ps, fecha) => togglePasoAgenda(a, ps, fecha),
                                 (ps) => a.tarea_id + a.fecha + ps.paso_id,
                               )}
                             </div>

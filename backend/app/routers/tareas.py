@@ -147,6 +147,51 @@ def _periodos_datos(db: Session, binder_ids: set[int]) -> dict[str, dict[int, se
     return out
 
 
+def _fechas_carga(db: Session, binder_ids: set[int]) -> dict[str, dict[int, dict[str, dt.date]]]:
+    """Por binder y regla, la FECHA DE CARGA (created_at más antiguo) del dato de cada periodo 'YYYY-MM'.
+    Sirve para poner sola la fecha de los pasos AUTO ('cuándo se realizó' = cuándo se cargó el dato)."""
+    out: dict[str, dict[int, dict[str, dt.date]]] = {r: defaultdict(dict) for r in REGLAS_AUTO}
+    if not binder_ids:
+        return out
+
+    def _acc(regla: str, bid: int, per: str | None, ts) -> None:
+        if not per or ts is None:
+            return
+        d = ts.date() if hasattr(ts, "date") else ts
+        cur = out[regla][bid].get(per)
+        if cur is None or d < cur:
+            out[regla][bid][per] = d
+
+    # Risk/Premium: agrupamos por la FECHA del dato (min created_at) y pasamos a mes en Python.
+    for bid, d, ts in db.execute(
+        select(Bdx.binder_id, BdxLinea.reporting_period_start, func.min(Bdx.created_at))
+        .join(BdxLinea, BdxLinea.bdx_id == Bdx.id)
+        .where(Bdx.tipo == "Risk", Bdx.binder_id.in_(binder_ids), BdxLinea.reporting_period_start.is_not(None))
+        .group_by(Bdx.binder_id, BdxLinea.reporting_period_start)
+    ).all():
+        _acc("risk", bid, d.strftime("%Y-%m"), ts)
+    for bid, d, ts in db.execute(
+        select(Bdx.binder_id, BdxLinea.premium_bdx, func.min(Bdx.created_at))
+        .join(BdxLinea, BdxLinea.bdx_id == Bdx.id)
+        .where(Bdx.binder_id.in_(binder_ids), BdxLinea.incluido_en_premium.is_(True), BdxLinea.premium_bdx.is_not(None))
+        .group_by(Bdx.binder_id, BdxLinea.premium_bdx)
+    ).all():
+        _acc("premium", bid, d.strftime("%Y-%m"), ts)
+    for bid, per, ts in db.execute(
+        select(Lpan.binder_id, Lpan.periodo, func.min(Lpan.created_at))
+        .where(Lpan.binder_id.in_(binder_ids), Lpan.periodo.is_not(None))
+        .group_by(Lpan.binder_id, Lpan.periodo)
+    ).all():
+        _acc("lpan", bid, per, ts)
+    for bid, per, ts in db.execute(
+        select(ClaimsPresentacion.binder_id, ClaimsPresentacion.periodo, func.min(ClaimsPresentacion.created_at))
+        .where(ClaimsPresentacion.binder_id.in_(binder_ids), ClaimsPresentacion.periodo.is_not(None))
+        .group_by(ClaimsPresentacion.binder_id, ClaimsPresentacion.periodo)
+    ).all():
+        _acc("claims", bid, per, ts)
+    return out
+
+
 # Campo de plazo (días) del binder según la categoría de la tarea auto.
 _CAT_PLAZO = {"Risk": "risk_bdx_plazo", "Premium": "premium_bdx_plazo", "Claims": "claims_bdx_plazo"}
 
@@ -415,15 +460,17 @@ class PasoEstado(BaseModel):
     sin_movimiento: bool = False     # el flujo lleva ≥6 meses sin dato: cuenta como hecho pero en gris
     periodo: str | None = None       # periodo (YYYY-MM) que comprueba la regla en esta entrega
     hecho: bool
-    fecha_hecha: dt.date | None = None
+    fecha_hecha: dt.date | None = None   # cuándo se hizo (manual: a mano; auto: fecha de carga del dato)
     bloqueado: bool = False          # tarea secuencial: hay un paso anterior sin completar (no marcable aún)
+    avisar_orden: bool = False       # paso pendiente cuando un paso POSTERIOR ya está hecho (marcar con fecha)
 
 
 def _pasos_de_ocurrencia(t: Tarea, binder: Binder | None, f: dt.date, k: int,
-                         datos: dict, manual: dict) -> tuple[list[PasoEstado], bool]:
+                         datos: dict, manual: dict, fechas_carga: dict | None = None) -> tuple[list[PasoEstado], bool]:
     """Estado de los pasos de UNA ocurrencia (fecha f, índice k) + si la entrega está completa.
     `manual` = {(paso_id, fecha): TareaPasoHecho}. Un paso está hecho si está marcado a mano o si su
-    regla auto se cumple para el periodo de esa entrega."""
+    regla auto se cumple para el periodo de esa entrega. `fechas_carga` (opcional) pone la fecha de los
+    pasos auto = cuándo se cargó el dato."""
     periodo = _periodo_de(binder, t, f, _paso(t)) if binder else None
     # Entrega "sin movimiento": dormido ≥6 meses (auto) o marcado a mano → toda la entrega es moot.
     # Todos sus pasos salen en gris (satisfechos, no marcables como pendientes).
@@ -455,13 +502,24 @@ def _pasos_de_ocurrencia(t: Tarea, binder: Binder | None, f: dt.date, k: int,
         if not hecho:
             completa = False
             grupo_completo = False
+        # Fecha: manual = la marcada a mano; auto (hecho por dato) = la fecha de CARGA del dato del periodo.
+        f_hecha = ph.fecha_hecha if ph else None
+        if f_hecha is None and p.regla_auto and auto_done and not bloqueado and fechas_carga and binder:
+            f_hecha = fechas_carga.get(p.regla_auto, {}).get(binder.id, {}).get(periodo)
         pasos.append(PasoEstado(
             paso_id=p.id, titulo=p.titulo, orden=p.orden,
             regla_auto=p.regla_auto, auto=(auto_done and ph is None and not bloqueado),
             periodo=periodo if p.regla_auto else None,
-            hecho=hecho, fecha_hecha=(ph.fecha_hecha if ph else None),
+            hecho=hecho, fecha_hecha=f_hecha,
             bloqueado=bloqueado,
         ))
+    # Aviso de orden: un paso pendiente cuando un paso POSTERIOR (mayor orden) ya está hecho → hay que
+    # marcarlo (con su fecha). En tareas secuenciales no se da (el orden ya está garantizado).
+    max_hecho = max((p.orden for p in pasos if p.hecho), default=None)
+    if max_hecho is not None:
+        for p in pasos:
+            if not p.hecho and p.orden < max_hecho:
+                p.avisar_orden = True
     return pasos, completa
 
 
@@ -494,6 +552,7 @@ def agenda(binder_id: int | None = None, solo_pendientes: bool = False, db: Sess
         q = q.where(Tarea.binder_id == binder_id)
     tareas = db.scalars(q.options(*_opc_tarea()).order_by(Tarea.id)).all()
     datos = _periodos_datos(db, {t.binder_id for t in tareas})
+    fechas_carga = _fechas_carga(db, {t.binder_id for t in tareas})
     out: list[AgendaItem] = []
     for t in tareas:
         binder = db.get(Binder, t.binder_id)
@@ -506,7 +565,7 @@ def agenda(binder_id: int | None = None, solo_pendientes: bool = False, db: Sess
             if f < SUELO_ENTREGAS:
                 continue
             h = hechas.get(f)
-            pasos, _ = _pasos_de_ocurrencia(t, binder, f, k, datos, manual)
+            pasos, _ = _pasos_de_ocurrencia(t, binder, f, k, datos, manual, fechas_carga)
             if not _debida(t, f, hoy, False):
                 estado = "futura"      # su plazo aún no ha llegado (aunque el dato ya exista)
             elif f in done:
@@ -1094,12 +1153,13 @@ def ocurrencias(tarea_id: int, incluir_futuras: bool = False, db: Session = Depe
         raise HTTPException(status_code=404, detail=f"Tarea {tarea_id} no encontrada")
     binder = db.get(Binder, t.binder_id)
     datos = _periodos_datos(db, {t.binder_id})
+    fechas_carga = _fechas_carga(db, {t.binder_id})
     hechas = {h.fecha_ocurrencia: h for h in t.hechas}    # TareaHecha (tareas sin pasos / notas)
     manual = {(ph.paso_id, ph.fecha_ocurrencia): ph for p in t.pasos for ph in p.hechos}
     hoy = dt.date.today()
     out: list[OcurrenciaOut] = []
     for k, f in enumerate(_ocurrencias(t, binder) if binder else []):
-        pasos, completa = _pasos_de_ocurrencia(t, binder, f, k, datos, manual)
+        pasos, completa = _pasos_de_ocurrencia(t, binder, f, k, datos, manual, fechas_carga)
         h = hechas.get(f)
         hecha = completa if t.pasos else (h is not None)
         moot = _entrega_sin_mov(t, binder, f, datos)

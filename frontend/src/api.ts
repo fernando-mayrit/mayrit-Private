@@ -852,8 +852,9 @@ export interface TareaPasoEstado {
   sin_movimiento?: boolean;     // flujo dormido ≥6 meses: cuenta como hecho pero en gris (no es pendiente)
   periodo?: string | null;      // periodo YYYY-MM que comprueba la regla en esta entrega
   hecho: boolean;
-  fecha_hecha?: string | null;
+  fecha_hecha?: string | null;  // cuándo se hizo (manual: a mano; auto: fecha de carga del dato)
   bloqueado?: boolean;          // tarea secuencial: hay un paso anterior sin completar (no marcable aún)
+  avisar_orden?: boolean;       // paso pendiente cuando un paso POSTERIOR ya está hecho (marcar con fecha)
 }
 export interface TareaOcurrencia {
   fecha: string;
@@ -887,7 +888,7 @@ export const tareasApi = {
   // Catálogo de columnas (fases) de la parrilla, común a todos los binders (para enlazar pasos).
   columnas: () => request<CuadriculaColumna[]>("/tareas/columnas"),
   borrarPaso: (pasoId: number) => request(`/pasos/${pasoId}`, { method: "DELETE" }),
-  marcarPaso: (pasoId: number, body: { fecha_ocurrencia: string; deshacer?: boolean }) =>
+  marcarPaso: (pasoId: number, body: { fecha_ocurrencia: string; deshacer?: boolean; fecha_hecha?: string | null }) =>
     request(`/pasos/${pasoId}/hecho`, { method: "POST", body: JSON.stringify(body) }),
   sincronizarTodas: () => request<{ binders: number; creadas: number; actualizadas: number }>("/tareas/sincronizar-auto", { method: "POST" }),
   sincronizarBinder: (binderId: number) => request<{ creadas: number; actualizadas: number }>(`/binders/${binderId}/tareas/sincronizar-auto`, { method: "POST" }),
