@@ -189,6 +189,11 @@ class Binder(Base):
     fecha_efecto: Mapped[dt.date | None] = mapped_column(Date)
     fecha_vencimiento: Mapped[dt.date | None] = mapped_column(Date)
     estado: Mapped[str | None] = mapped_column(String(60))
+    # Qué líneas del pipeline hace este binder (para la cuadrícula de Tareas). DURABLE: no depende de que
+    # existan las tareas auto (que se pueden borrar). NULL = aún no fijado → se cae a las tareas auto.
+    hace_risk: Mapped[bool | None] = mapped_column(Boolean)
+    hace_premium: Mapped[bool | None] = mapped_column(Boolean)
+    hace_claims: Mapped[bool | None] = mapped_column(Boolean)
     # % del contrato (reaseguro) que lleva Mayrit. Por defecto 100. La suma de participaciones
     # por mercado de cada sección debe igualar este valor.
     participacion: Mapped[Decimal] = mapped_column(Numeric(7, 4), server_default=text("100"), default=Decimal("100"))

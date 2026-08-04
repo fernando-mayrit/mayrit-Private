@@ -296,11 +296,16 @@ def _sincronizar_binder(db: Session, binder: Binder) -> dict:
     FECHAS LÍMITE (fin del periodo + plazo). No pisa el aviso ni el estado que el usuario haya ajustado."""
     if not binder.fecha_efecto:
         return {"creadas": 0, "actualizadas": 0}
+    _FLAG = {"Risk": "hace_risk", "Premium": "hace_premium", "Claims": "hace_claims"}
     creadas = actualizadas = 0
     for categoria, c_int, c_plazo, titulo in _BDX_AUTO:
+        if getattr(binder, _FLAG[categoria]) is False:   # el binder NO hace esta línea -> no generar
+            continue
         frecuencia = getattr(binder, c_int, None)
         if frecuencia not in PASO_MESES:        # sin intervalo válido -> no se genera esa categoría
             continue
+        if getattr(binder, _FLAG[categoria]) is None:    # aún no fijado -> queda marcado que sí la hace
+            setattr(binder, _FLAG[categoria], True)
         plazo = int(getattr(binder, c_plazo, None) or 0)
         paso = PASO_MESES[frecuencia]
         inicio = _add_months(binder.fecha_efecto, paso) + dt.timedelta(days=plazo)   # 1ª fecha límite
@@ -573,13 +578,25 @@ def cuadricula(mes: str | None = None, db: Session = Depends(get_db)):
     per = (mes or dt.date.today().strftime("%Y-%m")).strip()
     columnas = db.scalars(select(TareaColumna).where(TareaColumna.activa.is_(True))
                           .order_by(TareaColumna.orden, TareaColumna.id)).all()
-    # Binders que participan = los que tienen alguna tarea AUTO (el pipeline les aplica).
-    cats_binder: dict[int, set[str]] = defaultdict(set)
+    # Qué categorías hace cada binder = de sus flags DURABLES hace_risk/premium/claims (no de que existan
+    # tareas auto, que se pueden borrar). Si un binder aún no los tiene fijados (los 3 NULL), se cae a la
+    # existencia de tareas auto (legacy). Un binder participa si hace ≥1 categoría.
+    _FLAG_CAT = [("Risk", "hace_risk"), ("Premium", "hace_premium"), ("Claims", "hace_claims")]
+    legacy: dict[int, set[str]] = defaultdict(set)
     for t in db.scalars(select(Tarea).where(Tarea.origen == "auto")).all():
-        cats_binder[t.binder_id].add(t.categoria)
+        legacy[t.binder_id].add(t.categoria)
+    cats_binder: dict[int, set[str]] = {}
+    binders: dict[int, Binder] = {}
+    for b in db.scalars(select(Binder).where(Binder.fecha_efecto.is_not(None))
+                        .options(selectinload(Binder.productor), selectinload(Binder.programa))).all():
+        if b.hace_risk is None and b.hace_premium is None and b.hace_claims is None:
+            cats = legacy.get(b.id, set())
+        else:
+            cats = {cat for cat, campo in _FLAG_CAT if getattr(b, campo)}
+        if cats:
+            cats_binder[b.id] = cats
+            binders[b.id] = b
     binder_ids = set(cats_binder)
-    binders = {b.id: b for b in db.scalars(select(Binder).where(Binder.id.in_(binder_ids))
-               .options(selectinload(Binder.productor), selectinload(Binder.programa))).all()}
     datos = _periodos_datos(db, binder_ids)
     cobro = _cobro_por_periodo(db, binder_ids)
     manual = {(m.binder_id, m.columna_id): m for m in db.scalars(select(TareaMatrizManual).where(
