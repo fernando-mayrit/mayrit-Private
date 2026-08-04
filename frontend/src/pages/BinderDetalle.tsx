@@ -15,6 +15,7 @@ import { pedirDestino, guardarEn } from "../download";
 import PremiumMatch from "../components/PremiumMatch";
 import RiskExcelImport from "../components/RiskExcelImport";
 import TareasBinder from "../components/TareasBinder";
+import ColumnasConfigBinder from "../components/ColumnasConfigBinder";
 import ConfirmDialog from "../components/ConfirmDialog";
 import AvisoDialog from "../components/AvisoDialog";
 import FormPanel from "../components/FormPanel";
@@ -1557,7 +1558,7 @@ export default function BinderDetalle({ binder }: { binder: Binder }) {
         })()
       )}
 
-      {tab === "tareas" && <TareasBinder binderId={binder.id} />}
+      {tab === "tareas" && <><ColumnasConfigBinder binderId={binder.id} /><TareasBinder binderId={binder.id} /></>}
 
       {tab === "recibos" && (
         <>

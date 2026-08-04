@@ -17,8 +17,8 @@ from sqlalchemy.orm import Session, selectinload
 
 from ..db import get_db
 from ..models.maestras import (
-    Bdx, BdxLinea, Binder, ClaimsPresentacion, Lpan, Recibo, Tarea, TareaColumna, TareaHecha,
-    TareaMatrizManual, TareaPaso, TareaPasoHecho,
+    Bdx, BdxLinea, Binder, ClaimsPresentacion, Lpan, Recibo, Tarea, TareaColumna, TareaColumnaBinder,
+    TareaHecha, TareaMatrizManual, TareaPaso, TareaPasoHecho,
 )
 
 router = APIRouter(tags=["Tareas"])
@@ -584,6 +584,12 @@ def cuadricula(mes: str | None = None, db: Session = Depends(get_db)):
     cobro = _cobro_por_periodo(db, binder_ids)
     manual = {(m.binder_id, m.columna_id): m for m in db.scalars(select(TareaMatrizManual).where(
         TareaMatrizManual.periodo == per, TareaMatrizManual.binder_id.in_(binder_ids))).all()}
+    # Config por binder (aplica + desde/hasta): si existe, MANDA ella (anula la adivinación por dormido).
+    cfgs = {(cb.binder_id, cb.columna_id): cb for cb in db.scalars(select(TareaColumnaBinder).where(
+        TareaColumnaBinder.binder_id.in_(binder_ids))).all()}
+
+    def _existe_dato(c, bid) -> bool:
+        return per in cobro.get(bid, set()) if c.regla == "cobro" else per in datos.get(c.regla, {}).get(bid, set())
 
     filas: list[CuadriculaFila] = []
     for bid in binder_ids:
@@ -593,14 +599,20 @@ def cuadricula(mes: str | None = None, db: Session = Depends(get_db)):
         celdas: dict[int, str] = {}
         n_pend = 0
         for c in columnas:
-            if c.grupo not in cats_binder[bid]:          # el binder no hace esa fase
-                celdas[c.id] = "na"; continue
-            if c.tipo == "auto":
-                if c.regla == "cobro":
-                    existe, dormido = per in cobro.get(bid, set()), _dato_dormido(datos, "premium", b, per)
+            cfg = cfgs.get((bid, c.id))
+            if cfg is not None:                          # config manual del binder → manda
+                fuera = (not cfg.aplica) or (cfg.hasta and per > cfg.hasta) or (cfg.desde and per < cfg.desde)
+                if fuera:
+                    estado = "na"
+                elif c.tipo == "auto":
+                    estado = "ok" if _existe_dato(c, bid) else "pend"    # sin grisear por dormido: manda la config
                 else:
-                    existe, dormido = per in datos.get(c.regla, {}).get(bid, set()), _dato_dormido(datos, c.regla, b, per)
-                estado = "ok" if existe else ("na" if dormido else "pend")
+                    m = manual.get((bid, c.id)); estado = "ok" if (m and m.hecho) else "pend"
+            elif c.grupo not in cats_binder[bid]:        # sin config: el binder no hace esa fase
+                estado = "na"
+            elif c.tipo == "auto":
+                dormido = _dato_dormido(datos, "premium" if c.regla == "cobro" else c.regla, b, per)
+                estado = "ok" if _existe_dato(c, bid) else ("na" if dormido else "pend")
             else:
                 m = manual.get((bid, c.id))
                 estado = "ok" if (m and m.hecho) else ("na" if _dato_dormido(datos, _CAT_REGLA.get(c.grupo), b, per) else "pend")
@@ -683,6 +695,65 @@ def borrar_columna(col_id: int, db: Session = Depends(get_db)):
     c = db.get(TareaColumna, col_id)
     if c is not None:
         db.delete(c); db.commit()
+
+
+# ── Config de las columnas POR BINDER (aplica + hasta qué mes) — en la pestaña Tareas del binder ──
+class ColumnaBinderRead(BaseModel):
+    columna_id: int
+    grupo: str
+    nombre: str
+    tipo: str
+    aplica: bool = True         # False = "No aplica" siempre
+    desde: str | None = None    # 'YYYY-MM' (opcional)
+    hasta: str | None = None    # 'YYYY-MM' — aplica hasta ese mes inclusive
+    auto: bool = True           # True = sin override (la app decide sola)
+
+
+class ColumnaBinderIn(BaseModel):
+    aplica: bool = True
+    desde: str | None = None
+    hasta: str | None = None
+
+
+@router.get("/binders/{binder_id}/columnas-config", response_model=list[ColumnaBinderRead])
+def columnas_config(binder_id: int, db: Session = Depends(get_db)):
+    """Las columnas de la cuadrícula con la config de ESTE binder (aplica + desde/hasta). `auto`=True
+    cuando no hay override (la app decide sola por el dato)."""
+    cols = db.scalars(select(TareaColumna).where(TareaColumna.activa.is_(True))
+                      .order_by(TareaColumna.orden, TareaColumna.id)).all()
+    cfg = {cb.columna_id: cb for cb in db.scalars(select(TareaColumnaBinder).where(
+        TareaColumnaBinder.binder_id == binder_id)).all()}
+    out = []
+    for c in cols:
+        cb = cfg.get(c.id)
+        out.append(ColumnaBinderRead(columna_id=c.id, grupo=c.grupo, nombre=c.nombre, tipo=c.tipo,
+            aplica=(cb.aplica if cb else True), desde=(cb.desde if cb else None),
+            hasta=(cb.hasta if cb else None), auto=(cb is None)))
+    return out
+
+
+@router.put("/binders/{binder_id}/columnas-config/{columna_id}", response_model=ColumnaBinderRead)
+def set_columna_config(binder_id: int, columna_id: int, payload: ColumnaBinderIn, db: Session = Depends(get_db)):
+    """Fija la config de una columna para un binder (aplica + rango de meses). Si vuelve al defecto
+    (aplica y sin desde/hasta) se borra el override → vuelve a AUTOMÁTICO (la app decide)."""
+    col = db.get(TareaColumna, columna_id)
+    if col is None:
+        raise HTTPException(status_code=404, detail="Columna no encontrada.")
+    desde, hasta = (payload.desde or None), (payload.hasta or None)
+    cb = db.scalar(select(TareaColumnaBinder).where(
+        TareaColumnaBinder.binder_id == binder_id, TareaColumnaBinder.columna_id == columna_id))
+    es_defecto = payload.aplica and not desde and not hasta
+    if es_defecto:
+        if cb is not None:
+            db.delete(cb); db.commit()
+        return ColumnaBinderRead(columna_id=columna_id, grupo=col.grupo, nombre=col.nombre, tipo=col.tipo, auto=True)
+    if cb is None:
+        cb = TareaColumnaBinder(binder_id=binder_id, columna_id=columna_id)
+        db.add(cb)
+    cb.aplica, cb.desde, cb.hasta = payload.aplica, desde, hasta
+    db.commit()
+    return ColumnaBinderRead(columna_id=columna_id, grupo=col.grupo, nombre=col.nombre, tipo=col.tipo,
+        aplica=cb.aplica, desde=cb.desde, hasta=cb.hasta, auto=False)
 
 
 @router.get("/binders/{binder_id}/tareas", response_model=list[TareaRead])

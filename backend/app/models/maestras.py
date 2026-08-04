@@ -1183,6 +1183,21 @@ class TareaMatrizManual(Base):
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class TareaColumnaBinder(Base):
+    """Config POR BINDER de una columna de la cuadrícula: si aplica y en qué rango de meses (`desde`/
+    `hasta`, ambos inclusive). ANULA la adivinación automática (dormido): si hay fila para (binder,
+    columna), manda ella (dentro del rango → se calcula del dato; fuera o `aplica`=False → 'No aplica')."""
+    __tablename__ = "tarea_columna_binder"
+    __table_args__ = (UniqueConstraint("binder_id", "columna_id", name="uq_tarea_col_binder"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    binder_id: Mapped[int] = mapped_column(ForeignKey("binders.id", ondelete="CASCADE"), index=True)
+    columna_id: Mapped[int] = mapped_column(ForeignKey("tarea_columnas.id", ondelete="CASCADE"), index=True)
+    aplica: Mapped[bool] = mapped_column(Boolean, server_default=text("true"), default=True)
+    desde: Mapped[str | None] = mapped_column(String(7))       # 'YYYY-MM' inclusive (None = desde siempre)
+    hasta: Mapped[str | None] = mapped_column(String(7))       # 'YYYY-MM' inclusive (None = sin fin)
+
+
 class ComisionLiquidacion(Base):
     """Liquidación mensual de comisiones de una fuente (p. ej. Iberian). Se PREPARA con la comisión
     estimada del Premium (coverholder) y queda PENDIENTE DE RATIFICAR hasta que la fuente envía las

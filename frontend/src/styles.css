@@ -1388,3 +1388,19 @@ button.pastilla.clic:hover { filter: brightness(0.92); }
 .cuad-esq, .cuad-bind { text-align: left; white-space: nowrap; position: sticky; left: 0; background: #fff; z-index: 1; }
 .cuad-bind b { color: #333; }
 .cuad-celda { white-space: nowrap; }
+
+/* Config de fases de la cuadrícula por binder (pestaña Tareas) */
+.fases-cfg { border: 1px solid var(--borde); border-radius: 10px; margin-bottom: 14px; background: #fff; }
+.fases-cab { width: 100%; display: flex; justify-content: space-between; align-items: center; gap: 10px;
+  padding: 10px 14px; background: none; border: none; cursor: pointer; font-size: 14px; color: var(--gris); font-family: inherit; }
+.fases-cab:hover { background: var(--gris-claro); border-radius: 10px; }
+.fases-cuerpo { border-top: 1px solid var(--borde); padding: 12px 14px; }
+.fases-grupo { margin-bottom: 10px; }
+.fases-grupo-tit { font-weight: 600; font-size: 13px; color: var(--naranja-osc); margin-bottom: 4px; }
+.fases-fila { display: flex; align-items: center; gap: 14px; padding: 4px 0 4px 12px; font-size: 13px; flex-wrap: wrap; }
+.fases-nom { min-width: 130px; font-weight: 500; }
+.fases-chk { display: flex; align-items: center; gap: 5px; }
+.fases-hasta { display: flex; align-items: center; gap: 5px; color: var(--gris-medio); }
+.fases-hasta.off { opacity: .5; }
+.fases-hasta input { padding: 3px 6px; border: 1px solid var(--borde); border-radius: 6px; }
+.fases-estado { min-width: 120px; }
