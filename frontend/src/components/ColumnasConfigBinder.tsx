@@ -2,8 +2,9 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { tareasApi, type ColumnaBinderCfg } from "../api";
 
 // Config POR BINDER de las columnas de la cuadrícula de Tareas: qué fases aplican a este binder y en qué
-// meses. Por defecto Desde/Hasta traen el periodo del binder (efecto → vencimiento); se puede acotar
-// (run-off) o marcar "No aplica". Sin tocar nada, la fase la decide la app por el dato dentro del periodo.
+// meses. Desde SIEMPRE lleva fecha (por defecto el efecto). Hasta puede quedar EN BLANCO = vivo (sigue
+// apareciendo indefinidamente); solo al ponerle fecha el binder deja de aparecer a partir de ese mes.
+// Sin tocar nada, la fase la decide la app por el dato dentro del periodo efecto → vencimiento.
 export default function ColumnasConfigBinder({ binderId }: { binderId: number }) {
   const [cfgs, setCfgs] = useState<ColumnaBinderCfg[]>([]);
   const [efecto, setEfecto] = useState<string | null>(null);
@@ -29,13 +30,17 @@ export default function ColumnasConfigBinder({ binderId }: { binderId: number })
   }, [cfgs]);
 
   const nAplican = cfgs.filter((c) => !c.aplica).length;
-  const dDesde = (c: ColumnaBinderCfg) => c.desde ?? efecto ?? "";     // valor mostrado (default = efecto)
-  const dHasta = (c: ColumnaBinderCfg) => c.hasta ?? venc ?? "";       // valor mostrado (default = vencimiento)
+  // Desde: SIEMPRE una fecha (default = efecto). Hasta: en blanco = vivo (indefinido); solo con override se ve literal.
+  const dDesde = (c: ColumnaBinderCfg) => (c.auto ? efecto : (c.desde ?? efecto)) ?? "";
+  const dHasta = (c: ColumnaBinderCfg) => (c.auto ? venc : c.hasta) ?? "";
 
   async function guardar(col: ColumnaBinderCfg, cambio: { aplica?: boolean; desde?: string | null; hasta?: string | null }) {
     const aplica = cambio.aplica !== undefined ? cambio.aplica : col.aplica;
-    let desde = "desde" in cambio ? (cambio.desde || null) : (col.desde ?? efecto);
-    let hasta = "hasta" in cambio ? (cambio.hasta || null) : (col.hasta ?? venc);
+    // Desde SIEMPRE con fecha (si lo borran, vuelve al efecto). Hasta puede ser null = vivo (indefinido).
+    let desde: string | null = "desde" in cambio ? (cambio.desde || efecto || null) : (col.desde ?? efecto ?? null);
+    let hasta: string | null = "hasta" in cambio ? (cambio.hasta || null)
+      : col.auto ? (venc ?? null)          // era automático: conserva el corte por vencimiento
+      : (col.hasta ?? null);               // ya tenía override: mantiene su Hasta (null = vivo)
     if (!aplica) { desde = null; hasta = null; }
     const nuevo = { ...col, aplica, desde, hasta, auto: false };
     setCfgs((cs) => cs.map((c) => c.columna_id === col.columna_id ? nuevo : c));
@@ -56,8 +61,9 @@ export default function ColumnasConfigBinder({ binderId }: { binderId: number })
       {abierto && (
         <div className="fases-cuerpo">
           <p className="hint" style={{ margin: "0 0 10px" }}>
-            <b>Desde</b> y <b>Hasta</b> traen por defecto el periodo del binder ({efecto ?? "—"} → {venc ?? "—"}).
-            Ajústalos por fase si hace falta (p. ej. Claims en run-off), o marca <b>No aplica</b> si el binder no hace esa fase.
+            Por defecto, periodo del binder ({efecto ?? "—"} → {venc ?? "—"}). El <b>Desde</b> siempre lleva fecha;
+            el <b>Hasta</b> puedes dejarlo <b>en blanco = vivo</b> (sigue apareciendo). Ponle fecha cuando quieras que
+            deje de aparecer a partir de ese mes, o marca <b>No aplica</b> si el binder no hace esa fase.
           </p>
           {grupos.map((g) => (
             <div key={g.grupo} className="fases-grupo">
@@ -73,7 +79,7 @@ export default function ColumnasConfigBinder({ binderId }: { binderId: number })
                   <label className={"fases-hasta" + (c.aplica ? "" : " off")}>
                     desde
                     <input type="month" value={dDesde(c)} disabled={!c.aplica}
-                      onChange={(e) => guardar(c, { desde: e.target.value || null })} />
+                      onChange={(e) => guardar(c, { desde: e.target.value })} />
                   </label>
                   <label className={"fases-hasta" + (c.aplica ? "" : " off")}>
                     hasta
@@ -84,7 +90,7 @@ export default function ColumnasConfigBinder({ binderId }: { binderId: number })
                     {guardando === c.columna_id ? "guardando…"
                       : !c.aplica ? "No aplica"
                       : c.auto ? "Automático"
-                      : `${dDesde(c) || "…"} → ${dHasta(c) || "…"}`}
+                      : `${dDesde(c)} → ${dHasta(c) || "vivo (sin fin)"}`}
                   </span>
                 </div>
               ))}
