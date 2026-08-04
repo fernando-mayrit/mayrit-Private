@@ -1393,14 +1393,15 @@ button.pastilla.clic:hover { filter: brightness(0.96); }
 .cuad-agencia:hover th { background: #e7e9ee; }
 .cuad-ag-flecha { display: inline-block; width: 18px; color: var(--gris-medio); }
 .binder-cuad { margin-bottom: 16px; }
-/* Parrilla del binder: cabecera de fases FIJA arriba al hacer scroll por los meses (thead sticky dentro
-   de un contenedor con su propio scroll — necesario porque la tabla lleva scroll horizontal). */
-.binder-cuad .cuad-scroll { max-height: 66vh; overflow: auto; }
+/* Parrilla del binder: cabecera de fases FIJA arriba al hacer scroll por la PÁGINA (thead sticky respecto
+   al área de contenido). Sin caja de scroll propia (eso rompía el sticky de página); en pantallas estrechas
+   se recupera el scroll horizontal (y ahí el sticky no aplica). */
+.binder-cuad .cuad-scroll { overflow: visible; }
 .binder-cuad .cuad-tabla thead th { position: sticky; z-index: 3; height: 30px; box-sizing: border-box; }
 .binder-cuad .cuad-tabla thead tr:first-child th { top: 0; }
 .binder-cuad .cuad-tabla thead tr:nth-child(2) th { top: 30px; background: #fff; }
 .binder-cuad .cuad-tabla thead .cuad-esq { top: 0; z-index: 4; }   /* esquina "Mes": fija arriba + izquierda */
-.binder-cuad .cuad-tabla tbody .cuad-bind { z-index: 2; }
+@media (max-width: 860px) { .binder-cuad .cuad-scroll { overflow-x: auto; } }
 
 /* Config de fases de la cuadrícula por binder (pestaña Tareas) */
 .fases-cfg { border: 1px solid var(--borde); border-radius: 10px; margin-bottom: 14px; background: #fff; }
