@@ -1374,18 +1374,18 @@ tr.fila-inactiva td { opacity: 0.55; }
 
 /* ── Tareas: vista CUADRÍCULA (matriz binders × fases, pastillas) ── */
 .pastilla { display: inline-block; min-width: 66px; padding: 3px 10px; border-radius: 999px;
-  font-size: 11.5px; font-weight: 600; text-align: center; white-space: nowrap; color: #fff; line-height: 1.5; }
-.pastilla.ok { background: #2e9b52; }
-.pastilla.pend { background: var(--rojo); }
-.pastilla.na { background: #e5e7eb; color: var(--gris-medio); }
+  font-size: 11.5px; font-weight: 600; text-align: center; white-space: nowrap; line-height: 1.5; }
+.pastilla.ok { background: #d4e6fb; color: #1c5cc4; }    /* azul pastel = hecho */
+.pastilla.pend { background: #fbdcdc; color: #bb2d1f; }  /* rojo pastel = pendiente */
+.pastilla.na { background: #eceef1; color: #7a828d; }    /* gris pastel = no aplica */
 button.pastilla.clic { border: none; cursor: pointer; font-family: inherit; }
-button.pastilla.clic:hover { filter: brightness(0.92); }
+button.pastilla.clic:hover { filter: brightness(0.96); }
 .cuad-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; border: 1px solid var(--borde); border-radius: 10px; }
 .cuad-tabla { border-collapse: collapse; font-size: 13px; width: 100%; }
 .cuad-tabla th, .cuad-tabla td { border: 1px solid var(--borde); padding: 6px 9px; text-align: center; }
 .cuad-grupo { background: var(--gris-claro); font-weight: 600; color: var(--gris); }
 .cuad-col { font-weight: 500; font-size: 12px; white-space: nowrap; color: var(--gris-medio); }
-.cuad-esq, .cuad-bind { text-align: left; white-space: nowrap; position: sticky; left: 0; background: #fff; z-index: 1; }
+.cuad-tabla .cuad-esq, .cuad-tabla .cuad-bind { text-align: left; white-space: nowrap; position: sticky; left: 0; background: #fff; z-index: 1; }
 .cuad-bind b { color: #333; }
 .cuad-celda { white-space: nowrap; }
 
