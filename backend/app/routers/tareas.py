@@ -570,6 +570,67 @@ def _cobro_por_periodo(db: Session, binder_ids: set[int]) -> dict[int, set[str]]
     return out
 
 
+_FLAG_CAT = [("Risk", "hace_risk"), ("Premium", "hace_premium"), ("Claims", "hace_claims")]
+
+
+def _cats_de_binder(b: Binder, legacy_cats: set[str]) -> set[str]:
+    """Qué categorías (Risk/Premium/Claims) hace el binder: de los flags DURABLES; si los 3 están sin
+    fijar (NULL), cae a las categorías con tarea auto (legacy)."""
+    if b.hace_risk is None and b.hace_premium is None and b.hace_claims is None:
+        return legacy_cats
+    return {cat for cat, campo in _FLAG_CAT if getattr(b, campo)}
+
+
+def _estado_celda(c, per: str, b: Binder, cfg, cats: set[str], datos, cobro, manual_map) -> str:
+    """Estado de una celda (columna c, mes per) para el binder b: 'ok' | 'pend' | 'na'. ÚNICA fuente de
+    verdad, compartida por la cuadrícula global (un mes × todos los binders) y la del binder (un binder ×
+    todos los meses), para que coincidan exactamente."""
+    def existe() -> bool:
+        if c.regla == "cobro":
+            return per in cobro.get(b.id, set())
+        return per in datos.get(c.regla, {}).get(b.id, set())
+    efecto_m = b.fecha_efecto.strftime("%Y-%m") if b.fecha_efecto else None
+    venc_m = b.fecha_vencimiento.strftime("%Y-%m") if b.fecha_vencimiento else None
+    if efecto_m and per < efecto_m:                  # antes del efecto: el binder no existe
+        return "na"
+    if cfg is not None:                              # config manual del binder → manda
+        if (not cfg.aplica) or (cfg.hasta and per > cfg.hasta) or (cfg.desde and per < cfg.desde):
+            return "na"
+        if c.tipo == "auto":
+            return "ok" if existe() else "pend"      # sin grisear por dormido: manda la config
+        m = manual_map.get((b.id, c.id))
+        return "ok" if (m and m.hecho) else "pend"
+    if venc_m and per > venc_m:                       # sin override: por defecto aplica hasta el vencimiento
+        return "na"
+    if c.grupo not in cats:                           # el binder no hace esa fase
+        return "na"
+    if c.tipo == "auto":
+        dormido = _dato_dormido(datos, "premium" if c.regla == "cobro" else c.regla, b, per)
+        return "ok" if existe() else ("na" if dormido else "pend")
+    m = manual_map.get((b.id, c.id))
+    return "ok" if (m and m.hecho) else ("na" if _dato_dormido(datos, _CAT_REGLA.get(c.grupo), b, per) else "pend")
+
+
+def _meses_binder(b: Binder, tope: int = 36) -> list[str]:
+    """Meses YYYY-MM del binder para su cuadrícula: del efecto al vencimiento (su vida). Si no tiene
+    vencimiento, hasta hoy. MÁS RECIENTE primero, con tope de seguridad."""
+    if not b.fecha_efecto:
+        return []
+    hoy = dt.date.today().replace(day=1)
+    ini = b.fecha_efecto.replace(day=1)
+    fin = b.fecha_vencimiento.replace(day=1) if b.fecha_vencimiento else hoy
+    if fin < ini:
+        fin = ini
+    out: list[str] = []
+    y, m = fin.year, fin.month
+    while (y, m) >= (ini.year, ini.month) and len(out) < tope:
+        out.append(f"{y:04d}-{m:02d}")
+        m -= 1
+        if m == 0:
+            y, m = y - 1, 12
+    return out
+
+
 @router.get("/tareas/cuadricula", response_model=Cuadricula)
 def cuadricula(mes: str | None = None, db: Session = Depends(get_db)):
     """Matriz binders × columnas (fases del pipeline). Celda: 'ok' (verde, hecho) · 'pend' (rojo,
@@ -578,10 +639,8 @@ def cuadricula(mes: str | None = None, db: Session = Depends(get_db)):
     per = (mes or dt.date.today().strftime("%Y-%m")).strip()
     columnas = db.scalars(select(TareaColumna).where(TareaColumna.activa.is_(True))
                           .order_by(TareaColumna.orden, TareaColumna.id)).all()
-    # Qué categorías hace cada binder = de sus flags DURABLES hace_risk/premium/claims (no de que existan
-    # tareas auto, que se pueden borrar). Si un binder aún no los tiene fijados (los 3 NULL), se cae a la
-    # existencia de tareas auto (legacy). Un binder participa si hace ≥1 categoría.
-    _FLAG_CAT = [("Risk", "hace_risk"), ("Premium", "hace_premium"), ("Claims", "hace_claims")]
+    # Qué categorías hace cada binder = de sus flags DURABLES (no de que existan tareas auto, que se pueden
+    # borrar). Un binder participa si hace ≥1 categoría.
     legacy: dict[int, set[str]] = defaultdict(set)
     for t in db.scalars(select(Tarea).where(Tarea.origen == "auto")).all():
         legacy[t.binder_id].add(t.categoria)
@@ -589,10 +648,7 @@ def cuadricula(mes: str | None = None, db: Session = Depends(get_db)):
     binders: dict[int, Binder] = {}
     for b in db.scalars(select(Binder).where(Binder.fecha_efecto.is_not(None))
                         .options(selectinload(Binder.productor), selectinload(Binder.programa))).all():
-        if b.hace_risk is None and b.hace_premium is None and b.hace_claims is None:
-            cats = legacy.get(b.id, set())
-        else:
-            cats = {cat for cat, campo in _FLAG_CAT if getattr(b, campo)}
+        cats = _cats_de_binder(b, legacy.get(b.id, set()))
         if cats:
             cats_binder[b.id] = cats
             binders[b.id] = b
@@ -605,42 +661,15 @@ def cuadricula(mes: str | None = None, db: Session = Depends(get_db)):
     cfgs = {(cb.binder_id, cb.columna_id): cb for cb in db.scalars(select(TareaColumnaBinder).where(
         TareaColumnaBinder.binder_id.in_(binder_ids))).all()}
 
-    def _existe_dato(c, bid) -> bool:
-        return per in cobro.get(bid, set()) if c.regla == "cobro" else per in datos.get(c.regla, {}).get(bid, set())
-
     filas: list[CuadriculaFila] = []
     for bid in binder_ids:
         b = binders.get(bid)
         if not b:
             continue
-        # Por defecto una fase aplica en el periodo del binder: efecto → vencimiento (antes no existe,
-        # después está vencido). Un override por fase (desde/hasta) puede acotarlo o extenderlo (run-off).
-        efecto_m = b.fecha_efecto.strftime("%Y-%m") if b.fecha_efecto else None
-        venc_m = b.fecha_vencimiento.strftime("%Y-%m") if b.fecha_vencimiento else None
         celdas: dict[int, str] = {}
         n_pend = 0
         for c in columnas:
-            cfg = cfgs.get((bid, c.id))
-            if efecto_m and per < efecto_m:              # antes del efecto: el binder no existe
-                estado = "na"
-            elif cfg is not None:                        # config manual del binder → manda
-                fuera = (not cfg.aplica) or (cfg.hasta and per > cfg.hasta) or (cfg.desde and per < cfg.desde)
-                if fuera:
-                    estado = "na"
-                elif c.tipo == "auto":
-                    estado = "ok" if _existe_dato(c, bid) else "pend"    # sin grisear por dormido: manda la config
-                else:
-                    m = manual.get((bid, c.id)); estado = "ok" if (m and m.hecho) else "pend"
-            elif venc_m and per > venc_m:                # sin override: por defecto aplica hasta el vencimiento
-                estado = "na"
-            elif c.grupo not in cats_binder[bid]:        # el binder no hace esa fase
-                estado = "na"
-            elif c.tipo == "auto":
-                dormido = _dato_dormido(datos, "premium" if c.regla == "cobro" else c.regla, b, per)
-                estado = "ok" if _existe_dato(c, bid) else ("na" if dormido else "pend")
-            else:
-                m = manual.get((bid, c.id))
-                estado = "ok" if (m and m.hecho) else ("na" if _dato_dormido(datos, _CAT_REGLA.get(c.grupo), b, per) else "pend")
+            estado = _estado_celda(c, per, b, cfgs.get((bid, c.id)), cats_binder[bid], datos, cobro, manual)
             celdas[c.id] = estado
             if estado == "pend":
                 n_pend += 1
@@ -655,6 +684,46 @@ def cuadricula(mes: str | None = None, db: Session = Depends(get_db)):
         periodo=per,
         columnas=[CuadriculaColumna(id=c.id, grupo=c.grupo, nombre=c.nombre, tipo=c.tipo, regla=c.regla) for c in columnas],
         filas=filas)
+
+
+class BinderCuadriculaMes(BaseModel):
+    periodo: str
+    celdas: dict[int, str]          # columna_id -> 'ok' | 'pend' | 'na'
+
+
+class BinderCuadricula(BaseModel):
+    columnas: list[CuadriculaColumna]
+    meses: list[BinderCuadriculaMes]
+
+
+@router.get("/binders/{binder_id}/cuadricula", response_model=BinderCuadricula)
+def binder_cuadricula(binder_id: int, db: Session = Depends(get_db)):
+    """La fila del pipeline de ESTE binder, mes a mes: las MISMAS fases y la MISMA lógica de celda que la
+    cuadrícula global, para que coincidan exactamente. Meses del efecto al vencimiento, reciente primero."""
+    b = db.get(Binder, binder_id)
+    if b is None:
+        raise HTTPException(status_code=404, detail=f"Binder {binder_id} no encontrado")
+    columnas = db.scalars(select(TareaColumna).where(TareaColumna.activa.is_(True))
+                          .order_by(TareaColumna.orden, TareaColumna.id)).all()
+    legacy = {t.categoria for t in db.scalars(select(Tarea).where(
+        Tarea.binder_id == binder_id, Tarea.origen == "auto")).all()}
+    cats = _cats_de_binder(b, legacy)
+    datos = _periodos_datos(db, {binder_id})
+    cobro = _cobro_por_periodo(db, {binder_id})
+    manual_map = {(m.binder_id, m.columna_id): m for m in db.scalars(select(TareaMatrizManual).where(
+        TareaMatrizManual.binder_id == binder_id)).all()}
+    cfgs = {(cb.binder_id, cb.columna_id): cb for cb in db.scalars(select(TareaColumnaBinder).where(
+        TareaColumnaBinder.binder_id == binder_id)).all()}
+    meses: list[BinderCuadriculaMes] = []
+    for per in _meses_binder(b):
+        celdas = {c.id: _estado_celda(c, per, b, cfgs.get((binder_id, c.id)), cats, datos, cobro, manual_map)
+                  for c in columnas}
+        if all(v == "na" for v in celdas.values()):      # ese mes no aplica nada → no se muestra
+            continue
+        meses.append(BinderCuadriculaMes(periodo=per, celdas=celdas))
+    return BinderCuadricula(
+        columnas=[CuadriculaColumna(id=c.id, grupo=c.grupo, nombre=c.nombre, tipo=c.tipo, regla=c.regla) for c in columnas],
+        meses=meses)
 
 
 class MarcarManualIn(BaseModel):

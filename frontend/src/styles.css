@@ -1392,6 +1392,7 @@ button.pastilla.clic:hover { filter: brightness(0.96); }
   padding: 8px 12px; color: var(--gris); }
 .cuad-agencia:hover th { background: #e7e9ee; }
 .cuad-ag-flecha { display: inline-block; width: 18px; color: var(--gris-medio); }
+.binder-cuad { margin-bottom: 16px; }
 
 /* Config de fases de la cuadrícula por binder (pestaña Tareas) */
 .fases-cfg { border: 1px solid var(--borde); border-radius: 10px; margin-bottom: 14px; background: #fff; }

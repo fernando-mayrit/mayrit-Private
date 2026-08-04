@@ -903,6 +903,7 @@ export const tareasApi = {
   columnasConfig: (binderId: number) => request<ColumnasConfigResp>(`/binders/${binderId}/columnas-config`),
   setColumnaConfig: (binderId: number, columnaId: number, d: { aplica: boolean; desde?: string | null; hasta?: string | null }) =>
     request<ColumnaBinderCfg>(`/binders/${binderId}/columnas-config/${columnaId}`, { method: "PUT", body: JSON.stringify(d) }),
+  binderCuadricula: (binderId: number) => request<BinderCuadricula>(`/binders/${binderId}/cuadricula`),
 };
 export interface ColumnaBinderCfg {
   columna_id: number; grupo: string; nombre: string; tipo: string;
@@ -918,6 +919,8 @@ export interface CuadriculaFila {
   n_pend: number;
 }
 export interface Cuadricula { periodo: string; columnas: CuadriculaColumna[]; filas: CuadriculaFila[] }
+export interface BinderCuadriculaMes { periodo: string; celdas: Record<number, string> }
+export interface BinderCuadricula { columnas: CuadriculaColumna[]; meses: BinderCuadriculaMes[] }
 export interface TareaAgendaItem {
   tarea_id: number;
   titulo: string;
