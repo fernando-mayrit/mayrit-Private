@@ -77,12 +77,16 @@ def _ocurrencias(t: Tarea, binder: Binder) -> list[dt.date]:
         natural = _add_months(binder.fecha_efecto, paso) + dt.timedelta(days=plazo)   # 1ª fecha límite (periodo=efecto)
         tope = _add_months(dt.date.today(), _LOOKAHEAD_MESES)
         suelo, ef1 = _suelo_entregas(), binder.fecha_efecto.replace(day=1)
+        venc_mes = binder.fecha_vencimiento.replace(day=1) if binder.fecha_vencimiento else None
         out, k = [], 0
         while k < 600:
             f = _add_months(natural, k * paso)         # fecha límite de la entrega k (sobre la rejilla natural)
             if f > tope:
                 break
-            if _add_months(ef1, k * paso) >= suelo:    # su PERIODO no es demasiado antiguo (tope rodante)
+            per_mes = _add_months(ef1, k * paso)       # PERIODO (mes del dato) de la entrega k
+            if venc_mes and per_mes > venc_mes:        # no pasar del vencimiento (igual que la parrilla)
+                break
+            if per_mes >= suelo:                       # ni antes del tope rodante hacia atrás
                 out.append(f)
             k += 1
         return out
@@ -510,7 +514,7 @@ def _pasos_de_ocurrencia(t: Tarea, binder: Binder | None, f: dt.date, k: int,
     # Bloqueo por GRUPOS: los pasos con el MISMO `orden` forman un grupo paralelo (no se bloquean entre
     # sí). En tarea secuencial, un grupo está BLOQUEADO mientras algún grupo ANTERIOR (orden menor) tenga
     # algún paso sin hacer. `t.pasos` ya viene ordenado por (orden, id), así que los grupos son tramos
-    # consecutivos. Un paso auto no cuenta como hecho si su grupo está bloqueado (no se salta el orden).
+    # consecutivos. El bloqueo solo afecta a los pasos MANUALES; los AUTO se marcan con el dato (ver abajo).
     grupos_previos_ok = True   # ¿están completos todos los grupos anteriores al actual?
     grupo_orden = None         # `orden` del grupo que estamos recorriendo
     grupo_completo = True      # ¿el grupo actual va completo hasta ahora?
@@ -523,20 +527,26 @@ def _pasos_de_ocurrencia(t: Tarea, binder: Binder | None, f: dt.date, k: int,
             bloqueado = bool(t.secuencial) and not grupos_previos_ok
         ph = manual.get((p.id, f))
         auto_done = _auto_ok(p, periodo, datos, binder.id) if binder else False
-        hecho = (ph is not None or auto_done) and not bloqueado
+        # Un paso AUTO lo gobierna el DATO: si está cargado, está hecho — el orden secuencial NO lo bloquea
+        # (el dato es un hecho). El bloqueo secuencial solo afecta a los pasos MANUALES. El paso anterior que
+        # falte sale con "avisar_orden" (⚠) más abajo, no bloqueando el auto.
+        if p.regla_auto:
+            hecho = auto_done or (ph is not None)
+        else:
+            hecho = (ph is not None) and not bloqueado
         if not hecho:
             completa = False
             grupo_completo = False
         # Fecha: manual = la marcada a mano; auto (hecho por dato) = la fecha de CARGA del dato del periodo.
         f_hecha = ph.fecha_hecha if ph else None
-        if f_hecha is None and p.regla_auto and auto_done and not bloqueado and fechas_carga and binder:
+        if f_hecha is None and p.regla_auto and auto_done and fechas_carga and binder:
             f_hecha = fechas_carga.get(p.regla_auto, {}).get(binder.id, {}).get(periodo)
         pasos.append(PasoEstado(
             paso_id=p.id, titulo=p.titulo, orden=p.orden,
-            regla_auto=p.regla_auto, auto=(auto_done and ph is None and not bloqueado),
+            regla_auto=p.regla_auto, auto=(auto_done and ph is None),
             periodo=periodo if p.regla_auto else None,
             hecho=hecho, fecha_hecha=f_hecha,
-            bloqueado=bloqueado,
+            bloqueado=(False if p.regla_auto else bloqueado),
         ))
     # Aviso de orden: un paso pendiente cuando un paso POSTERIOR (mayor orden) ya está hecho → hay que
     # marcarlo (con su fecha). En tareas secuenciales no se da (el orden ya está garantizado).
@@ -747,8 +757,8 @@ def _meses_binder(b: Binder, tope: int = 36) -> list[str]:
     fin = b.fecha_vencimiento.replace(day=1) if b.fecha_vencimiento else tope_mes
     if fin > tope_mes:      # binder en vigor: no mostrar el mes en curso (su BDX no vence hasta el siguiente)
         fin = tope_mes
-    if fin < ini:
-        fin = ini
+    # Si el efecto es POSTERIOR al tope (binder que arranca este mes o más adelante), aún no hay ningún
+    # periodo que tocar: se devuelve vacío (igual que el detalle, que oculta ese mes como 'futuro').
     out: list[str] = []
     y, m = fin.year, fin.month
     while (y, m) >= (ini.year, ini.month) and len(out) < tope:
