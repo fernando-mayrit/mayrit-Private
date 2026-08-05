@@ -564,7 +564,11 @@ export default function TareasBinder({ binderId, onCambio }: { binderId?: number
                 <td><span className={`pill ${CAT_PILL[t.categoria] ?? "pill-anulado"}`}>{t.categoria}</span></td>
                 <td><button className="btn-link" style={{ fontWeight: 600 }} onClick={() => toggleOc(t)}>{t.titulo}</button>{t.origen === "auto" && <span className="hint" style={{ marginLeft: 6 }}>· auto</span>}</td>
                 <td>{t.frecuencia === "Personalizada" ? `Cada ${t.intervalo_meses} meses` : t.frecuencia}</td>
-                <td>{t.estado}</td>
+                <td>{t.estado === "Pausada"
+                  ? <span className="pill pill-anulado">Pausada</span>
+                  : t.terminada
+                    ? <span className="pill pill-anulado" title="Sus fases ya vencieron o están en 'No aplica' — no genera nuevas entregas">Terminada</span>
+                    : t.estado}</td>
                 <td>{t.proxima ? fmtFechaES(t.proxima) : "—"}</td>
                 <td className="num">{t.n_hechas}/{t.n_ocurrencias}</td>
                 <td className="acciones" style={{ whiteSpace: "nowrap" }}>
