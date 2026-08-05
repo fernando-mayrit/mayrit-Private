@@ -78,6 +78,8 @@ def _ocurrencias(t: Tarea, binder: Binder) -> list[dt.date]:
         tope = _add_months(dt.date.today(), _LOOKAHEAD_MESES)
         suelo, ef1 = _suelo_entregas(), binder.fecha_efecto.replace(day=1)
         venc_mes = binder.fecha_vencimiento.replace(day=1) if binder.fecha_vencimiento else None
+        # `fecha_inicio` de la tarea (si el usuario la puso) = PRIMER MES a mostrar; vacía = desde el efecto.
+        piso_tarea = t.fecha_inicio.replace(day=1) if t.fecha_inicio else None
         out, k = [], 0
         while k < 600:
             f = _add_months(natural, k * paso)         # fecha límite de la entrega k (sobre la rejilla natural)
@@ -86,7 +88,7 @@ def _ocurrencias(t: Tarea, binder: Binder) -> list[dt.date]:
             per_mes = _add_months(ef1, k * paso)       # PERIODO (mes del dato) de la entrega k
             if venc_mes and per_mes > venc_mes:        # no pasar del vencimiento (igual que la parrilla)
                 break
-            if per_mes >= suelo:                       # ni antes del tope rodante hacia atrás
+            if per_mes >= suelo and (piso_tarea is None or per_mes >= piso_tarea):   # tope rodante + fecha_inicio
                 out.append(f)
             k += 1
         return out
@@ -381,21 +383,19 @@ def _sincronizar_binder(db: Session, binder: Binder) -> dict:
         if getattr(binder, _FLAG[categoria]) is None:    # aún no fijado -> queda marcado que sí la hace
             setattr(binder, _FLAG[categoria], True)
         plazo = int(getattr(binder, c_plazo, None) or 0)
-        paso = PASO_MESES[frecuencia]
-        inicio = _add_months(binder.fecha_efecto, paso) + dt.timedelta(days=plazo)   # 1ª fecha límite
-        # No fijamos fecha_fin: el nº de entregas (y el run-off tras el vto) lo calcula _ocurrencias
-        # por nº de periodos de cobertura. La entrega del último periodo cae DESPUÉS del vencimiento.
-        fin = None
+        # `fecha_inicio` NO la fija la sincronización: vacía = desde el efecto (arranque natural). El
+        # usuario puede ponerla a mano como "primer mes a mostrar" de esa tarea, y no se la pisamos.
+        # `fecha_fin` tampoco: el nº de entregas lo calcula _ocurrencias (efecto→vencimiento).
         t = db.scalar(select(Tarea).where(
             Tarea.binder_id == binder.id, Tarea.origen == "auto", Tarea.categoria == categoria))
         if t:
-            t.titulo, t.frecuencia, t.fecha_inicio, t.fecha_fin = titulo, frecuencia, inicio, fin
+            t.titulo, t.frecuencia = titulo, frecuencia
             actualizadas += 1
         else:
             db.add(Tarea(
                 binder_id=binder.id, titulo=titulo, categoria=categoria, origen="auto",
                 descripcion=f"Generada del BDX del binder. Fecha límite = fin de periodo + {plazo} días.",
-                frecuencia=frecuencia, fecha_inicio=inicio, fecha_fin=fin,
+                frecuencia=frecuencia, fecha_inicio=None, fecha_fin=None,
                 aviso_dias_antes=7, estado="Activa"))
             creadas += 1
     db.commit()
@@ -706,7 +706,7 @@ def _enlaces_hechos(db: Session, binder_ids: set[int], datos: dict):
 
 
 def _estado_celda(c, per: str, b: Binder, cfg, cats: set[str], datos, cobro, manual_map,
-                  enlazadas: set | None = None, hechos: dict | None = None) -> str:
+                  enlazadas: set | None = None, hechos: dict | None = None, inicios: dict | None = None) -> str:
     """Estado de una celda (columna c, mes per) para el binder b: 'ok' | 'pend' | 'na'. ÚNICA fuente de
     verdad, compartida por la cuadrícula global (un mes × todos los binders) y la del binder (un binder ×
     todos los meses), para que coincidan exactamente."""
@@ -733,9 +733,13 @@ def _estado_celda(c, per: str, b: Binder, cfg, cats: set[str], datos, cobro, man
         if con_dormido and _dato_dormido(datos, _CAT_REGLA.get(c.grupo), b, per):
             return "na"
         return "pend"
+    inicios = inicios or {}
     efecto_m = b.fecha_efecto.strftime("%Y-%m") if b.fecha_efecto else None
     venc_m = b.fecha_vencimiento.strftime("%Y-%m") if b.fecha_vencimiento else None
     if efecto_m and per < efecto_m:                  # antes del efecto: el binder no existe
+        return "na"
+    ini_cat = inicios.get(c.grupo)                   # 'fecha_inicio' de la tarea de esa categoría (primer mes)
+    if ini_cat and per < ini_cat:                    # antes del arranque de esa tarea → no aplica
         return "na"
     if cfg is not None:                              # config manual del binder → manda (sin grisear por dormido)
         if (not cfg.aplica) or (cfg.hasta and per > cfg.hasta) or (cfg.desde and per < cfg.desde):
@@ -785,8 +789,11 @@ def cuadricula(mes: str | None = None, db: Session = Depends(get_db)):
     # Qué categorías hace cada binder = de sus flags DURABLES (no de que existan tareas auto, que se pueden
     # borrar). Un binder participa si hace ≥1 categoría.
     legacy: dict[int, set[str]] = defaultdict(set)
+    inicios_binder: dict[int, dict[str, str]] = defaultdict(dict)   # {binder: {categoria: 'YYYY-MM'}} (fecha_inicio)
     for t in db.scalars(select(Tarea).where(Tarea.origen == "auto")).all():
         legacy[t.binder_id].add(t.categoria)
+        if t.fecha_inicio:
+            inicios_binder[t.binder_id][t.categoria] = t.fecha_inicio.strftime("%Y-%m")
     cats_binder: dict[int, set[str]] = {}
     binders: dict[int, Binder] = {}
     for b in db.scalars(select(Binder).where(Binder.fecha_efecto.is_not(None))
@@ -813,7 +820,7 @@ def cuadricula(mes: str | None = None, db: Session = Depends(get_db)):
         celdas: dict[int, str] = {}
         n_pend = 0
         for c in columnas:
-            estado = _estado_celda(c, per, b, cfgs.get((bid, c.id)), cats_binder[bid], datos, cobro, manual, enlazadas, hechos)
+            estado = _estado_celda(c, per, b, cfgs.get((bid, c.id)), cats_binder[bid], datos, cobro, manual, enlazadas, hechos, inicios_binder.get(bid))
             celdas[c.id] = estado
             if estado == "pend":
                 n_pend += 1
@@ -851,8 +858,9 @@ def binder_cuadricula(binder_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail=f"Binder {binder_id} no encontrado")
     columnas = db.scalars(select(TareaColumna).where(TareaColumna.activa.is_(True))
                           .order_by(TareaColumna.orden, TareaColumna.id)).all()
-    legacy = {t.categoria for t in db.scalars(select(Tarea).where(
-        Tarea.binder_id == binder_id, Tarea.origen == "auto")).all()}
+    auto_ts = db.scalars(select(Tarea).where(Tarea.binder_id == binder_id, Tarea.origen == "auto")).all()
+    legacy = {t.categoria for t in auto_ts}
+    inicios = {t.categoria: t.fecha_inicio.strftime("%Y-%m") for t in auto_ts if t.fecha_inicio}
     cats = _cats_de_binder(b, legacy)
     datos = _periodos_datos(db, {binder_id})
     cobro = _cobro_por_periodo(db, {binder_id})
@@ -863,7 +871,7 @@ def binder_cuadricula(binder_id: int, db: Session = Depends(get_db)):
     enlazadas, hechos = _enlaces_hechos(db, {binder_id}, datos)
     meses: list[BinderCuadriculaMes] = []
     for per in _meses_binder(b):
-        celdas = {c.id: _estado_celda(c, per, b, cfgs.get((binder_id, c.id)), cats, datos, cobro, manual_map, enlazadas, hechos)
+        celdas = {c.id: _estado_celda(c, per, b, cfgs.get((binder_id, c.id)), cats, datos, cobro, manual_map, enlazadas, hechos, inicios)
                   for c in columnas}
         if all(v == "na" for v in celdas.values()):      # ese mes no aplica nada → no se muestra
             continue
