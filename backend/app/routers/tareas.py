@@ -197,14 +197,19 @@ _CAT_PLAZO = {"Risk": "risk_bdx_plazo", "Premium": "premium_bdx_plazo", "Claims"
 
 
 def _periodo_de(binder: Binder, t: Tarea, f: dt.date, paso_meses: int) -> str | None:
-    """Periodo (YYYY-MM) que comprueba la entrega con fecha límite `f`: el mes de `f` retrocedido
-    `intervalo` meses. En julio se carga el Risk de JUNIO (mes anterior), así que la entrega cuyo límite
-    cae en julio comprueba junio. El PLAZO NO entra aquí: solo desplaza dónde cae la fecha límite (fin de
-    periodo + plazo días, para el aviso), no qué periodo se comprueba —restarlo otra vez retrocedía un mes
-    de más (mostraba mayo en julio). Se deriva del MES de la entrega, no del efecto — coherente con el
-    arranque rodante desde 01/07/2026."""
+    """Periodo (YYYY-MM) del DATO que cubre la entrega con fecha límite `f`. Para las tareas AUTO se ANCLA
+    AL EFECTO, igual que se generan las fechas límite en `_ocurrencias` (efecto + intervalo + plazo): la
+    entrega nº k comprueba el periodo `efecto + k·intervalo`. Así la 1ª entrega cubre el mes de EFECTO y
+    coincide con la parrilla (antes se saltaba un mes porque el cálculo no descontaba el plazo → el
+    checklist empezaba un mes tarde). Para tareas manuales se mantiene el mes de la entrega − intervalo."""
     if not binder or not f or paso_meses <= 0:
         return None
+    if t.origen == "auto" and binder.fecha_efecto:
+        attr = _CAT_PLAZO.get(t.categoria)
+        plazo = int(getattr(binder, attr, 0) or 0) if attr else 0
+        inicio = _add_months(binder.fecha_efecto, paso_meses) + dt.timedelta(days=plazo)   # 1ª fecha límite (idem _ocurrencias)
+        k = round(((f.year - inicio.year) * 12 + (f.month - inicio.month)) / paso_meses)
+        return _add_months(binder.fecha_efecto, k * paso_meses).strftime("%Y-%m")
     return _add_months(f.replace(day=1), -paso_meses).strftime("%Y-%m")
 
 
