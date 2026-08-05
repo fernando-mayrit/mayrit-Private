@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
-import { bdxApi, recibosApi, siniestrosApi, claimsBdxApi, triangulacionApi, lpanApi, ucrApi, resumenBinder, evolucionPrograma, type BdxDetalle, type BdxPreview, type BdxImportResult, type PremiumGrupo, type ClaimsBdxVista, type Triangulacion, type MetricaTriangulo, type VistaLpan, type ResumenBinder, type ResumenItem, type EvolucionPrograma, type EvolucionSerie, type UcrRegistro } from "../api";
+import { bdxApi, recibosApi, siniestrosApi, claimsBdxApi, triangulacionApi, lpanApi, ucrApi, resumenBinder, evolucionPrograma, type BdxDetalle, type BdxPreview, type BdxImportResult, type PremiumGrupo, type ClaimsBdxVista, type Triangulacion, type MetricaTriangulo, type VistaLpan, type ResumenBinder, type ResumenItem, type EvolucionPrograma, type EvolucionSerie, type UcrRegistro, type ClaimsAplicarResumen } from "../api";
 import type { Binder, Bdx, BdxLinea, Recibo, Siniestro } from "../types";
 import BdxLineaPanel from "../components/BdxLineaPanel";
 import CancelacionesSugeridas from "../components/CancelacionesSugeridas";
@@ -383,25 +383,30 @@ export default function BinderDetalle({ binder }: { binder: Binder }) {
     setAplicandoClaims(true);
     setError(null);
     try {
-      const sim = await siniestrosApi.aplicarClaimsBdx(binder.id, file, true);   // dry-run
+      const sim = await siniestrosApi.aplicarClaimsBdx(binder.id, file, true);   // dry-run (no escribe)
       if (sim.n_nuevos === 0 && sim.n_actualizados === 0) {
-        alert("No hay ninguna celda azul con cambios que aplicar (ni siniestros nuevos). No se ha tocado nada.");
+        setAviso({ titulo: "Sin cambios que aplicar", mensaje: "No hay ninguna celda azul con cambios (ni siniestros nuevos). No se ha tocado nada." });
         return;
       }
-      const detalle = sim.actualizados.slice(0, 12)
-        .map((a) => `  • ${a.reference ?? a.certificate ?? "?"}: ${a.cambios.map((c) => c.campo).join(", ")}`)
-        .join("\n");
-      const nuevosTxt = sim.nuevos.slice(0, 12).map((n) => `  • ${n.reference ?? "?"} — ${n.insured ?? ""}`).join("\n");
-      const amb = sim.ambiguos.length ? `\n⚠ ${sim.ambiguos.length} fila(s) con referencia repetida en varios siniestros: se OMITEN (revísalas a mano).` : "";
-      const msg =
-        `Se aplicarán SOLO las celdas azules:\n\n` +
-        `• Crear ${sim.n_nuevos} siniestro(s) nuevo(s)` + (nuevosTxt ? `:\n${nuevosTxt}` : "") + `\n\n` +
-        `• Actualizar ${sim.n_campos} campo(s) en ${sim.n_actualizados} siniestro(s)` + (detalle ? `:\n${detalle}` : "") +
-        (sim.n_actualizados > 12 ? "\n  …" : "") + amb + `\n\n¿Aplicar estos cambios?`;
-      if (!window.confirm(msg)) return;
-      const r = await siniestrosApi.aplicarClaimsBdx(binder.id, file, false);   // aplicar de verdad
+      setAplicarClaims({ sim, file });   // muestra el resumen en un modal a juego con la app
+    } catch (e) { setError((e as Error).message); }
+    finally { setAplicandoClaims(false); }
+  }
+
+  // Confirmado en el modal → escribe de verdad.
+  async function confirmarAplicarClaims() {
+    if (!aplicarClaims) return;
+    const { file } = aplicarClaims;
+    setAplicarClaims(null);
+    setAplicandoClaims(true);
+    setError(null);
+    try {
+      const r = await siniestrosApi.aplicarClaimsBdx(binder.id, file, false);
       await cargarSiniestros();
-      alert(`Aplicado: ${r.n_nuevos} siniestro(s) nuevo(s) y ${r.n_campos} campo(s) actualizado(s) en ${r.n_actualizados} siniestro(s).`);
+      setAviso({
+        titulo: "Claims BDX aplicado",
+        mensaje: `Se han creado ${r.n_nuevos} siniestro(s) y actualizado ${r.n_campos} campo(s) en ${r.n_actualizados} siniestro(s).`,
+      });
     } catch (e) { setError((e as Error).message); }
     finally { setAplicandoClaims(false); }
   }
@@ -674,6 +679,8 @@ export default function BinderDetalle({ binder }: { binder: Binder }) {
   >(null);
   // Aviso modal (sustituye al alert() nativo): mismo estilo que la app, centrado, imposible de ignorar.
   const [aviso, setAviso] = useState<{ titulo: string; mensaje: ReactNode } | null>(null);
+  // Confirmación de "Aplicar Claims BDX" (sustituye al confirm() nativo): resumen con el look de la app.
+  const [aplicarClaims, setAplicarClaims] = useState<{ sim: ClaimsAplicarResumen; file: File } | null>(null);
 
   // ── Importación desde SharePoint ──
   const [importAbierto, setImportAbierto] = useState(false);
@@ -1230,22 +1237,33 @@ export default function BinderDetalle({ binder }: { binder: Binder }) {
           // Persistente: el bloqueo se guarda en el backend (impide editar líneas del periodo).
           const toggle = async (tipo: string, m: string) => {
             const key = `${tipo}:${m}`;
+            // En Claims, bloquear = PRESENTAR el bordereau de ese mes: se confirma en un modal a juego con la app.
+            if (!bloqueos.has(key) && tipo === "claims") {
+              setConfirmar({
+                titulo: "Presentar Claims BDX",
+                mensaje: <>¿Presentar el Claims BDX de <strong>{mesLargo(m)}</strong>? Se congelará el snapshot y se bloqueará el mes.</>,
+                confirmLabel: "Presentar",
+                accion: async () => {
+                  setConfirmar(null);
+                  try {
+                    await claimsBdxApi.presentar(binder.id, m, localStorage.getItem("mayrit.usuario") ?? undefined);
+                    setBloqueos((s) => new Set(s).add(key));
+                    setCbVista(null); // fuerza recarga de la pestaña Claims BDX
+                  } catch (e) { setAviso({ titulo: "No se pudo presentar", mensaje: (e as Error).message }); }
+                },
+              });
+              return;
+            }
             try {
               if (bloqueos.has(key)) {
                 await bdxApi.desbloquear(binder.id, tipo, m);
                 setBloqueos((s) => { const ns = new Set(s); ns.delete(key); return ns; });
-              } else if (tipo === "claims") {
-                // En Claims, bloquear = PRESENTAR el bordereau de ese mes (congela snapshot + bloquea).
-                if (!window.confirm(`¿Presentar el Claims BDX de ${mesLargo(m)}? Se congelará el snapshot y se bloqueará el mes.`)) return;
-                await claimsBdxApi.presentar(binder.id, m, localStorage.getItem("mayrit.usuario") ?? undefined);
-                setBloqueos((s) => new Set(s).add(key));
-                setCbVista(null); // fuerza recarga de la pestaña Claims BDX
               } else {
                 await bdxApi.bloquear(binder.id, tipo, m);
                 setBloqueos((s) => new Set(s).add(key));
               }
             } catch (e) {
-              alert((e as Error).message);
+              setAviso({ titulo: "Error", mensaje: (e as Error).message });
             }
           };
           // Congelado por cierre del binder: Risk/Premium si producción cerrada; Claims si Cerrado total.
@@ -2016,6 +2034,47 @@ export default function BinderDetalle({ binder }: { binder: Binder }) {
 
       {aviso && (
         <AvisoDialog titulo={aviso.titulo} mensaje={aviso.mensaje} onClose={() => setAviso(null)} />
+      )}
+
+      {aplicarClaims && (
+        <div className="overlay" onClick={() => setAplicarClaims(null)}>
+          <div className="panel panel-confirm panel-aplicar" role="dialog" aria-modal="true"
+               aria-label="Aplicar Claims BDX" onClick={(e) => e.stopPropagation()}>
+            <div className="confirm-head">
+              <span className="confirm-icon">📥</span>
+              <h2>Aplicar Claims BDX</h2>
+            </div>
+            <div className="confirm-body">
+              <p>Se aplicarán <strong>solo las celdas azules</strong>:</p>
+              <div className="claims-apply-resumen">
+                <div><span className="ca-num">{aplicarClaims.sim.n_nuevos}</span> siniestro(s) nuevo(s)</div>
+                <div><span className="ca-num">{aplicarClaims.sim.n_campos}</span> campo(s) en {aplicarClaims.sim.n_actualizados} siniestro(s)</div>
+              </div>
+              {(aplicarClaims.sim.nuevos.length > 0 || aplicarClaims.sim.actualizados.length > 0) && (
+                <ul className="claims-apply-lista">
+                  {aplicarClaims.sim.nuevos.map((nv, i) => (
+                    <li key={`nv${i}`}><span className="ca-tag">Nuevo</span> {nv.reference ?? "?"} — {nv.insured ?? ""}</li>
+                  ))}
+                  {aplicarClaims.sim.actualizados.map((a, i) => (
+                    <li key={`ac${i}`}>
+                      <strong>{a.reference ?? a.certificate ?? "?"}</strong>{" "}
+                      <span className="hint">{a.cambios.map((c) => c.campo).join(", ")}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {aplicarClaims.sim.ambiguos.length > 0 && (
+                <p className="claims-apply-amb">
+                  ⚠ {aplicarClaims.sim.ambiguos.length} fila(s) con referencia repetida en varios siniestros: se omiten (revísalas a mano).
+                </p>
+              )}
+            </div>
+            <div className="panel-actions">
+              <button className="btn-secondary" onClick={() => setAplicarClaims(null)} autoFocus>Cancelar</button>
+              <button className="btn-primary" onClick={confirmarAplicarClaims}>Aplicar cambios</button>
+            </div>
+          </div>
+        </div>
       )}
 
       {tab === "triangulacion" && (

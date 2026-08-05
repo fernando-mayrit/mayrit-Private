@@ -836,6 +836,18 @@ td.num, th.num { text-align: right; }
 .confirm-importe .ci-lbl { font-size: 12px; text-transform: uppercase; letter-spacing: .4px; color: var(--gris-medio); }
 .confirm-importe .ci-val { font-size: 24px; font-weight: 800; color: var(--naranja-osc); }
 
+/* Modal "Aplicar Claims BDX" (no destructivo): cabecera neutra, no roja. */
+.panel-aplicar { border-top-color: var(--naranja); }
+.panel-aplicar .confirm-head h2 { color: var(--gris); }
+.claims-apply-resumen { display: flex; gap: 10px; margin: 12px 0; }
+.claims-apply-resumen > div { flex: 1; background: var(--gris-claro); border: 1px solid var(--borde); border-radius: 8px; padding: 8px 10px; text-align: center; font-size: 13px; color: var(--gris-medio); }
+.claims-apply-resumen .ca-num { display: block; font-size: 22px; font-weight: 800; color: var(--naranja-osc); }
+.claims-apply-lista { list-style: none; margin: 6px 0 0; padding: 8px 12px; max-height: 240px; overflow-y: auto; background: #fff; border: 1px solid var(--borde); border-radius: 8px; font-size: 13px; }
+.claims-apply-lista li { padding: 4px 0; border-bottom: 1px solid var(--gris-claro); }
+.claims-apply-lista li:last-child { border-bottom: none; }
+.claims-apply-lista .ca-tag { display: inline-block; background: #dbeafe; color: #1d4ed8; font-size: 11px; font-weight: 700; padding: 1px 6px; border-radius: 6px; margin-right: 4px; }
+.claims-apply-amb { margin-top: 10px; padding: 8px 10px; background: #fff6cc; border: 1px solid #e6cf6a; border-radius: 8px; color: var(--naranja-osc); font-size: 13px; }
+
 /* Recibos: estado de cobro (pill de color) */
 .pill { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; white-space: nowrap; }
 .pill-pendiente { background: #fde2dd; color: #b42318; }
