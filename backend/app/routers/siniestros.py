@@ -16,10 +16,35 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from ..db import get_db
-from ..models.maestras import Bdx, BdxLinea, Binder, Programa, Siniestro
+from ..models.maestras import Bdx, BdxLinea, Binder, ClaimsPresentacion, Programa, Siniestro
 from ..schemas import maestras as sch
 
 router = APIRouter(tags=["Siniestros"])
+
+
+def _paid_this_month(db: Session, binder_ids: set[int]) -> dict[int, tuple[Decimal, Decimal]]:
+    """Por siniestro, el 'Paid this month' = to_pay del ÚLTIMO Claims BDX presentado (incremento del
+    pagado acumulado en ese mes). Se usa para separar 'Previously Paid' del pagado acumulado del maestro."""
+    out: dict[int, tuple[Decimal, Decimal]] = {}
+    if not binder_ids:
+        return out
+    for p in db.scalars(
+        select(ClaimsPresentacion)
+        .where(ClaimsPresentacion.binder_id.in_(binder_ids), ClaimsPresentacion.siniestro_id.is_not(None))
+        .order_by(ClaimsPresentacion.periodo_ord)   # orden ascendente → gana el más reciente
+    ).all():
+        out[p.siniestro_id] = (p.to_pay_indemnity or Decimal(0), p.to_pay_fees or Decimal(0))
+    return out
+
+
+def _con_previously_paid(d, s: Siniestro, ptm: dict[int, tuple[Decimal, Decimal]]):
+    """Rellena paid_this_month / previously_paid del siniestro a partir del último Claims BDX presentado."""
+    ti, tf = ptm.get(s.id, (Decimal(0), Decimal(0)))
+    d.paid_this_month_indemnity = ti
+    d.paid_this_month_fees = tf
+    d.previously_paid_indemnity = (s.paid_indemnity or Decimal(0)) - ti
+    d.previously_paid_fees = (s.paid_fees or Decimal(0)) - tf
+    return d
 
 TEXTO = {"risk_code", "currency", "certificate", "reference", "insured", "reporting_period",
          "description", "status", "refer", "denial", "claimant", "ucr", "abogado", "informacion"}
@@ -88,12 +113,14 @@ def listar_todos(db: Session = Depends(get_db)):
     filas = db.scalars(
         select(Siniestro).options(selectinload(Siniestro.binder).selectinload(Binder.programa)).order_by(Siniestro.id)
     ).all()
+    ptm = _paid_this_month(db, {s.binder_id for s in filas})
     out = []
     for s in filas:
         d = sch.SiniestroReadGlobal.model_validate(s)
         d.binder_umr = s.binder.umr if s.binder else None
         d.binder_agreement = s.binder.agreement_number if s.binder else None
         d.binder_programa = s.binder.programa.nombre if (s.binder and s.binder.programa) else None
+        _con_previously_paid(d, s, ptm)
         out.append(d)
     return out
 
@@ -241,9 +268,11 @@ def next_ucr(binder_id: int, db: Session = Depends(get_db)):
 
 @router.get("/binders/{binder_id}/siniestros", response_model=list[sch.SiniestroRead])
 def listar(binder_id: int, db: Session = Depends(get_db)):
-    return db.scalars(
+    sins = db.scalars(
         select(Siniestro).where(Siniestro.binder_id == binder_id).order_by(Siniestro.certificate, Siniestro.id)
     ).all()
+    ptm = _paid_this_month(db, {binder_id})
+    return [_con_previously_paid(sch.SiniestroRead.model_validate(s), s, ptm) for s in sins]
 
 
 @router.get("/binders/{binder_id}/siniestros/sharepoint-preview")

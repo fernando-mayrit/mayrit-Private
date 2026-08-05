@@ -292,11 +292,11 @@ const SIN_COLS: Col<Siniestro>[] = [
   { key: "paid_fees", label: "Pagado fees", tipo: "num" },
   { key: "reserves_indemnity", label: "Reservas ind.", tipo: "num" },
   { key: "reserves_fees", label: "Reservas fees", tipo: "num" },
-  // Incurrido = pagado + reservas (NO usamos total_indemnity/total_fees del maestro: incluyen el
-  // "a pagar este mes", que ya está en el pagado acumulado → inflaría el dato).
-  { key: "total_indemnity", label: "Total ind.", tipo: "num", calc: (s) => n(s.paid_indemnity) + n(s.reserves_indemnity) },
-  { key: "total_fees", label: "Total fees", tipo: "num", calc: (s) => n(s.paid_fees) + n(s.reserves_fees) },
-  { key: "total", label: "Total", tipo: "num", calc: (s) => n(s.paid_indemnity) + n(s.reserves_indemnity) + n(s.paid_fees) + n(s.reserves_fees) },
+  // Total Incurred = Previously Paid + Reservas (NO el pagado acumulado: incluye el "paid this month",
+  // que ya está dentro de la reserva → lo doblaría). Previously Paid = pagado − paid this month.
+  { key: "total_indemnity", label: "Total ind.", tipo: "num", calc: (s) => (n(s.paid_indemnity) - n(s.paid_this_month_indemnity)) + n(s.reserves_indemnity) },
+  { key: "total_fees", label: "Total fees", tipo: "num", calc: (s) => (n(s.paid_fees) - n(s.paid_this_month_fees)) + n(s.reserves_fees) },
+  { key: "total", label: "Total", tipo: "num", calc: (s) => (n(s.paid_indemnity) - n(s.paid_this_month_indemnity)) + n(s.reserves_indemnity) + (n(s.paid_fees) - n(s.paid_this_month_fees)) + n(s.reserves_fees) },
   { key: "ucr", label: "UCR", tipo: "text" },
   { key: "abogado", label: "Abogado", tipo: "text" },
   { key: "description", label: "Descripción", tipo: "text", width: 220 },
@@ -446,10 +446,12 @@ export default function BinderDetalle({ binder }: { binder: Binder }) {
     const nSin = base.length;
     const abiertos = base.filter((s) => !s.date_closed).length;
     const reclamado = base.reduce((a, s) => a + n(s.amount_claimed), 0);
+    // Siniestralidad = Previously Paid + Reservas. Previously Paid = pagado acumulado − "paid this month"
+    // (el pagado del último mes ya está dentro de la reserva; sumarlo lo doblaría).
     const reservaFees = base.reduce((a, s) => a + n(s.reserves_fees), 0);
-    const pagosFees = base.reduce((a, s) => a + n(s.paid_fees), 0);
+    const pagosFees = base.reduce((a, s) => a + (n(s.paid_fees) - n(s.paid_this_month_fees)), 0);
     const reservaIndem = base.reduce((a, s) => a + n(s.reserves_indemnity), 0);
-    const pagosIndem = base.reduce((a, s) => a + n(s.paid_indemnity), 0);
+    const pagosIndem = base.reduce((a, s) => a + (n(s.paid_indemnity) - n(s.paid_this_month_indemnity)), 0);
     const totalFees = reservaFees + pagosFees;
     const totalIndem = reservaIndem + pagosIndem;
     const lin = sel?.lineas ?? [];
@@ -1508,9 +1510,10 @@ export default function BinderDetalle({ binder }: { binder: Binder }) {
           const netToUws = gwp - comTotal;
           // Siniestralidad REAL desde los Claims importados (secciones sujetas a PC).
           const sinPC = siniestros.filter((s) => seccionesPC.has(s.section ?? 0));
-          const indemPaidR = sinPC.reduce((a, s) => a + n(s.paid_indemnity), 0);
+          // Siniestralidad = Previously Paid + Reservas (Previously Paid = pagado − paid this month).
+          const indemPaidR = sinPC.reduce((a, s) => a + (n(s.paid_indemnity) - n(s.paid_this_month_indemnity)), 0);
           const indemResR = sinPC.reduce((a, s) => a + n(s.reserves_indemnity), 0);
-          const feesPaidR = sinPC.reduce((a, s) => a + n(s.paid_fees), 0);
+          const feesPaidR = sinPC.reduce((a, s) => a + (n(s.paid_fees) - n(s.paid_this_month_fees)), 0);
           const feesResR = sinPC.reduce((a, s) => a + n(s.reserves_fees), 0);
           const claims = indemPaidR + indemResR + feesPaidR + feesResR;
           // IBNR: % manual sobre la GWP (our line).

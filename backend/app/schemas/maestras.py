@@ -137,6 +137,12 @@ class SiniestroRead(BaseModel):
     reserves_fees: Decimal | None = None
     total_indemnity: Decimal | None = None
     total_fees: Decimal | None = None
+    # 'Paid this month' = incremento del pagado en el ÚLTIMO Claims BDX presentado (to_pay del snapshot).
+    # 'Previously Paid' = pagado acumulado − paid this month. La siniestralidad = Previously Paid + Reservas.
+    paid_this_month_indemnity: Decimal = Decimal(0)
+    paid_this_month_fees: Decimal = Decimal(0)
+    previously_paid_indemnity: Decimal = Decimal(0)
+    previously_paid_fees: Decimal = Decimal(0)
 
 
 class SiniestroReadGlobal(SiniestroRead):

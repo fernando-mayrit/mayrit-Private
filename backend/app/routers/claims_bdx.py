@@ -150,11 +150,10 @@ def _construir(db: Session, b: Binder, periodo: str) -> tuple[list[dict], list[d
             "Previously Paid - Fees": prev_f,
             "Reserve - Indemnity": res_i,
             "Reserve - Fees": res_f,
-            # Total Incurred = LO QUE SE VE EN PANTALLA: pagado + reservas (igual que la app/front). El
-            # campo `total_indemnity`/`total_fees` de la BD (import de SharePoint) NO se usa: puede estar
-            # desfasado y no se muestra en ningún sitio de la app.
-            "Total Incurred - Indemnity": paid_i + res_i,
-            "Total Incurred - Fees": paid_f + res_f,
+            # Total Incurred = Previously Paid + Reserve (el "To Pay this month" NO se suma: ya está dentro
+            # de la reserva → lo doblaría). `prev_*` es el Previously Paid; el pagado ACUMULADO (paid_*) no.
+            "Total Incurred - Indemnity": prev_i + res_i,
+            "Total Incurred - Fees": prev_f + res_f,
             "Date Claim Opened": s.date_opened,
             "Date Closed": s.date_closed,
         }

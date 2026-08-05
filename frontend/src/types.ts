@@ -548,6 +548,11 @@ export interface Siniestro {
   reserves_fees: string | null;
   total_indemnity: string | null;
   total_fees: string | null;
+  // Previously Paid = pagado acumulado − paid this month (del último Claims BDX). Siniestralidad = Previously Paid + Reservas.
+  paid_this_month_indemnity?: number | string | null;
+  paid_this_month_fees?: number | string | null;
+  previously_paid_indemnity?: number | string | null;
+  previously_paid_fees?: number | string | null;
   // Solo en el listado global (GET /siniestros): contexto del binder.
   binder_umr?: string | null;
   binder_agreement?: string | null;

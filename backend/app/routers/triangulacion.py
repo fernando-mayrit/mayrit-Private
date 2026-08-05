@@ -122,6 +122,7 @@ def _payload_binder(db: Session, b: Binder, seccion: int | None, risk_code: str 
             ClaimsPresentacion.siniestro_id, ClaimsPresentacion.periodo_ord,
             ClaimsPresentacion.paid_indemnity_acum, ClaimsPresentacion.paid_fees_acum,
             ClaimsPresentacion.reserves_indemnity, ClaimsPresentacion.reserves_fees,
+            ClaimsPresentacion.to_pay_indemnity, ClaimsPresentacion.to_pay_fees,
         )
         .join(Siniestro, Siniestro.id == ClaimsPresentacion.siniestro_id)
         .where(ClaimsPresentacion.binder_id == binder_id, ClaimsPresentacion.siniestro_id.is_not(None))
@@ -132,12 +133,13 @@ def _payload_binder(db: Session, b: Binder, seccion: int | None, risk_code: str 
         q = q.where(Siniestro.risk_code == risk_code)
     pres = db.execute(q.order_by(ClaimsPresentacion.siniestro_id, ClaimsPresentacion.periodo_ord)).all()
 
+    # Incurrido = Previously Paid + Reservas. 'Previously Paid' = pagado acumulado − 'paid this month'
+    # (el to_pay del snapshot); ese pagado del mes ya está dentro de la reserva y sumarlo lo doblaría.
     snaps: dict[int, list[tuple[int, float, float]]] = {}
-    for sid, ord_, pi, pf, ri, rf in pres:
+    for sid, ord_, pi, pf, ri, rf, ti, tf in pres:
         mi = _mi_de_ord(ord_)
-        snaps.setdefault(sid, []).append(
-            (mi, float(pi or 0) + float(pf or 0) + float(ri or 0) + float(rf or 0), float(pi or 0) + float(pf or 0))
-        )
+        prev = float(pi or 0) + float(pf or 0) - float(ti or 0) - float(tf or 0)   # Previously Paid
+        snaps.setdefault(sid, []).append((mi, prev + float(ri or 0) + float(rf or 0), prev))
 
     if not snaps:
         return {**base, "meses": [], "net_premium_mes": [],
@@ -368,6 +370,7 @@ def _curva_binder(db: Session, binder: Binder, risk_code: str | None = None) -> 
             ClaimsPresentacion.siniestro_id, ClaimsPresentacion.periodo_ord,
             ClaimsPresentacion.paid_indemnity_acum, ClaimsPresentacion.paid_fees_acum,
             ClaimsPresentacion.reserves_indemnity, ClaimsPresentacion.reserves_fees,
+            ClaimsPresentacion.to_pay_indemnity, ClaimsPresentacion.to_pay_fees,
         )
         .join(Siniestro, Siniestro.id == ClaimsPresentacion.siniestro_id)
         .where(ClaimsPresentacion.binder_id == binder.id, ClaimsPresentacion.siniestro_id.is_not(None))
@@ -375,12 +378,12 @@ def _curva_binder(db: Session, binder: Binder, risk_code: str | None = None) -> 
     if risk_code:
         q = q.where(Siniestro.risk_code == risk_code)
     pres = db.execute(q.order_by(ClaimsPresentacion.siniestro_id, ClaimsPresentacion.periodo_ord)).all()
+    # Incurrido = Previously Paid + Reservas (Previously Paid = pagado acumulado − to_pay del snapshot).
     snaps: dict[int, list[tuple[int, float, float]]] = {}
-    for sid, ord_, pi, pf, ri, rf in pres:
+    for sid, ord_, pi, pf, ri, rf, ti, tf in pres:
         mi = _mi_de_ord(ord_)
-        snaps.setdefault(sid, []).append(
-            (mi, float(pi or 0) + float(pf or 0) + float(ri or 0) + float(rf or 0), float(pi or 0) + float(pf or 0))
-        )
+        prev = float(pi or 0) + float(pf or 0) - float(ti or 0) - float(tf or 0)
+        snaps.setdefault(sid, []).append((mi, prev + float(ri or 0) + float(rf or 0), prev))
 
     start = _mi(binder.fecha_efecto.year, binder.fecha_efecto.month) if binder.fecha_efecto else None
     if snaps:

@@ -39,9 +39,9 @@ const COLS: Col<Siniestro>[] = [
   { key: "reserves_indemnity", label: "Reservas ind.", tipo: "num" },
   { key: "reserves_fees", label: "Reservas fees", tipo: "num" },
   // Incurrido = pagado + reservas (no usamos total_*: incluyen el "a pagar este mes", ya contado).
-  { key: "total_indemnity", label: "Total ind.", tipo: "num", calc: (s) => n(s.paid_indemnity) + n(s.reserves_indemnity) },
-  { key: "total_fees", label: "Total fees", tipo: "num", calc: (s) => n(s.paid_fees) + n(s.reserves_fees) },
-  { key: "total", label: "Total", tipo: "num", calc: (s) => n(s.paid_indemnity) + n(s.reserves_indemnity) + n(s.paid_fees) + n(s.reserves_fees) },
+  { key: "total_indemnity", label: "Total ind.", tipo: "num", calc: (s) => (n(s.paid_indemnity) - n(s.paid_this_month_indemnity)) + n(s.reserves_indemnity) },
+  { key: "total_fees", label: "Total fees", tipo: "num", calc: (s) => (n(s.paid_fees) - n(s.paid_this_month_fees)) + n(s.reserves_fees) },
+  { key: "total", label: "Total", tipo: "num", calc: (s) => (n(s.paid_indemnity) - n(s.paid_this_month_indemnity)) + n(s.reserves_indemnity) + (n(s.paid_fees) - n(s.paid_this_month_fees)) + n(s.reserves_fees) },
   { key: "ucr", label: "UCR", tipo: "text" },
   { key: "abogado", label: "Abogado", tipo: "text" },
   { key: "description", label: "Descripción", tipo: "text", width: 220 },
@@ -97,12 +97,13 @@ export default function SiniestrosPage() {
       abiertos,
       cerrados: filtrados.length - abiertos,
       reclamado: filtrados.reduce((a, s) => a + n(s.amount_claimed), 0),
+      // Incurrido = Previously Paid + Reservas (Previously Paid = pagado acumulado − paid this month).
       reservaFees: filtrados.reduce((a, s) => a + n(s.reserves_fees), 0),
-      pagosFees: filtrados.reduce((a, s) => a + n(s.paid_fees), 0),
-      totalFees: filtrados.reduce((a, s) => a + n(s.reserves_fees) + n(s.paid_fees), 0), // incurrido
+      pagosFees: filtrados.reduce((a, s) => a + (n(s.paid_fees) - n(s.paid_this_month_fees)), 0),
+      totalFees: filtrados.reduce((a, s) => a + n(s.reserves_fees) + (n(s.paid_fees) - n(s.paid_this_month_fees)), 0),
       reservaIndem: filtrados.reduce((a, s) => a + n(s.reserves_indemnity), 0),
-      pagosIndem: filtrados.reduce((a, s) => a + n(s.paid_indemnity), 0),
-      totalIndem: filtrados.reduce((a, s) => a + n(s.reserves_indemnity) + n(s.paid_indemnity), 0), // incurrido
+      pagosIndem: filtrados.reduce((a, s) => a + (n(s.paid_indemnity) - n(s.paid_this_month_indemnity)), 0),
+      totalIndem: filtrados.reduce((a, s) => a + n(s.reserves_indemnity) + (n(s.paid_indemnity) - n(s.paid_this_month_indemnity)), 0),
     };
   }, [filtrados]);
   const totalGen = tot.totalFees + tot.totalIndem;
