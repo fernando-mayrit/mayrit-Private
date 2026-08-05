@@ -507,22 +507,27 @@ def _aplicar_niveles(db: Session, avisos: list[Aviso]) -> list[Aviso]:
 
 
 def _tareas_pendientes(db: Session, binders: dict[int, Binder]) -> list[Aviso]:
-    """Tareas (recurrentes manuales) activas con alguna ocurrencia pendiente cuyo aviso ya saltó."""
+    """UN aviso por tarea ACTIVA que tenga alguna entrega SIN MARCAR (vencida o pendiente, ya no futura).
+    Mismo criterio que la vista de Tareas: una entrega cuenta si su mes ya toca (no es futura) y no está
+    hecha (ni marcada a mano/pasos, ni 'sin movimiento')."""
     # lazy: evita import circular
-    from .tareas import _ocurrencias, _debida, _fechas_hechas, _periodos_datos, _pasos_de_ocurrencia
+    from .tareas import _ocurrencias, _es_futura, _fechas_hechas, _periodos_datos, _pasos_de_ocurrencia, _topes, _VENC
 
     hoy = dt.date.today()
     tareas = db.scalars(select(Tarea).where(Tarea.estado == "Activa").options(
         selectinload(Tarea.pasos).selectinload(TareaPaso.hechos), selectinload(Tarea.hechas))).all()
-    datos = _periodos_datos(db, {t.binder_id for t in tareas})
+    bids = {t.binder_id for t in tareas}
+    datos = _periodos_datos(db, bids)
+    topes = _topes(db, bids)   # tope por (binder, categoría): mismo alcance que la vista de Tareas
     avisos: list[Aviso] = []
     for t in tareas:
         b = binders.get(t.binder_id)
         if not b:
             continue
-        ocs = _ocurrencias(t, b)
-        hechas = _fechas_hechas(t, b, datos)
-        pend = [f for f in ocs if f not in hechas and _debida(t, f, hoy, False)]
+        hasta_m = topes.get((t.binder_id, t.categoria), _VENC)
+        ocs = _ocurrencias(t, b, hasta_m)
+        hechas = _fechas_hechas(t, b, datos, hasta_m)
+        pend = [f for f in ocs if f not in hechas and not _es_futura(t, b, f, hoy)]
         if not pend:
             continue
         f0 = min(pend)
