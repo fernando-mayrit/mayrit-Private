@@ -108,6 +108,19 @@ def _debida(t: Tarea, f: dt.date, hoy: dt.date, hecha: bool) -> bool:
     return hecha or (f - dt.timedelta(days=int(t.aviso_dias_antes or 0)) <= hoy)
 
 
+def _es_futura(t: Tarea, binder: Binder | None, f: dt.date, hoy: dt.date) -> bool:
+    """¿La entrega aún no toca (se oculta por defecto)? Para tareas AUTO va por el MES DE TRABAJO: el dato
+    del periodo P se recibe/procesa el mes SIGUIENTE, así que la entrega es actionable en cuanto el mes
+    actual pasa de P (futura si su periodo >= mes actual). Igual que la parrilla (que llega hasta el mes
+    anterior al actual). Para las manuales, por la fecha límite (aviso). Nota: usa _periodo_de, definida
+    más abajo (resolución en tiempo de llamada)."""
+    if t.origen == "auto" and binder:
+        periodo = _periodo_de(binder, t, f, _paso(t))
+        if periodo:
+            return periodo >= hoy.strftime("%Y-%m")
+    return not _debida(t, f, hoy, False)
+
+
 # ── Auto-marcado de pasos: reglas y detección por dato ─────────────────────────────────────────
 # Cada regla mira si el DATO de un periodo (YYYY-MM) ya existe en la app, por binder.
 REGLAS_AUTO = {"risk", "premium", "lpan", "claims"}   # 'claims' = Claims procesado / Snapshot
@@ -571,8 +584,8 @@ def agenda(binder_id: int | None = None, solo_pendientes: bool = False, db: Sess
                 continue
             h = hechas.get(f)
             pasos, _ = _pasos_de_ocurrencia(t, binder, f, k, datos, manual, fechas_carga)
-            if not _debida(t, f, hoy, False):
-                estado = "futura"      # su plazo aún no ha llegado (aunque el dato ya exista)
+            if _es_futura(t, binder, f, hoy):
+                estado = "futura"      # su mes de trabajo aún no ha llegado (igual que la parrilla)
             elif f in done:
                 # Completa por dato/mano = "hecha" (verde). Completa SOLO porque el flujo lleva ≥6 meses
                 # dormido (nada real hecho) = "sin_movimiento" (gris): informa pero no es pendiente.
@@ -1169,8 +1182,8 @@ def ocurrencias(tarea_id: int, incluir_futuras: bool = False, db: Session = Depe
         hecha = completa if t.pasos else (h is not None)
         moot = _entrega_sin_mov(t, binder, f, datos)
         hay_real = (h is not None and not h.sin_movimiento) or (bool(t.pasos) and any(p.hecho and not p.sin_movimiento for p in pasos))
-        if not _debida(t, f, hoy, False):
-            estado = "futura"          # su plazo aún no ha llegado (aunque el dato del periodo ya exista)
+        if _es_futura(t, binder, f, hoy):
+            estado = "futura"          # su mes de trabajo aún no ha llegado (igual que la parrilla)
         elif moot and not hay_real:
             estado = "sin_movimiento"  # dormido ≥6 meses o marcado a mano: no pendiente
         elif hecha:
