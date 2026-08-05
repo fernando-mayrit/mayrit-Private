@@ -48,35 +48,42 @@ def _paso(t: Tarea) -> int:
     return PASO_MESES.get(t.frecuencia, 0)
 
 
-# Las tareas AUTO (Risk/Premium/Claims) arrancan sus entregas el 01/07/2026 para TODOS los binders (con
-# independencia del efecto/YOA) y RUEDAN mes a mes hacia delante: se genera hasta hoy + `_LOOKAHEAD_MESES`
-# (las siguientes se ocultan hasta su fecha, vía _debida). No hay entregas anteriores al suelo: no se van a
-# cumplir retroactivamente. No se atan a la cobertura del binder (un binder de 2025 en vigor sigue teniendo
-# su checklist mensual desde jul-2026). También se filtra el suelo en la agenda global por si acaso.
-SUELO_ENTREGAS = dt.date(2026, 7, 1)
+# Las tareas AUTO (Risk/Premium/Claims) arrancan sus entregas en el MES DE EFECTO del binder (IGUAL que la
+# parrilla) y RUEDAN mes a mes hacia delante hasta hoy + `_LOOKAHEAD_MESES` (las futuras se ocultan hasta su
+# fecha, vía _es_futura). Se acotan a los últimos `_MESES_ATRAS` meses (tope rodante) para no generar
+# entregas antiquísimas en binders viejos — mismo criterio que el tope de la parrilla. No se atan al
+# `fecha_inicio` guardado. (Antes había un suelo FIJO 01/07/2026 que se saltaba los primeros meses de los
+# binders de 2026 y chocaba con la parrilla.)
 _LOOKAHEAD_MESES = 2   # cuántos meses por delante del actual se generan (los futuros salen al llegar su fecha)
+_MESES_ATRAS = 36      # tope rodante hacia atrás (no se muestran periodos anteriores a hoy − 36 meses)
+
+
+def _suelo_entregas() -> dt.date:
+    """Periodo (mes) más antiguo que se muestra: hoy − `_MESES_ATRAS` meses (día 1). Rueda con el tiempo."""
+    return _add_months(dt.date.today().replace(day=1), -_MESES_ATRAS)
 
 
 def _ocurrencias(t: Tarea, binder: Binder) -> list[dt.date]:
     """Fechas (límite) de las entregas de la tarea.
 
-    - AUTO (Risk/Premium/Claims): mensuales (o su intervalo) DESDE el 01/07/2026 —o su arranque natural
-      `efecto+intervalo+plazo` si es POSTERIOR (binders futuros)—, rodando hasta hoy + margen. No se atan a
-      la cobertura del binder ni al `fecha_inicio` guardado.
+    - AUTO (Risk/Premium/Claims): mensuales (o su intervalo) DESDE el mes de EFECTO del binder (arranque
+      natural `efecto+intervalo+plazo`), rodando hasta hoy + margen y acotadas a los últimos `_MESES_ATRAS`
+      meses. No se atan al `fecha_inicio` guardado.
     - Manuales: desde `fecha_inicio` (o efecto) hasta `fecha_fin`/vencimiento (con run-off tras el vto)."""
     paso = _paso(t)
     if t.origen == "auto" and binder and binder.fecha_efecto and paso > 0:
         attr = _CAT_PLAZO.get(t.categoria)
         plazo = int(getattr(binder, attr, 0) or 0) if attr else 0
-        natural = _add_months(binder.fecha_efecto, paso) + dt.timedelta(days=plazo)
-        inicio = max(SUELO_ENTREGAS, natural)          # nunca antes de jul-2026; respeta binders futuros
+        natural = _add_months(binder.fecha_efecto, paso) + dt.timedelta(days=plazo)   # 1ª fecha límite (periodo=efecto)
         tope = _add_months(dt.date.today(), _LOOKAHEAD_MESES)
+        suelo, ef1 = _suelo_entregas(), binder.fecha_efecto.replace(day=1)
         out, k = [], 0
         while k < 600:
-            f = _add_months(inicio, k * paso)
+            f = _add_months(natural, k * paso)         # fecha límite de la entrega k (sobre la rejilla natural)
             if f > tope:
                 break
-            out.append(f)
+            if _add_months(ef1, k * paso) >= suelo:    # su PERIODO no es demasiado antiguo (tope rodante)
+                out.append(f)
             k += 1
         return out
     # ── Tareas manuales ──
@@ -580,7 +587,7 @@ def agenda(binder_id: int | None = None, solo_pendientes: bool = False, db: Sess
         manual = {(ph.paso_id, ph.fecha_ocurrencia): ph for p in t.pasos for ph in p.hechos}
         done = _fechas_hechas(t, binder, datos)
         for k, f in enumerate(_ocurrencias(t, binder)):
-            if f < SUELO_ENTREGAS:
+            if f < _suelo_entregas():          # tope rodante (para manuales; las auto ya vienen acotadas)
                 continue
             h = hechas.get(f)
             pasos, _ = _pasos_de_ocurrencia(t, binder, f, k, datos, manual, fechas_carga)
