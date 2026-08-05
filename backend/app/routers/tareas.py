@@ -887,20 +887,22 @@ def cuadricula(mes: str | None = None, db: Session = Depends(get_db)):
     # Qué categorías hace cada binder = de sus flags DURABLES (no de que existan tareas auto, que se pueden
     # borrar). Un binder participa si hace ≥1 categoría.
     legacy: dict[int, set[str]] = defaultdict(set)
-    activas_c: dict[int, set[str]] = defaultdict(set)      # categorías con tarea auto ACTIVA
-    pausadas_c: dict[int, set[str]] = defaultdict(set)     # categorías con tarea auto PAUSADA
+    activas_c: dict[int, set[str]] = defaultdict(set)      # categorías con tarea ACTIVA (auto o MANUAL)
+    pausadas_c: dict[int, set[str]] = defaultdict(set)     # categorías con tarea PAUSADA (auto o manual)
     inicios_binder: dict[int, dict[str, str]] = defaultdict(dict)   # {binder: {categoria: 'YYYY-MM'}} (fecha_inicio)
-    for t in db.scalars(select(Tarea).where(Tarea.origen == "auto")).all():
-        legacy[t.binder_id].add(t.categoria)
+    for t in db.scalars(select(Tarea)).all():             # TODAS (no solo auto): una tarea manual también cuenta
         (pausadas_c if t.estado == "Pausada" else activas_c)[t.binder_id].add(t.categoria)
-        if t.fecha_inicio:
-            inicios_binder[t.binder_id][t.categoria] = t.fecha_inicio.strftime("%Y-%m")
+        if t.origen == "auto":
+            legacy[t.binder_id].add(t.categoria)
+            if t.fecha_inicio:
+                inicios_binder[t.binder_id][t.categoria] = t.fecha_inicio.strftime("%Y-%m")
     cats_binder: dict[int, set[str]] = {}
     binders: dict[int, Binder] = {}
     for b in db.scalars(select(Binder).where(Binder.fecha_efecto.is_not(None))
                         .options(selectinload(Binder.productor), selectinload(Binder.programa))).all():
-        # Pausar una tarea oculta su categoría en la parrilla (salvo que otra tarea de esa categoría siga activa).
-        cats = _cats_de_binder(b, legacy.get(b.id, set())) - (pausadas_c.get(b.id, set()) - activas_c.get(b.id, set()))
+        # Categorías del binder = flag durable UNIÓN categorías con tarea activa (aunque el flag diga que no,
+        # una tarea activa manda). Pausar oculta su categoría salvo que otra tarea de esa categoría siga activa.
+        cats = (_cats_de_binder(b, legacy.get(b.id, set())) | activas_c.get(b.id, set())) - (pausadas_c.get(b.id, set()) - activas_c.get(b.id, set()))
         if cats:
             cats_binder[b.id] = cats
             binders[b.id] = b
@@ -960,13 +962,15 @@ def binder_cuadricula(binder_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail=f"Binder {binder_id} no encontrado")
     columnas = db.scalars(select(TareaColumna).where(TareaColumna.activa.is_(True))
                           .order_by(TareaColumna.orden, TareaColumna.id)).all()
-    auto_ts = db.scalars(select(Tarea).where(Tarea.binder_id == binder_id, Tarea.origen == "auto")).all()
+    all_ts = db.scalars(select(Tarea).where(Tarea.binder_id == binder_id)).all()
+    auto_ts = [t for t in all_ts if t.origen == "auto"]
     legacy = {t.categoria for t in auto_ts}
     inicios = {t.categoria: t.fecha_inicio.strftime("%Y-%m") for t in auto_ts if t.fecha_inicio}
-    pausadas = {t.categoria for t in auto_ts if t.estado == "Pausada"}
-    activas = {t.categoria for t in auto_ts if t.estado != "Pausada"}
-    # Pausar una tarea oculta su categoría en la parrilla (salvo que otra tarea de esa categoría siga activa).
-    cats = _cats_de_binder(b, legacy) - (pausadas - activas)
+    pausadas = {t.categoria for t in all_ts if t.estado == "Pausada"}
+    activas = {t.categoria for t in all_ts if t.estado != "Pausada"}     # auto o MANUAL
+    # Categorías = flag durable UNIÓN categorías con tarea activa (una tarea activa manda sobre el flag).
+    # Pausar oculta su categoría salvo que otra tarea de esa categoría siga activa.
+    cats = (_cats_de_binder(b, legacy) | activas) - (pausadas - activas)
     datos = _periodos_datos(db, {binder_id})
     cobro = _cobro_por_periodo(db, {binder_id})
     manual_map = {(m.binder_id, m.columna_id): m for m in db.scalars(select(TareaMatrizManual).where(
