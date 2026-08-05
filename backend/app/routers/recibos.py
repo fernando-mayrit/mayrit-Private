@@ -1252,11 +1252,12 @@ def liquidar_premium(binder_id: int, payload: AccionPremium, db: Session = Depen
     lineas_prem = _lineas_premium(db, binder_id, payload.periodo)
     neto_premium = _q2(sum((l.final_net_premium_uw or D0) for l in lineas_prem))
     neto_lpan = _q2(sum((lp.net_premium or D0) for lp in lpans))
-    # Tolerancia = ruido de redondeo. Ese ruido vive en las LÍNEAS del Premium (un re-redondeo/backfill
-    # puede mover cada línea una fracción de céntimo → sumadas, unos pocos céntimos), NO en el nº de
-    # LPAN. Por eso escala con el nº de líneas: 1 céntimo por cada 10 líneas, con un suelo de 0,05 €.
-    # Un error real (una línea que falta o sobra) es de órdenes de magnitud mayor y sigue bloqueando.
-    tol = max(Decimal("0.05"), _q2(Decimal("0.001") * len(lineas_prem)))
+    # Tolerancia = ruido de redondeo. Ese ruido vive en las LÍNEAS del Premium: un re-redondeo/backfill
+    # puede mover cada línea hasta MEDIO CÉNTIMO (0,005 €), así que sumadas pueden desviarse hasta
+    # 0,005 € × nº de líneas. Escalamos a ese máximo real (antes 0,001/línea se quedaba corto: 465
+    # líneas daban 0,465 € y una diferencia de redondeo de 0,49 € bloqueaba). Suelo de 0,05 €. Un error
+    # real (una línea o un LPAN que falta/sobra) es de órdenes de magnitud mayor y sigue bloqueando.
+    tol = max(Decimal("0.05"), _q2(Decimal("0.005") * len(lineas_prem)))
     if abs(neto_premium - neto_lpan) > tol:
         b = db.get(Binder, binder_id)
         moneda = (b.moneda if b else None) or "EUR"
