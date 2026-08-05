@@ -100,6 +100,14 @@ def _construir(db: Session, b: Binder, periodo: str) -> tuple[list[dict], list[d
     fin = _fin_mes(periodo)
     po = _ord(periodo)
 
+    # Un siniestro entra en el Claims BDX de un periodo cuando YA se había AVISADO a fin de ese mes (el BDX
+    # es acumulativo: aparece desde su mes de aviso en adelante). Antes de eso no existe para ese periodo,
+    # por eso los primeros meses pueden salir en blanco (NIL). Fecha de entrada = avisado (o apertura /
+    # periodo de reporte como respaldo); si no hay ninguna, se incluye (no ocultamos datos sin fecha).
+    def _entrada(s: Siniestro):
+        return s.claim_first_advised or s.date_opened or s.reporting_period
+    siniestros = [s for s in siniestros if (_entrada(s) is None or _entrada(s) <= fin)]
+
     # Última presentación ANTERIOR por siniestro → base de "Previously Paid".
     prev_rows = db.scalars(
         select(ClaimsPresentacion).where(ClaimsPresentacion.binder_id == b.id, ClaimsPresentacion.periodo_ord < po)
