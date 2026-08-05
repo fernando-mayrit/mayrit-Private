@@ -5,7 +5,7 @@ import { mesAnyo } from "../format";
 // La fila del pipeline de ESTE binder, MES A MES: las mismas fases y la misma lógica de estado que la
 // cuadrícula global (pantalla Tareas), para que coincidan exactamente. Las de "Enviado" (manual) se
 // marcan con un clic. Meses del efecto al vencimiento, el más reciente arriba.
-export default function CuadriculaBinder({ binderId }: { binderId: number }) {
+export default function CuadriculaBinder({ binderId, refreshKey }: { binderId: number; refreshKey?: number }) {
   const [data, setData] = useState<BinderCuadricula | null>(null);
   const [cargando, setCargando] = useState(true);
 
@@ -16,7 +16,7 @@ export default function CuadriculaBinder({ binderId }: { binderId: number }) {
       .catch(() => setData(null))
       .finally(() => setCargando(false));
   }, [binderId]);
-  useEffect(() => { cargar(); }, [cargar]);
+  useEffect(() => { cargar(); }, [cargar, refreshKey]);
 
   const grupos = useMemo(() => {
     const g: { grupo: string; cols: CuadriculaColumna[] }[] = [];

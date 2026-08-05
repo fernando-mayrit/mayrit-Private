@@ -58,7 +58,7 @@ const CAT_ORDEN: Record<string, number> = { Risk: 0, Premium: 1, Claims: 2, Gene
 
 const colACMP = (a: string, b: string) => a.localeCompare(b, "es");
 
-export default function TareasBinder({ binderId }: { binderId?: number }) {
+export default function TareasBinder({ binderId, onCambio }: { binderId?: number; onCambio?: () => void }) {
   const esGlobal = binderId == null;
   const [tareas, setTareas] = useState<Tarea[]>([]);
   const [binders, setBinders] = useState<Binder[]>([]);
@@ -302,6 +302,7 @@ export default function TareasBinder({ binderId }: { binderId?: number }) {
       await tareasApi.marcarHecha(ocDe.id, { fecha_ocurrencia: o.fecha, deshacer: o.hecha });
       await recargarOcs();
       await cargar();
+      onCambio?.();
     } catch (e) { setError((e as Error).message); } finally { setBusyOc(null); }
   }
   async function togglePaso(o: TareaOcurrencia, ps: TareaPasoEstado, fecha?: string) {
@@ -311,6 +312,7 @@ export default function TareasBinder({ binderId }: { binderId?: number }) {
       await tareasApi.marcarPaso(ps.paso_id, { fecha_ocurrencia: o.fecha, deshacer: ps.hecho, fecha_hecha: ps.hecho ? null : fecha });
       await recargarOcs();
       await cargar();
+      onCambio?.();
     } catch (e) { setError((e as Error).message); } finally { setBusyOc(null); }
   }
 
@@ -413,6 +415,7 @@ export default function TareasBinder({ binderId }: { binderId?: number }) {
     try {
       await tareasApi.marcarHecha(a.tarea_id, { fecha_ocurrencia: a.fecha, deshacer: a.estado === "hecha" });
       await Promise.all([cargar(), cargarAgenda()]);
+      onCambio?.();
     } catch (e) { setError((e as Error).message); } finally { setBusyOc(null); }
   }
   async function toggleSinMovAgenda(a: TareaAgendaItem, marcar: boolean) {
@@ -420,6 +423,7 @@ export default function TareasBinder({ binderId }: { binderId?: number }) {
     try {
       await tareasApi.marcarSinMovimiento(a.tarea_id, { fecha_ocurrencia: a.fecha, sin_movimiento: marcar });
       await Promise.all([cargar(), cargarAgenda()]);
+      onCambio?.();
     } catch (e) { setError((e as Error).message); } finally { setBusyOc(null); }
   }
   async function togglePasoAgenda(a: TareaAgendaItem, ps: TareaPasoEstado, fecha?: string) {
@@ -427,6 +431,7 @@ export default function TareasBinder({ binderId }: { binderId?: number }) {
     try {
       await tareasApi.marcarPaso(ps.paso_id, { fecha_ocurrencia: a.fecha, deshacer: ps.hecho, fecha_hecha: ps.hecho ? null : fecha });
       await Promise.all([cargar(), cargarAgenda()]);
+      onCambio?.();
     } catch (e) { setError((e as Error).message); } finally { setBusyOc(null); }
   }
 
@@ -514,7 +519,6 @@ export default function TareasBinder({ binderId }: { binderId?: number }) {
                         </button>
                       )}
                       {o.periodo ? mesAnyo(o.periodo) : fmtFechaES(o.fecha)}
-                      {o.periodo && <span className="hint" style={{ marginLeft: 6 }}>· vence {fmtFechaES(o.fecha)}</span>}
                     </td>
                     <td>
                       <span className={`pill ${cls}`}>{txt}</span>
@@ -639,7 +643,6 @@ export default function TareasBinder({ binderId }: { binderId?: number }) {
                               <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                                 <span style={{ fontWeight: 600 }}>{a.titulo}</span>
                                 {a.origen === "auto" && <span className="hint">· auto</span>}
-                                <span className="hint">· vence {fmtFechaES(a.fecha)}</span>
                                 <span className={`pill ${cls}`}>{txt}</span>
                                 {tienePasos && <span className="hint">{a.n_pasos_hechos}/{a.n_pasos}</span>}
                                 <span style={{ marginLeft: "auto", whiteSpace: "nowrap", display: "inline-flex", gap: 8, alignItems: "center" }}>

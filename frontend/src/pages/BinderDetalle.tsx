@@ -329,6 +329,7 @@ const UCR_COLS: Col<UcrRegistro>[] = [
 
 export default function BinderDetalle({ binder }: { binder: Binder }) {
   const [tab, setTab] = useState<"resumen" | "datos" | "bloqueo" | "bdx" | "lpan" | "premium" | "calculos" | "recibos" | "siniestros" | "ucr" | "claimsbdx" | "triangulacion" | "tareas">("resumen");
+  const [tareasVer, setTareasVer] = useState(0);   // señal para refrescar la parrilla al marcar en el detalle
   const [resumen, setResumen] = useState<ResumenBinder | null>(null);
   const [evolucion, setEvolucion] = useState<EvolucionPrograma | null>(null);
 
@@ -1559,7 +1560,7 @@ export default function BinderDetalle({ binder }: { binder: Binder }) {
         })()
       )}
 
-      {tab === "tareas" && <div className="tareas-tab-scroll"><ColumnasConfigBinder binderId={binder.id} /><CuadriculaBinder binderId={binder.id} /><TareasBinder binderId={binder.id} /></div>}
+      {tab === "tareas" && <div className="tareas-tab-scroll"><ColumnasConfigBinder binderId={binder.id} /><CuadriculaBinder binderId={binder.id} refreshKey={tareasVer} /><TareasBinder binderId={binder.id} onCambio={() => setTareasVer((v) => v + 1)} /></div>}
 
       {tab === "recibos" && (
         <>
