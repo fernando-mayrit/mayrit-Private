@@ -354,6 +354,8 @@ export default function App() {
   const avAlerta = avisos.filter((a) => a.categoria === "alerta");
   const avDia = avisos.filter((a) => a.categoria !== "alerta");
   const hayAlto = (xs: Aviso[]) => xs.some((a) => a.nivel === "alto");
+  // Contador del badge: suma el peso de cada aviso (nº de subtareas sin marcar), no el nº de avisos.
+  const cuenta = (xs: Aviso[]) => xs.reduce((s, a) => s + (a.n_pendientes ?? 1), 0);
   const abrirPanel = (p: "alerta" | "dia") => { cargarAvisos(); setPanelAviso((x) => (x === p ? null : p)); };
   // Ordena los avisos por Binder (UMR); los que no van ligados a un binder (p. ej. facturas de
   // Consultoría) al final. Desempate: importancia (alto→bajo) y luego título.
@@ -467,21 +469,21 @@ export default function App() {
           <button className={`campana${hayAlto(avAlerta) ? " campana-alerta" : ""}`}
             title="Alertas (temas importantes)" onClick={() => abrirPanel("alerta")}>
             🔔{avAlerta.length > 0 && (
-              <span className={`campana-badge${hayAlto(avAlerta) ? " campana-badge-alto" : ""}`}>{avAlerta.length}</span>
+              <span className={`campana-badge${hayAlto(avAlerta) ? " campana-badge-alto" : ""}`}>{cuenta(avAlerta)}</span>
             )}
           </button>
           <button className="campana campana-dia" title="Avisos (del día)" onClick={() => abrirPanel("dia")}>
-            📋{avDia.length > 0 && <span className="campana-badge campana-badge-dia">{avDia.length}</span>}
+            📋{avDia.length > 0 && <span className="campana-badge campana-badge-dia">{cuenta(avDia)}</span>}
           </button>
           {panelAviso === "alerta" && (
             <div className="avisos-pop">
-              {popHead("Alertas", avAlerta.length)}
+              {popHead("Alertas", cuenta(avAlerta))}
               {configNiveles ? renderConfig() : renderLista(avAlerta)}
             </div>
           )}
           {panelAviso === "dia" && (
             <div className="avisos-pop avisos-pop-dia">
-              {popHead("Avisos", avDia.length)}
+              {popHead("Avisos", cuenta(avDia))}
               {configNiveles ? renderConfig() : renderLista(avDia)}
             </div>
           )}

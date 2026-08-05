@@ -67,6 +67,7 @@ class Aviso(BaseModel):
     umr: str | None = None
     periodos: list[str] = []
     pagina: str | None = None       # a dónde ir para resolverlo (p. ej. 'binders')
+    n_pendientes: int = 1           # peso del aviso en el contador (p. ej. nº de subtareas sin marcar)
 
 
 def _risk_sin_recibo(db: Session, binders: dict[int, Binder], prods: dict[int, str]) -> list[Aviso]:
@@ -531,22 +532,34 @@ def _tareas_pendientes(db: Session, binders: dict[int, Binder]) -> list[Aviso]:
         if not pend:
             continue
         f0 = min(pend)
+        # Contamos las SUBTAREAS (pasos del checklist) sin marcar en TODAS las entregas pendientes
+        # (una tarea con 3 pasos sin marcar cuenta 3). Sin checklist, cada entrega pendiente cuenta 1.
+        manual = {(ph.paso_id, ph.fecha_ocurrencia): ph for p in t.pasos for ph in p.hechos} if t.pasos else {}
+        n_sub = 0
+        for f in pend:
+            if t.pasos:
+                pasos_f, _c = _pasos_de_ocurrencia(t, b, f, ocs.index(f), datos, manual)
+                n_sub += sum(1 for p in pasos_f if not p.hecho)
+            else:
+                n_sub += 1
+        n_sub = max(n_sub, 1)
         # Si la tarea tiene checklist, el aviso muestra el PASO concreto pendiente (el primero no hecho
         # y no bloqueado, p. ej. "Envío a Ana"), con la tarea como contexto. Si no, el título de la tarea.
         titulo, contexto = t.titulo, ""
         if t.pasos:
-            manual = {(ph.paso_id, ph.fecha_ocurrencia): ph for p in t.pasos for ph in p.hechos}
             pasos, _completa = _pasos_de_ocurrencia(t, b, f0, ocs.index(f0), datos, manual)
             pend_pasos = [p for p in pasos if not p.hecho]
             accionable = next((p for p in pend_pasos if not p.bloqueado), pend_pasos[0] if pend_pasos else None)
             if accionable:
                 titulo, contexto = accionable.titulo, f"{t.titulo} · "
-        desde = f"pendiente desde {f0.strftime('%d/%m/%Y')}" + (f" (+{len(pend) - 1} más)" if len(pend) > 1 else "")
+        sub_txt = f"{n_sub} subtarea{'s' if n_sub != 1 else ''} sin marcar · " if t.pasos else ""
+        desde = f"{sub_txt}pendiente desde {f0.strftime('%d/%m/%Y')}" + (f" (+{len(pend) - 1} mes(es) más)" if len(pend) > 1 else "")
         avisos.append(Aviso(
             tipo="tarea_pendiente", severidad="warning",
             titulo=titulo,
             detalle=(contexto + desde) if contexto else (desde[0].upper() + desde[1:]),
             binder_id=b.id, umr=b.umr, periodos=[f.strftime('%Y-%m') for f in pend], pagina="binders",
+            n_pendientes=n_sub,
         ))
     return avisos
 

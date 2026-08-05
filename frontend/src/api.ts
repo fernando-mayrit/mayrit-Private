@@ -1433,6 +1433,7 @@ export interface Aviso {
   umr: string | null;
   periodos: string[];
   pagina: string | null;
+  n_pendientes?: number;    // peso en el contador (nº de subtareas sin marcar); por defecto 1
 }
 export interface AvisoNivel {
   tipo: string;
