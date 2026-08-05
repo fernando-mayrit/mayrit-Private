@@ -63,7 +63,38 @@ def _suelo_entregas() -> dt.date:
     return _add_months(dt.date.today().replace(day=1), -_MESES_ATRAS)
 
 
-def _ocurrencias(t: Tarea, binder: Binder) -> list[dt.date]:
+_VENC = "__venc__"   # sentinela de `hasta_m`: usar el vencimiento del binder (comportamiento por defecto)
+
+
+def _tope_hasta(cfgs: list[TareaColumnaBinder], venc: dt.date | None) -> str | None:
+    """Tope superior efectivo (YYYY-MM) de las fases del binder según su config de fases:
+    - Si alguna fase APLICA con 'Hasta' en blanco → None: VIVA (run-off, sin tope; se muestra hasta hoy).
+    - Si hay 'Hasta' fijados → el mayor entre esos y el vencimiento.
+    - Si no hay override → el vencimiento del binder.
+    Esto hace que el 'Hasta = vivo' de la config extienda las tareas más allá del vencimiento del binder."""
+    venc_m = venc.strftime("%Y-%m") if venc else None
+    aplica = [cb for cb in cfgs if cb.aplica]
+    if any(cb.hasta is None for cb in aplica):
+        return None
+    cand = [cb.hasta for cb in aplica if cb.hasta] + ([venc_m] if venc_m else [])
+    return max(cand) if cand else None
+
+
+def _topes(db: Session, binder_ids: set[int]) -> dict[int, str | None]:
+    """Por binder, el tope superior efectivo (YYYY-MM) de sus fases; None = vivo (sin tope). Ver `_tope_hasta`."""
+    out: dict[int, str | None] = {}
+    if not binder_ids:
+        return out
+    cfgs: dict[int, list] = defaultdict(list)
+    for cb in db.scalars(select(TareaColumnaBinder).where(TareaColumnaBinder.binder_id.in_(binder_ids))).all():
+        cfgs[cb.binder_id].append(cb)
+    for bid in binder_ids:
+        b = db.get(Binder, bid)
+        out[bid] = _tope_hasta(cfgs.get(bid, []), b.fecha_vencimiento if b else None)
+    return out
+
+
+def _ocurrencias(t: Tarea, binder: Binder, hasta_m: str | None = _VENC) -> list[dt.date]:
     """Fechas (límite) de las entregas de la tarea.
 
     - AUTO (Risk/Premium/Claims): mensuales (o su intervalo) DESDE el mes de EFECTO del binder (arranque
@@ -77,7 +108,14 @@ def _ocurrencias(t: Tarea, binder: Binder) -> list[dt.date]:
         natural = _add_months(binder.fecha_efecto, paso) + dt.timedelta(days=plazo)   # 1ª fecha límite (periodo=efecto)
         tope = _add_months(dt.date.today(), _LOOKAHEAD_MESES)
         suelo, ef1 = _suelo_entregas(), binder.fecha_efecto.replace(day=1)
-        venc_mes = binder.fecha_vencimiento.replace(day=1) if binder.fecha_vencimiento else None
+        # Tope superior por MES DEL DATO: el vencimiento del binder por defecto, o el que diga la config de
+        # fases (None = vivo → sin tope, run-off hasta hoy). Así 'Hasta = vivo' extiende más allá del vto.
+        if hasta_m == _VENC:
+            venc_mes = binder.fecha_vencimiento.replace(day=1) if binder.fecha_vencimiento else None
+        elif hasta_m is None:
+            venc_mes = None
+        else:
+            venc_mes = dt.date(int(hasta_m[:4]), int(hasta_m[5:7]), 1)
         # `fecha_inicio` de la tarea (si el usuario la puso) = PRIMER MES a mostrar; vacía = desde el efecto.
         piso_tarea = t.fecha_inicio.replace(day=1) if t.fecha_inicio else None
         out, k = [], 0
@@ -311,13 +349,13 @@ def _entrega_sin_mov(t: Tarea, binder: Binder | None, f: dt.date, datos: dict) -
     return _sinmov_manual(t, f) or _ocurrencia_dormida(t, binder, f, datos)
 
 
-def _fechas_hechas(t: Tarea, binder: Binder | None, datos: dict) -> set[dt.date]:
+def _fechas_hechas(t: Tarea, binder: Binder | None, datos: dict, hasta_m: str | None = _VENC) -> set[dt.date]:
     """Conjunto de fechas de ocurrencia que cuentan como HECHAS (en vivo):
     - Sin pasos: las que tengan TareaHecha (marcado manual).
     - Con pasos: las entregas en las que TODOS los pasos están hechos (manual o por regla auto)."""
     if not binder:
         return set()
-    ocs = _ocurrencias(t, binder)
+    ocs = _ocurrencias(t, binder, hasta_m)
     # Entregas "sin movimiento" (dormido ≥6 meses O marcado a mano): cuentan como hechas (no bloquean).
     dormidas = {f for f in ocs if _entrega_sin_mov(t, binder, f, datos)}
     if not t.pasos:
@@ -344,6 +382,7 @@ def pendientes_para_cierre(db: Session, binder: Binder, categorias: set[str], re
     bloquear el cierre del binder. Lista vacía = no hay nada pendiente que impida cerrar."""
     hoy = dt.date.today()
     datos = _periodos_datos(db, {binder.id})
+    hasta_m = _topes(db, {binder.id}).get(binder.id, _VENC)
     out: list[str] = []
     ts = db.scalars(select(Tarea).where(
         Tarea.binder_id == binder.id, Tarea.estado == "Activa")).all()
@@ -351,8 +390,8 @@ def pendientes_para_cierre(db: Session, binder: Binder, categorias: set[str], re
         relevante = (t.categoria in categorias) or any(p.regla_auto in reglas for p in t.pasos)
         if not relevante:
             continue
-        done = _fechas_hechas(t, binder, datos)
-        if any(f not in done and _debida(t, f, hoy, False) for f in _ocurrencias(t, binder)):
+        done = _fechas_hechas(t, binder, datos, hasta_m)
+        if any(f not in done and _debida(t, f, hoy, False) for f in _ocurrencias(t, binder, hasta_m)):
             out.append(t.titulo)
     return out
 
@@ -451,16 +490,17 @@ class TareaRead(BaseModel):
     proxima: dt.date | None = None   # próxima ocurrencia pendiente y debida
 
 
-def _serializar(db: Session, t: Tarea, datos: dict | None = None) -> TareaRead:
+def _serializar(db: Session, t: Tarea, datos: dict | None = None, topes: dict | None = None) -> TareaRead:
     binder = db.get(Binder, t.binder_id)
     if datos is None:
         datos = _periodos_datos(db, {t.binder_id})
+    hasta_m = (topes if topes is not None else _topes(db, {t.binder_id})).get(t.binder_id, _VENC)
     d = TareaRead.model_validate(t)
     d.binder_umr = (binder.umr or binder.agreement_number) if binder else None
     d.agencia = (binder.productor.nombre if binder and binder.productor else None)
     d.programa = (binder.programa.nombre if binder and binder.programa else None)
-    ocs = _ocurrencias(t, binder) if binder else []
-    hechas = _fechas_hechas(t, binder, datos)
+    ocs = _ocurrencias(t, binder, hasta_m) if binder else []
+    hechas = _fechas_hechas(t, binder, datos, hasta_m)
     hoy = dt.date.today()
     # Una entrega solo "existe" cuando su plazo (con su aviso) ha llegado. Las futuras NO cuentan,
     # aunque el dato del periodo ya esté cargado (auto-marcado): aparecen al cumplirse su fecha.
@@ -476,8 +516,10 @@ def _serializar(db: Session, t: Tarea, datos: dict | None = None) -> TareaRead:
 def listar_todas(db: Session = Depends(get_db)):
     """Todas las tareas de todos los binders (página global). Mismos datos que la pestaña del binder."""
     ts = db.scalars(select(Tarea).options(*_opc_tarea()).order_by(Tarea.id)).all()
-    datos = _periodos_datos(db, {t.binder_id for t in ts})
-    return [_serializar(db, t, datos) for t in ts]
+    ids = {t.binder_id for t in ts}
+    datos = _periodos_datos(db, ids)
+    topes = _topes(db, ids)
+    return [_serializar(db, t, datos, topes) for t in ts]
 
 
 class PasoEstado(BaseModel):
@@ -586,17 +628,20 @@ def agenda(binder_id: int | None = None, solo_pendientes: bool = False, db: Sess
     if binder_id is not None:
         q = q.where(Tarea.binder_id == binder_id)
     tareas = db.scalars(q.options(*_opc_tarea()).order_by(Tarea.id)).all()
-    datos = _periodos_datos(db, {t.binder_id for t in tareas})
-    fechas_carga = _fechas_carga(db, {t.binder_id for t in tareas})
+    ids = {t.binder_id for t in tareas}
+    datos = _periodos_datos(db, ids)
+    fechas_carga = _fechas_carga(db, ids)
+    topes = _topes(db, ids)
     out: list[AgendaItem] = []
     for t in tareas:
         binder = db.get(Binder, t.binder_id)
         if not binder:
             continue
+        hasta_m = topes.get(t.binder_id, _VENC)
         hechas = {h.fecha_ocurrencia: h for h in t.hechas}
         manual = {(ph.paso_id, ph.fecha_ocurrencia): ph for p in t.pasos for ph in p.hechos}
-        done = _fechas_hechas(t, binder, datos)
-        for k, f in enumerate(_ocurrencias(t, binder)):
+        done = _fechas_hechas(t, binder, datos, hasta_m)
+        for k, f in enumerate(_ocurrencias(t, binder, hasta_m)):
             if f < _suelo_entregas():          # tope rodante (para manuales; las auto ya vienen acotadas)
                 continue
             h = hechas.get(f)
@@ -677,7 +722,7 @@ def _cats_de_binder(b: Binder, legacy_cats: set[str]) -> set[str]:
     return {cat for cat, campo in _FLAG_CAT if getattr(b, campo)}
 
 
-def _enlaces_hechos(db: Session, binder_ids: set[int], datos: dict):
+def _enlaces_hechos(db: Session, binder_ids: set[int], datos: dict, topes: dict | None = None):
     """Pasos del checklist ENLAZADOS a una fase (columna) de la parrilla. Devuelve:
     - enlazadas: {(binder_id, columna_id)} con ≥1 paso enlazado (la pastilla la gobierna el checklist).
     - hechos: {(binder_id, columna_id): set(periodos 'YYYY-MM') en los que ese paso está hecho}.
@@ -686,6 +731,8 @@ def _enlaces_hechos(db: Session, binder_ids: set[int], datos: dict):
     hechos: dict[tuple[int, int], set[str]] = defaultdict(set)
     if not binder_ids:
         return enlazadas, hechos
+    if topes is None:
+        topes = _topes(db, binder_ids)
     pasos = db.scalars(select(TareaPaso).where(TareaPaso.columna_id.is_not(None))
                        .options(selectinload(TareaPaso.hechos), selectinload(TareaPaso.tarea))).all()
     for p in pasos:
@@ -698,7 +745,7 @@ def _enlaces_hechos(db: Session, binder_ids: set[int], datos: dict):
         enlazadas.add((t.binder_id, p.columna_id))
         marcadas = {ph.fecha_ocurrencia for ph in p.hechos}
         paso_m = _paso(t)
-        for f in _ocurrencias(t, binder):
+        for f in _ocurrencias(t, binder, topes.get(t.binder_id, _VENC)):
             periodo = _periodo_de(binder, t, f, paso_m)
             if periodo and (f in marcadas or _auto_ok(p, periodo, datos, binder.id)):
                 hechos[(t.binder_id, p.columna_id)].add(periodo)
@@ -752,16 +799,22 @@ def _estado_celda(c, per: str, b: Binder, cfg, cats: set[str], datos, cobro, man
     return activo(con_dormido=True)
 
 
-def _meses_binder(b: Binder, tope: int = 36) -> list[str]:
+def _meses_binder(b: Binder, hasta_m: str | None = _VENC, tope: int = 36) -> list[str]:
     """Meses YYYY-MM del binder para su cuadrícula. Cada fila = MES DEL DATO (el periodo del BDX), NO el
     mes en que se trabaja: el BDX de un mes se recibe/procesa el mes siguiente. Por eso el último periodo
     visible es el mes ANTERIOR al actual (su BDX ya vence); el del mes en curso aún no toca. Del efecto a
-    ese tope (o al vencimiento si ya pasó). MÁS RECIENTE primero."""
+    ese tope (o al vencimiento si ya pasó, salvo que la config de fases lo extienda: `hasta_m` None = vivo).
+    MÁS RECIENTE primero."""
     if not b.fecha_efecto:
         return []
     tope_mes = _add_months(dt.date.today().replace(day=1), -1)   # el dato del mes actual aún no vence
     ini = b.fecha_efecto.replace(day=1)
-    fin = b.fecha_vencimiento.replace(day=1) if b.fecha_vencimiento else tope_mes
+    if hasta_m == _VENC:
+        fin = b.fecha_vencimiento.replace(day=1) if b.fecha_vencimiento else tope_mes
+    elif hasta_m is None:
+        fin = tope_mes      # fase viva (Hasta en blanco): run-off hasta el mes anterior al actual
+    else:
+        fin = dt.date(int(hasta_m[:4]), int(hasta_m[5:7]), 1)
     if fin > tope_mes:      # binder en vigor: no mostrar el mes en curso (su BDX no vence hasta el siguiente)
         fin = tope_mes
     # Si el efecto es POSTERIOR al tope (binder que arranca este mes o más adelante), aún no hay ningún
@@ -868,9 +921,10 @@ def binder_cuadricula(binder_id: int, db: Session = Depends(get_db)):
         TareaMatrizManual.binder_id == binder_id)).all()}
     cfgs = {(cb.binder_id, cb.columna_id): cb for cb in db.scalars(select(TareaColumnaBinder).where(
         TareaColumnaBinder.binder_id == binder_id)).all()}
-    enlazadas, hechos = _enlaces_hechos(db, {binder_id}, datos)
+    hasta_m = _tope_hasta([cb for (bid, _), cb in cfgs.items() if bid == binder_id], b.fecha_vencimiento)
+    enlazadas, hechos = _enlaces_hechos(db, {binder_id}, datos, {binder_id: hasta_m})
     meses: list[BinderCuadriculaMes] = []
-    for per in _meses_binder(b):
+    for per in _meses_binder(b, hasta_m):
         celdas = {c.id: _estado_celda(c, per, b, cfgs.get((binder_id, c.id)), cats, datos, cobro, manual_map, enlazadas, hechos, inicios)
                   for c in columnas}
         if all(v == "na" for v in celdas.values()):      # ese mes no aplica nada → no se muestra
@@ -1021,7 +1075,8 @@ def set_columna_config(binder_id: int, columna_id: int, payload: ColumnaBinderIn
 def listar(binder_id: int, db: Session = Depends(get_db)):
     ts = db.scalars(select(Tarea).where(Tarea.binder_id == binder_id).options(*_opc_tarea()).order_by(Tarea.id)).all()
     datos = _periodos_datos(db, {binder_id})
-    return [_serializar(db, t, datos) for t in ts]
+    topes = _topes(db, {binder_id})
+    return [_serializar(db, t, datos, topes) for t in ts]
 
 
 @router.post("/binders/{binder_id}/tareas", response_model=TareaRead, status_code=201)
@@ -1200,11 +1255,12 @@ def ocurrencias(tarea_id: int, incluir_futuras: bool = False, db: Session = Depe
     binder = db.get(Binder, t.binder_id)
     datos = _periodos_datos(db, {t.binder_id})
     fechas_carga = _fechas_carga(db, {t.binder_id})
+    hasta_m = _topes(db, {t.binder_id}).get(t.binder_id, _VENC)
     hechas = {h.fecha_ocurrencia: h for h in t.hechas}    # TareaHecha (tareas sin pasos / notas)
     manual = {(ph.paso_id, ph.fecha_ocurrencia): ph for p in t.pasos for ph in p.hechos}
     hoy = dt.date.today()
     out: list[OcurrenciaOut] = []
-    for k, f in enumerate(_ocurrencias(t, binder) if binder else []):
+    for k, f in enumerate(_ocurrencias(t, binder, hasta_m) if binder else []):
         pasos, completa = _pasos_de_ocurrencia(t, binder, f, k, datos, manual, fechas_carga)
         h = hechas.get(f)
         hecha = completa if t.pasos else (h is not None)
@@ -1279,7 +1335,8 @@ def marcar_hecha(tarea_id: int, payload: HechaIn, db: Session = Depends(get_db))
         db.flush()
         binder = db.get(Binder, t.binder_id)
         datos = _periodos_datos(db, {t.binder_id})
-        hecha = payload.fecha_ocurrencia in _fechas_hechas(t, binder, datos)
+        hasta_m = _topes(db, {t.binder_id}).get(t.binder_id, _VENC)
+        hecha = payload.fecha_ocurrencia in _fechas_hechas(t, binder, datos, hasta_m)
         db.commit()
         return {"ok": True, "hecha": hecha}
     h = db.scalar(select(TareaHecha).where(
@@ -1443,7 +1500,8 @@ def marcar_paso(paso_id: int, payload: PasoHechoIn, db: Session = Depends(get_db
     t = db.get(Tarea, p.tarea_id)
     if t and t.secuencial and not payload.deshacer:
         binder = db.get(Binder, t.binder_id)
-        ocs = _ocurrencias(t, binder) if binder else []
+        hasta_m = _topes(db, {t.binder_id}).get(t.binder_id, _VENC)
+        ocs = _ocurrencias(t, binder, hasta_m) if binder else []
         k = ocs.index(payload.fecha_ocurrencia) if payload.fecha_ocurrencia in ocs else 0
         manual = {(ph2.paso_id, ph2.fecha_ocurrencia): ph2 for pp in t.pasos for ph2 in pp.hechos}
         estados, _ = _pasos_de_ocurrencia(t, binder, payload.fecha_ocurrencia, k,
@@ -1466,6 +1524,7 @@ def marcar_paso(paso_id: int, payload: PasoHechoIn, db: Session = Depends(get_db
     t = db.get(Tarea, p.tarea_id)
     binder = db.get(Binder, t.binder_id)
     datos = _periodos_datos(db, {t.binder_id})
-    hecha = payload.fecha_ocurrencia in _fechas_hechas(t, binder, datos)
+    hasta_m = _topes(db, {t.binder_id}).get(t.binder_id, _VENC)
+    hecha = payload.fecha_ocurrencia in _fechas_hechas(t, binder, datos, hasta_m)
     db.commit()
     return {"ok": True, "paso_hecho": not payload.deshacer, "ocurrencia_hecha": hecha}
