@@ -1215,8 +1215,15 @@ export default function BinderDetalle({ binder }: { binder: Binder }) {
           const cols: { titulo: string; tipo: string; emoji: string; meses: string[] }[] = [
             { titulo: "Risk BDX", tipo: "risk", emoji: "📊", meses: mesesDe(ls, "reporting_period_start") },
             { titulo: "Premium BDX", tipo: "premium", emoji: "💷", meses: mesesDe(ls, "premium_bdx", (l) => !!l.incluido_en_premium) },
-            // Claims: solo los periodos YA presentados (los que existen en nuestro Claims BDX).
-            { titulo: "Claims BDX", tipo: "claims", emoji: "⚖️", meses: cbPeriodos.map((p) => p.periodo) },
+            // Claims: los periodos ya presentados (incl. meses en blanco/NIL) MÁS los que estén
+            // bloqueados aunque no figuren como presentados (evita bloqueos "fantasma" invisibles).
+            {
+              titulo: "Claims BDX", tipo: "claims", emoji: "⚖️",
+              meses: Array.from(new Set([
+                ...cbPeriodos.map((p) => p.periodo),
+                ...[...bloqueos].filter((k) => k.startsWith("claims:")).map((k) => k.slice("claims:".length)),
+              ])).sort().reverse(),
+            },
           ];
           // Persistente: el bloqueo se guarda en el backend (impide editar líneas del periodo).
           const toggle = async (tipo: string, m: string) => {

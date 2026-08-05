@@ -316,6 +316,11 @@ def presentar(binder_id: int, payload: PresentarPayload, db: Session = Depends(g
             status=m["status"], fila_json=json.dumps(f, ensure_ascii=False, default=str),
             fecha_presentacion=hoy, usuario=payload.usuario,
         ))
+    if not filas:   # mes EN BLANCO (NIL report): placeholder sin siniestro para que cuente como presentado
+        db.add(ClaimsPresentacion(
+            binder_id=b.id, periodo=periodo, periodo_ord=po, siniestro_id=None,
+            fecha_presentacion=hoy, usuario=payload.usuario,
+        ))
     # Presentar = bloquear ese mes (BdxBloqueo claims).
     if not _bloqueado(db, b.id, periodo):
         db.add(BdxBloqueo(binder_id=b.id, tipo="claims", periodo=periodo))
