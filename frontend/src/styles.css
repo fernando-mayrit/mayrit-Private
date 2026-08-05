@@ -489,12 +489,12 @@ td.num, th.num { text-align: right; }
 .col-menu-item { display: flex; align-items: center; gap: 8px; padding: 5px 8px; font-size: 13px; cursor: pointer; border-radius: 6px; }
 .col-menu-item:hover { background: var(--gris-claro); }
 /* Barra superior de la tabla de BDX: info de líneas a la izq. + cuadro de totales a la dcha. */
-.bdx-topbar { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 8px; }
+.bdx-topbar { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 8px; }
 .bdx-acciones { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 /* Transferencias: filtros a la izquierda (ocupan el resto) alineados con el contador a la derecha. */
 .tr-filtros { flex: 1; min-width: 0; }
 .tr-filtros-row { margin-bottom: 8px; }
-.bdx-totales { display: flex; border: 1px solid var(--borde); border-radius: 10px; overflow: hidden; background: #fff; }
+.bdx-totales { display: flex; border: 1px solid var(--borde); border-radius: 10px; overflow-x: auto; overflow-y: hidden; max-width: 100%; background: #fff; }
 .tot-col { padding: 8px 14px; border-left: 1px solid var(--borde); min-width: 190px; }
 .tot-col:first-child { border-left: none; }
 .tot-row { display: flex; justify-content: space-between; gap: 18px; font-size: 13px; padding: 2px 0; }
