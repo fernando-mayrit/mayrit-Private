@@ -11,8 +11,12 @@ import { fmtFechaES } from "../format";
 const MESES = ["", "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
   "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
 
-function mesActual(): string {
+// Último mes elegible: el ANTERIOR al actual. El BDX del mes en curso aún no vence (se trabaja el mes
+// siguiente), así que no tiene sentido elegir meses hacia delante — saldría todo Pendiente.
+function mesTope(): string {
   const d = new Date();
+  d.setDate(1);
+  d.setMonth(d.getMonth() - 1);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
 function labelMes(ym: string): string {
@@ -34,7 +38,7 @@ type Grupo = {
 export default function TareasPage() {
   const [vista, setVista] = useState<"resumen" | "cuadricula" | "detalle">("cuadricula");
   const [agenda, setAgenda] = useState<TareaAgendaItem[]>([]);
-  const [mes, setMes] = useState(mesActual());
+  const [mes, setMes] = useState(mesTope());
   const [soloPend, setSoloPend] = useState(true);
   const [abiertos, setAbiertos] = useState<Set<number>>(new Set());
   const [cargando, setCargando] = useState(true);
@@ -108,7 +112,9 @@ export default function TareasPage() {
           <button className={"btn-toggle" + (vista === "detalle" ? " active" : "")} onClick={() => setVista("detalle")}>Detalle</button>
         </div>
         {vista !== "detalle" && (
-          <input type="month" className="filtro" value={mes} onChange={(e) => setMes(e.target.value || mesActual())} title="Mes a revisar" />
+          <input type="month" className="filtro" value={mes} max={mesTope()}
+            onChange={(e) => { const v = e.target.value || mesTope(); setMes(v > mesTope() ? mesTope() : v); }}
+            title="Mes a revisar (hasta el mes anterior al actual)" />
         )}
         {vista === "resumen" && (
           <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 14 }}>
