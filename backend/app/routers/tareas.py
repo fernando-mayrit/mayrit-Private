@@ -716,33 +716,36 @@ def _estado_celda(c, per: str, b: Binder, cfg, cats: set[str], datos, cobro, man
         if c.regla == "cobro":
             return per in cobro.get(b.id, set())
         return per in datos.get(c.regla, {}).get(b.id, set())
-    def manual_estado() -> str:
-        # Fase enlazada a un paso del checklist → la pastilla REFLEJA ese paso (un solo sitio donde marcar).
+    def activo(con_dormido: bool) -> str:
+        """Estado cuando la fase APLICA (ya descartados los 'na' por efecto/rango/vto/categoría)."""
+        # Enlazada a un paso del checklist → MANDA el paso, sea la columna AUTO o MANUAL (un solo sitio
+        # donde marcar, y la parrilla lo refleja). Esto también cubre columnas auto como Cobrado/LPANs.
         if (b.id, c.id) in enlazadas:
             return "ok" if per in hechos.get((b.id, c.id), set()) else "pend"
+        if c.tipo == "auto":
+            if con_dormido and not existe():
+                regla = "premium" if c.regla == "cobro" else c.regla
+                return "na" if _dato_dormido(datos, regla, b, per) else "pend"
+            return "ok" if existe() else "pend"
         m = manual_map.get((b.id, c.id))
-        return "ok" if (m and m.hecho) else "pend"
+        if m and m.hecho:
+            return "ok"
+        if con_dormido and _dato_dormido(datos, _CAT_REGLA.get(c.grupo), b, per):
+            return "na"
+        return "pend"
     efecto_m = b.fecha_efecto.strftime("%Y-%m") if b.fecha_efecto else None
     venc_m = b.fecha_vencimiento.strftime("%Y-%m") if b.fecha_vencimiento else None
     if efecto_m and per < efecto_m:                  # antes del efecto: el binder no existe
         return "na"
-    if cfg is not None:                              # config manual del binder → manda
+    if cfg is not None:                              # config manual del binder → manda (sin grisear por dormido)
         if (not cfg.aplica) or (cfg.hasta and per > cfg.hasta) or (cfg.desde and per < cfg.desde):
             return "na"
-        if c.tipo == "auto":
-            return "ok" if existe() else "pend"      # sin grisear por dormido: manda la config
-        return manual_estado()
+        return activo(con_dormido=False)
     if venc_m and per > venc_m:                       # sin override: por defecto aplica hasta el vencimiento
         return "na"
     if c.grupo not in cats:                           # el binder no hace esa fase
         return "na"
-    if c.tipo == "auto":
-        dormido = _dato_dormido(datos, "premium" if c.regla == "cobro" else c.regla, b, per)
-        return "ok" if existe() else ("na" if dormido else "pend")
-    if (b.id, c.id) in enlazadas:
-        return manual_estado()
-    m = manual_map.get((b.id, c.id))
-    return "ok" if (m and m.hecho) else ("na" if _dato_dormido(datos, _CAT_REGLA.get(c.grupo), b, per) else "pend")
+    return activo(con_dormido=True)
 
 
 def _meses_binder(b: Binder, tope: int = 36) -> list[str]:
