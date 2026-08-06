@@ -175,8 +175,8 @@ def _ocurrencias(t: Tarea, binder: Binder, hasta_m: str | None = _VENC) -> list[
     if not inicio:
         return []
     if paso <= 0:
-        return [inicio]
-    if t.fecha_fin and t.fecha_fin >= inicio:          # tope explícito por fecha_fin
+        out = [inicio]
+    elif t.fecha_fin and t.fecha_fin >= inicio:        # tope explícito por fecha_fin
         out, k = [], 0
         while k < 1200:
             f = _add_months(inicio, k * paso)
@@ -184,14 +184,22 @@ def _ocurrencias(t: Tarea, binder: Binder, hasta_m: str | None = _VENC) -> list[
                 break
             out.append(f)
             k += 1
-        return out
-    ef, venc = (binder.fecha_efecto, binder.fecha_vencimiento) if binder else (None, None)
-    if not ef or not venc:
-        return [_add_months(inicio, k * paso) for k in range(120)]
-    n = 0
-    while n < 1200 and _add_months(ef, n * paso) <= venc:
-        n += 1
-    return [_add_months(inicio, k * paso) for k in range(max(n, 1))]
+    else:
+        ef, venc = (binder.fecha_efecto, binder.fecha_vencimiento) if binder else (None, None)
+        if not ef or not venc:
+            out = [_add_months(inicio, k * paso) for k in range(120)]
+        else:
+            n = 0
+            while n < 1200 and _add_months(ef, n * paso) <= venc:
+                n += 1
+            out = [_add_months(inicio, k * paso) for k in range(max(n, 1))]
+    # `fecha_inicio` = PRIMER PERIODO a mostrar (igual que en las auto): descarta las entregas cuyo PERIODO
+    # (mes del dato = fecha límite − intervalo) sea anterior. Vacía = desde el efecto. No cambia las fechas
+    # límite (las marcas por ocurrencia se conservan), solo oculta las entregas de periodos previos.
+    if t.fecha_inicio and paso > 0:
+        piso = t.fecha_inicio.strftime("%Y-%m")
+        out = [f for f in out if (_periodo_de(binder, t, f, paso) or "9999-99") >= piso]
+    return out
 
 
 def _debida(t: Tarea, f: dt.date, hoy: dt.date, hecha: bool) -> bool:
@@ -876,12 +884,17 @@ def cuadricula(mes: str | None = None, db: Session = Depends(get_db)):
     # Qué categorías hace cada binder = de sus flags DURABLES (no de que existan tareas auto, que se pueden
     # borrar). Un binder participa si hace ≥1 categoría.
     activas_c: dict[int, set[str]] = defaultdict(set)      # categorías con tarea ACTIVA (auto o MANUAL)
-    inicios_binder: dict[int, dict[str, str]] = defaultdict(dict)   # {binder: {categoria: 'YYYY-MM'}} (fecha_inicio)
+    fi_cat: dict[tuple[int, str], list] = defaultdict(list)   # (binder, cat) -> fecha_inicio de sus tareas activas
     for t in db.scalars(select(Tarea)).all():             # TODAS (auto o manual)
         if t.estado != "Pausada":
             activas_c[t.binder_id].add(t.categoria)
-        if t.origen == "auto" and t.fecha_inicio:
-            inicios_binder[t.binder_id][t.categoria] = t.fecha_inicio.strftime("%Y-%m")
+            fi_cat[(t.binder_id, t.categoria)].append(t.fecha_inicio)
+    # Suelo de la parrilla por (binder, categoría): solo si TODAS las tareas activas de esa categoría (auto
+    # o manual) tienen fecha_inicio (si alguna arranca en el efecto, la categoría se ve desde el efecto).
+    inicios_binder: dict[int, dict[str, str]] = defaultdict(dict)
+    for (bid, cat), fis in fi_cat.items():
+        if fis and all(fi is not None for fi in fis):
+            inicios_binder[bid][cat] = min(fi.strftime("%Y-%m") for fi in fis)
     cats_binder: dict[int, set[str]] = {}
     binders: dict[int, Binder] = {}
     for b in db.scalars(select(Binder).where(Binder.fecha_efecto.is_not(None))
@@ -949,7 +962,14 @@ def binder_cuadricula(binder_id: int, db: Session = Depends(get_db)):
     columnas = db.scalars(select(TareaColumna).where(TareaColumna.activa.is_(True))
                           .order_by(TareaColumna.orden, TareaColumna.id)).all()
     all_ts = db.scalars(select(Tarea).where(Tarea.binder_id == binder_id)).all()
-    inicios = {t.categoria: t.fecha_inicio.strftime("%Y-%m") for t in all_ts if t.origen == "auto" and t.fecha_inicio}
+    # Suelo por categoría (auto o MANUAL): solo si TODAS las tareas activas de la categoría tienen
+    # fecha_inicio (si alguna arranca en el efecto, la categoría se ve desde el efecto).
+    fi_cat: dict[str, list] = {}
+    for t in all_ts:
+        if t.estado != "Pausada":
+            fi_cat.setdefault(t.categoria, []).append(t.fecha_inicio)
+    inicios = {cat: min(fi.strftime("%Y-%m") for fi in fis)
+               for cat, fis in fi_cat.items() if fis and all(fi is not None for fi in fis)}
     # La parrilla la MANDAN las tareas: una categoría sale solo si tiene una tarea ACTIVA (auto o manual).
     # Sin tarea (aunque el flag durable diga que sí, o haya datos sueltos) → no aplica. Pausada → oculta.
     cats = {t.categoria for t in all_ts if t.estado != "Pausada"}
