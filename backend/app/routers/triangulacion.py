@@ -329,9 +329,10 @@ def _programa_factores_elr(db: Session, programa_id: int) -> tuple[list[float], 
     """Patrón de desarrollo (factores, maxlen) y siniestralidad esperada a priori (ELR) del programa.
     ELR = siniestralidad observada de los años MADUROS (≥66% desarrollados, incurrido ≈ ultimate)."""
     pbs = db.scalars(select(Binder).where(Binder.programa_id == programa_id)).all()
+    curvas_por = _curvas_programa(db, list(pbs))   # 3 queries en total (no 3 por binder)
     curvas, nets, incs = [], [], []
     for pb in pbs:
-        c = _curva_binder(db, pb)
+        c = curvas_por[pb.id]
         curvas.append(c["inc"]); nets.append(c["net"]); incs.append(c["incurrido_actual"])
     factores, maxlen = _factores_programa(curvas)
     num = den = 0.0
@@ -358,29 +359,14 @@ def _ibnr_bf(estado: str | None, net: float, incurrido_actual: float, edad: int,
     return ibnr, round(incurrido_actual + ibnr, 2)
 
 
-def _curva_binder(db: Session, binder: Binder, risk_code: str | None = None) -> dict | None:
-    """Desarrollo POR ANTIGÜEDAD de un binder: para cada edad d (meses desde el inicio del binder),
-    el incurrido/pagado/nº de sus siniestros valuados a ese mes, y la PRIMA ACUMULADA (Net to UWs
-    devengada hasta ese mes) para el ratio de siniestralidad. Filtrable por risk code.
-    Incluye GWP our line, net to UWs total e incurrido actual. `start_mi` = mes de inicio."""
-    gwp, net = _bases(db, binder.id, risk_code=risk_code)
-    net_mes = _net_por_mes(db, binder.id, risk_code=risk_code)  # {mes_index: net del mes}
-    q = (
-        select(
-            ClaimsPresentacion.siniestro_id, ClaimsPresentacion.periodo_ord,
-            ClaimsPresentacion.paid_indemnity_acum, ClaimsPresentacion.paid_fees_acum,
-            ClaimsPresentacion.reserves_indemnity, ClaimsPresentacion.reserves_fees,
-            ClaimsPresentacion.to_pay_indemnity, ClaimsPresentacion.to_pay_fees,
-        )
-        .join(Siniestro, Siniestro.id == ClaimsPresentacion.siniestro_id)
-        .where(ClaimsPresentacion.binder_id == binder.id, ClaimsPresentacion.siniestro_id.is_not(None))
-    )
-    if risk_code:
-        q = q.where(Siniestro.risk_code == risk_code)
-    pres = db.execute(q.order_by(ClaimsPresentacion.siniestro_id, ClaimsPresentacion.periodo_ord)).all()
+def _curva_calc(binder: Binder, gwp: float, net: float, net_mes: dict[int, float], pres_rows) -> dict:
+    """Parte PURA (sin BD) de la curva por antigüedad de un binder, a partir de sus datos ya cargados.
+    `pres_rows` = filas de ClaimsPresentacion (sid, ord, paid_i, paid_f, res_i, res_f, to_pay_i, to_pay_f)
+    ordenadas por (siniestro, periodo). Idéntico cálculo que antes; solo se ha separado de las queries
+    para poder cargar un programa entero en bloque."""
     # Incurrido = Previously Paid + Reservas (Previously Paid = pagado acumulado − to_pay del snapshot).
     snaps: dict[int, list[tuple[int, float, float]]] = {}
-    for sid, ord_, pi, pf, ri, rf, ti, tf in pres:
+    for sid, ord_, pi, pf, ri, rf, ti, tf in pres_rows:
         mi = _mi_de_ord(ord_)
         prev = float(pi or 0) + float(pf or 0) - float(ti or 0) - float(tf or 0)
         snaps.setdefault(sid, []).append((mi, prev + float(ri or 0) + float(rf or 0), prev))
@@ -425,6 +411,74 @@ def _curva_binder(db: Session, binder: Binder, risk_code: str | None = None) -> 
             "incurrido_actual": inc[-1] if inc else 0.0, "start_mi": start}
 
 
+def _pres_rows(db: Session, binder_filter, risk_code: str | None, group_binder: bool):
+    """Filas de ClaimsPresentacion+Siniestro (8 columnas de importe) para uno o varios binders.
+    `group_binder`=True antepone `binder_id` a cada fila y ordena también por binder."""
+    cols = [
+        ClaimsPresentacion.siniestro_id, ClaimsPresentacion.periodo_ord,
+        ClaimsPresentacion.paid_indemnity_acum, ClaimsPresentacion.paid_fees_acum,
+        ClaimsPresentacion.reserves_indemnity, ClaimsPresentacion.reserves_fees,
+        ClaimsPresentacion.to_pay_indemnity, ClaimsPresentacion.to_pay_fees,
+    ]
+    if group_binder:
+        cols = [ClaimsPresentacion.binder_id, *cols]
+    q = (select(*cols).join(Siniestro, Siniestro.id == ClaimsPresentacion.siniestro_id)
+         .where(binder_filter, ClaimsPresentacion.siniestro_id.is_not(None)))
+    if risk_code:
+        q = q.where(Siniestro.risk_code == risk_code)
+    orden = [ClaimsPresentacion.siniestro_id, ClaimsPresentacion.periodo_ord]
+    if group_binder:
+        orden = [ClaimsPresentacion.binder_id, *orden]
+    return db.execute(q.order_by(*orden)).all()
+
+
+def _curva_binder(db: Session, binder: Binder, risk_code: str | None = None) -> dict:
+    """Curva por antigüedad de UN binder (3 queries). Para un PROGRAMA entero usa `_curvas_programa`,
+    que carga todo en bloque (3 queries en total, no 3 por binder)."""
+    gwp, net = _bases(db, binder.id, risk_code=risk_code)
+    net_mes = _net_por_mes(db, binder.id, risk_code=risk_code)
+    pres = _pres_rows(db, ClaimsPresentacion.binder_id == binder.id, risk_code, group_binder=False)
+    return _curva_calc(binder, gwp, net, net_mes, pres)
+
+
+def _curvas_programa(db: Session, binders: list[Binder], risk_code: str | None = None) -> dict[int, dict]:
+    """Curva de CADA binder del programa con 3 queries EN TOTAL (bases, net/mes y presentaciones en
+    bloque), en vez de 3 por binder. Mismo cálculo que `_curva_binder` binder a binder."""
+    ids = [b.id for b in binders]
+    if not ids:
+        return {}
+    # (1) GWP/Net por binder
+    qb = (select(Bdx.binder_id,
+                 func.coalesce(func.sum(BdxLinea.total_gwp_our_line), 0),
+                 func.coalesce(func.sum(BdxLinea.commission_coverholder_amount), 0),
+                 func.coalesce(func.sum(BdxLinea.brokerage_amount), 0))
+          .select_from(BdxLinea).join(Bdx, Bdx.id == BdxLinea.bdx_id)
+          .where(Bdx.binder_id.in_(ids), Bdx.tipo == "Risk"))
+    bases: dict[int, tuple[float, float]] = {}
+    for bid, gwp, cc, brk in db.execute(_risk_scope(qb, None, risk_code).group_by(Bdx.binder_id)).all():
+        gwp, cc, brk = float(gwp), float(cc), float(brk)
+        bases[bid] = (round(gwp, 2), round(gwp - cc - brk, 2))
+    # (2) Net por (binder, mes)
+    qn = (select(Bdx.binder_id, BdxLinea.reporting_period_start,
+                 func.coalesce(func.sum(BdxLinea.total_gwp_our_line), 0)
+                 - func.coalesce(func.sum(BdxLinea.commission_coverholder_amount), 0)
+                 - func.coalesce(func.sum(BdxLinea.brokerage_amount), 0))
+          .join(Bdx, Bdx.id == BdxLinea.bdx_id)
+          .where(Bdx.binder_id.in_(ids), Bdx.tipo == "Risk", BdxLinea.reporting_period_start.is_not(None)))
+    net_mes: dict[int, dict[int, float]] = {}
+    for bid, d, s in db.execute(_risk_scope(qn, None, risk_code)
+                                .group_by(Bdx.binder_id, BdxLinea.reporting_period_start)).all():
+        mi = _mi(d.year, d.month)
+        m = net_mes.setdefault(bid, {})
+        m[mi] = m.get(mi, 0.0) + float(s)
+    # (3) Presentaciones por binder
+    pres_por: dict[int, list] = {}
+    for row in _pres_rows(db, ClaimsPresentacion.binder_id.in_(ids), risk_code, group_binder=True):
+        pres_por.setdefault(row[0], []).append(row[1:])
+    return {b.id: _curva_calc(b, *bases.get(b.id, (0.0, 0.0)), net_mes.get(b.id, {}), pres_por.get(b.id, []))
+            for b in binders}
+
+
 @router.get("/programas/{programa_id}/triangulacion")
 def triangulacion_programa(
     programa_id: int,
@@ -457,10 +511,8 @@ def triangulacion_programa(
     efectos = [b.fecha_efecto for b in binders if b.fecha_efecto]
     mes_inicio = min(efectos).month if efectos else 1
 
-    filas = []  # por binder: meta + curvas
-    for b in binders:
-        c = _curva_binder(db, b, risk_code=risk_code)
-        filas.append({"binder": b, "curva": c})
+    curvas_por = _curvas_programa(db, list(binders), risk_code=risk_code)   # 3 queries, no 3 por binder
+    filas = [{"binder": b, "curva": curvas_por[b.id]} for b in binders]
 
     # Patrón de desarrollo (volumen-ponderado) con el incurrido de TODOS los binders del programa,
     # y siniestralidad esperada a priori (ELR) de los años maduros → IBNR por Bornhuetter-Ferguson.
