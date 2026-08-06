@@ -420,13 +420,18 @@ def _secciones_declaradas(db: Session, binder_id: int) -> list[tuple[int, str | 
     secs = db.scalars(
         select(BinderSeccion).where(BinderSeccion.binder_id == binder_id).order_by(BinderSeccion.id)
     ).all()
+    if not secs:
+        return []
+    # Risk codes de TODAS las secciones en una sola query (antes: una por sección).
+    rcs_por: dict[int, list] = {}
+    for rc in db.scalars(select(SeccionRiskCode)
+                         .where(SeccionRiskCode.seccion_id.in_([s.id for s in secs]))
+                         .order_by(SeccionRiskCode.id)).all():
+        rcs_por.setdefault(rc.seccion_id, []).append(rc)
     out: list[tuple[int, str | None, str]] = []
     for i, s in enumerate(secs, start=1):
-        rcs = db.scalars(
-            select(SeccionRiskCode).where(SeccionRiskCode.seccion_id == s.id).order_by(SeccionRiskCode.id)
-        ).all()
         vistos: set[str] = set()
-        for rc in rcs:
+        for rc in rcs_por.get(s.id, []):
             cod = (rc.codigo or "").strip()
             if cod and cod not in vistos:
                 vistos.add(cod)
