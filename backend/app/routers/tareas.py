@@ -792,13 +792,42 @@ def _enlaces_hechos(db: Session, binder_ids: set[int], datos: dict, topes: dict 
     return enlazadas, hechos
 
 
+def _sinmov_periodos(db: Session, binder_ids: set[int], datos: dict, topes: dict | None = None):
+    """Meses 'sin movimiento' por (binder, categoría) → set de periodos 'YYYY-MM'. Devuelve dos dicts:
+    - `todos`: manual O flujo dormido ≥6 meses → la parrilla los pinta 'na' (no pendientes).
+    - `manual`: solo los marcados A MANO → el mes NO se oculta aunque quede todo 'na' (que se vea en gris)."""
+    todos: dict[tuple[int, str], set[str]] = defaultdict(set)
+    manual: dict[tuple[int, str], set[str]] = defaultdict(set)
+    if not binder_ids:
+        return todos, manual
+    if topes is None:
+        topes = _topes(db, binder_ids)
+    tareas = db.scalars(select(Tarea).where(Tarea.binder_id.in_(binder_ids), Tarea.estado != "Pausada")
+                        .options(selectinload(Tarea.hechas))).all()
+    for t in tareas:
+        binder = db.get(Binder, t.binder_id)
+        if not binder:
+            continue
+        paso_m = _paso(t)
+        for f in _ocurrencias(t, binder, topes.get((t.binder_id, t.categoria), _VENC)):
+            if _entrega_sin_mov(t, binder, f, datos):
+                periodo = _periodo_de(binder, t, f, paso_m)
+                if periodo:
+                    todos[(t.binder_id, t.categoria)].add(periodo)
+                    if _sinmov_manual(t, f):
+                        manual[(t.binder_id, t.categoria)].add(periodo)
+    return todos, manual
+
+
 def _estado_celda(c, per: str, b: Binder, cfg, cats: set[str], datos, cobro, manual_map,
-                  enlazadas: set | None = None, hechos: dict | None = None, inicios: dict | None = None) -> str:
+                  enlazadas: set | None = None, hechos: dict | None = None, inicios: dict | None = None,
+                  sinmov: dict | None = None) -> str:
     """Estado de una celda (columna c, mes per) para el binder b: 'ok' | 'pend' | 'na'. ÚNICA fuente de
     verdad, compartida por la cuadrícula global (un mes × todos los binders) y la del binder (un binder ×
     todos los meses), para que coincidan exactamente."""
     enlazadas = enlazadas or set()
     hechos = hechos or {}
+    sinmov = sinmov or {}
     def existe() -> bool:
         if c.regla == "cobro":
             return per in cobro.get(b.id, set())
@@ -830,11 +859,16 @@ def _estado_celda(c, per: str, b: Binder, cfg, cats: set[str], datos, cobro, man
     ini_cat = inicios.get(c.grupo)                   # 'fecha_inicio' de la tarea de esa categoría (primer mes)
     if ini_cat and per < ini_cat:                    # antes del arranque de esa tarea → no aplica
         return "na"
+    es_sinmov = per in sinmov.get((b.id, c.grupo), ())   # mes 'sin movimiento' (manual o dormido) → no pendiente
     if cfg is not None:                              # config manual del binder → manda (sin grisear por dormido)
         if (not cfg.aplica) or (cfg.hasta and per > cfg.hasta) or (cfg.desde and per < cfg.desde):
             return "na"
+        if es_sinmov:
+            return "na"
         return activo(con_dormido=False)
     if venc_m and per > venc_m:                       # sin override: por defecto aplica hasta el vencimiento
+        return "na"
+    if es_sinmov:
         return "na"
     return activo(con_dormido=True)
 
@@ -914,6 +948,7 @@ def cuadricula(mes: str | None = None, db: Session = Depends(get_db)):
     cfgs = {(cb.binder_id, cb.columna_id): cb for cb in db.scalars(select(TareaColumnaBinder).where(
         TareaColumnaBinder.binder_id.in_(binder_ids))).all()}
     enlazadas, hechos = _enlaces_hechos(db, binder_ids, datos)
+    sinmov, _sinmov_manual_ = _sinmov_periodos(db, binder_ids, datos)
 
     filas: list[CuadriculaFila] = []
     for bid in binder_ids:
@@ -923,7 +958,7 @@ def cuadricula(mes: str | None = None, db: Session = Depends(get_db)):
         celdas: dict[int, str] = {}
         n_pend = 0
         for c in columnas:
-            estado = _estado_celda(c, per, b, cfgs.get((bid, c.id)), cats_binder[bid], datos, cobro, manual, enlazadas, hechos, inicios_binder.get(bid))
+            estado = _estado_celda(c, per, b, cfgs.get((bid, c.id)), cats_binder[bid], datos, cobro, manual, enlazadas, hechos, inicios_binder.get(bid), sinmov)
             celdas[c.id] = estado
             if estado == "pend":
                 n_pend += 1
@@ -982,11 +1017,14 @@ def binder_cuadricula(binder_id: int, db: Session = Depends(get_db)):
     topes = _topes(db, {binder_id})
     hasta_fila = _hasta_binder(topes, binder_id, cats)
     enlazadas, hechos = _enlaces_hechos(db, {binder_id}, datos, topes)
+    sinmov, sinmov_manual = _sinmov_periodos(db, {binder_id}, datos, topes)
+    meses_manual = {p for ps in sinmov_manual.values() for p in ps}   # marcados a mano → no ocultar
     meses: list[BinderCuadriculaMes] = []
     for per in _meses_binder(b, hasta_fila):
-        celdas = {c.id: _estado_celda(c, per, b, cfgs.get((binder_id, c.id)), cats, datos, cobro, manual_map, enlazadas, hechos, inicios)
+        celdas = {c.id: _estado_celda(c, per, b, cfgs.get((binder_id, c.id)), cats, datos, cobro, manual_map, enlazadas, hechos, inicios, sinmov)
                   for c in columnas}
-        if all(v == "na" for v in celdas.values()):      # ese mes no aplica nada → no se muestra
+        # mes todo-"na" → no se muestra, SALVO que sea un mes marcado a mano 'sin movimiento' (se ve en gris).
+        if all(v == "na" for v in celdas.values()) and per not in meses_manual:
             continue
         meses.append(BinderCuadriculaMes(periodo=per, celdas=celdas))
     return BinderCuadricula(
