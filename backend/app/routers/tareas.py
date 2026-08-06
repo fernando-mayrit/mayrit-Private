@@ -1172,7 +1172,10 @@ def _tareas_copiables(db: Session, binder_id: int) -> list[Tarea]:
 
 def _copiar_pasos(origen: Tarea, destino: Tarea) -> int:
     for p in sorted(origen.pasos, key=lambda x: (x.orden, x.id)):
-        destino.pasos.append(TareaPaso(titulo=p.titulo, orden=p.orden, regla_auto=p.regla_auto))
+        # Se copia también `columna_id` (el enlace del paso a la fase de la parrilla): la columna es
+        # global, así que el enlace vale igual en el binder nuevo.
+        destino.pasos.append(TareaPaso(titulo=p.titulo, orden=p.orden, regla_auto=p.regla_auto,
+                                       columna_id=p.columna_id))
     return len(origen.pasos)
 
 
@@ -1247,8 +1250,20 @@ def copiar_tareas_anterior(binder_id: int, db: Session = Depends(get_db)):
                 tareas_creadas += 1
             if not dest.pasos:                          # no pisar un checklist ya existente
                 pasos_copiados += _copiar_pasos(t, dest)
+    # Copiar el "No aplica" de las fases (config de la cuadrícula, aplica=False): así el binder nuevo
+    # hereda qué fases no van, sin re-marcarlas a mano. Las fechas (desde/hasta) son propias de cada
+    # binder → no se copian. No pisa una config ya puesta en el destino.
+    ya_cfg = {cb.columna_id for cb in db.scalars(select(TareaColumnaBinder).where(
+        TareaColumnaBinder.binder_id == binder_id)).all()}
+    config_copiada = 0
+    for cb in db.scalars(select(TareaColumnaBinder).where(
+            TareaColumnaBinder.binder_id == prev.id, TareaColumnaBinder.aplica.is_(False))).all():
+        if cb.columna_id in ya_cfg:
+            continue
+        db.add(TareaColumnaBinder(binder_id=binder_id, columna_id=cb.columna_id, aplica=False))
+        config_copiada += 1
     db.commit()
-    return {"tareas": tareas_creadas, "pasos": pasos_copiados,
+    return {"tareas": tareas_creadas, "pasos": pasos_copiados, "config": config_copiada,
             "desde_binder_id": prev.id, "desde_binder_umr": prev.umr or prev.agreement_number}
 
 

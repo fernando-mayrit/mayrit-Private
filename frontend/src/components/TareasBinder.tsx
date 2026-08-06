@@ -126,12 +126,12 @@ export default function TareasBinder({ binderId, onCambio }: { binderId?: number
     && !tareas.some((t) => t.origen === "manual" || (t.n_pasos ?? 0) > 0);
   async function copiarEsquema() {
     if (!binderId || !puedeCopiar || !prevInfo) return;
-    if (!window.confirm(`Copiar el esquema de tareas (con sus checklists) del binder anterior (${prevInfo.binder_umr ?? "—"}) a este binder?`)) return;
+    if (!window.confirm(`Copiar las tareas (checklists y fases «No aplica») del binder anterior (${prevInfo.binder_umr ?? "—"}) a este binder?`)) return;
     setSaving(true); setError(null);
     try {
       const r = await tareasApi.copiarAnterior(binderId);
       await cargar();
-      alert(`Copiado el esquema del binder ${r.desde_binder_umr ?? ""}: ${r.tareas} tarea(s) y ${r.pasos} paso(s).`);
+      alert(`Copiado del binder ${r.desde_binder_umr ?? ""}: ${r.tareas} tarea(s), ${r.pasos} paso(s)` + (r.config ? ` y ${r.config} fase(s) «No aplica»` : "") + ".");
     } catch (e) { setError((e as Error).message); } finally { setSaving(false); }
   }
   useEffect(() => {
@@ -591,14 +591,19 @@ export default function TareasBinder({ binderId, onCambio }: { binderId?: number
     <>
       <div className="toolbar" style={{ marginBottom: 8, justifyContent: "flex-start", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
         <button className="btn-primary btn-sm" onClick={abrirNuevo}>✅ Nueva tarea</button>
-        <button className="btn-primary btn-sm" onClick={sincronizar} disabled={sincronizando}
-          title="Crea/actualiza las tareas Risk/Premium/Claims desde el intervalo y plazo de BDX del binder">
-          {sincronizando ? "Generando…" : "🔄 Generar automáticas"}
-        </button>
-        {puedeCopiar && (
-          <button className="btn-primary btn-sm" onClick={copiarEsquema} disabled={saving}
-            title={`Copia el esquema de tareas (con su checklist) del binder anterior del mismo programa: ${prevInfo?.binder_umr ?? ""}`}>
-            📋 Copiar esquema del anterior
+        {esGlobal ? (
+          <button className="btn-primary btn-sm" onClick={sincronizar} disabled={sincronizando}
+            title="Crea/actualiza las tareas Risk/Premium/Claims desde el intervalo y plazo de BDX de cada binder">
+            {sincronizando ? "Generando…" : "🔄 Generar automáticas"}
+          </button>
+        ) : (
+          <button className="btn-primary btn-sm" onClick={copiarEsquema} disabled={!puedeCopiar || saving}
+            title={puedeCopiar
+              ? `Copia las tareas (checklist y fases «No aplica») del binder anterior del mismo programa: ${prevInfo?.binder_umr ?? ""}`
+              : ((prevInfo?.n_tareas ?? 0) === 0
+                  ? "No hay un binder anterior con tareas en este programa"
+                  : "Este binder ya tiene tareas (solo se copian en un binder aún sin tareas)")}>
+            📋 Copiar tareas
           </button>
         )}
         {/* La vista 'Por mes' solo tiene sentido en la página global (control del mes en conjunto). */}
