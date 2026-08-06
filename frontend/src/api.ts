@@ -850,7 +850,8 @@ export interface TareaOcurrencia {
   hecha: boolean;
   fecha_hecha?: string | null;
   notas?: string | null;
-  estado: string;   // hecha | vencida | pendiente | futura
+  estado: string;   // hecha | vencida | pendiente | futura | sin_movimiento
+  sin_mov_manual?: boolean;   // 'sin movimiento' puesto a mano (se puede deshacer; el auto ≥6 meses no)
   pasos: TareaPasoEstado[];   // checklist de esta ocurrencia (vacío si la tarea no tiene pasos)
 }
 export const tareasApi = {

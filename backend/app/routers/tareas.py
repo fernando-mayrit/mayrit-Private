@@ -1315,7 +1315,8 @@ class OcurrenciaOut(BaseModel):
     hecha: bool
     fecha_hecha: dt.date | None = None
     notas: str | None = None
-    estado: str   # 'hecha' | 'vencida' | 'pendiente' | 'futura'
+    estado: str   # 'hecha' | 'vencida' | 'pendiente' | 'futura' | 'sin_movimiento'
+    sin_mov_manual: bool = False   # 'sin movimiento' puesto A MANO (se puede deshacer; el auto ≥6 meses no)
     pasos: list[PasoEstado] = []   # checklist de esta ocurrencia (vacío si la tarea no tiene pasos)
 
 
@@ -1355,7 +1356,7 @@ def ocurrencias(tarea_id: int, incluir_futuras: bool = False, db: Session = Depe
         out.append(OcurrenciaOut(
             fecha=f, periodo=(_periodo_de(binder, t, f, _paso(t)) if binder else None), hecha=hecha,
             fecha_hecha=(h.fecha_hecha if h else None), notas=(h.notas if h else None),
-            estado=estado, pasos=pasos,
+            estado=estado, sin_mov_manual=_sinmov_manual(t, f), pasos=pasos,
         ))
     return {"tarea_id": t.id, "titulo": t.titulo, "ocurrencias": out}
 

@@ -315,6 +315,17 @@ export default function TareasBinder({ binderId, onCambio }: { binderId?: number
       onCambio?.();
     } catch (e) { setError((e as Error).message); } finally { setBusyOc(null); }
   }
+  // "Sin movimiento" de un mes desde el detalle (mismo control que la vista Por mes): este mes no hubo dato.
+  async function toggleSinMovimiento(o: TareaOcurrencia, marcar: boolean) {
+    if (!ocDe) return;
+    setBusyOc(o.fecha);
+    try {
+      await tareasApi.marcarSinMovimiento(ocDe.id, { fecha_ocurrencia: o.fecha, sin_movimiento: marcar });
+      await recargarOcs();
+      await cargar();
+      onCambio?.();
+    } catch (e) { setError((e as Error).message); } finally { setBusyOc(null); }
+  }
 
   // ── Editor de pasos (checklist) DENTRO del formulario (todo local; se guarda al pulsar Guardar) ──
   function addPaso() {
@@ -526,9 +537,18 @@ export default function TareasBinder({ binderId, onCambio }: { binderId?: number
                     </td>
                     <td>{o.fecha_hecha ? fmtFechaES(o.fecha_hecha) : "—"}</td>
                     <td className="num" style={{ whiteSpace: "nowrap" }}>
-                      {o.hecha
+                      <span style={{ display: "inline-flex", gap: 8, alignItems: "center", justifyContent: "flex-end" }}>
+                      {o.estado === "sin_movimiento"
+                        ? (o.sin_mov_manual
+                            ? <button className="btn-link btn-sm" disabled={busyOc === o.fecha} title="Deshacer 'sin movimiento' de este mes" onClick={() => toggleSinMovimiento(o, false)}>{busyOc === o.fecha ? "…" : "Deshacer sin movimiento"}</button>
+                            : <span className="hint" title="El flujo lleva ≥6 meses sin dato. Si vuelve a llegar, se marca solo.">sin movimiento</span>)
+                        : o.hecha
                         ? <button className="btn-link btn-sm" disabled={busyOc === o.fecha} onClick={() => toggleHecha(o)}>Deshacer</button>
-                        : <button className="btn-primary btn-sm" disabled={busyOc === o.fecha} onClick={() => toggleHecha(o)}>{busyOc === o.fecha ? "…" : tienePasos ? "Marcar todo" : "Marcar hecha"}</button>}
+                        : <>
+                            <button className="btn-primary btn-sm" disabled={busyOc === o.fecha} onClick={() => toggleHecha(o)}>{busyOc === o.fecha ? "…" : tienePasos ? "Marcar todo" : "Marcar hecha"}</button>
+                            <button className="btn-link btn-sm" disabled={busyOc === o.fecha} title="Este mes no hubo dato (p. ej. no hay Risk/Premium). Deja de estar pendiente, solo este mes." onClick={() => toggleSinMovimiento(o, true)}>⊘ Sin movimiento</button>
+                          </>}
+                      </span>
                     </td>
                   </tr>
                   {tienePasos && abierto && (
