@@ -511,12 +511,23 @@ def _excel_comparacion(app_filas: list[dict], file_by_key: dict[tuple, dict]) ->
     # Se MANTIENE la información del BDX SUBIDO: en las filas que casan se escriben los valores del FICHERO,
     # sombreando en azul lo que difiere de la app (con comentario del valor de la app). Se itera sobre las
     # filas de la app (no se colapsan por clave) para traer siempre bien su dato en el comentario.
+    # Emparejado igual que «Aplicar»: primero por (certificado + referencia); si no casa (p. ej. el
+    # certificado del fichero difiere del de la app), se cae a la REFERENCIA sola cuando es única en el
+    # fichero. Así una diferencia de certificado no marca toda la fila como «siniestro nuevo».
+    por_ref: dict[str, list[tuple]] = {}
+    for kk, fr in file_by_key.items():
+        por_ref.setdefault(kk[1], []).append((kk, fr))
     usados, r = set(), 2
     for fila in app_filas:
         k = _clave_fila(fila)
         fr = file_by_key.get(k)
+        fk = k
+        if fr is None:
+            cands = por_ref.get(k[1], [])
+            if len(cands) == 1:
+                fk, fr = cands[0]
         if fr is not None:
-            usados.add(k)
+            usados.add(fk)
             difs = [h for h in HEADERS if not _igual(h, fr.get(h), fila.get(h))]
             estado = "Difiere" if difs else "Coincide"
             ws.append([estado] + [fr.get(h) for h in HEADERS])   # valores del FICHERO subido
