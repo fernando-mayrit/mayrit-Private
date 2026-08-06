@@ -3,6 +3,7 @@ import { crud, listarSuplementos, crearSuplemento } from "../api";
 import type { Binder, BinderWrite, CuentaBancaria, Mercado, Productor, Programa, Ramo, Suplemento } from "../types";
 import FormPanel from "../components/FormPanel";
 import PageHeader from "../components/PageHeader";
+import TablaDatos, { type Col } from "../components/TablaDatos";
 import NumberInput from "../components/NumberInput";
 import OptionButtons from "../components/OptionButtons";
 import SelectConAlta from "../components/SelectConAlta";
@@ -19,6 +20,7 @@ const apiProgramas = crud<Programa, unknown>("/programas");
 
 const coverDe = (b: Binder) => b.coverholder_alias ?? b.coverholder_nombre ?? "";
 const ESTADOS = ["En Vigor", "Cancelado", "Renovado", "No Renovado", "Cerrado Producción", "Cerrado"];
+const COLS_BINDERS = ["umr", "yoa", "coverholder", "programa_nombre", "mercado", "estado", "ramo", "fecha_efecto", "fecha_vencimiento", "gwp_our_line", "notificacion"];
 const INTERVALOS = ["Mensual", "Trimestral", "Semestral", "Anual"];
 const PREFIJO_UMR = "B1634";
 
@@ -293,10 +295,9 @@ export default function BindersPage() {
   const [programas, setProgramas] = useState<Programa[]>([]);
   const [altaPrograma, setAltaPrograma] = useState(false); // alta rápida de programa apilada
   const [q, setQ] = useState("");
-  // Filtros de la barra (desplegables): se aplican en cliente sobre lo ya cargado.
-  const [fYoa, setFYoa] = useState("");
-  const [fCover, setFCover] = useState("");
-  const [fEstado, setFEstado] = useState("");
+  // Filtrado por COLUMNA (▾), orden, mover y redimensionar: lo hace TablaDatos (como el resto de listados).
+  const [visiblesTabla, setVisiblesTabla] = useState<Binder[] | null>(null);  // filas realmente visibles (tras filtros de columna)
+  const [resetFiltros, setResetFiltros] = useState(0);   // bump → limpia los filtros por columna de la tabla
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -352,9 +353,7 @@ export default function BindersPage() {
 
   function limpiarFiltros() {
     setQ("");
-    setFYoa("");
-    setFCover("");
-    setFEstado("");
+    setResetFiltros((n) => n + 1);   // limpia los filtros por columna de la tabla
   }
 
   async function cargarRefs() {
@@ -910,37 +909,40 @@ export default function BindersPage() {
       .join(" / ");
   }
 
-  // Opciones de los desplegables (de lo ya cargado) y lista visible: filtrada + ordenada por YOA ↓.
-  // Memoizadas para no recalcular en cada render (p. ej. al teclear en otro filtro).
-  const yoasOpts = useMemo(
-    () => [...new Set(items.map((b) => b.yoa).filter(Boolean) as string[])].sort((a, b) => Number(b) - Number(a)),
-    [items],
-  );
-  const coverOpts = useMemo(
-    () => [...new Set(items.map(coverDe).filter(Boolean))].sort((a, b) => a.localeCompare(b)),
-    [items],
-  );
-  const visibles = useMemo(() => {
+  // Lista tras la BÚSQUEDA global (UMR/Agreement/Mercado). El resto (filtrar por columna, ordenar,
+  // mover y redimensionar columnas) lo hace TablaDatos con sus cabeceras.
+  const filtrados = useMemo(() => {
     const qn = q.trim().toLowerCase();
-    return items
-      .filter((b) =>
-        !qn ||
-        (b.umr ?? "").toLowerCase().includes(qn) ||
-        (b.agreement_number ?? "").toLowerCase().includes(qn) ||
-        mercadosTexto(b).toLowerCase().includes(qn))
-      .filter((b) => !fYoa || b.yoa === fYoa)
-      .filter((b) => !fCover || coverDe(b) === fCover)
-      .filter((b) => !fEstado || b.estado === fEstado)
-      .slice()
-      // Orden por defecto: fecha de efecto descendente (más reciente primero); YOA como desempate.
-      .sort((a, b) =>
-        (b.fecha_efecto ?? "").localeCompare(a.fecha_efecto ?? "") ||
-        (Number(b.yoa) || 0) - (Number(a.yoa) || 0));
+    if (!qn) return items;
+    return items.filter((b) =>
+      (b.umr ?? "").toLowerCase().includes(qn) ||
+      (b.agreement_number ?? "").toLowerCase().includes(qn) ||
+      mercadosTexto(b).toLowerCase().includes(qn));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items, q, fYoa, fCover, fEstado]);
+  }, [items, q]);
 
-  // Sumatorios de lo visible: nº de binders y suma de primas (GWP our line).
-  const totalPrimas = useMemo(() => visibles.reduce((s, b) => s + (b.gwp_our_line ?? 0), 0), [visibles]);
+  // Columnas de la tabla (celdas custom: Estado con pastilla, Mercado, Ramo, Notificación con semáforo).
+  const cols = useMemo<Col<Binder>[]>(() => [
+    { key: "umr", label: "UMR", tipo: "text" },
+    { key: "yoa", label: "YOA", tipo: "text" },
+    { key: "coverholder", label: "Coverholder", tipo: "text", calc: (b) => coverDe(b) },
+    { key: "programa_nombre", label: "Programa", tipo: "text" },
+    { key: "mercado", label: "Mercado", tipo: "text", calc: (b) => mercadosTexto(b) },
+    { key: "estado", label: "Estado", tipo: "text", render: (b) => (<>
+      {b.estado ? <span className={"estado-badge estado-badge-sm " + estadoBadgeClase(b.estado)}>{b.estado}</span> : "—"}
+      {b.faltan_snapshots && <span className="estado-badge estado-badge-sm eb-cerrado-prod" style={{ marginLeft: 6 }} title="Faltan snapshots de Claims">Faltan Snapshots</span>}
+    </>) },
+    { key: "ramo", label: "Ramo", tipo: "text", calc: (b) => ramosDe(b) },
+    { key: "fecha_efecto", label: "Efecto", tipo: "date" },
+    { key: "fecha_vencimiento", label: "Vencimiento", tipo: "date" },
+    { key: "gwp_our_line", label: "GWP", tipo: "num" },
+    { key: "notificacion", label: "Notificación", tipo: "num", calc: (b) => b.notif_consumo_pct ?? null, render: (b) => <NotifCelda b={b} /> },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  ], [mercadoNombre]);
+
+  // Sumatorios de lo REALMENTE visible en la tabla (tras los filtros por columna): nº y suma de primas.
+  const visTot = visiblesTabla ?? filtrados;
+  const totalPrimas = useMemo(() => visTot.reduce((s, b) => s + (b.gwp_our_line ?? 0), 0), [visTot]);
 
   // Campo "Notificado (fecha)" de un grupo de límite. Solo etiqueta + input (misma altura que las
   // cajas de al lado, para que no descuadre). El estado (% de consumo y ✅/⚠) va EN la etiqueta.
@@ -978,41 +980,7 @@ export default function BindersPage() {
     <div className="container lista-page">
       <PageHeader emoji="📑" title="Binders" />
       <div className="toolbar">
-        <button className="btn-secondary" title="Limpiar todos los filtros" onClick={limpiarFiltros}>🧹</button>
-        <select className="filtro" value={fYoa} onChange={(e) => setFYoa(e.target.value)} title="Filtrar por YOA">
-          <option value="">YOA: todos</option>
-          {yoasOpts.map((y) => (
-            <option key={y} value={y}>
-              {y}
-            </option>
-          ))}
-        </select>
-        <select
-          className="filtro"
-          value={fCover}
-          onChange={(e) => setFCover(e.target.value)}
-          title="Filtrar por Coverholder"
-        >
-          <option value="">Coverholder: todos</option>
-          {coverOpts.map((c) => (
-            <option key={c} value={c}>
-              {c}
-            </option>
-          ))}
-        </select>
-        <select
-          className="filtro"
-          value={fEstado}
-          onChange={(e) => setFEstado(e.target.value)}
-          title="Filtrar por Estado"
-        >
-          <option value="">Estado: todos</option>
-          {ESTADOS.map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
-          ))}
-        </select>
+        <button className="btn-secondary" title="Limpiar la búsqueda y los filtros de columna" onClick={limpiarFiltros}>🧹</button>
         <input
           type="search"
           placeholder="Buscar por UMR, Agreement o Mercado…"
@@ -1020,7 +988,7 @@ export default function BindersPage() {
           onChange={(e) => setQ(e.target.value)}
         />
         <div className="bind-sumatorios">
-          <span className="bind-sum"><strong>{visibles.length}</strong> binders</span>
+          <span className="bind-sum"><strong>{visTot.length}</strong> binders</span>
           <span className="bind-sum"><strong>{eur(totalPrimas)}</strong> primas</span>
         </div>
         <button className="btn-primary" onClick={abrirNuevo} style={{ marginLeft: "auto" }}>
@@ -1034,56 +1002,28 @@ export default function BindersPage() {
         <div className="loading">Cargando…</div>
       ) : items.length === 0 ? (
         <div className="empty">No hay binders. Crea el primero con «+ Nuevo binder».</div>
-      ) : visibles.length === 0 ? (
-        <div className="empty">Ningún binder coincide con los filtros.</div>
+      ) : filtrados.length === 0 ? (
+        <div className="empty">Ningún binder coincide con la búsqueda.</div>
       ) : (
-        <div className="tabla-scroll lista-scroll">
-          <table>
-            <thead>
-              <tr>
-                <th>UMR</th>
-                <th>YOA</th>
-                <th>Coverholder</th>
-                <th>Mercado</th>
-                <th>Estado</th>
-                <th>Ramo</th>
-                <th>Efecto</th>
-                <th>Vencimiento</th>
-                <th className="num">GWP</th>
-                <th className="num">Notificación</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {visibles.map((b) => (
-                <tr key={b.id} className={claseEstado(b.estado)}>
-                  <td>{b.umr ?? "—"}</td>
-                  <td>{b.yoa ?? "—"}</td>
-                  <td>{b.coverholder_alias ?? b.coverholder_nombre ?? "—"}</td>
-                  <td>{mercadosTexto(b)}</td>
-                  <td>
-                    {b.estado ? <span className={"estado-badge estado-badge-sm " + estadoBadgeClase(b.estado)}>{b.estado}</span> : "—"}
-                    {/* PROVISIONAL: marca de binders sin snapshots de Claims */}
-                    {b.faltan_snapshots && <span className="estado-badge estado-badge-sm eb-cerrado-prod" style={{ marginLeft: 6 }} title="Faltan snapshots de Claims">Faltan Snapshots</span>}
-                  </td>
-                  <td>{ramosDe(b)}</td>
-                  <td>{fechaCorta(b.fecha_efecto)}</td>
-                  <td>{fechaCorta(b.fecha_vencimiento)}</td>
-                  <td className="num">{eur(b.gwp_our_line)}</td>
-                  <td className="num"><NotifCelda b={b} /></td>
-                  <td className="acciones">
-                    <button className="btn-icono" title="Abrir" aria-label="Abrir" onClick={() => setDetalle(b)}>
-                      📂
-                    </button>
-                    <button className="btn-icono" title="Editar" aria-label="Editar" onClick={() => abrirEdicion(b)}>
-                      ✏️
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <TablaDatos
+          filas={filtrados}
+          columnas={cols}
+          defaultKeys={COLS_BINDERS}
+          storageKey="mayrit.binders.tabla.v1"
+          defaultSort={{ key: "fecha_efecto", dir: -1 }}
+          rowClass={(b) => claseEstado(b.estado)}
+          onRowClick={(b) => setDetalle(b)}
+          rowActionWidth={92}
+          rowAction={(b) => (
+            <>
+              <button className="btn-icono" title="Abrir" aria-label="Abrir" onClick={() => setDetalle(b)}>📂</button>
+              <button className="btn-icono" title="Editar" aria-label="Editar" onClick={() => abrirEdicion(b)}>✏️</button>
+            </>
+          )}
+          onFiltrar={setVisiblesTabla}
+          resetSignal={resetFiltros}
+          filtroDesc
+        />
       )}
 
       {form && (
