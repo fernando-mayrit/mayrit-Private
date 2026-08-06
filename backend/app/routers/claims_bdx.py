@@ -23,7 +23,7 @@ from openpyxl.comments import Comment
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 from pydantic import BaseModel
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from ..db import get_db
@@ -190,16 +190,16 @@ def _diff(filas: list[dict], base: dict[str, dict]) -> list[set]:
 def _baseline(db: Session, binder_id: int, antes_de_ord: int | None = None) -> dict[str, dict]:
     """Filas (fila_json) de la última presentación del binder (la más reciente, o la más reciente
     ESTRICTAMENTE anterior a `antes_de_ord`), indexadas por (certificate, reference)."""
-    stmt = select(ClaimsPresentacion).where(ClaimsPresentacion.binder_id == binder_id)
+    cond = [ClaimsPresentacion.binder_id == binder_id]
     if antes_de_ord is not None:
-        stmt = stmt.where(ClaimsPresentacion.periodo_ord < antes_de_ord)
-    rows = db.scalars(stmt).all()
-    if not rows:
+        cond.append(ClaimsPresentacion.periodo_ord < antes_de_ord)
+    ult = db.scalar(select(func.max(ClaimsPresentacion.periodo_ord)).where(*cond))
+    if ult is None:
         return {}
-    ult = max(r.periodo_ord for r in rows)
+    # Solo se cargan las filas (con su fila_json pesado) de la ÚLTIMA presentación, no las de todos los meses.
     base: dict[str, dict] = {}
-    for r in rows:
-        if r.periodo_ord != ult or not r.fila_json:
+    for r in db.scalars(select(ClaimsPresentacion).where(*cond, ClaimsPresentacion.periodo_ord == ult)).all():
+        if not r.fila_json:
             continue
         fila = _fila_json(r.fila_json)
         base[(fila.get("Certificate Reference") or "", fila.get("Claim Reference / Number") or "")] = fila
@@ -281,18 +281,20 @@ def vista(binder_id: int, periodo: str | None = None, db: Session = Depends(get_
 
 @router.get("/binders/{binder_id}/claims-bdx/periodos")
 def periodos_presentados(binder_id: int, db: Session = Depends(get_db)):
-    rows = db.scalars(
-        select(ClaimsPresentacion).where(ClaimsPresentacion.binder_id == binder_id)
+    # Solo las 3 columnas necesarias (NO el fila_json pesado de cada snapshot).
+    rows = db.execute(
+        select(ClaimsPresentacion.periodo, ClaimsPresentacion.siniestro_id, ClaimsPresentacion.fecha_presentacion)
+        .where(ClaimsPresentacion.binder_id == binder_id)
     ).all()
     agg: dict[str, dict] = {}
-    for r in rows:
-        g = agg.setdefault(r.periodo, {"periodo": r.periodo, "n": 0, "fecha": r.fecha_presentacion})
+    for periodo, siniestro_id, fecha in rows:
+        g = agg.setdefault(periodo, {"periodo": periodo, "n": 0, "fecha": fecha})
         # Solo cuentan los siniestros reales: una fila sin siniestro es el placeholder de un mes
         # presentado en blanco (NIL report), que debe figurar con n = 0.
-        if r.siniestro_id is not None:
+        if siniestro_id is not None:
             g["n"] += 1
-        if r.fecha_presentacion and (not g["fecha"] or r.fecha_presentacion > g["fecha"]):
-            g["fecha"] = r.fecha_presentacion
+        if fecha and (not g["fecha"] or fecha > g["fecha"]):
+            g["fecha"] = fecha
     return sorted(agg.values(), key=lambda x: x["periodo"], reverse=True)
 
 

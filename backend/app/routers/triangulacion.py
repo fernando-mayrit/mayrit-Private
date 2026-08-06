@@ -432,15 +432,6 @@ def _pres_rows(db: Session, binder_filter, risk_code: str | None, group_binder: 
     return db.execute(q.order_by(*orden)).all()
 
 
-def _curva_binder(db: Session, binder: Binder, risk_code: str | None = None) -> dict:
-    """Curva por antigüedad de UN binder (3 queries). Para un PROGRAMA entero usa `_curvas_programa`,
-    que carga todo en bloque (3 queries en total, no 3 por binder)."""
-    gwp, net = _bases(db, binder.id, risk_code=risk_code)
-    net_mes = _net_por_mes(db, binder.id, risk_code=risk_code)
-    pres = _pres_rows(db, ClaimsPresentacion.binder_id == binder.id, risk_code, group_binder=False)
-    return _curva_calc(binder, gwp, net, net_mes, pres)
-
-
 def _curvas_programa(db: Session, binders: list[Binder], risk_code: str | None = None) -> dict[int, dict]:
     """Curva de CADA binder del programa con 3 queries EN TOTAL (bases, net/mes y presentaciones en
     bloque), en vez de 3 por binder. Mismo cálculo que `_curva_binder` binder a binder."""
