@@ -994,31 +994,6 @@ def binder_cuadricula(binder_id: int, db: Session = Depends(get_db)):
         meses=meses, enlazadas=[c.id for c in columnas if (binder_id, c.id) in enlazadas])
 
 
-class MarcarManualIn(BaseModel):
-    binder_id: int
-    periodo: str
-    columna_id: int
-    hecho: bool
-
-
-@router.post("/tareas/matriz/marcar")
-def marcar_manual(payload: MarcarManualIn, db: Session = Depends(get_db)):
-    """Marca/desmarca una pastilla MANUAL de la cuadrícula (p. ej. 'Enviado')."""
-    col = db.get(TareaColumna, payload.columna_id)
-    if col is None or col.tipo != "manual":
-        raise HTTPException(status_code=400, detail="Esa columna no es manual.")
-    m = db.scalar(select(TareaMatrizManual).where(
-        TareaMatrizManual.binder_id == payload.binder_id, TareaMatrizManual.periodo == payload.periodo,
-        TareaMatrizManual.columna_id == payload.columna_id))
-    if m is None:
-        m = TareaMatrizManual(binder_id=payload.binder_id, periodo=payload.periodo, columna_id=payload.columna_id)
-        db.add(m)
-    m.hecho = payload.hecho
-    m.fecha = dt.date.today() if payload.hecho else None
-    db.commit()
-    return {"ok": True, "hecho": m.hecho}
-
-
 # ── Config de columnas de la cuadrícula (editable, común a todos los binders) ──
 class ColumnaIn(BaseModel):
     grupo: str

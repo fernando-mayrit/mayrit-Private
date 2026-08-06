@@ -31,16 +31,6 @@ export default function CuadriculaBinder({ binderId, refreshKey }: { binderId: n
   const cls = (est: string) => "pastilla " + (est === "ok" ? "ok" : est === "pend" ? "pend" : "na");
   const lab = (est: string) => (est === "ok" ? "Sí" : est === "pend" ? "Pendiente" : "No aplica");
 
-  async function marcar(periodo: string, columnaId: number, hecho: boolean) {
-    setData((d) => d && {
-      ...d,
-      meses: d.meses.map((m) =>
-        m.periodo === periodo ? { ...m, celdas: { ...m.celdas, [columnaId]: hecho ? "ok" : "pend" } } : m),
-    });
-    try { await tareasApi.marcarManual({ binder_id: binderId, periodo, columna_id: columnaId, hecho }); }
-    catch { cargar(); }
-  }
-
   if (cargando && !data) return <div className="loading">Cargando…</div>;
   if (!data || data.meses.length === 0) return null;   // binder sin pipeline → no se muestra nada
 
@@ -49,7 +39,7 @@ export default function CuadriculaBinder({ binderId, refreshKey }: { binderId: n
       <div className="hint" style={{ marginBottom: 8 }}>
         Pipeline de este binder, mes a mes. Cada fila es el <b>mes del dato</b> (el BDX de un mes se recibe/procesa el
         mes siguiente), así que el último es el mes anterior al actual. <span className={cls("ok")}>Sí</span> hecho ·{" "}
-        <span className={cls("pend")}>Pendiente</span> · <span className={cls("na")}>No aplica</span>. Las de <b>Enviado</b> (✎) se marcan con un clic.
+        <span className={cls("pend")}>Pendiente</span> · <span className={cls("na")}>No aplica</span>. Solo informativa: las fases se marcan en el <b>detalle</b> de cada tarea.
       </div>
       <div className="cuad-scroll">
         <table className="cuad-tabla">
@@ -60,8 +50,8 @@ export default function CuadriculaBinder({ binderId, refreshKey }: { binderId: n
             </tr>
             <tr>
               {data.columnas.map((c) => (
-                <th key={c.id} className="cuad-col" title={c.tipo === "manual" ? "Manual (clic para marcar)" : "Automático (del dato)"}>
-                  {c.nombre}{c.tipo === "manual" ? " ✎" : ""}
+                <th key={c.id} className="cuad-col" title={c.tipo === "manual" ? "Fase manual (se marca en el detalle de la tarea)" : "Automático (del dato)"}>
+                  {c.nombre}
                 </th>
               ))}
             </tr>
@@ -72,18 +62,10 @@ export default function CuadriculaBinder({ binderId, refreshKey }: { binderId: n
                 <th className="cuad-bind"><b>{mesAnyo(m.periodo)}</b></th>
                 {data.columnas.map((c) => {
                   const est = m.celdas[c.id] ?? "na";
-                  const enlazada = (data.enlazadas ?? []).includes(c.id);
-                  const editable = c.tipo === "manual" && est !== "na" && !enlazada;
                   return (
                     <td key={c.id} className="cuad-celda">
-                      {editable ? (
-                        <button className={cls(est) + " clic"}
-                          title={est === "ok" ? "Hecho (clic para desmarcar)" : "Pendiente (clic para marcar hecho)"}
-                          onClick={() => marcar(m.periodo, c.id, est !== "ok")}>{lab(est)}</button>
-                      ) : (
-                        <span className={cls(est)}
-                          title={enlazada ? "Enlazada a un paso del checklist: se marca ahí" : undefined}>{lab(est)}{enlazada ? " 🔗" : ""}</span>
-                      )}
+                      <span className={cls(est)}
+                        title={est === "na" ? undefined : c.tipo === "manual" ? "Se marca en el detalle de la tarea" : "Automático (del dato)"}>{lab(est)}</span>
                     </td>
                   );
                 })}

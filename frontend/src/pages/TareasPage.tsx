@@ -59,14 +59,6 @@ export default function TareasPage() {
   }, [mes]);
   useEffect(() => { if (vista === "cuadricula") cargarCuad(); }, [vista, cargarCuad]);
 
-  // Marcar/desmarcar una pastilla MANUAL (optimista).
-  const marcar = async (binder_id: number, columna_id: number, hecho: boolean) => {
-    setCuad((c) => c && ({ ...c, filas: c.filas.map((f) => f.binder_id === binder_id
-      ? { ...f, celdas: { ...f.celdas, [columna_id]: hecho ? "ok" : "pend" } } : f) }));
-    try { await tareasApi.marcarManual({ binder_id, periodo: cuad?.periodo ?? mes, columna_id, hecho }); }
-    catch { cargarCuad(); }
-  };
-
   const grupos = useMemo(() => {
     // Se muestra lo del mes elegido + TODAS las vencidas (aunque sean de meses anteriores, para que
     // nada atrasado se esconda al cambiar de mes).
@@ -126,7 +118,7 @@ export default function TareasPage() {
       {vista === "detalle" ? (
         <TareasBinder />
       ) : vista === "cuadricula" ? (
-        <CuadriculaVista cuad={cuad} cargando={cargandoCuad} mesLabel={labelMes(mes)} onMarcar={marcar} />
+        <CuadriculaVista cuad={cuad} cargando={cargandoCuad} mesLabel={labelMes(mes)} />
       ) : cargando ? (
         <div className="loading">Cargando…</div>
       ) : error ? (
@@ -186,12 +178,11 @@ export default function TareasPage() {
 }
 
 // Vista CUADRÍCULA: matriz binders (filas) × fases del pipeline (columnas), con pastillas de estado
-// (verde=hecho · rojo=pendiente · gris=no aplica). Las columnas "manuales" (Enviado) se marcan con clic.
-function CuadriculaVista({ cuad, cargando, mesLabel, onMarcar }: {
+// (verde=hecho · rojo=pendiente · gris=no aplica). SOLO INFORMATIVA: las fases se marcan en el detalle.
+function CuadriculaVista({ cuad, cargando, mesLabel }: {
   cuad: Cuadricula | null;
   cargando: boolean;
   mesLabel: string;
-  onMarcar: (binder_id: number, columna_id: number, hecho: boolean) => void;
 }) {
   const [colapsadas, setColapsadas] = useState<Set<string>>(new Set());
   const toggleAg = (ag: string) => setColapsadas((s) => { const n = new Set(s); n.has(ag) ? n.delete(ag) : n.add(ag); return n; });
@@ -224,18 +215,10 @@ function CuadriculaVista({ cuad, cargando, mesLabel, onMarcar }: {
       <th className="cuad-bind"><b>{f.umr}</b></th>
       {cuad.columnas.map((c) => {
         const est = f.celdas[c.id] ?? "na";
-        const enlazada = (f.enlazadas ?? []).includes(c.id);
-        const editable = c.tipo === "manual" && est !== "na" && !enlazada;
         return (
           <td key={c.id} className="cuad-celda">
-            {editable ? (
-              <button className={cls(est) + " clic"}
-                title={est === "ok" ? "Hecho (clic para desmarcar)" : "Pendiente (clic para marcar hecho)"}
-                onClick={() => onMarcar(f.binder_id, c.id, est !== "ok")}>{lab(est)}</button>
-            ) : (
-              <span className={cls(est)}
-                title={enlazada ? "Enlazada a un paso del checklist: se marca ahí" : undefined}>{lab(est)}{enlazada ? " 🔗" : ""}</span>
-            )}
+            <span className={cls(est)}
+              title={est === "na" ? undefined : c.tipo === "manual" ? "Se marca en el detalle de la tarea" : "Automático (del dato)"}>{lab(est)}</span>
           </td>
         );
       })}
@@ -246,7 +229,7 @@ function CuadriculaVista({ cuad, cargando, mesLabel, onMarcar }: {
     <>
       <div className="hint" style={{ marginBottom: 8 }}>
         {mesLabel} · pipeline por binder — <span className={cls("ok")}>Sí</span> hecho · <span className={cls("pend")}>Pendiente</span> · <span className={cls("na")}>No aplica</span>.
-        Las de <b>Enviado</b> (✎) se marcan con un clic.
+        Solo informativa: las fases se marcan en el <b>detalle</b> de cada tarea.
       </div>
       <div className="cuad-scroll">
         <table className="cuad-tabla">
@@ -257,8 +240,8 @@ function CuadriculaVista({ cuad, cargando, mesLabel, onMarcar }: {
             </tr>
             <tr>
               {cuad.columnas.map((c) => (
-                <th key={c.id} className="cuad-col" title={c.tipo === "manual" ? "Manual (clic para marcar)" : "Automático (del dato)"}>
-                  {c.nombre}{c.tipo === "manual" ? " ✎" : ""}
+                <th key={c.id} className="cuad-col" title={c.tipo === "manual" ? "Fase manual (se marca en el detalle de la tarea)" : "Automático (del dato)"}>
+                  {c.nombre}
                 </th>
               ))}
             </tr>
