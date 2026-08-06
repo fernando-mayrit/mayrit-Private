@@ -983,11 +983,10 @@ def _es_lloyds(db: Session, binder_id: int | None) -> bool:
     return any((t or "").strip().lower() == "lloyds" for t in tipos)
 
 
-def _recalcular_cobro_recibo(db: Session, recibo: Recibo) -> None:
-    """El cobro/traspaso/liquidación del recibo se DERIVAN de sus líneas (vía Premium)."""
-    lineas = db.scalars(select(BdxLinea).where(BdxLinea.recibo_id == recibo.id)).all()
-    excl = _impuestos_locales(db, recibo.binder_id)
-    rea = _es_reaseguro(db, recibo.binder_id)
+def _recalcular_cobro_recibo(db: Session, recibo: Recibo, excl, rea, lineas) -> None:
+    """El cobro/traspaso/liquidación del recibo se DERIVAN de sus líneas (vía Premium). `excl`
+    (_impuestos_locales), `rea` (_es_reaseguro) y `lineas` (las del recibo) se pasan ya cargados: son
+    por binder / por recibo, y así no se repiten en bucle."""
     adeu = ret = liq = ret_tras = liq_liq = D0
     f_cobro, f_tras, f_liq = [], [], []
     for l in lineas:
@@ -1189,8 +1188,16 @@ def _accion_premium(db: Session, binder_id: int, periodo: str, setter, exigir_re
     db.flush()
     rids = {l.recibo_id for l in lineas if l.recibo_id}
     recibos = db.scalars(select(Recibo).where(Recibo.id.in_(rids))).all() if rids else []
+    # `excl`/`rea` son por binder (iguales para todos estos recibos); las líneas se cargan en bloque
+    # y se agrupan por recibo. Evita 2·N + N queries repetidas dentro del bucle.
+    excl = _impuestos_locales(db, binder_id)
+    rea = _es_reaseguro(db, binder_id)
+    lin_por_recibo: dict[int, list] = {}
+    if rids:
+        for ln in db.scalars(select(BdxLinea).where(BdxLinea.recibo_id.in_(rids))).all():
+            lin_por_recibo.setdefault(ln.recibo_id, []).append(ln)
     for r in recibos:
-        _recalcular_cobro_recibo(db, r)
+        _recalcular_cobro_recibo(db, r, excl, rea, lin_por_recibo.get(r.id, []))
     if mov is not None:
         binder = db.get(Binder, binder_id)
         importe = sum((Decimal(mov["importe_de"](l) or 0) for l in lineas), Decimal(0))
