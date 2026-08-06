@@ -18,7 +18,6 @@ from ..schemas import maestras as sch
 
 def _make_router(*, prefix, tag, model, read_schema, create_schema, update_schema, search_cols):
     router = APIRouter(prefix=prefix, tags=[tag])
-    nombre = tag.lower()
 
     @router.get("", response_model=list[read_schema])
     def listar(q: str | None = None, limit: int = 100, offset: int = 0, db: Session = Depends(get_db)):

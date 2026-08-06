@@ -62,15 +62,6 @@ export const siniestrosApi = {
   listarTodos: () => request<import("./types").Siniestro[]>(`/siniestros`),
   ratios: () => request<{ total: RatiosBase; por_programa: Record<string, RatiosBase> }>(`/siniestros/ratios`),
   listar: (binderId: number) => request<import("./types").Siniestro[]>(`/binders/${binderId}/siniestros`),
-  preview: (binderId: number) =>
-    request<{ list_title: string; total: number; suma_total_indemnity: number; suma_total_fees: number; suma_reservas: number }>(
-      `/binders/${binderId}/siniestros/sharepoint-preview`
-    ),
-  importar: (binderId: number) =>
-    request<{ leidos: number; nuevos: number; actualizados: number; total_binder: number }>(
-      `/binders/${binderId}/siniestros/import`,
-      { method: "POST" }
-    ),
   actualizar: (id: number, datos: Partial<import("./types").Siniestro>) =>
     request<import("./types").Siniestro>(`/siniestros/${id}`, {
       method: "PUT",
@@ -82,8 +73,6 @@ export const siniestrosApi = {
       body: JSON.stringify(datos),
     }),
   borrar: (id: number) => request<void>(`/siniestros/${id}`, { method: "DELETE" }),
-  nextUcr: (binderId: number) =>
-    request<{ ucr: string; sufijo: string; umr: string }>(`/binders/${binderId}/siniestros/next-ucr`),
   // Compara un Claims BDX subido con los siniestros de la app; devuelve un Excel (diferencias en azul).
   compararClaimsBdx: async (binderId: number, file: File): Promise<Blob> => {
     const form = new FormData();
@@ -253,7 +242,6 @@ export const lpanApi = {
     request<FdoRegistro>(`/binders/${binderId}/fdo`, { method: "POST", body: JSON.stringify({ section, risk_code }) }),
   actualizarFdo: (fdoId: number, datos: { signing_number?: string | null; work_package?: string | null; fecha_proceso?: string | null; work_package_status?: string | null; fecha_signing?: string | null; notas?: string | null }) =>
     request<FdoRegistro>(`/fdo/${fdoId}`, { method: "PUT", body: JSON.stringify(datos) }),
-  borrarFdo: (fdoId: number) => request(`/fdo/${fdoId}`, { method: "DELETE" }),
   // Descarga el Word del FDO (regenerado desde su registro). Devuelve el blob y el nombre propuesto.
   fdoWord: async (fdoId: number): Promise<{ blob: Blob; filename: string }> => {
     const res = await fetch(`${BASE}/fdo/${fdoId}/word`);
@@ -461,7 +449,6 @@ export interface MesComision {
 }
 export const comisionesApi = {
   iberian: () => request<MesComision[]>("/comisiones/iberian"),
-  preparar: (periodo: string) => request<MesComision>(`/comisiones/iberian/${periodo}/preparar`, { method: "POST" }),
   reparto: (periodo: string, d: { pago1_importe?: number | null; pago2_importe?: number | null; comision_definitiva?: number | null }) =>
     request<MesComision>(`/comisiones/iberian/${periodo}/reparto`, { method: "PUT", body: JSON.stringify(d) }),
   borrar: (liqId: number) => request(`/comisiones/${liqId}`, { method: "DELETE" }),
@@ -1160,7 +1147,6 @@ export const recibosApi = {
     return request<Recibo[]>(`/recibos${s ? `?${s}` : ""}`);
   },
   deBinder: (binderId: number) => request<Recibo[]>(`/binders/${binderId}/recibos`),
-  obtener: (id: number) => request<Recibo>(`/recibos/${id}`),
   // Calcula el recibo sin guardarlo (para precumplimentar el formulario de emisión).
   preview: (binderId: number, periodo: string) =>
     request<ReciboPreview>(`/binders/${binderId}/recibos/preview?periodo=${encodeURIComponent(periodo)}`),
@@ -1173,8 +1159,6 @@ export const recibosApi = {
   editar: (id: number, data: ReciboUpdate) =>
     request<Recibo>(`/recibos/${id}`, { method: "PUT", body: JSON.stringify(data) }),
   borrar: (id: number) => request<void>(`/recibos/${id}`, { method: "DELETE" }),
-  // Envía a contabilidad (bloquea) / reabre para corregir.
-  contabilizar: (id: number) => request<Recibo>(`/recibos/${id}/contabilizar`, { method: "POST" }),
   descontabilizar: (id: number) => request<Recibo>(`/recibos/${id}/descontabilizar`, { method: "POST" }),
   // Gestión íntegra de un recibo OM/Fees/Comisiones: cobrar | liquidar | traspasar | pagar (+ deshacer).
   gestion: (
@@ -1275,7 +1259,6 @@ import type { Poliza, PolizaWrite, PolizaEmitir, EmisionPreview } from "./types"
 export const polizasApi = {
   listar: (q?: string) =>
     request<Poliza[]>(`/polizas?limit=2000${q ? `&q=${encodeURIComponent(q)}` : ""}`),
-  get: (id: number) => request<Poliza>(`/polizas/${id}`),
   crear: (data: PolizaWrite) => request<Poliza>("/polizas", { method: "POST", body: JSON.stringify(data) }),
   editar: (id: number, data: PolizaWrite) =>
     request<Poliza>(`/polizas/${id}`, { method: "PUT", body: JSON.stringify(data) }),

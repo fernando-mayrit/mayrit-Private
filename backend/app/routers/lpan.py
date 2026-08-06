@@ -636,7 +636,7 @@ def quitar_exencion(binder_id: int, periodo: str, section: int, risk_code: str,
 @router.post("/binders/{binder_id}/fdo", response_model=FdoRead)
 def crear_fdo(binder_id: int, payload: FdoCreate, db: Session = Depends(get_db)):
     """Genera el FDO de un risk code (a la espera del signing number de Xchanging)."""
-    b = _binder_o_404(binder_id, db)
+    _binder_o_404(binder_id, db)   # 404 si no existe (efecto lateral; el binder no se usa aquí)
     rc = (payload.risk_code or "").strip()
     sec = int(payload.section or 0)
     if not rc:

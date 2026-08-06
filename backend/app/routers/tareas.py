@@ -754,17 +754,6 @@ def _cobro_por_periodo(db: Session, binder_ids: set[int]) -> dict[int, set[str]]
     return out
 
 
-_FLAG_CAT = [("Risk", "hace_risk"), ("Premium", "hace_premium"), ("Claims", "hace_claims")]
-
-
-def _cats_de_binder(b: Binder, legacy_cats: set[str]) -> set[str]:
-    """Qué categorías (Risk/Premium/Claims) hace el binder: de los flags DURABLES; si los 3 están sin
-    fijar (NULL), cae a las categorías con tarea auto (legacy)."""
-    if b.hace_risk is None and b.hace_premium is None and b.hace_claims is None:
-        return legacy_cats
-    return {cat for cat, campo in _FLAG_CAT if getattr(b, campo)}
-
-
 def _enlaces_hechos(db: Session, binder_ids: set[int], datos: dict, topes: dict | None = None):
     """Pasos del checklist ENLAZADOS a una fase (columna) de la parrilla. Devuelve:
     - enlazadas: {(binder_id, columna_id)} con ≥1 paso enlazado (la pastilla la gobierna el checklist).
