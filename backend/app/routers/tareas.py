@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import calendar
 import datetime as dt
+import re
 from collections import Counter, defaultdict
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -1113,7 +1114,13 @@ def pendientes_por_mes(desde: str = "2026-01", db: Session = Depends(get_db)):
             binder_id=bid, umr=(b.umr or b.agreement_number),
             agencia=(b.productor.nombre if b.productor else None),
             programa=(b.programa.nombre if b.programa else None), celdas=cel))
-    filas.sort(key=lambda x: ((x.agencia or "").lower(), x.umr or ""))
+    # Dentro de cada agencia, por NÚMERO de binder descendente (el mayor arriba). El nº son los dígitos
+    # tras las 2 letras del programa (B1634PI2926CRO -> 2926); si no casa, se ordena por el propio UMR.
+    def _bnum(u: str | None) -> str:
+        m = re.search(r"[A-Za-z]{2}(\d+)", u or "")
+        return m.group(1) if m else (u or "")
+    filas.sort(key=lambda x: (_bnum(x.umr), x.umr or ""), reverse=True)   # nº de binder desc
+    filas.sort(key=lambda x: (x.agencia or "").lower())                   # agencia asc (estable → nº desc dentro)
     return PendMesResp(meses=meses, filas=filas)
 
 
