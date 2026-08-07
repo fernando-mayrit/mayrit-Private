@@ -337,7 +337,10 @@ def incluir_en_premium(payload: IncluirPremium, db: Session = Depends(get_db)):
     db.execute(
         update(BdxLinea)
         .where(BdxLinea.id.in_(payload.linea_ids))
-        .values(incluido_en_premium=incluido, premium_bdx=fecha)
+        # Sella CUÁNDO se procesa el Premium (para datar el paso "Procesar Premium"). Al quitar del
+        # Premium (incluido=False) se limpia el sello.
+        .values(incluido_en_premium=incluido, premium_bdx=fecha,
+                premium_incluido_en=(func.now() if incluido else None))
     )
     db.commit()
     return {"actualizadas": len(payload.linea_ids), "incluido": incluido, "periodo": payload.periodo}

@@ -283,13 +283,17 @@ def _fechas_carga(db: Session, binder_ids: set[int]) -> dict[str, dict[int, dict
         .group_by(Bdx.binder_id, BdxLinea.reporting_period_start)
     ).all():
         _acc("risk", bid, d.strftime("%Y-%m"), ts)
-    for bid, d, ts in db.execute(
-        select(Bdx.binder_id, BdxLinea.premium_bdx, func.min(Bdx.created_at))
+    # Premium: la fecha del paso "Procesar Premium" es cuándo se PROCESÓ (se incluyó la línea en su
+    # Premium), no cuándo se cargó el Risk. Se usa el sello `premium_incluido_en` (max del mes) y solo si
+    # no existe (líneas históricas previas al sello) se cae al created_at del Risk.
+    for bid, d, ts_carga, ts_proc in db.execute(
+        select(Bdx.binder_id, BdxLinea.premium_bdx, func.min(Bdx.created_at),
+               func.max(BdxLinea.premium_incluido_en))
         .join(BdxLinea, BdxLinea.bdx_id == Bdx.id)
         .where(Bdx.binder_id.in_(binder_ids), BdxLinea.incluido_en_premium.is_(True), BdxLinea.premium_bdx.is_not(None))
         .group_by(Bdx.binder_id, BdxLinea.premium_bdx)
     ).all():
-        _acc("premium", bid, d.strftime("%Y-%m"), ts)
+        _acc("premium", bid, d.strftime("%Y-%m"), ts_proc or ts_carga)
     for bid, per, ts in db.execute(
         select(Lpan.binder_id, Lpan.periodo, func.min(Lpan.created_at))
         .where(Lpan.binder_id.in_(binder_ids), Lpan.periodo.is_not(None))

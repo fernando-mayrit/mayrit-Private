@@ -515,6 +515,10 @@ class BdxLinea(Base):
     # ── Premium (subconjunto): la fila entra en el Premium Bdx y con qué fecha ──
     incluido_en_premium: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
     premium_bdx: Mapped[dt.date | None] = mapped_column(Date)
+    # Cuándo se PROCESÓ el Premium de esta línea (se incluyó en su Premium Bdx). Es la fecha real del
+    # trabajo mensual; sirve para datar el paso auto "Procesar Premium" (antes caía al created_at del
+    # Risk, que en ficheros históricos con líneas adelantadas daba fechas anteriores al propio mes).
+    premium_incluido_en: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
 
     # ── Control interno (no viene en el BDX; gestión de cobro/pago) ──
     prima_cobrada: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
