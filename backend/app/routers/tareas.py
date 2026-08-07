@@ -316,13 +316,16 @@ def _periodo_de(binder: Binder, t: Tarea, f: dt.date, paso_meses: int) -> str | 
     checklist empezaba un mes tarde). Para tareas manuales se mantiene el mes de la entrega − intervalo."""
     if not binder or not f or paso_meses <= 0:
         return None
+    # El periodo se ancla al ÚLTIMO mes del intervalo: una tarea TRIMESTRAL cubre el trimestre y se da por
+    # vencida AL FINAL (Q1 = ene-mar → periodo marzo, vence en abril), no al empezar. Mensuales (paso 1) no
+    # cambian (paso-1 = 0). Así la parrilla/avisos muestran la trimestral cuando vence, no cuando empieza.
     if t.origen == "auto" and binder.fecha_efecto:
         attr = _CAT_PLAZO.get(t.categoria)
         plazo = int(getattr(binder, attr, 0) or 0) if attr else 0
         inicio = _add_months(binder.fecha_efecto, paso_meses) + dt.timedelta(days=plazo)   # 1ª fecha límite (idem _ocurrencias)
         k = round(((f.year - inicio.year) * 12 + (f.month - inicio.month)) / paso_meses)
-        return _add_months(binder.fecha_efecto, k * paso_meses).strftime("%Y-%m")
-    return _add_months(f.replace(day=1), -paso_meses).strftime("%Y-%m")
+        return _add_months(binder.fecha_efecto, k * paso_meses + (paso_meses - 1)).strftime("%Y-%m")
+    return _add_months(f.replace(day=1), -1).strftime("%Y-%m")
 
 
 def _auto_ok(paso: TareaPaso, periodo: str | None, datos: dict, binder_id: int) -> bool:
