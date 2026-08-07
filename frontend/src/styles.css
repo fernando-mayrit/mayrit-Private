@@ -1377,6 +1377,18 @@ button.pastilla.clic:hover { filter: brightness(0.96); }
 .binder-cuad .cuad-tabla thead tr:nth-child(2) th { top: 30px; background: #fff; }
 .binder-cuad .cuad-tabla thead .cuad-esq { top: 0; z-index: 4; }   /* esquina "Mes": fija arriba + izquierda */
 
+/* Cuadrícula Pendientes/mes: cabeceras (mes + R/P/C) fijas ARRIBA (sticky) mientras los binders scrollean
+   dentro del contenedor; la fila de TOTALES va en una tabla APARTE debajo (pm-foot), fija fuera del scroll,
+   con las columnas alineadas (table-layout fijo + mismo ancho) y el scroll horizontal sincronizado. */
+.pm-scroll { max-height: 62vh; overflow: auto; }
+.pm-tabla { table-layout: fixed; }
+.pm-tabla thead th { position: sticky; top: 0; z-index: 3; height: 30px; box-sizing: border-box; background: var(--gris-claro); }
+.pm-tabla thead tr:nth-child(2) th { top: 30px; background: #fff; }
+.pm-tabla thead .cuad-esq { top: 0; z-index: 4; background: #fff; }
+.pm-foot { overflow: hidden; }
+.pm-foot .cuad-tabla { border-top: 2px solid var(--gris-medio); }
+.pm-foot .cuad-bind, .pm-foot .cuad-celda { background: #eef0f3; font-weight: 700; }
+
 /* Config de fases de la cuadrícula por binder (pestaña Tareas) */
 .fases-cfg { border: 1px solid var(--borde); border-radius: 10px; margin-bottom: 14px; background: #fff; }
 .fases-cab { width: 100%; display: flex; justify-content: space-between; align-items: center; gap: 10px;

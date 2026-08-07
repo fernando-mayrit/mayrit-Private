@@ -168,6 +168,7 @@ function CuadriculaVista({ cuad, cargando, mesLabel }: {
 // pendientes en cada celda. Scroll horizontal con flechas cuando no caben los meses.
 function PendientesMesVista({ data, cargando }: { data: PendMesResp | null; cargando: boolean }) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const footRef = useRef<HTMLDivElement>(null);
   const scroll = (dir: number) => scrollRef.current?.scrollBy({ left: dir * 360, behavior: "smooth" });
   if (cargando && !data) return <div className="loading">Cargando…</div>;
   if (!data || data.filas.length === 0) return <div className="empty">Sin binders con tareas.</div>;
@@ -197,6 +198,23 @@ function PendientesMesVista({ data, cargando }: { data: PendMesResp | null; carg
       background: bg, color: fg, fontWeight: 700, fontSize: 12, fontVariantNumeric: "tabular-nums" }}>{v}</span>;
   };
   const ncols = 1 + data.meses.length * 3;
+  const BIND_W = 210, COL_W = 34;                       // anchos fijos → tabla de totales alineada
+  const tableW = BIND_W + data.meses.length * 3 * COL_W;
+  // Totales por columna (mes × categoría) sumando todos los binders, y el gran total.
+  const totCol: Record<string, number> = {};
+  let granTotal = 0;
+  for (const mes of data.meses) for (const cat of CATS) {
+    let s = 0;
+    for (const f of data.filas) s += f.celdas[mes]?.[cat] ?? 0;
+    totCol[mes + cat] = s;
+    granTotal += s;
+  }
+  const cols = () => (
+    <colgroup>
+      <col style={{ width: BIND_W }} />
+      {data.meses.map((mes) => CATS.map((cat) => <col key={mes + cat} style={{ width: COL_W }} />))}
+    </colgroup>
+  );
   return (
     <>
       <div className="hint" style={{ marginBottom: 8, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
@@ -207,8 +225,10 @@ function PendientesMesVista({ data, cargando }: { data: PendMesResp | null; carg
           <button className="btn-toggle" onClick={() => scroll(1)} title="Desplazar a la derecha">▶</button>
         </span>
       </div>
-      <div className="cuad-scroll" ref={scrollRef}>
-        <table className="cuad-tabla">
+      <div className="cuad-scroll pm-scroll" ref={scrollRef}
+           onScroll={(e) => { if (footRef.current) footRef.current.scrollLeft = e.currentTarget.scrollLeft; }}>
+        <table className="cuad-tabla pm-tabla" style={{ width: tableW }}>
+          {cols()}
           <thead>
             <tr>
               <th className="cuad-esq" rowSpan={2}>Binder</th>
@@ -216,7 +236,7 @@ function PendientesMesVista({ data, cargando }: { data: PendMesResp | null; carg
             </tr>
             <tr>
               {data.meses.map((mes) => CATS.map((cat) => (
-                <th key={mes + cat} className="cuad-col" title={cat} style={{ minWidth: 26 }}>{cat[0]}</th>
+                <th key={mes + cat} className="cuad-col" title={cat}>{cat[0]}</th>
               )))}
             </tr>
           </thead>
@@ -234,6 +254,26 @@ function PendientesMesVista({ data, cargando }: { data: PendMesResp | null; carg
                 ))}
               </Fragment>
             ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="pm-foot" ref={footRef}>
+        <table className="cuad-tabla pm-tabla" style={{ width: tableW }}>
+          {cols()}
+          <tbody>
+            <tr>
+              <th className="cuad-bind" style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                TOTAL: <b style={{ color: "var(--rojo, #c0392b)", fontSize: 15 }}>{granTotal}</b>
+              </th>
+              {data.meses.map((mes) => CATS.map((cat) => {
+                const t = totCol[mes + cat];
+                return (
+                  <td key={mes + cat} className="cuad-celda" style={{ textAlign: "center" }}>
+                    {t > 0 ? t : <span style={{ color: "#c8c8c8", fontWeight: 400 }}>0</span>}
+                  </td>
+                );
+              }))}
+            </tr>
           </tbody>
         </table>
       </div>
