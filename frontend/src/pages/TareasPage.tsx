@@ -297,16 +297,27 @@ function PendientesMesVista({ data, cargando }: { data: PendMesResp | null; carg
     if (!g) { g = { agencia: ag, filas: [] }; porAg.push(g); }
     g.filas.push(f);
   }
-  const cell = (v: number | null | undefined) =>
-    v == null ? <span style={{ color: "#bbb" }}>·</span>
-      : v === 0 ? <span style={{ color: "#1a7f37" }}>0</span>
-        : <b style={{ color: "var(--rojo, #c0392b)" }}>{v}</b>;
+  // Pastilla secuencial (1 tinta naranja, claro→oscuro por nº de pendientes; validada). Más = más color.
+  const PILL: [string, string][] = [
+    ["#f59331", "#3a1a00"],  // 1
+    ["#e2771d", "#3a1a00"],  // 2
+    ["#c95e12", "#ffffff"],  // 3
+    ["#ab490c", "#ffffff"],  // 4
+    ["#8c3907", "#ffffff"],  // 5+
+  ];
+  const cell = (v: number | null | undefined) => {
+    if (v == null) return <span style={{ color: "#c8c8c8" }}>·</span>;
+    if (v === 0) return <span style={{ color: "#1a7f37", fontVariantNumeric: "tabular-nums" }}>0</span>;
+    const [bg, fg] = PILL[Math.min(v, 5) - 1];
+    return <span style={{ display: "inline-block", minWidth: 20, padding: "1px 6px", borderRadius: 10,
+      background: bg, color: fg, fontWeight: 700, fontSize: 12, fontVariantNumeric: "tabular-nums" }}>{v}</span>;
+  };
   const ncols = 1 + data.meses.length * 3;
   return (
     <>
       <div className="hint" style={{ marginBottom: 8, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
         Subtareas pendientes por <b>mes del BDX</b> y categoría (R=Risk · P=Premium · C=Claims).{" "}
-        <b style={{ color: "var(--rojo,#c0392b)" }}>n</b> pendientes · <span style={{ color: "#1a7f37" }}>0</span> hecho · <span style={{ color: "#bbb" }}>·</span> no aplica.
+        <span style={{ display: "inline-block", minWidth: 20, padding: "1px 6px", borderRadius: 10, background: "#f59331", color: "#3a1a00", fontWeight: 700, fontSize: 12 }}>n</span> pendientes (más oscuro = más) · <span style={{ color: "#1a7f37" }}>0</span> hecho · <span style={{ color: "#c8c8c8" }}>·</span> no aplica.
         <span style={{ marginLeft: "auto", display: "inline-flex", gap: 6 }}>
           <button className="btn-toggle" onClick={() => scroll(-1)} title="Desplazar a la izquierda">◀</button>
           <button className="btn-toggle" onClick={() => scroll(1)} title="Desplazar a la derecha">▶</button>
