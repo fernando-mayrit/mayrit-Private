@@ -536,7 +536,8 @@ class TareaRead(BaseModel):
     n_ocurrencias: int = 0      # ocurrencias debidas (hasta hoy/aviso)
     n_hechas: int = 0
     n_pasos: int = 0            # nº de pasos del checklist (0 = sin checklist)
-    proxima: dt.date | None = None   # próxima ocurrencia pendiente y debida
+    proxima: dt.date | None = None   # próxima ocurrencia pendiente y debida (fecha límite; uso interno)
+    proxima_periodo: str | None = None   # MES DEL DATO de esa próxima pendiente ('YYYY-MM') → lo que se muestra
     terminada: bool = False     # sus fases ya vencieron (Hasta pasado) o están en 'No aplica' → sin nuevas entregas
 
 
@@ -559,6 +560,7 @@ def _serializar(db: Session, t: Tarea, datos: dict | None = None, topes: dict | 
     d.n_hechas = len([f for f in activas if f in hechas])
     d.n_pasos = len(t.pasos)
     d.proxima = next((f for f in activas if f not in hechas), None)
+    d.proxima_periodo = _periodo_de(binder, t, d.proxima, _paso(t)) if (binder and d.proxima) else None
     d.terminada = (t.origen == "auto") and _cat_terminada(hasta_m)
     return d
 
@@ -662,7 +664,7 @@ class AgendaItem(BaseModel):
     programa: str | None = None
     fecha: dt.date            # fecha (límite) de la ocurrencia
     periodo: str | None = None   # MES DEL DATO (BDX) que cubre la entrega, 'YYYY-MM' (igual que la parrilla)
-    estado: str               # hecha | vencida | pendiente | futura | sin_movimiento
+    estado: str               # hecha | pendiente | futura | sin_movimiento (no hay 'vencida')
     fecha_hecha: dt.date | None = None
     sin_mov_manual: bool = False   # 'sin movimiento' puesto A MANO (se puede deshacer; el auto no)
     pasos: list[PasoEstado] = []   # checklist de esta entrega (vacío si la tarea no tiene pasos)
@@ -673,7 +675,7 @@ class AgendaItem(BaseModel):
 @router.get("/tareas/agenda", response_model=list[AgendaItem])
 def agenda(binder_id: int | None = None, solo_pendientes: bool = False, db: Session = Depends(get_db)):
     """Todas las ocurrencias (fechas límite) de las tareas activas, APLANADAS y con su estado, para la
-    vista por mes. 'pendiente' a efectos de filtro = no hecha y ya debida (vencida o pendiente)."""
+    vista por mes. 'pendiente' = no hecha y ya debida (su mes ya toca)."""
     hoy = dt.date.today()
     q = select(Tarea).where(Tarea.estado != "Pausada")
     if binder_id is not None:
@@ -704,11 +706,9 @@ def agenda(binder_id: int | None = None, solo_pendientes: bool = False, db: Sess
                 # dormido (nada real hecho) = "sin_movimiento" (gris): informa pero no es pendiente.
                 hay_real = (h is not None and not h.sin_movimiento) or any(p.hecho and not p.sin_movimiento for p in pasos)
                 estado = "hecha" if hay_real else "sin_movimiento"
-            elif f < hoy:
-                estado = "vencida"
             else:
-                estado = "pendiente"
-            if solo_pendientes and estado not in ("vencida", "pendiente"):
+                estado = "pendiente"   # ya toca y no está hecha → pendiente (no hay 'vencida': no aporta)
+            if solo_pendientes and estado != "pendiente":
                 continue
             out.append(AgendaItem(
                 tarea_id=t.id, titulo=t.titulo, categoria=t.categoria, origen=t.origen,
@@ -1328,14 +1328,14 @@ class OcurrenciaOut(BaseModel):
     hecha: bool
     fecha_hecha: dt.date | None = None
     notas: str | None = None
-    estado: str   # 'hecha' | 'vencida' | 'pendiente' | 'futura' | 'sin_movimiento'
+    estado: str   # 'hecha' | 'pendiente' | 'futura' | 'sin_movimiento' (no hay 'vencida')
     sin_mov_manual: bool = False   # 'sin movimiento' puesto A MANO (se puede deshacer; el auto ≥6 meses no)
     pasos: list[PasoEstado] = []   # checklist de esta ocurrencia (vacío si la tarea no tiene pasos)
 
 
 @router.get("/tareas/{tarea_id}/ocurrencias")
 def ocurrencias(tarea_id: int, incluir_futuras: bool = False, db: Session = Depends(get_db)):
-    """Por defecto solo las ocurrencias ya 'generadas' (hechas, vencidas o pendientes según su aviso);
+    """Por defecto solo las ocurrencias ya 'generadas' (hechas o pendientes según su aviso);
     las futuras se ocultan hasta que toquen. `incluir_futuras=true` las muestra todas."""
     t = db.get(Tarea, tarea_id)
     if t is None:
@@ -1360,10 +1360,8 @@ def ocurrencias(tarea_id: int, incluir_futuras: bool = False, db: Session = Depe
             estado = "sin_movimiento"  # dormido ≥6 meses o marcado a mano: no pendiente
         elif hecha:
             estado = "hecha"
-        elif f < hoy:
-            estado = "vencida"
         else:
-            estado = "pendiente"
+            estado = "pendiente"   # ya toca y no está hecha → pendiente (sin 'vencida': no aporta)
         if estado == "futura" and not incluir_futuras:
             continue
         out.append(OcurrenciaOut(

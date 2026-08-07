@@ -821,6 +821,7 @@ export interface Tarea {
   n_hechas: number;
   n_pasos: number;
   proxima?: string | null;
+  proxima_periodo?: string | null;   // mes del dato de la próxima pendiente ('YYYY-MM')
   terminada?: boolean;          // sus fases ya vencieron o están en 'No aplica' → sin nuevas entregas
 }
 export interface TareaPaso {

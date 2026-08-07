@@ -45,7 +45,7 @@ const VACIO: Form = {
 
 const PILL: Record<string, [string, string]> = {
   hecha: ["pill-cobrado", "Hecha"],
-  vencida: ["pill-pendiente", "Vencida"],
+  vencida: ["pill-parcial", "Pendiente"],   // ya no se usa: 'vencida' se unificó con 'pendiente'
   pendiente: ["pill-parcial", "Pendiente"],
   futura: ["pill-anulado", "Futura"],
   sin_movimiento: ["pill-anulado", "Sin movimiento"],   // flujo dormido ≥6 meses: informa, no es pendiente
@@ -405,7 +405,7 @@ export default function TareasBinder({ binderId, onCambio }: { binderId?: number
       if (!bm.has(bnd)) bm.set(bnd, []);
       bm.get(bnd)!.push(a);
     }
-    const esPend = (i: TareaAgendaItem) => i.estado === "vencida" || i.estado === "pendiente";
+    const esPend = (i: TareaAgendaItem) => i.estado === "pendiente";
     return [...m.entries()].sort((x, y) => x[0].localeCompare(y[0])).map(([mes, cm]) => ({
       mes,
       pendientes: [...cm.values()].reduce((n, bm) => n + [...bm.values()].flat().filter(esPend).length, 0),
@@ -589,7 +589,7 @@ export default function TareasBinder({ binderId, onCambio }: { binderId?: number
                   : t.terminada
                     ? <span className="pill pill-anulado" title="Sus fases ya vencieron o están en 'No aplica' — no genera nuevas entregas">Terminada</span>
                     : t.estado}</td>
-                <td>{t.proxima ? fmtFechaES(t.proxima) : "—"}</td>
+                <td>{t.proxima_periodo ? mesLabel(t.proxima_periodo) : (t.proxima ? fmtFechaES(t.proxima) : "—")}</td>
                 <td className="num">{t.n_hechas}/{t.n_ocurrencias}</td>
                 <td className="acciones" style={{ whiteSpace: "nowrap" }}>
                   <button className="btn-icono" title="Editar" aria-label="Editar" onClick={() => abrirEdicion(t)}>✏️{t.n_pasos ? <span className="hint" style={{ marginLeft: 4 }}>· {t.n_pasos} pasos</span> : ""}</button>

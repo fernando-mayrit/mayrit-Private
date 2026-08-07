@@ -508,11 +508,12 @@ def _aplicar_niveles(db: Session, avisos: list[Aviso]) -> list[Aviso]:
 
 
 def _tareas_pendientes(db: Session, binders: dict[int, Binder]) -> list[Aviso]:
-    """UN aviso por tarea ACTIVA que tenga alguna entrega SIN MARCAR (vencida o pendiente, ya no futura).
+    """UN aviso por tarea ACTIVA que tenga alguna entrega SIN MARCAR (pendiente, ya no futura).
     Mismo criterio que la vista de Tareas: una entrega cuenta si su mes ya toca (no es futura) y no está
     hecha (ni marcada a mano/pasos, ni 'sin movimiento')."""
     # lazy: evita import circular
-    from .tareas import _ocurrencias, _es_futura, _fechas_hechas, _periodos_datos, _pasos_de_ocurrencia, _topes, _VENC
+    from .tareas import (_ocurrencias, _es_futura, _fechas_hechas, _periodos_datos, _pasos_de_ocurrencia,
+                         _topes, _VENC, _periodo_de, _paso)
 
     hoy = dt.date.today()
     tareas = db.scalars(select(Tarea).where(Tarea.estado == "Activa").options(
@@ -552,13 +553,15 @@ def _tareas_pendientes(db: Session, binders: dict[int, Binder]) -> list[Aviso]:
             accionable = next((p for p in pend_pasos if not p.bloqueado), pend_pasos[0] if pend_pasos else None)
             if accionable:
                 titulo, contexto = accionable.titulo, f"{t.titulo} · "
+        # Meses (del DATO, no de la fecha límite) pendientes. Sin fechas exactas: solo el mes que importa.
+        per_pend = sorted({(_periodo_de(b, t, f, _paso(t)) or f.strftime('%Y-%m')) for f in pend})
         sub_txt = f"{n_sub} subtarea{'s' if n_sub != 1 else ''} sin marcar · " if t.pasos else ""
-        desde = f"{sub_txt}pendiente desde {f0.strftime('%d/%m/%Y')}" + (f" (+{len(pend) - 1} mes(es) más)" if len(pend) > 1 else "")
+        desde = f"{sub_txt}{_mes_anyo(per_pend[0])}" + (f" (+{len(per_pend) - 1} mes(es) más)" if len(per_pend) > 1 else "")
         avisos.append(Aviso(
             tipo="tarea_pendiente", severidad="warning",
             titulo=titulo,
-            detalle=(contexto + desde) if contexto else (desde[0].upper() + desde[1:]),
-            binder_id=b.id, umr=b.umr, periodos=[f.strftime('%Y-%m') for f in pend], pagina="binders",
+            detalle=(contexto + desde) if contexto else desde,
+            binder_id=b.id, umr=b.umr, periodos=per_pend, pagina="binders",
             n_pendientes=n_sub,
         ))
     return avisos

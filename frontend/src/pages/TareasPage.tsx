@@ -62,7 +62,7 @@ export default function TareasPage() {
   const grupos = useMemo(() => {
     // Se muestra lo del mes elegido + TODAS las vencidas (aunque sean de meses anteriores, para que
     // nada atrasado se esconda al cambiar de mes).
-    const shown = agenda.filter((a) => a.fecha.slice(0, 7) === mes || a.estado === "vencida");
+    const shown = agenda.filter((a) => a.fecha.slice(0, 7) === mes || a.estado === "pendiente");
     const por = new Map<number, Grupo>();
     for (const a of shown) {
       let g = por.get(a.binder_id);
@@ -156,12 +156,10 @@ export default function TareasPage() {
                           <div className="hint" style={{ padding: "6px 12px" }}>Nada pendiente este mes.</div>
                         ) : g.faltan.map((a, i) => (
                           <div key={`${a.tarea_id}-${a.fecha}-${i}`} className="tr-item">
-                            <span className="tr-item-est">{a.estado === "vencida" ? "🔴" : "🟠"}</span>
+                            <span className="tr-item-est">🟠</span>
                             <span className="tr-item-tit">{a.titulo} <span className="hint">· {a.categoria}</span></span>
                             {a.n_pasos > 0 && <span className="hint">checklist {a.n_pasos_hechos}/{a.n_pasos}</span>}
-                            <span className={"hint" + (a.estado === "vencida" ? " tr-venc" : "")}>
-                              {a.estado === "vencida" ? "venció" : "vence"} {fmtFechaES(a.fecha)}
-                            </span>
+                            <span className="hint">{a.periodo ? labelMes(a.periodo) : fmtFechaES(a.fecha)}</span>
                           </div>
                         ))}
                       </div>
