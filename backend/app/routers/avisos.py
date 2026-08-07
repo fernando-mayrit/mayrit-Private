@@ -49,6 +49,7 @@ TIPOS_AVISO: dict[str, dict] = {
     "tarea_pendiente":     {"etiqueta": "Tarea de binder pendiente", "defecto": "medio", "categoria": "dia"},
     "lpan_sin_procesar":   {"etiqueta": "LPAN sin WP/Procesado", "defecto": "bajo", "categoria": "dia"},
     "comision_sin_reparto": {"etiqueta": "Comisión pendiente de reparto", "defecto": "bajo", "categoria": "dia"},
+    "pastilla_sin_tarea": {"etiqueta": "Fase de la parrilla sin tarea asignada", "defecto": "alto", "categoria": "alerta"},
 }
 
 
@@ -583,6 +584,24 @@ def _comision_sin_reparto(db: Session) -> list[Aviso]:
     return avisos
 
 
+def _pastillas_sin_tarea(db: Session, binders: dict[int, Binder]) -> list[Aviso]:
+    """ALERTA: una fase de la parrilla que APLICA pero no tiene ninguna tarea/paso enlazado (debería
+    tenerlo). Es un control de configuración: normalmente no sale ninguno."""
+    from .tareas import pastillas_sin_tarea
+    avisos: list[Aviso] = []
+    for bid, cols in pastillas_sin_tarea(db).items():
+        b = binders.get(bid)
+        if not b:
+            continue
+        avisos.append(Aviso(
+            tipo="pastilla_sin_tarea", severidad="danger",
+            titulo="Fase de la parrilla sin tarea",
+            detalle="Falta enlazar una tarea a: " + ", ".join(cols),
+            binder_id=bid, umr=b.umr, pagina="binders", n_pendientes=len(cols),
+        ))
+    return avisos
+
+
 @router.get("/avisos", response_model=list[Aviso])
 def listar_avisos(db: Session = Depends(get_db)):
     """Lista de avisos/tareas pendientes (calculados al vuelo), ordenados por importancia."""
@@ -601,6 +620,7 @@ def listar_avisos(db: Session = Depends(get_db)):
     avisos += _comision_cedida_sin_marcar(db)
     avisos += _lpan_sin_procesar(db, binders)
     avisos += _comision_sin_reparto(db)
+    avisos += _pastillas_sin_tarea(db, binders)
     return _aplicar_niveles(db, avisos)
 
 

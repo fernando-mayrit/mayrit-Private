@@ -1117,6 +1117,57 @@ def pendientes_por_mes(desde: str = "2026-01", db: Session = Depends(get_db)):
     return PendMesResp(meses=meses, filas=filas)
 
 
+def pastillas_sin_tarea(db: Session) -> dict[int, list[str]]:
+    """Por binder, las columnas de la parrilla que APLICAN (algún mes != 'na') pero NO tienen ningún paso
+    del checklist enlazado. Cada una debería tener su tarea; esto detecta las que faltan (para avisar).
+    Devuelve {binder_id: ['Grupo·Nombre', ...]}. Batched (una tanda de queries, no por binder)."""
+    bmap = {b.id: b for b in db.scalars(select(Binder)).all()}
+    bids = set(bmap)
+    if not bids:
+        return {}
+    columnas = db.scalars(select(TareaColumna).where(TareaColumna.activa.is_(True))
+                          .order_by(TareaColumna.orden, TareaColumna.id)).all()
+    all_ts = db.scalars(select(Tarea).where(Tarea.binder_id.in_(bids))).all()
+    datos = _periodos_datos(db, bids)
+    cobro = _cobro_por_periodo(db, bids)
+    topes = _topes(db, bids)
+    enlazadas, hechos = _enlaces_hechos(db, bids, datos, topes)
+    sinmov, _sm = _sinmov_periodos(db, bids, datos, topes)
+    manual_map = {(m.binder_id, m.columna_id): m for m in db.scalars(
+        select(TareaMatrizManual).where(TareaMatrizManual.binder_id.in_(bids)))}
+    cfgs = {(cb.binder_id, cb.columna_id): cb for cb in db.scalars(
+        select(TareaColumnaBinder).where(TareaColumnaBinder.binder_id.in_(bids)))}
+    ts_por_binder: dict[int, list] = defaultdict(list)
+    for t in all_ts:
+        ts_por_binder[t.binder_id].append(t)
+    out: dict[int, list[str]] = {}
+    for bid, b in bmap.items():
+        ts = ts_por_binder.get(bid, [])
+        cats = {t.categoria for t in ts if t.estado != "Pausada"}
+        if not cats:
+            continue
+        fi_cat: dict[str, list] = {}
+        for t in ts:
+            if t.estado != "Pausada":
+                fi_cat.setdefault(t.categoria, []).append(t.fecha_inicio)
+        inicios = {cat: min(fi.strftime("%Y-%m") for fi in fis)
+                   for cat, fis in fi_cat.items() if fis and all(fi is not None for fi in fis)}
+        meses = _meses_binder(b, _hasta_binder(topes, bid, cats))
+        if not meses:
+            continue
+        gaps = []
+        for c in columnas:
+            if (bid, c.id) in enlazadas or c.grupo not in cats:
+                continue
+            aplica = any(_estado_celda(c, per, b, cfgs.get((bid, c.id)), cats, datos, cobro, manual_map,
+                                       enlazadas, hechos, inicios, sinmov) != "na" for per in meses)
+            if aplica:
+                gaps.append(f"{c.grupo}·{c.nombre}")
+        if gaps:
+            out[bid] = gaps
+    return out
+
+
 # ── Config de columnas de la cuadrícula (editable, común a todos los binders) ──
 class ColumnaIn(BaseModel):
     grupo: str
