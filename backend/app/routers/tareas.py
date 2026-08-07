@@ -1032,6 +1032,76 @@ def binder_cuadricula(binder_id: int, db: Session = Depends(get_db)):
         meses=meses, enlazadas=[c.id for c in columnas if (binder_id, c.id) in enlazadas])
 
 
+# ── Cuadrícula anual: subtareas PENDIENTES por binder × mes (del dato) × categoría ──
+class PendMesFila(BaseModel):
+    binder_id: int
+    umr: str | None = None
+    agencia: str | None = None
+    programa: str | None = None
+    celdas: dict[str, dict[str, int | None]]   # 'YYYY-MM' -> {'Risk': n|None, 'Premium': n|None, 'Claims': n|None}
+
+
+class PendMesResp(BaseModel):
+    meses: list[str]
+    filas: list[PendMesFila]
+
+
+@router.get("/tareas/pendientes-mes", response_model=PendMesResp)
+def pendientes_por_mes(desde: str = "2026-01", db: Session = Depends(get_db)):
+    """Nº de subtareas PENDIENTES por binder × mes DEL DATO × categoría (Risk/Premium/Claims), de `desde`
+    al mes actual. Celda = pasos sin marcar de esa entrega; None = no aplica ese mes (o aún no toca);
+    0 = aplica y está hecho. Filas = binders (el front las agrupa por agencia)."""
+    hoy = dt.date.today()
+    y, m = int(desde[:4]), int(desde[5:7])
+    meses: list[str] = []
+    while (y, m) <= (hoy.year, hoy.month):
+        meses.append(f"{y:04d}-{m:02d}")
+        m += 1
+        if m > 12:
+            y += 1; m = 1
+    meses_set = set(meses)
+    CATS = ["Risk", "Premium", "Claims"]
+    tareas = db.scalars(select(Tarea).where(Tarea.estado == "Activa", Tarea.categoria.in_(CATS)).options(
+        selectinload(Tarea.pasos).selectinload(TareaPaso.hechos), selectinload(Tarea.hechas))).all()
+    bids = {t.binder_id for t in tareas}
+    binders = {b.id: b for b in db.scalars(select(Binder).where(Binder.id.in_(bids))
+               .options(selectinload(Binder.productor), selectinload(Binder.programa)))} if bids else {}
+    datos = _periodos_datos(db, bids)
+    topes = _topes(db, bids)
+    celdas: dict[int, dict[str, dict[str, int]]] = {}
+    for t in tareas:
+        b = binders.get(t.binder_id)
+        if not b:
+            continue
+        hasta_m = topes.get((t.binder_id, t.categoria), _VENC)
+        ocs = _ocurrencias(t, b, hasta_m)
+        hechas = _fechas_hechas(t, b, datos, hasta_m)
+        manual = {(ph.paso_id, ph.fecha_ocurrencia): ph for p in t.pasos for ph in p.hechos}
+        bmap = celdas.setdefault(t.binder_id, {})
+        for k, f in enumerate(ocs):
+            per = _periodo_de(b, t, f, _paso(t))
+            if per not in meses_set or _es_futura(t, b, f, hoy):
+                continue                     # fuera de rango o aún no toca → queda en blanco
+            if f in hechas:
+                n = 0
+            elif t.pasos:
+                pf, _c = _pasos_de_ocurrencia(t, b, f, k, datos, manual)
+                n = sum(1 for p in pf if not p.hecho)
+            else:
+                n = 1
+            bmap.setdefault(per, {})[t.categoria] = n
+    filas = []
+    for bid, b in binders.items():
+        bcel = celdas.get(bid, {})
+        cel = {mes: {cat: bcel.get(mes, {}).get(cat) for cat in CATS} for mes in meses}
+        filas.append(PendMesFila(
+            binder_id=bid, umr=(b.umr or b.agreement_number),
+            agencia=(b.productor.nombre if b.productor else None),
+            programa=(b.programa.nombre if b.programa else None), celdas=cel))
+    filas.sort(key=lambda x: ((x.agencia or "").lower(), x.umr or ""))
+    return PendMesResp(meses=meses, filas=filas)
+
+
 # ── Config de columnas de la cuadrícula (editable, común a todos los binders) ──
 class ColumnaIn(BaseModel):
     grupo: str

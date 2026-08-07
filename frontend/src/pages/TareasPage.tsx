@@ -1,5 +1,5 @@
-import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
-import { tareasApi, type TareaAgendaItem, type Cuadricula, type CuadriculaColumna, type CuadriculaFila } from "../api";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { tareasApi, type TareaAgendaItem, type Cuadricula, type CuadriculaColumna, type CuadriculaFila, type PendMesResp, type PendMesFila } from "../api";
 import PageHeader from "../components/PageHeader";
 import TareasBinder from "../components/TareasBinder";
 import { fmtFechaES } from "../format";
@@ -36,7 +36,7 @@ type Grupo = {
 };
 
 export default function TareasPage() {
-  const [vista, setVista] = useState<"resumen" | "cuadricula" | "detalle">("cuadricula");
+  const [vista, setVista] = useState<"resumen" | "cuadricula" | "detalle" | "pendmes">("cuadricula");
   const [agenda, setAgenda] = useState<TareaAgendaItem[]>([]);
   const [mes, setMes] = useState(mesTope());
   const [soloPend, setSoloPend] = useState(true);
@@ -45,6 +45,15 @@ export default function TareasPage() {
   const [error, setError] = useState<string | null>(null);
   const [cuad, setCuad] = useState<Cuadricula | null>(null);
   const [cargandoCuad, setCargandoCuad] = useState(false);
+  const [pendMes, setPendMes] = useState<PendMesResp | null>(null);
+  const [cargandoPM, setCargandoPM] = useState(false);
+
+  useEffect(() => {
+    if (vista === "pendmes" && !pendMes) {
+      setCargandoPM(true);
+      tareasApi.pendientesMes().then(setPendMes).catch(() => setPendMes(null)).finally(() => setCargandoPM(false));
+    }
+  }, [vista, pendMes]);
 
   useEffect(() => {
     tareasApi.agenda()
@@ -101,9 +110,10 @@ export default function TareasPage() {
         <div className="btn-toggle-group">
           <button className={"btn-toggle" + (vista === "cuadricula" ? " active" : "")} onClick={() => setVista("cuadricula")}>Cuadrícula</button>
           <button className={"btn-toggle" + (vista === "resumen" ? " active" : "")} onClick={() => setVista("resumen")}>Resumen</button>
+          <button className={"btn-toggle" + (vista === "pendmes" ? " active" : "")} onClick={() => setVista("pendmes")}>Pendientes/mes</button>
           <button className={"btn-toggle" + (vista === "detalle" ? " active" : "")} onClick={() => setVista("detalle")}>Detalle</button>
         </div>
-        {vista !== "detalle" && (
+        {(vista === "cuadricula" || vista === "resumen") && (
           <input type="month" className="filtro" value={mes} max={mesTope()}
             onChange={(e) => { const v = e.target.value || mesTope(); setMes(v > mesTope() ? mesTope() : v); }}
             title="Mes a revisar (hasta el mes anterior al actual)" />
@@ -119,6 +129,8 @@ export default function TareasPage() {
         <TareasBinder />
       ) : vista === "cuadricula" ? (
         <CuadriculaVista cuad={cuad} cargando={cargandoCuad} mesLabel={labelMes(mes)} />
+      ) : vista === "pendmes" ? (
+        <PendientesMesVista data={pendMes} cargando={cargandoPM} />
       ) : cargando ? (
         <div className="loading">Cargando…</div>
       ) : error ? (
@@ -261,6 +273,72 @@ function CuadriculaVista({ cuad, cargando, mesLabel }: {
                 </Fragment>
               );
             })}
+          </tbody>
+        </table>
+      </div>
+    </>
+  );
+}
+
+// Vista PENDIENTES/MES: binders (filas, por agencia) × mes del BDX × categoría, con el nº de subtareas
+// pendientes en cada celda. Scroll horizontal con flechas cuando no caben los meses.
+function PendientesMesVista({ data, cargando }: { data: PendMesResp | null; cargando: boolean }) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const scroll = (dir: number) => scrollRef.current?.scrollBy({ left: dir * 360, behavior: "smooth" });
+  if (cargando && !data) return <div className="loading">Cargando…</div>;
+  if (!data || data.filas.length === 0) return <div className="empty">Sin binders con tareas.</div>;
+  const CATS = ["Risk", "Premium", "Claims"];
+  const MES = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
+  const mesCorto = (ym: string) => `${MES[+ym.slice(5, 7) - 1]} ${ym.slice(2, 4)}`;
+  const porAg: { agencia: string; filas: PendMesFila[] }[] = [];
+  for (const f of data.filas) {
+    const ag = f.agencia || "(Sin agencia)";
+    let g = porAg.find((x) => x.agencia === ag);
+    if (!g) { g = { agencia: ag, filas: [] }; porAg.push(g); }
+    g.filas.push(f);
+  }
+  const cell = (v: number | null | undefined) =>
+    v == null ? <span style={{ color: "#bbb" }}>·</span>
+      : v === 0 ? <span style={{ color: "#1a7f37" }}>0</span>
+        : <b style={{ color: "var(--rojo, #c0392b)" }}>{v}</b>;
+  const ncols = 1 + data.meses.length * 3;
+  return (
+    <>
+      <div className="hint" style={{ marginBottom: 8, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        Subtareas pendientes por <b>mes del BDX</b> y categoría (R=Risk · P=Premium · C=Claims).{" "}
+        <b style={{ color: "var(--rojo,#c0392b)" }}>n</b> pendientes · <span style={{ color: "#1a7f37" }}>0</span> hecho · <span style={{ color: "#bbb" }}>·</span> no aplica.
+        <span style={{ marginLeft: "auto", display: "inline-flex", gap: 6 }}>
+          <button className="btn-toggle" onClick={() => scroll(-1)} title="Desplazar a la izquierda">◀</button>
+          <button className="btn-toggle" onClick={() => scroll(1)} title="Desplazar a la derecha">▶</button>
+        </span>
+      </div>
+      <div className="cuad-scroll" ref={scrollRef}>
+        <table className="cuad-tabla">
+          <thead>
+            <tr>
+              <th className="cuad-esq" rowSpan={2}>Binder</th>
+              {data.meses.map((mes) => <th key={mes} colSpan={3} className="cuad-grupo">{mesCorto(mes)}</th>)}
+            </tr>
+            <tr>
+              {data.meses.map((mes) => CATS.map((cat) => (
+                <th key={mes + cat} className="cuad-col" title={cat} style={{ minWidth: 26 }}>{cat[0]}</th>
+              )))}
+            </tr>
+          </thead>
+          <tbody>
+            {porAg.map((g) => (
+              <Fragment key={g.agencia}>
+                <tr className="cuad-agencia"><th colSpan={ncols}><b>{g.agencia}</b> <span className="hint">· {g.filas.length} binder{g.filas.length !== 1 ? "s" : ""}</span></th></tr>
+                {g.filas.map((f) => (
+                  <tr key={f.binder_id}>
+                    <th className="cuad-bind"><b>{f.umr}</b></th>
+                    {data.meses.map((mes) => CATS.map((cat) => (
+                      <td key={mes + cat} className="cuad-celda" style={{ textAlign: "center" }}>{cell(f.celdas[mes]?.[cat])}</td>
+                    )))}
+                  </tr>
+                ))}
+              </Fragment>
+            ))}
           </tbody>
         </table>
       </div>

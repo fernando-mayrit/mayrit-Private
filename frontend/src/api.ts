@@ -855,6 +855,14 @@ export interface TareaOcurrencia {
   sin_mov_manual?: boolean;   // 'sin movimiento' puesto a mano (se puede deshacer; el auto ≥6 meses no)
   pasos: TareaPasoEstado[];   // checklist de esta ocurrencia (vacío si la tarea no tiene pasos)
 }
+export interface PendMesFila {
+  binder_id: number;
+  umr?: string | null;
+  agencia?: string | null;
+  programa?: string | null;
+  celdas: Record<string, Record<string, number | null>>;   // 'YYYY-MM' -> {Risk, Premium, Claims}
+}
+export interface PendMesResp { meses: string[]; filas: PendMesFila[]; }
 export const tareasApi = {
   listAll: () => request<Tarea[]>("/tareas"),
   list: (binderId: number) => request<Tarea[]>(`/binders/${binderId}/tareas`),
@@ -893,6 +901,7 @@ export const tareasApi = {
     return request<TareaAgendaItem[]>(`/tareas/agenda${qs ? `?${qs}` : ""}`);
   },
   cuadricula: (mes?: string) => request<Cuadricula>(`/tareas/cuadricula${mes ? `?mes=${mes}` : ""}`),
+  pendientesMes: () => request<PendMesResp>("/tareas/pendientes-mes"),
   columnasConfig: (binderId: number) => request<ColumnasConfigResp>(`/binders/${binderId}/columnas-config`),
   setColumnaConfig: (binderId: number, columnaId: number, d: { aplica: boolean; desde?: string | null; hasta?: string | null }) =>
     request<ColumnaBinderCfg>(`/binders/${binderId}/columnas-config/${columnaId}`, { method: "PUT", body: JSON.stringify(d) }),
