@@ -17,3 +17,5 @@ python-multipart
 python-docx
 # Generación de PDF (justificantes de movimientos contables)
 reportlab
+# Base de zonas horarias (para datar tareas en hora española; Windows no la trae de serie)
+tzdata

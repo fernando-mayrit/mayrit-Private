@@ -10,6 +10,24 @@ import calendar
 import datetime as dt
 import re
 from collections import Counter, defaultdict
+from zoneinfo import ZoneInfo
+
+# Zona horaria de referencia para DATAR las tareas: los sellos se guardan en UTC, pero una tarea hecha
+# de madrugada debe datarse en el DÍA español (si no, saldría el día anterior). Fallback a UTC si el
+# sistema no tuviera la base de zonas (no debería: se depende de tzdata).
+try:
+    _TZ_ES: ZoneInfo | None = ZoneInfo("Europe/Madrid")
+except Exception:
+    _TZ_ES = None
+
+
+def _fecha_local(ts):
+    """Día (date) en hora española de un timestamp UTC. Si ya es un date, se devuelve tal cual."""
+    if not hasattr(ts, "astimezone"):
+        return ts   # ya es un date
+    if ts.tzinfo is None:
+        ts = ts.replace(tzinfo=dt.timezone.utc)
+    return (ts.astimezone(_TZ_ES) if _TZ_ES else ts).date()
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict
@@ -270,7 +288,7 @@ def _fechas_carga(db: Session, binder_ids: set[int]) -> dict[str, dict[int, dict
     def _acc(regla: str, bid: int, per: str | None, ts) -> None:
         if not per or ts is None:
             return
-        d = ts.date() if hasattr(ts, "date") else ts
+        d = _fecha_local(ts)   # día en hora española (el sello viene en UTC)
         # Una tarea automática no puede estar "hecha" antes del mes que cubre: si el dato se cargó antes
         # (típico de un fichero histórico en bloque con líneas adelantadas a meses futuros), se data como
         # muy pronto el día 1 de ese mes. Vale para risk/premium/lpan/claims por igual.
