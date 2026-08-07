@@ -90,8 +90,8 @@ function CuadriculaVista({ cuad, cargando, mesLabel }: {
     if (!g) { g = { grupo: c.grupo, cols: [] }; grupos.push(g); }
     g.cols.push(c);
   }
-  const cls = (est: string) => "pastilla " + (est === "ok" ? "ok" : est === "pend" ? "pend" : "na");
-  const lab = (est: string) => est === "ok" ? "Sí" : est === "pend" ? "Pendiente" : "No aplica";
+  const cls = (est: string) => "pastilla " + (est === "ok" ? "ok" : est === "parcial" ? "parcial" : est === "pend" ? "pend" : "na");
+  const lab = (est: string) => est === "ok" ? "Sí" : est === "parcial" ? "Parcial" : est === "pend" ? "Pendiente" : "No aplica";
 
   // Agrupar los binders por AGENCIA (cabecera desplegable).
   const porAg: { agencia: string; filas: CuadriculaFila[] }[] = [];
@@ -122,7 +122,7 @@ function CuadriculaVista({ cuad, cargando, mesLabel }: {
   return (
     <>
       <div className="hint" style={{ marginBottom: 8 }}>
-        {mesLabel} · pipeline por binder — <span className={cls("ok")}>Sí</span> hecho · <span className={cls("pend")}>Pendiente</span> · <span className={cls("na")}>No aplica</span>.
+        {mesLabel} · pipeline por binder — <span className={cls("ok")}>Sí</span> hecho · <span className={cls("parcial")}>Parcial</span> · <span className={cls("pend")}>Pendiente</span> · <span className={cls("na")}>No aplica</span>.
         Solo informativa: las fases se marcan en el <b>detalle</b> de cada tarea.
       </div>
       <div className="cuad-scroll">

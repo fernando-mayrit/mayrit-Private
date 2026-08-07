@@ -28,8 +28,8 @@ export default function CuadriculaBinder({ binderId, refreshKey }: { binderId: n
     return g;
   }, [data]);
 
-  const cls = (est: string) => "pastilla " + (est === "ok" ? "ok" : est === "pend" ? "pend" : "na");
-  const lab = (est: string) => (est === "ok" ? "Sí" : est === "pend" ? "Pendiente" : "No aplica");
+  const cls = (est: string) => "pastilla " + (est === "ok" ? "ok" : est === "parcial" ? "parcial" : est === "pend" ? "pend" : "na");
+  const lab = (est: string) => (est === "ok" ? "Sí" : est === "parcial" ? "Parcial" : est === "pend" ? "Pendiente" : "No aplica");
 
   if (cargando && !data) return <div className="loading">Cargando…</div>;
   if (!data || data.meses.length === 0) return null;   // binder sin pipeline → no se muestra nada
@@ -39,7 +39,7 @@ export default function CuadriculaBinder({ binderId, refreshKey }: { binderId: n
       <div className="hint" style={{ marginBottom: 8 }}>
         Pipeline de este binder, mes a mes. Cada fila es el <b>mes del dato</b> (el BDX de un mes se recibe/procesa el
         mes siguiente), así que el último es el mes anterior al actual. <span className={cls("ok")}>Sí</span> hecho ·{" "}
-        <span className={cls("pend")}>Pendiente</span> · <span className={cls("na")}>No aplica</span>. Solo informativa: las fases se marcan en el <b>detalle</b> de cada tarea.
+        <span className={cls("parcial")}>Parcial</span> · <span className={cls("pend")}>Pendiente</span> · <span className={cls("na")}>No aplica</span>. Solo informativa: las fases se marcan en el <b>detalle</b> de cada tarea.
       </div>
       <div className="cuad-scroll">
         <table className="cuad-tabla">

@@ -765,12 +765,15 @@ def _cobro_por_periodo(db: Session, binder_ids: set[int]) -> dict[int, set[str]]
 def _enlaces_hechos(db: Session, binder_ids: set[int], datos: dict, topes: dict | None = None):
     """Pasos del checklist ENLAZADOS a una fase (columna) de la parrilla. Devuelve:
     - enlazadas: {(binder_id, columna_id)} con ≥1 paso enlazado (la pastilla la gobierna el checklist).
-    - hechos: {(binder_id, columna_id): set(periodos 'YYYY-MM') en los que ese paso está hecho}.
+    - estado: {(binder_id, columna_id): {periodo 'YYYY-MM': [hechos, total]}}, donde `total` = nº de pasos
+      enlazados con ENTREGA ese mes (0 = la fase no aplica ese mes — p. ej. una tarea TRIMESTRAL no tiene
+      entrega en los meses intermedios) y `hechos` = cuántos de ellos están hechos. La pastilla se deriva:
+      total 0 → 'na'; hechos==total → 'ok'; 0<hechos<total → 'parcial'; hechos 0 → 'pend'.
     Un paso está 'hecho' en un periodo si su ocurrencia de ese mes está marcada a mano o su regla auto se cumple."""
     enlazadas: set[tuple[int, int]] = set()
-    hechos: dict[tuple[int, int], set[str]] = defaultdict(set)
+    estado: dict[tuple[int, int], dict[str, list]] = defaultdict(dict)
     if not binder_ids:
-        return enlazadas, hechos
+        return enlazadas, estado
     if topes is None:
         topes = _topes(db, binder_ids)
     pasos = db.scalars(select(TareaPaso).where(TareaPaso.columna_id.is_not(None))
@@ -785,11 +788,16 @@ def _enlaces_hechos(db: Session, binder_ids: set[int], datos: dict, topes: dict 
         enlazadas.add((t.binder_id, p.columna_id))
         marcadas = {ph.fecha_ocurrencia for ph in p.hechos}
         paso_m = _paso(t)
+        cel = estado[(t.binder_id, p.columna_id)]
         for f in _ocurrencias(t, binder, topes.get((t.binder_id, t.categoria), _VENC)):
             periodo = _periodo_de(binder, t, f, paso_m)
-            if periodo and (f in marcadas or _auto_ok(p, periodo, datos, binder.id)):
-                hechos[(t.binder_id, p.columna_id)].add(periodo)
-    return enlazadas, hechos
+            if not periodo:
+                continue
+            par = cel.setdefault(periodo, [0, 0])
+            par[1] += 1                                    # esa fase SÍ tiene entrega este mes (aplica)
+            if f in marcadas or _auto_ok(p, periodo, datos, binder.id):
+                par[0] += 1                                # y ese paso está hecho
+    return enlazadas, estado
 
 
 def _sinmov_periodos(db: Session, binder_ids: set[int], datos: dict, topes: dict | None = None):
@@ -837,7 +845,11 @@ def _estado_celda(c, per: str, b: Binder, cfg, cats: set[str], datos, cobro, man
         # Enlazada a un paso del checklist → MANDA el paso, sea la columna AUTO o MANUAL (un solo sitio
         # donde marcar, y la parrilla lo refleja). Esto también cubre columnas auto como Cobrado/LPANs.
         if (b.id, c.id) in enlazadas:
-            return "ok" if per in hechos.get((b.id, c.id), set()) else "pend"
+            par = hechos.get((b.id, c.id), {}).get(per)
+            if not par or par[1] == 0:
+                return "na"                      # fase enlazada SIN entrega este mes (p. ej. trimestral) → no aplica
+            done, total = par
+            return "ok" if done >= total else ("parcial" if done > 0 else "pend")
         if c.tipo == "auto":
             if con_dormido and not existe():
                 regla = "premium" if c.regla == "cobro" else c.regla

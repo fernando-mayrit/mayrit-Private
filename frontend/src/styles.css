@@ -1348,6 +1348,7 @@ tr.fila-inactiva td { opacity: 0.55; }
 .pastilla { display: inline-block; min-width: 66px; padding: 3px 10px; border-radius: 999px;
   font-size: 11.5px; font-weight: 600; text-align: center; white-space: nowrap; line-height: 1.5; }
 .pastilla.ok { background: #d4e6fb; color: #1c5cc4; }    /* azul pastel = hecho */
+.pastilla.parcial { background: #fde7c2; color: #955a00; } /* ámbar pastel = parcial (parte de la fase hecha) */
 .pastilla.pend { background: #fbdcdc; color: #bb2d1f; }  /* rojo pastel = pendiente */
 .pastilla.na { background: #eceef1; color: #7a828d; }    /* gris pastel = no aplica */
 button.pastilla.clic { border: none; cursor: pointer; font-family: inherit; }
