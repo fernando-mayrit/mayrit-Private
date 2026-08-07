@@ -31,15 +31,16 @@ encendido a una hora fija → si estaba apagado, **fallaban en silencio**. Ahora
 Requisitos previos del PC: tener el `venv` en `~/.mayrit/venv` con el backend (como para levantar la app
 en local) y, según el job que vaya a cubrir, Playwright y/o el OneDrive del Ppto sincronizado.
 
-Crear una tarea programada **requiere administrador**. Lanza el instalador (se auto-eleva y te pedirá
-UAC; acéptalo): clic derecho sobre `ops\syncs\instalar_tarea.ps1` → "Ejecutar con PowerShell", o:
+Crear una tarea programada **requiere administrador**. El doble clic NO ejecuta un `.ps1` (abre un
+editor); lánzalo así: abre **PowerShell** (Inicio → "PowerShell" → Enter) y pega:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File "C:\Dev\mayrit\ops\syncs\instalar_tarea.ps1"
 ```
 
-El script verifica que la tarea quedó registrada y avisa si falla. Repetir en cada PC que quieras que
-cubra (2-3 basta). Para DGSFP, el PC necesita Playwright:
+El script **se auto-eleva** (te saldrá el UAC, acéptalo), registra la tarea, la verifica y deja el
+resultado en `~/.mayrit/logs/instalar_tarea.log`. Debe decir `OK: tarea 'MayritSyncs' registrada`.
+Repetir en cada PC que quieras que cubra (2-3 basta). Para DGSFP, el PC necesita Playwright:
 
 ```powershell
 ~/.mayrit/venv/Scripts/pip.exe install playwright
