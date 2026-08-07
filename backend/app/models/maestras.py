@@ -1401,6 +1401,25 @@ class Parametro(Base):
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
+class SyncEstado(Base):
+    """Estado y CANDADO de las sincronizaciones automáticas locales (DGSFP, proyección de ingresos).
+
+    Las tareas corren en varios PCs de la oficina; el lanzador (`tools/runner_syncs.py`) usa esta
+    tabla para que SOLO UN PC ejecute cada job (candado con caducidad `lease_hasta`, por si un run se
+    cuelga) y para registrar el último intento/OK/error. La marca de "última vez que salió bien" real
+    vive en `parametros.actualizado` (la escribe cada job al confirmar); aquí `ultimo_ok` la duplica
+    para tenerla por job aunque el dato no cambie."""
+    __tablename__ = "sync_estado"
+
+    clave: Mapped[str] = mapped_column(String(40), primary_key=True)   # 'dgsfp' | 'proyeccion'
+    ultimo_intento: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
+    ultimo_ok: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
+    ultimo_error: Mapped[str | None] = mapped_column(Text)
+    en_curso: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    host: Mapped[str | None] = mapped_column(String(120))       # PC que tiene/tuvo el candado
+    lease_hasta: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 # ── Registro DGSFP: aseguradoras y sus agencias de suscripción ──────────────────────────────────
 # Reflejo (solo lectura desde la app) del Registro Público de la DGSFP. Se sincroniza con una
 # herramienta LOCAL (tools/sync_agencias_dgsfp.py) que raspa el registro con Playwright y hace

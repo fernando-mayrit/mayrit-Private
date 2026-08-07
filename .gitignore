@@ -83,3 +83,6 @@ desktop.ini
 
 # Logs de los servidores en local
 logs/
+
+# Informes generados en runtime por el sync de la DGSFP (no son código)
+backend/tools/informes_dgsfp/

@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session, selectinload
 from ..db import get_db
 from ..models.maestras import (
     AvisoNivel, Bdx, BdxLinea, Binder, ComisionLiquidacion, ConsultoriaContrato, Lpan, LpanExencion,
-    Poliza, Productor, Recibo, Tarea, TareaPaso,
+    Parametro, Poliza, Productor, Recibo, SyncEstado, Tarea, TareaPaso,
 )
 
 router = APIRouter(tags=["Avisos"])
@@ -50,6 +50,7 @@ TIPOS_AVISO: dict[str, dict] = {
     "lpan_sin_procesar":   {"etiqueta": "LPAN sin WP/Procesado", "defecto": "bajo", "categoria": "dia"},
     "comision_sin_reparto": {"etiqueta": "Comisión pendiente de reparto", "defecto": "bajo", "categoria": "dia"},
     "pastilla_sin_tarea": {"etiqueta": "Fase de la parrilla sin tarea asignada", "defecto": "alto", "categoria": "alerta"},
+    "sync_caducado": {"etiqueta": "Sincronización automática caducada", "defecto": "alto", "categoria": "alerta"},
 }
 
 
@@ -602,6 +603,57 @@ def _pastillas_sin_tarea(db: Session, binders: dict[int, Binder]) -> list[Aviso]
     return avisos
 
 
+# Jobs de sincronización automática vigilados: clave interna · parámetro cuyo `actualizado` marca el
+# último OK · tope de antigüedad antes de alertar · descripción · página a la que saltar.
+_SYNCS_VIGILADOS = [
+    ("dgsfp", "dgsfp_agencias_sync", dt.timedelta(days=40),
+     "el registro DGSFP de agencias de suscripción", "agencias_dgsfp"),
+    ("proyeccion", "proyeccion_ingresos_2026", dt.timedelta(days=2),
+     "la proyección de ingresos del presupuesto (KPIs)", "kpis"),
+]
+
+
+def _syncs_caducados(db: Session) -> list[Aviso]:
+    """ALERTA: una sincronización automática local que lleva demasiado sin ejecutarse (el PC portador
+    apagado, o el job fallando) — DGSFP mensual salta a >40 días, la proyección de ingresos a >2 días —
+    o cuyo último intento registró un error. Es la red de seguridad de las tareas automáticas: aunque
+    todos los PCs estén apagados una temporada, el dato viejo se ve aquí en vez de pasar desapercibido."""
+    ahora = dt.datetime.now(dt.timezone.utc)
+    try:
+        estados = {s.clave: s for s in db.scalars(select(SyncEstado)).all()}
+    except Exception:
+        # Si la tabla aún no existe (migración no aplicada), no romper el resto de avisos.
+        db.rollback()
+        return []
+    avisos: list[Aviso] = []
+    for clave, param, tope, desc, pagina in _SYNCS_VIGILADOS:
+        p = db.get(Parametro, param)
+        act = p.actualizado if p else None
+        if act is not None and act.tzinfo is None:
+            act = act.replace(tzinfo=dt.timezone.utc)
+        caducado = act is None or (ahora - act) > tope
+        se = estados.get(clave)
+        con_error = bool(se and se.ultimo_error)
+        if not caducado and not con_error:
+            continue
+        if act is None:
+            cuando = "no se ha ejecutado nunca"
+        else:
+            dias = (ahora - act).days
+            cuando = (f"no se actualiza desde hace {dias} día{'s' if dias != 1 else ''} "
+                      f"({act.strftime('%d/%m/%Y')})")
+        detalle = f"La sincronización automática de {desc} {cuando}."
+        if con_error:
+            primera = (se.ultimo_error or "").splitlines()[0][:120]
+            detalle += f" Último intento con error: {primera}"
+        avisos.append(Aviso(
+            tipo="sync_caducado", severidad="danger",
+            titulo="Sincronización automática caducada",
+            detalle=detalle, pagina=pagina,
+        ))
+    return avisos
+
+
 @router.get("/avisos", response_model=list[Aviso])
 def listar_avisos(db: Session = Depends(get_db)):
     """Lista de avisos/tareas pendientes (calculados al vuelo), ordenados por importancia."""
@@ -621,6 +673,7 @@ def listar_avisos(db: Session = Depends(get_db)):
     avisos += _lpan_sin_procesar(db, binders)
     avisos += _comision_sin_reparto(db)
     avisos += _pastillas_sin_tarea(db, binders)
+    avisos += _syncs_caducados(db)
     return _aplicar_niveles(db, avisos)
 
 
