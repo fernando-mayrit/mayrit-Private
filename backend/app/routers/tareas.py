@@ -271,6 +271,16 @@ def _fechas_carga(db: Session, binder_ids: set[int]) -> dict[str, dict[int, dict
         if not per or ts is None:
             return
         d = ts.date() if hasattr(ts, "date") else ts
+        # Una tarea automática no puede estar "hecha" antes del mes que cubre: si el dato se cargó antes
+        # (típico de un fichero histórico en bloque con líneas adelantadas a meses futuros), se data como
+        # muy pronto el día 1 de ese mes. Vale para risk/premium/lpan/claims por igual.
+        try:
+            y, m = (int(x) for x in per.split("-"))
+            piso = dt.date(y, m, 1)
+            if d < piso:
+                d = piso
+        except (ValueError, TypeError):
+            pass
         cur = out[regla][bid].get(per)
         if cur is None or d < cur:
             out[regla][bid][per] = d
