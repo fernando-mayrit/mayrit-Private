@@ -1393,6 +1393,16 @@ button.pastilla.clic:hover { filter: brightness(0.96); }
 .pm-foot .cuad-tabla { border-top: 2px solid var(--gris-medio); }
 .pm-foot .cuad-bind, .pm-foot .cuad-celda { background: #eef0f3; font-weight: 700; }
 
+/* Vista Cuadrícula (parrilla global de Tareas): misma cabecera fija que Pendientes/mes — scroll dentro
+   del contenedor (altura máx.) con la cabecera (grupos + fases) y la columna Binder fijas. Mismo truco:
+   border-collapse separate + overflow visible para que el sticky no lo rompa el global 'table{overflow:hidden}'. */
+.cg-scroll { max-height: 62vh; overflow: auto; }
+.cg-tabla { border-collapse: separate; border-spacing: 0; overflow: visible; }
+.cg-tabla th, .cg-tabla td { border-top: 0; border-left: 0; }
+.cg-tabla thead th { position: sticky; top: 0; z-index: 3; height: 30px; box-sizing: border-box; background: var(--gris-claro); }
+.cg-tabla thead tr:nth-child(2) th { top: 30px; background: #fff; }
+.cg-tabla thead .cuad-esq { top: 0; z-index: 4; background: #fff; }
+
 /* Config de fases de la cuadrícula por binder (pestaña Tareas) */
 .fases-cfg { border: 1px solid var(--borde); border-radius: 10px; margin-bottom: 14px; background: #fff; }
 .fases-cab { width: 100%; display: flex; justify-content: space-between; align-items: center; gap: 10px;

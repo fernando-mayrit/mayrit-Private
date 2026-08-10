@@ -125,8 +125,8 @@ function CuadriculaVista({ cuad, cargando, mesLabel }: {
         {mesLabel} · pipeline por binder — <span className={cls("ok")}>Sí</span> hecho · <span className={cls("parcial")}>Parcial</span> · <span className={cls("pend")}>Pendiente</span> · <span className={cls("na")}>No aplica</span>.
         Solo informativa: las fases se marcan en el <b>detalle</b> de cada tarea.
       </div>
-      <div className="cuad-scroll">
-        <table className="cuad-tabla">
+      <div className="cuad-scroll cg-scroll">
+        <table className="cuad-tabla cg-tabla">
           <thead>
             <tr>
               <th className="cuad-esq" rowSpan={2}>Binder</th>
