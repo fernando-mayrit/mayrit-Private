@@ -1381,7 +1381,11 @@ button.pastilla.clic:hover { filter: brightness(0.96); }
    dentro del contenedor; la fila de TOTALES va en una tabla APARTE debajo (pm-foot), fija fuera del scroll,
    con las columnas alineadas (table-layout fijo + mismo ancho) y el scroll horizontal sincronizado. */
 .pm-scroll { max-height: 62vh; overflow: auto; }
-.pm-tabla { table-layout: fixed; }
+/* border-collapse: separate para que el sticky de la cabecera funcione (el global usa collapse, que lo
+   rompe en Chromium). Con border-spacing 0 los bordes se tocarían y saldrían dobles → cada celda dibuja
+   solo derecha+abajo y el contorno superior/izquierdo lo pone el borde del contenedor .cuad-scroll. */
+.pm-tabla { table-layout: fixed; border-collapse: separate; border-spacing: 0; }
+.pm-tabla th, .pm-tabla td { border-top: 0; border-left: 0; }
 .pm-tabla thead th { position: sticky; top: 0; z-index: 3; height: 30px; box-sizing: border-box; background: var(--gris-claro); }
 .pm-tabla thead tr:nth-child(2) th { top: 30px; background: #fff; }
 .pm-tabla thead .cuad-esq { top: 0; z-index: 4; background: #fff; }
