@@ -342,10 +342,13 @@ export default function App() {
     const onVisible = () => { if (document.visibilityState === "visible") cargarAvisos(); };
     document.addEventListener("visibilitychange", onVisible);
     window.addEventListener("focus", cargarAvisos);
+    // Refresco INMEDIATO al marcar/desmarcar una tarea (evento global emitido por tareasApi).
+    window.addEventListener("mayrit:tareas", cargarAvisos);
     return () => {
       clearInterval(id);
       document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("focus", cargarAvisos);
+      window.removeEventListener("mayrit:tareas", cargarAvisos);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

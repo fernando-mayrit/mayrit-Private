@@ -863,6 +863,10 @@ export interface PendMesFila {
   celdas: Record<string, Record<string, number | null>>;   // 'YYYY-MM' -> {Risk, Premium, Claims}
 }
 export interface PendMesResp { meses: string[]; filas: PendMesFila[]; }
+// Evento global: se emite al marcar/desmarcar una tarea, para que la cabecera (avisos) y la parrilla
+// se refresquen al instante sin esperar al auto-refresco de 5 min.
+const emitirCambioTareas = () => { try { window.dispatchEvent(new Event("mayrit:tareas")); } catch { /* noop */ } };
+
 export const tareasApi = {
   listAll: () => request<Tarea[]>("/tareas"),
   list: (binderId: number) => request<Tarea[]>(`/binders/${binderId}/tareas`),
@@ -873,10 +877,10 @@ export const tareasApi = {
     request<{ tarea_id: number; titulo: string; ocurrencias: TareaOcurrencia[] }>(
       `/tareas/${id}/ocurrencias${incluirFuturas ? "?incluir_futuras=true" : ""}`),
   marcarHecha: (id: number, body: { fecha_ocurrencia: string; fecha_hecha?: string | null; notas?: string | null; deshacer?: boolean }) =>
-    request(`/tareas/${id}/hecha`, { method: "POST", body: JSON.stringify(body) }),
+    request(`/tareas/${id}/hecha`, { method: "POST", body: JSON.stringify(body) }).then((r) => (emitirCambioTareas(), r)),
   // Marcar/deshacer 'sin movimiento este mes' (no hubo dato ese mes; solo afecta a esa entrega).
   marcarSinMovimiento: (id: number, body: { fecha_ocurrencia: string; sin_movimiento: boolean }) =>
-    request(`/tareas/${id}/sin-movimiento`, { method: "POST", body: JSON.stringify(body) }),
+    request(`/tareas/${id}/sin-movimiento`, { method: "POST", body: JSON.stringify(body) }).then((r) => (emitirCambioTareas(), r)),
   // ── Pasos (checklist) ──
   pasos: (id: number) => request<TareaPaso[]>(`/tareas/${id}/pasos`),
   crearPaso: (id: number, body: { titulo: string; orden?: number; regla_auto?: string | null; columna_id?: number | null }) =>
@@ -887,7 +891,7 @@ export const tareasApi = {
   columnas: () => request<CuadriculaColumna[]>("/tareas/columnas"),
   borrarPaso: (pasoId: number) => request(`/pasos/${pasoId}`, { method: "DELETE" }),
   marcarPaso: (pasoId: number, body: { fecha_ocurrencia: string; deshacer?: boolean; fecha_hecha?: string | null }) =>
-    request(`/pasos/${pasoId}/hecho`, { method: "POST", body: JSON.stringify(body) }),
+    request(`/pasos/${pasoId}/hecho`, { method: "POST", body: JSON.stringify(body) }).then((r) => (emitirCambioTareas(), r)),
   sincronizarTodas: () => request<{ binders: number; creadas: number; actualizadas: number }>("/tareas/sincronizar-auto", { method: "POST" }),
   sincronizarBinder: (binderId: number) => request<{ creadas: number; actualizadas: number }>(`/binders/${binderId}/tareas/sincronizar-auto`, { method: "POST" }),
   // Info del binder anterior del mismo programa (para ofrecer copiar su esquema de tareas).
