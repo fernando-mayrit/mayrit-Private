@@ -1118,7 +1118,7 @@ export default function BinderDetalle({ binder }: { binder: Binder }) {
       {error && <div className="error">⚠ {error}</div>}
 
       {tab === "resumen" && (
-        <div className="resumen-binder">
+        <div className="resumen-binder detalle-cont">
           {!resumen ? (
             <div className="loading">Cargando…</div>
           ) : (
@@ -1545,7 +1545,7 @@ export default function BinderDetalle({ binder }: { binder: Binder }) {
           const pc = (resultado * pcPct) / 100;
           const Money = ({ v }: { v: number }) => <td className="num">{imp(v)}</td>;
           return (
-            <>
+            <div className="detalle-cont">
               <h3 style={{ margin: "4px 0 8px" }}>Profit Commission</h3>
               <div className="hint" style={{ marginBottom: 10 }}>
                 PC {fmtMiles(pcPct)} % · UW Expenses {fmtMiles(uwPct)} % · Sujetas a PC: {nombresPC || "—"}.
@@ -1583,7 +1583,7 @@ export default function BinderDetalle({ binder }: { binder: Binder }) {
               {pc <= 0 && (
                 <div className="hint" style={{ marginTop: 8 }}>Resultado ≤ 0 → no se genera Profit Commission (importe negativo informativo).</div>
               )}
-            </>
+            </div>
           );
         })()
       )}

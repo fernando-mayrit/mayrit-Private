@@ -1369,6 +1369,10 @@ button.pastilla.clic:hover { filter: brightness(0.96); }
 /* Pestaña Tareas del binder: su contenido (fases + parrilla + detalle) scrollea en su PROPIA región, como
    el resto de pestañas de la ficha (así el título y las pestañas quedan fijos arriba). */
 .tareas-tab-scroll { flex: 1; min-height: 0; overflow: auto; }
+/* Contenido de una pestaña del binder que hace su propio scroll (deja el encabezado del binder fijo,
+   igual que .bdx-scroll). Para pestañas sin tabla-scroll propia (Resumen, PC…) y así todas se comportan
+   igual: el header no se mueve. */
+.detalle-cont { flex: 1; min-height: 0; overflow: auto; padding-bottom: 12px; }
 /* Y dentro, la cabecera de fases de la parrilla queda FIJA arriba de esa región al bajar por los meses.
    El .cuad-scroll no crea scroll propio (rompería el sticky); la región de arriba lleva el scroll. */
 .binder-cuad .cuad-scroll { overflow: visible; }
