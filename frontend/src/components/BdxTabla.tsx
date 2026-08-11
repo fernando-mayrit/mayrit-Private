@@ -228,7 +228,17 @@ export default function BdxTabla({
   function valoresDistintos(col: Col): string[] {
     const s = new Set<string>();
     lineas.forEach((l) => s.add(fmtValor(l, col) || VACIO));
-    return [...s].sort((a, b) => a.localeCompare(b, "es", { numeric: true }));
+    const arr = [...s];
+    if (col.tipo === "date") {
+      // Ordenar CRONOLÓGICAMENTE por la fecha real, no por el texto "DD/MM/YYYY" (si no, 01/07 saldría
+      // antes que 22/06). Se convierte a ISO 'aaaa-mm-dd' solo para comparar. Vacías al final.
+      const clave = (x: string) => {
+        const [d, m, y] = x.split("/");
+        return y && m && d ? `${y}-${m}-${d}` : "￿";
+      };
+      return arr.sort((a, b) => clave(a).localeCompare(clave(b)));
+    }
+    return arr.sort((a, b) => a.localeCompare(b, "es", { numeric: true }));
   }
   function abrirFiltro(col: Col, e: React.MouseEvent) {
     e.stopPropagation();
