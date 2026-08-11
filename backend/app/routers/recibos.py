@@ -1525,29 +1525,34 @@ async def match_excel(binder_id: int, file: UploadFile | None = File(None), hoja
             filas.append(MatchRow(certificate_ref=cert, importe_excel=imp, estado="match", linea_id=l0.id,
                                   importe_risk=_q2(l0.net_premium_to_broker or D0), risk_bdx=periodos([l0]), risk_lineas=1))
             matched_ids.append(l0.id)
+            cands.remove(l0)   # asignada; que una fila siguiente del mismo certificado no la reutilice
             continue
 
         tol = max(Decimal("0.02"), abs(imp) * Decimal("0.01"))
         netos = [(l, l.net_premium_to_broker or D0) for l in cands]
         n = len(netos)
         if n <= 16:
-            # Prueba TODAS las combinaciones; se queda con la de menor diferencia y, a igualdad, más líneas.
+            # Prueba TODAS las combinaciones; se queda con la de menor diferencia y, a igualdad, MENOS
+            # líneas (el subconjunto más ajustado). Antes prefería MÁS líneas, y eso colaba pares que
+            # netean 0 (p. ej. un endoso +X/−X de OTRO asegurado que comparte el certificate_ref): sumaban
+            # lo mismo pero marcaban líneas ajenas. Con "menos líneas" se queda solo la que cuadra.
             mejor_mask, mejor_diff, mejor_cnt = 1, None, 0
             for mask in range(1, 1 << n):
                 s = D0
                 cnt = 0
-                for i in range(n):
-                    if mask >> i & 1:
-                        s += netos[i][1]
+                for j in range(n):
+                    if mask >> j & 1:
+                        s += netos[j][1]
                         cnt += 1
                 d = abs(imp - s)
-                if mejor_diff is None or d < mejor_diff or (d == mejor_diff and cnt > mejor_cnt):
+                if mejor_diff is None or d < mejor_diff or (d == mejor_diff and cnt < mejor_cnt):
                     mejor_mask, mejor_diff, mejor_cnt = mask, d, cnt
-            elegido = [netos[i][0] for i in range(n) if mejor_mask >> i & 1]
+            elegido = [netos[j][0] for j in range(n) if mejor_mask >> j & 1]
         else:
-            # Demasiadas líneas para probar todas las combinaciones: línea más cercana vs suma total.
+            # Demasiadas líneas para probar todas las combinaciones: línea más cercana vs suma total
+            # (a igualdad, la línea suelta, no todas).
             best = min(netos, key=lambda x: abs(imp - x[1]))[0]
-            elegido = list(cands) if abs(imp - sum((x[1] for x in netos), D0)) <= abs(imp - (best.net_premium_to_broker or D0)) else [best]
+            elegido = list(cands) if abs(imp - sum((x[1] for x in netos), D0)) < abs(imp - (best.net_premium_to_broker or D0)) else [best]
 
         suma_el = _q2(sum((l.net_premium_to_broker or D0) for l in elegido))
         estado = "match" if abs(imp - suma_el) <= tol else "importe_distinto"
@@ -1555,6 +1560,12 @@ async def match_excel(binder_id: int, file: UploadFile | None = File(None), hoja
                               importe_risk=suma_el, risk_bdx=periodos(elegido), risk_lineas=len(elegido)))
         if estado == "match":
             matched_ids.extend(l.id for l in elegido)
+            # Cada línea Risk se asigna a UN solo apunte del Premium: se saca de las candidatas para que
+            # una fila siguiente del Excel (mismo certificado) no vuelva a cogerla (dos apuntes iguales →
+            # dos líneas distintas, no la misma dos veces).
+            for l in elegido:
+                if l in cands:
+                    cands.remove(l)
 
     # Recordar el mapeo en la agencia
     if binder.productor:
