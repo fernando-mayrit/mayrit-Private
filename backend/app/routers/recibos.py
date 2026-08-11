@@ -1473,6 +1473,23 @@ async def match_excel(binder_id: int, file: UploadFile | None = File(None), hoja
         raise HTTPException(status_code=422, detail=f"Columna de certificado '{certificado}' no está en la hoja")
     imp_idx = cols.index(importe) if (importe and importe in cols) else None
 
+    # HECA: el certificate_ref puede repetirse entre asegurados distintos (endosos con código corto tipo
+    # GH1/GH2-LB). La columna "Policy or Group Ref" (que SOLO existe en los bordereaux de HECA) identifica
+    # la póliza real → si el Excel la trae, el macheo casa por certificate_ref + Policy or Group Ref, para
+    # no mezclar líneas de asegurados que comparten certificado. En el Risk esa columna vive en `extra`.
+    _PGR = "policyorgroupref"
+    _norm = lambda s: "".join(str(s or "").strip().lower().split())
+    pgr_idx = next((k for k, c in enumerate(cols) if _norm(c) == _PGR), None)
+
+    def _pgr_linea(l: BdxLinea) -> str:
+        for k, v in (l.extra or {}).items():
+            if _norm(k) == _PGR:
+                return _norm(v)
+        return ""
+
+    def _clave(cert: str, pgr: str):
+        return (cert, pgr) if pgr_idx is not None else cert
+
     # Líneas Risk del binder indexadas por certificate_ref. load_only: solo las columnas que usan el
     # macheo (id, certificado, net) y el cálculo de totales (_comp_linea), en vez de las ~90 de la
     # entidad → mucho menos que traer y que hidratar (el binder puede tener miles de líneas).
@@ -1483,19 +1500,20 @@ async def match_excel(binder_id: int, file: UploadFile | None = File(None), hoja
             BdxLinea.total_gwp_our_line, BdxLinea.total_taxes_levies,
             BdxLinea.commission_coverholder_amount, BdxLinea.brokerage_amount,
             BdxLinea.final_net_premium_uw, BdxLinea.incluido_en_premium, BdxLinea.premium_bdx,
+            BdxLinea.extra,   # "Policy or Group Ref" (solo HECA) vive aquí; parte de la clave de macheo
         ))
     ).all()
     # Candidatas por certificado. Se EXCLUYEN las líneas ya incluidas en OTRO Premium (distinto periodo):
     # un macheo nuevo NO debe arrastrar líneas ya cobradas/atribuidas a otro Premium (el subset-sum por
     # importe podía "robar" líneas antiguas del mismo certificado). Se admiten las del propio periodo,
     # para poder RE-machear ese Premium.
-    por_cert: dict[str, list[BdxLinea]] = {}
+    por_cert: dict = {}
     for l in risk:
         if not l.certificate_ref:
             continue
         if l.incluido_en_premium and l.premium_bdx and l.premium_bdx.strftime("%Y-%m") != periodo:
             continue
-        por_cert.setdefault(l.certificate_ref.strip().lower(), []).append(l)
+        por_cert.setdefault(_clave(l.certificate_ref.strip().lower(), _pgr_linea(l)), []).append(l)
 
     filas: list[MatchRow] = []
     matched_ids: list[int] = []
@@ -1507,7 +1525,8 @@ async def match_excel(binder_id: int, file: UploadFile | None = File(None), hoja
             continue
         cert = str(cert_raw).strip()
         imp = _a_decimal(row[imp_idx]) if (imp_idx is not None and imp_idx < len(row)) else None
-        cands = por_cert.get(cert.lower(), [])
+        pgr = _norm(row[pgr_idx]) if (pgr_idx is not None and pgr_idx < len(row)) else ""
+        cands = por_cert.get(_clave(cert.lower(), pgr), [])
         if not cands:
             filas.append(MatchRow(certificate_ref=cert, importe_excel=imp, estado="no_encontrada"))
             continue
@@ -1525,34 +1544,29 @@ async def match_excel(binder_id: int, file: UploadFile | None = File(None), hoja
             filas.append(MatchRow(certificate_ref=cert, importe_excel=imp, estado="match", linea_id=l0.id,
                                   importe_risk=_q2(l0.net_premium_to_broker or D0), risk_bdx=periodos([l0]), risk_lineas=1))
             matched_ids.append(l0.id)
-            cands.remove(l0)   # asignada; que una fila siguiente del mismo certificado no la reutilice
             continue
 
         tol = max(Decimal("0.02"), abs(imp) * Decimal("0.01"))
         netos = [(l, l.net_premium_to_broker or D0) for l in cands]
         n = len(netos)
         if n <= 16:
-            # Prueba TODAS las combinaciones; se queda con la de menor diferencia y, a igualdad, MENOS
-            # líneas (el subconjunto más ajustado). Antes prefería MÁS líneas, y eso colaba pares que
-            # netean 0 (p. ej. un endoso +X/−X de OTRO asegurado que comparte el certificate_ref): sumaban
-            # lo mismo pero marcaban líneas ajenas. Con "menos líneas" se queda solo la que cuadra.
+            # Prueba TODAS las combinaciones; se queda con la de menor diferencia y, a igualdad, más líneas.
             mejor_mask, mejor_diff, mejor_cnt = 1, None, 0
             for mask in range(1, 1 << n):
                 s = D0
                 cnt = 0
-                for j in range(n):
-                    if mask >> j & 1:
-                        s += netos[j][1]
+                for i in range(n):
+                    if mask >> i & 1:
+                        s += netos[i][1]
                         cnt += 1
                 d = abs(imp - s)
-                if mejor_diff is None or d < mejor_diff or (d == mejor_diff and cnt < mejor_cnt):
+                if mejor_diff is None or d < mejor_diff or (d == mejor_diff and cnt > mejor_cnt):
                     mejor_mask, mejor_diff, mejor_cnt = mask, d, cnt
-            elegido = [netos[j][0] for j in range(n) if mejor_mask >> j & 1]
+            elegido = [netos[i][0] for i in range(n) if mejor_mask >> i & 1]
         else:
-            # Demasiadas líneas para probar todas las combinaciones: línea más cercana vs suma total
-            # (a igualdad, la línea suelta, no todas).
+            # Demasiadas líneas para probar todas las combinaciones: línea más cercana vs suma total.
             best = min(netos, key=lambda x: abs(imp - x[1]))[0]
-            elegido = list(cands) if abs(imp - sum((x[1] for x in netos), D0)) < abs(imp - (best.net_premium_to_broker or D0)) else [best]
+            elegido = list(cands) if abs(imp - sum((x[1] for x in netos), D0)) <= abs(imp - (best.net_premium_to_broker or D0)) else [best]
 
         suma_el = _q2(sum((l.net_premium_to_broker or D0) for l in elegido))
         estado = "match" if abs(imp - suma_el) <= tol else "importe_distinto"
@@ -1560,12 +1574,6 @@ async def match_excel(binder_id: int, file: UploadFile | None = File(None), hoja
                               importe_risk=suma_el, risk_bdx=periodos(elegido), risk_lineas=len(elegido)))
         if estado == "match":
             matched_ids.extend(l.id for l in elegido)
-            # Cada línea Risk se asigna a UN solo apunte del Premium: se saca de las candidatas para que
-            # una fila siguiente del Excel (mismo certificado) no vuelva a cogerla (dos apuntes iguales →
-            # dos líneas distintas, no la misma dos veces).
-            for l in elegido:
-                if l in cands:
-                    cands.remove(l)
 
     # Recordar el mapeo en la agencia
     if binder.productor:
