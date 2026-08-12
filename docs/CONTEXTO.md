@@ -6,9 +6,40 @@
 > otro equipo y no se commitearon, **se perdieron** (la memoria de Claude es local de cada equipo).
 > **REGLA: las tareas compartidas van SIEMPRE aquí, en CONTEXTO.md + commit & push.**
 
-### 📌 AL DÍA (2026-07-27) — lista viva de pendientes y mejoras
+### 📌 AL DÍA (2026-08-12) — lista viva de pendientes y mejoras
 
-**Sesión 2026-07-27 (para retomar desde otro PC):** todo commiteado y pusheado a `main` (último:
+**Sesiones 2026-08-08 → 2026-08-12 (todo commiteado y pusheado a `main`):**
+- **⭐ Tareas automáticas (syncs locales) — REDISEÑADAS y desplegadas** (DGSFP + proyección de ingresos):
+  antes corrían como tarea de Windows en un solo PC y **fallaban en silencio** si estaba apagado. Ahora
+  corren desde **cualquier PC de la oficina** con un **candado en la BD** (tabla `sync_estado`,
+  `tools/runner_syncs.py`) + catch-up al encender; cada PC solo intenta el job que puede (Playwright /
+  Excel). **Alerta roja `sync_caducado`** si DGSFP >40 días o proyección >2 días. Tarea **MayritSyncs**
+  instalada y probada en **Surface-FPV**; `ops/syncs/instalar_tarea.ps1` se auto-eleva (UAC). **Falta
+  instalarla en otros 1-2 PCs** (requiere admin).
+- **Fechas de las tareas automáticas:** «Procesar Premium» se data con **cuándo se procesa** (sello
+  `bdx_lineas.premium_incluido_en` al incluir la línea en el Premium), no con el `created_at` del Risk;
+  ninguna tarea auto se data **antes de su mes** (suelo al día 1); y las fechas salen en **hora española**
+  (Europe/Madrid, se añadió `tzdata`).
+- **Macheo del Premium (subida de Excel):** casa por **certificate_ref + «Policy or Group Ref»** (columna
+  que **SOLO existe en HECA**, vive en `bdx_lineas.extra`). Antes casaba solo por cert y, con cert repetido
+  entre asegurados (p. ej. `GH2-LB` lo comparten ~30 en PI2224HEC), metía líneas ajenas (coló a Petrucci en
+  el Premium de Monteferrante). Datos de junio de PI2224HEC corregidos a mano.
+- **UI:** cabeceras **fijas** al hacer scroll en **Tareas** (Pendientes/mes y Cuadrícula) y en las pestañas
+  **Resumen/PC** del binder (clase `.detalle-cont`; ojo: el global `table{overflow:hidden}` rompe el sticky →
+  hace falta `overflow:visible` + `border-collapse:separate`); el **filtro de fecha del BDX** ordena
+  cronológicamente; los **avisos de la cabecera** se refrescan **al instante** al marcar/desmarcar una tarea
+  (evento global `mayrit:tareas`); **+19 frases de bienvenida** (30 en total).
+- **Datos corregidos:** el Risk **combinado** de **CY0926ALE** (traía may+jun+jul en un solo BDX) partido en
+  3 BDX mensuales (junio datado 01/07, julio 07/07).
+- **Aclarado (NO era bug):** «no deja generar LPAN» de **SB01/SB02** — **SB01 es Lloyd's** y le falta el
+  **signing number del FDO** (risk code SB); **SB02 no es Lloyd's** y solo falta **cobrar** abril/mayo. El
+  botón se desactiva con motivo (tooltip lo dice).
+
+**Limpieza de pendientes (2026-08-07):** CERRADOS el **doble conteo del `to_pay`** de Triangulación (commit
+d05011d) y el **LPAN de Pólizas OM** (Fernando confirma «ya está»); **SB0226 Premium Trimestral = correcto**
+(no era error).
+
+**Sesión 2026-07-27 (histórico):** todo commiteado y pusheado a `main` (último:
 arreglo del 500 de Pólizas). Hecho hoy:
 - **LPAN de pólizas OM** completo (ver sección «LPAN de pólizas Open Market»): por **(risk code ×
   periodo)**, reparto tecleado en la ficha (`codigos_riesgo`), importes cuadrados con `LPANs OM
@@ -36,10 +67,13 @@ arreglo del 500 de Pólizas). Hecho hoy:
   pre-2026 se ignora (no se rehace). Hoy salen 6. Añadido `poliza_id` al modelo Aviso para navegación futura.
 
 **Pendientes ahora:**
-- **⚠ PRIORITARIO — Triangulación: doble conteo del `to_pay`.** La siniestralidad de Triangulación sale
-  INFLADA (los snapshots cuentan pagado+reservas sin restar `to_pay`) y no cuadra con el módulo de
-  Siniestros. Decidir con Fernando si aplicar `− to_pay` (afecta IBNR/Ultimate de TODA la app).
-- **Triangulación por programa** — hoy básico, ampliar.
+- **⭐ Tareas automáticas: instalar la tarea `MayritSyncs` en otros 1-2 PCs** (requiere admin/UAC; método:
+  abrir PowerShell y pegar `powershell -ExecutionPolicy Bypass -File "C:\Dev\mayrit\ops\syncs\instalar_tarea.ps1"`;
+  en los que cubran DGSFP, instalar Playwright). Ya instalada y probada en Surface-FPV.
+- **Cabos de Claims (sesión 2026-08):** **PI17** (AXIS, abril incompleto + 3 claims nuevos que crear),
+  **PI08 claim 112915** (descuadre 1.110 €, corregir a mano), **PI16** (siniestros por detrás del BDX de junio).
+- ~~⚠ Triangulación: doble conteo del `to_pay`~~ — **HECHO** (commit d05011d).
+- **Triangulación por programa** — hoy básico, ampliar (aparcado).
 - **Impuestos del LPAN OM: la vista los calcula con un % de póliza fijo, NO cuadra con el recibo.** Detectado
   en pol 103 (Adelte/Liberty, MDABNZ1J009): el cuadro pinta 5.297,50 en todos los trimestres, pero el recibo
   real da 5.590 en Enero y 5.200 en el resto (bruta − neta). Mejora: que `_importes_om` saque los impuestos
