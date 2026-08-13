@@ -673,6 +673,8 @@ td.num, th.num { text-align: right; }
 .pc-tabla3 .pc-edit { padding: 1px 4px; }
 .pc-inp { display: inline-flex; width: 96px; } .pc-inp .inp-num { width: 86px; }
 .pc-inp-pct { display: inline-flex; width: 52px; vertical-align: middle; } .pc-inp-pct .inp-num { width: 34px; }
+/* Campo a ajustar (IBNR de la columna auto): resaltado en ámbar para que destaque. */
+.num-input.pc-destacado { background: #fff8e6; border-color: #e0a800; }
 .pc-card .pc-dup { margin-top: 10px; width: 100%; }
 /* Campo a completar a mano (p. ej. IBNR): fondo ámbar para que destaque */
 .input-completar .inp-num { background: #fff4d6; border-color: var(--naranja); }

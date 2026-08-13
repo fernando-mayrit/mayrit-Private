@@ -1441,6 +1441,7 @@ class PcValoracion(Base):
     # en Excel); si es False, se calculan en vivo de los datos y solo se teclean IBNR% y déficit.
     manual: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
     ibnr_pct: Mapped[Decimal | None] = mapped_column(Numeric(9, 4))
+    taxes_pct: Mapped[Decimal | None] = mapped_column(Numeric(9, 4))  # Taxes del PC = taxes_pct % de GWP (auto)
     deficit: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))   # brought from previous YOAs
     # Cifras BASE (JSON): en manual las tecleadas; en auto-bloqueada la foto congelada al bloquear.
     snapshot: Mapped[dict | None] = mapped_column(JSONB)

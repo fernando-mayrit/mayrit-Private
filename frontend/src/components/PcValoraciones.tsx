@@ -18,14 +18,15 @@ interface BasePC {
 }
 
 // Base calculada EN VIVO desde los datos del binder (secciones sujetas a PC).
-function baseLive(binder: Binder, lineas: BdxLinea[], siniestros: Siniestro[], ibnrPct: number, deficit: number): BasePC {
+function baseLive(binder: Binder, lineas: BdxLinea[], siniestros: Siniestro[], ibnrPct: number, taxPct: number, deficit: number): BasePC {
   const secs = binder.secciones ?? [];
   const set = new Set(secs.map((s, i) => (s.sujeto_pc ? i + 1 : 0)).filter((x) => x > 0));
   const ls = lineas.filter((l) => set.has(l.section_no ?? 0));
   const gwp = ls.reduce((a, l) => a + n(l.total_gwp_our_line), 0);
   const comCover = ls.reduce((a, l) => a + n(l.commission_coverholder_amount), 0);
   const brokerage = ls.reduce((a, l) => a + n(l.brokerage_amount), 0);
-  const taxes = ls.reduce((a, l) => a + n(l.total_taxes_levies), 0);
+  // Taxes del PC = % (editable, por defecto 0) sobre la GWP. NO se suma total_taxes_levies (poco fiable).
+  const taxes = gwp * taxPct / 100;
   const sin = siniestros.filter((s) => set.has(s.section ?? 0));
   const paidFees = sin.reduce((a, s) => a + (n(s.paid_fees) - n(s.paid_this_month_fees)), 0);
   const resFees = sin.reduce((a, s) => a + n(s.reserves_fees), 0);
@@ -53,14 +54,14 @@ function derivar(b: BasePC, previouslyPaid: number) {
 function baseDe(binder: Binder, lineas: BdxLinea[], siniestros: Siniestro[], v: PcValoracion): BasePC {
   return (v.manual || v.bloqueado) && v.snapshot
     ? (v.snapshot as unknown as BasePC)
-    : baseLive(binder, lineas, siniestros, n(v.ibnr_pct), n(v.deficit));
+    : baseLive(binder, lineas, siniestros, n(v.ibnr_pct), n(v.taxes_pct), n(v.deficit));
 }
 
 function PcCard({ binder, lineas, siniestros, v, previouslyPaid, esUltima, hayVarias, busy,
                   onEditar, onSnapshot, onManual, onBloquear, onDesbloquear, onBorrar, onDuplicar }: {
   binder: Binder; lineas: BdxLinea[]; siniestros: Siniestro[]; v: PcValoracion; previouslyPaid: number;
   esUltima: boolean; hayVarias: boolean; busy: boolean;
-  onEditar: (v: PcValoracion, c: { fecha?: string | null; ibnr_pct?: string; deficit?: string }) => void;
+  onEditar: (v: PcValoracion, c: { fecha?: string | null; ibnr_pct?: string; taxes_pct?: string; deficit?: string }) => void;
   onSnapshot: (v: PcValoracion, base: BasePC) => void;
   onManual: (v: PcValoracion, manual: boolean, liveBase: BasePC) => void;
   onBloquear: (v: PcValoracion, base: BasePC, fecha: string) => void;
@@ -69,24 +70,25 @@ function PcCard({ binder, lineas, siniestros, v, previouslyPaid, esUltima, hayVa
   onDuplicar: () => void;
 }) {
   const [ibnr, setIbnr] = useState(String(v.ibnr_pct ?? "0"));
+  const [taxPct, setTaxPct] = useState(String(v.taxes_pct ?? "0"));
   const [deficit, setDeficit] = useState(String(v.deficit ?? "0"));
   const [fecha, setFecha] = useState(v.fecha ?? "");
-  const [man, setMan] = useState<BasePC>(() => (v.snapshot as unknown as BasePC) ?? baseLive(binder, lineas, siniestros, n(v.ibnr_pct), n(v.deficit)));
+  const [man, setMan] = useState<BasePC>(() => (v.snapshot as unknown as BasePC) ?? baseLive(binder, lineas, siniestros, n(v.ibnr_pct), n(v.taxes_pct), n(v.deficit)));
   useEffect(() => {
-    setIbnr(String(v.ibnr_pct ?? "0")); setDeficit(String(v.deficit ?? "0")); setFecha(v.fecha ?? "");
+    setIbnr(String(v.ibnr_pct ?? "0")); setTaxPct(String(v.taxes_pct ?? "0")); setDeficit(String(v.deficit ?? "0")); setFecha(v.fecha ?? "");
     if (v.snapshot) setMan(v.snapshot as unknown as BasePC);
-  }, [v.id, v.bloqueado, v.manual, v.ibnr_pct, v.deficit, v.snapshot, v.fecha]);
+  }, [v.id, v.bloqueado, v.manual, v.ibnr_pct, v.taxes_pct, v.deficit, v.snapshot, v.fecha]);
 
   const editableManual = v.manual && !v.bloqueado;
   const base: BasePC = v.bloqueado
-    ? ((v.snapshot as unknown as BasePC) ?? baseLive(binder, lineas, siniestros, n(ibnr), n(deficit)))
-    : v.manual ? man : baseLive(binder, lineas, siniestros, n(ibnr), n(deficit));
+    ? ((v.snapshot as unknown as BasePC) ?? baseLive(binder, lineas, siniestros, n(ibnr), n(taxPct), n(deficit)))
+    : v.manual ? man : baseLive(binder, lineas, siniestros, n(ibnr), n(taxPct), n(deficit));
   const f = derivar(base, previouslyPaid);
 
   const persist = () => {
     if (v.bloqueado) return;
     if (v.manual) onSnapshot(v, man);
-    else onEditar(v, { ibnr_pct: ibnr, deficit });
+    else onEditar(v, { ibnr_pct: ibnr, taxes_pct: taxPct, deficit });
   };
   const upd = (field: keyof BasePC, x: string) => setMan((m) => ({ ...m, [field]: n(x) }));
 
@@ -96,10 +98,14 @@ function PcCard({ binder, lineas, siniestros, v, previouslyPaid, esUltima, hayVa
     : <td className="num">{imp(base[field])}</td>;
   const pctd = (x: number): ReactNode => <td className="num pc-pctcol">{pct(x)}</td>;
 
-  // IBNR% y PC%: editables (input) según modo; deficit editable en auto y manual.
+  // IBNR% y PC%: editables (input) según modo; deficit editable en auto y manual. En la columna AUTO el
+  // IBNR va RESALTADO (es lo que hay que ajustar) y el Tax% es editable (por defecto 0 %).
   const ibnrCell: ReactNode = v.bloqueado ? pct(base.ibnrPct)
     : v.manual ? <NumberInput value={String(man.ibnrPct ?? 0)} onChange={(x) => upd("ibnrPct", x)} suffix="%" thousands={false} className="pc-inp-pct" />
-    : <NumberInput value={ibnr} onChange={setIbnr} suffix="%" thousands={false} className="pc-inp-pct" />;
+    : <NumberInput value={ibnr} onChange={setIbnr} suffix="%" thousands={false} className="pc-inp-pct pc-destacado" />;
+  const taxesPctTd: ReactNode = (!v.manual && !v.bloqueado)
+    ? <td className="num pc-pctcol"><NumberInput value={taxPct} onChange={setTaxPct} suffix="%" thousands={false} className="pc-inp-pct" /></td>
+    : pctd(f.taxesPct);
   const pcPctCell: ReactNode = editableManual
     ? <NumberInput value={String(man.pcPct ?? 0)} onChange={(x) => upd("pcPct", x)} suffix="%" thousands={false} className="pc-inp-pct" />
     : pct(base.pcPct);
@@ -119,7 +125,7 @@ function PcCard({ binder, lineas, siniestros, v, previouslyPaid, esUltima, hayVa
           onChange={(e) => { setFecha(e.target.value); onEditar(v, { fecha: e.target.value || null }); }} />
         {!v.bloqueado && (
           <button className="btn-link btn-sm" disabled={busy} title="Alternar: calcular en vivo ↔ rellenar a mano"
-            onClick={() => onManual(v, !v.manual, baseLive(binder, lineas, siniestros, n(ibnr), n(deficit)))}>
+            onClick={() => onManual(v, !v.manual, baseLive(binder, lineas, siniestros, n(ibnr), n(taxPct), n(deficit)))}>
             {v.manual ? "Auto" : "✏️ A mano"}
           </button>
         )}
@@ -136,7 +142,7 @@ function PcCard({ binder, lineas, siniestros, v, previouslyPaid, esUltima, hayVa
           <tr><td>Comisión</td>{pctd(f.comCoverPct)}{amt("comCover")}</tr>
           <tr><td>Brokerage</td>{pctd(f.brokeragePct)}{amt("brokerage")}</tr>
           <tr><td>UW Expenses</td>{pctd(f.uwPct)}{amt("uwExp")}</tr>
-          <tr><td>Taxes</td>{pctd(f.taxesPct)}{amt("taxes")}</tr>
+          <tr><td>Taxes</td>{taxesPctTd}{amt("taxes")}</tr>
           <tr className="pc-subtotal"><td>Total</td>{pctd(f.outgoPct)}<td className="num">{imp(f.outgoTotal)}</td></tr>
 
           <tr className="pc-hdr"><td colSpan={3}>Claims</td></tr>
@@ -175,7 +181,7 @@ export default function PcValoraciones({ binder, lineas, siniestros }: { binder:
     pcApi.valoraciones(binder.id).then((vs) => {
       if (vs.length === 0 && !creando.current) {
         creando.current = true;
-        pcApi.crear(binder.id, { ibnr_pct: "0", deficit: "0" }).then((v) => setVals([v])).finally(() => { creando.current = false; });
+        pcApi.crear(binder.id, { ibnr_pct: "0", taxes_pct: "0", deficit: "0" }).then((v) => setVals([v])).finally(() => { creando.current = false; });
       } else setVals(vs);
     }).catch(() => setVals([]));
   }, [binder.id]);
@@ -192,7 +198,7 @@ export default function PcValoraciones({ binder, lineas, siniestros }: { binder:
   const optimista = (id: number, cambios: Partial<PcValoracion>) => setVals((xs) => (xs ?? []).map((x) => (x.id === id ? { ...x, ...cambios } : x)));
   const putSilent = (v: PcValoracion, c: object) => pcApi.editar(v.id, c).then(reemplaza).catch(() => {});
   const snap = (base: BasePC) => base as unknown as PcValoracion["snapshot"];
-  const onEditar = (v: PcValoracion, c: { fecha?: string | null; ibnr_pct?: string; deficit?: string }) => putSilent(v, c);
+  const onEditar = (v: PcValoracion, c: { fecha?: string | null; ibnr_pct?: string; taxes_pct?: string; deficit?: string }) => putSilent(v, c);
   const onSnapshot = (v: PcValoracion, base: BasePC) => putSilent(v, { snapshot: base, ibnr_pct: String(base.ibnrPct), deficit: String(base.deficit) });
   const onManual = (v: PcValoracion, manual: boolean, liveBase: BasePC) => {
     optimista(v.id, manual ? { manual: true, snapshot: snap(liveBase) } : { manual: false });
@@ -204,7 +210,15 @@ export default function PcValoraciones({ binder, lineas, siniestros }: { binder:
   };
   const onDesbloquear = (v: PcValoracion) => { optimista(v.id, { bloqueado: false }); putSilent(v, { bloqueado: false }); };
   const onBorrar = (v: PcValoracion) => { setBusy(true); pcApi.borrar(v.id).then(() => setVals((xs) => (xs ?? []).filter((x) => x.id !== v.id))).catch(() => {}).finally(() => setBusy(false)); };
-  const onDuplicar = () => { setBusy(true); pcApi.crear(binder.id, { ibnr_pct: String(ultima.ibnr_pct ?? "0"), deficit: "0" }).then((nv) => setVals((xs) => [...(xs ?? []), nv])).catch(() => {}).finally(() => setBusy(false)); };
+  const onDuplicar = () => {
+    setBusy(true);
+    // La nueva columna (auto) hereda del anterior el IBNR%, el Tax% y el déficit → "idéntica pero en vivo".
+    // Si el anterior es manual/bloqueado, el Tax% efectivo sale de sus cifras (taxes / gwp).
+    const b = baseDe(binder, lineas, siniestros, ultima);
+    const taxesPct = b.gwp > 0 ? (b.taxes / b.gwp) * 100 : 0;
+    pcApi.crear(binder.id, { ibnr_pct: String(b.ibnrPct), taxes_pct: String(taxesPct), deficit: String(b.deficit) })
+      .then((nv) => setVals((xs) => [...(xs ?? []), nv])).catch(() => {}).finally(() => setBusy(false));
+  };
 
   const pcDe = (v: PcValoracion): number => derivar(baseDe(binder, lineas, siniestros, v), 0).pc;
 

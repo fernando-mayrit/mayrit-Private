@@ -1551,11 +1551,12 @@ export interface PcValoracion {
   bloqueado: boolean;
   manual: boolean;                                     // cifras tecleadas a mano (histórica)
   ibnr_pct: number | string | null;
+  taxes_pct: number | string | null;                  // Taxes del PC = % de GWP (auto)
   deficit: number | string | null;                    // brought from previous YOAs
   snapshot: Record<string, number | string> | null;   // cifras BASE (manual: tecleadas; auto-bloqueada: foto)
 }
-type PcCrear = { ibnr_pct?: number | string | null; deficit?: number | string | null; fecha?: string | null; manual?: boolean; snapshot?: unknown };
-type PcEditar = { fecha?: string | null; ibnr_pct?: number | string | null; deficit?: number | string | null; bloqueado?: boolean; manual?: boolean; snapshot?: unknown };
+type PcCrear = { ibnr_pct?: number | string | null; taxes_pct?: number | string | null; deficit?: number | string | null; fecha?: string | null; manual?: boolean; snapshot?: unknown };
+type PcEditar = { fecha?: string | null; ibnr_pct?: number | string | null; taxes_pct?: number | string | null; deficit?: number | string | null; bloqueado?: boolean; manual?: boolean; snapshot?: unknown };
 export const pcApi = {
   valoraciones: (binderId: number) => request<PcValoracion[]>(`/binders/${binderId}/pc/valoraciones`),
   crear: (binderId: number, body: PcCrear) =>
