@@ -5,7 +5,7 @@ import BdxLineaPanel from "../components/BdxLineaPanel";
 import CancelacionesSugeridas from "../components/CancelacionesSugeridas";
 import BdxTabla from "../components/BdxTabla";
 import TablaDatos, { type Col } from "../components/TablaDatos";
-import NumberInput from "../components/NumberInput";
+import PcValoraciones from "../components/PcValoraciones";
 import ReciboModal from "../components/ReciboModal";
 import SiniestroModal, { type PolizaBinder } from "../components/SiniestroModal";
 import UcrModal from "../components/UcrModal";
@@ -654,8 +654,6 @@ export default function BinderDetalle({ binder }: { binder: Binder }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const plantillaRef = useRef<HTMLInputElement>(null);
   const [subirFile, setSubirFile] = useState<File | null>(null);
-  // PC: IBNR manual (% s/ GWP). La siniestralidad sale de los Claims importados (no simulada).
-  const [ibnrPct, setIbnrPct] = useState("0");
   // Selección de meses/periodos en la tabla de Datos.
   const [selMeses, setSelMeses] = useState<Set<string>>(new Set());
   // Bloqueo de periodos por tipo de BDX (local de momento; falta persistencia/lógica de presentar).
@@ -1505,87 +1503,23 @@ export default function BinderDetalle({ binder }: { binder: Binder }) {
       )}
 
       {tab === "calculos" && (
-        (() => {
-          if (!binder.profit_commission)
-            return <div className="empty">Este binder no tiene Profit Commission.</div>;
-          // Secciones (1-based) sujetas a PC y primas (GWP) de sus líneas en el BDX.
-          const seccionesPC = new Set(
-            binder.secciones.map((s, i) => (s.sujeto_pc ? i + 1 : 0)).filter((x) => x > 0)
-          );
-          const nombresPC = binder.secciones
-            .map((s, i) => (s.sujeto_pc ? `Sección ${i + 1}${s.ramo ? ` (${s.ramo})` : ""}` : null))
-            .filter(Boolean)
-            .join(", ");
-          const lineas = (sel?.lineas ?? []).filter((l) => seccionesPC.has(l.section_no ?? 0));
-          // GWP = our line (es lo que usa el cálculo de PC), no el GWP al 100%.
-          const gwp = lineas.reduce((a, l) => a + n(l.total_gwp_our_line), 0);
-          // Comisiones = importes REALES de los BDX (media ponderada; pueden variar por operación).
-          const comCoverAmt = lineas.reduce((a, l) => a + n(l.commission_coverholder_amount), 0);
-          const comCoverPct = gwp > 0 ? (comCoverAmt / gwp) * 100 : 0;
-          const comMayritAmt = lineas.reduce((a, l) => a + n(l.brokerage_amount), 0);
-          const comMayritPct = gwp > 0 ? (comMayritAmt / gwp) * 100 : 0;
-          const comTotal = comCoverAmt + comMayritAmt;
-          const netToUws = gwp - comTotal;
-          // Siniestralidad REAL desde los Claims importados (secciones sujetas a PC).
-          const sinPC = siniestros.filter((s) => seccionesPC.has(s.section ?? 0));
-          // Siniestralidad = Previously Paid + Reservas (Previously Paid = pagado − paid this month).
-          const indemPaidR = sinPC.reduce((a, s) => a + (n(s.paid_indemnity) - n(s.paid_this_month_indemnity)), 0);
-          const indemResR = sinPC.reduce((a, s) => a + n(s.reserves_indemnity), 0);
-          const feesPaidR = sinPC.reduce((a, s) => a + (n(s.paid_fees) - n(s.paid_this_month_fees)), 0);
-          const feesResR = sinPC.reduce((a, s) => a + n(s.reserves_fees), 0);
-          const claims = indemPaidR + indemResR + feesPaidR + feesResR;
-          // IBNR: % manual sobre la GWP (our line).
-          const ibnr = (gwp * n(ibnrPct)) / 100;
-          const uwPct = n(binder.pc_gastos);
-          const uwAmt = (gwp * uwPct) / 100;
-          const totalOutcome = comTotal + claims + ibnr + uwAmt;
-          const lossRatio = netToUws > 0 ? (claims / netToUws) * 100 : 0;
-          const resultado = gwp - totalOutcome;
-          const pcPct = n(binder.pc_porcentaje);
-          const pc = (resultado * pcPct) / 100;
-          const Money = ({ v }: { v: number }) => <td className="num">{imp(v)}</td>;
-          return (
-            <div className="detalle-cont">
+        <div className="detalle-cont">
+          {!binder.profit_commission ? (
+            <div className="empty">Este binder no tiene Profit Commission.</div>
+          ) : (
+            <>
               <h3 style={{ margin: "4px 0 8px" }}>Profit Commission</h3>
               <div className="hint" style={{ marginBottom: 10 }}>
-                PC {fmtMiles(pcPct)} % · UW Expenses {fmtMiles(uwPct)} % · Sujetas a PC: {nombresPC || "—"}.
-                La siniestralidad proviene de los Claims importados de este binder (secciones sujetas a PC).
+                PC {fmtMiles(n(binder.pc_porcentaje))} % · UW Expenses {fmtMiles(n(binder.pc_gastos))} % · Sujetas a PC:{" "}
+                {binder.secciones.map((s, i) => (s.sujeto_pc ? `Sección ${i + 1}${s.ramo ? ` (${s.ramo})` : ""}` : null)).filter(Boolean).join(", ") || "—"}.
+                La PC se valora a lo largo de los años <b>bajando el IBNR</b> según se cierra la siniestralidad. Cada
+                columna es una valoración: <b>bloquéala</b> (se congela) y <b>duplícala</b> para la siguiente. «A pagar
+                ahora» = PC de esta valoración − lo ya pagado en la anterior.
               </div>
-              <table className="compacto pc-tabla" style={{ maxWidth: 560 }}>
-                <tbody>
-                  <tr className="pc-fuerte"><td>GWP (our line)</td><Money v={gwp} /></tr>
-
-                  <tr className="pc-seccion"><td colSpan={2}>Comisiones</td></tr>
-                  <tr><td>Coverholder ({fmtMiles(comCoverPct)} %)</td><Money v={comCoverAmt} /></tr>
-                  <tr><td>Mayrit ({fmtMiles(comMayritPct)} %)</td><Money v={comMayritAmt} /></tr>
-                  <tr className="pc-subtotal"><td>Total comisiones</td><Money v={comTotal} /></tr>
-                  <tr className="pc-fuerte"><td>Net to UWs</td><Money v={netToUws} /></tr>
-
-                  <tr className="pc-seccion"><td colSpan={2}>Siniestralidad</td></tr>
-                  <tr><td>Indemnización — Pagado</td><Money v={indemPaidR} /></tr>
-                  <tr><td>Indemnización — Reservas</td><Money v={indemResR} /></tr>
-                  <tr><td>Fees — Pagado</td><Money v={feesPaidR} /></tr>
-                  <tr><td>Fees — Reservas</td><Money v={feesResR} /></tr>
-                  <tr className="pc-subtotal"><td>Total siniestralidad</td><Money v={claims} /></tr>
-                  <tr>
-                    <td>IBNR (<span style={{ display: "inline-block", width: 70 }}><NumberInput value={ibnrPct} onChange={setIbnrPct} suffix="%" thousands={false} className="input-completar" /></span> s/ GWP)</td>
-                    <Money v={ibnr} />
-                  </tr>
-
-                  <tr><td>UW Expenses ({fmtMiles(uwPct)} % s/ GWP)</td><Money v={uwAmt} /></tr>
-                  <tr className="pc-subtotal"><td>Total Outcome</td><Money v={totalOutcome} /></tr>
-                  <tr><td className="hint">Siniestralidad / Net to UWs</td><td className="num hint">{fmtMiles(lossRatio)} %</td></tr>
-
-                  <tr className="pc-fuerte" style={{ borderTop: "2px solid var(--borde)" }}><td>Resultado (GWP − Outcome)</td><Money v={resultado} /></tr>
-                  <tr className="pc-fuerte"><td>Profit Commission ({fmtMiles(pcPct)} %)</td><td className="num" style={{ color: "var(--naranja-osc)" }}>{imp(pc)}</td></tr>
-                </tbody>
-              </table>
-              {pc <= 0 && (
-                <div className="hint" style={{ marginTop: 8 }}>Resultado ≤ 0 → no se genera Profit Commission (importe negativo informativo).</div>
-              )}
-            </div>
-          );
-        })()
+              <PcValoraciones binder={binder} lineas={sel?.lineas ?? []} siniestros={siniestros} />
+            </>
+          )}
+        </div>
       )}
 
       {tab === "tareas" && <div className="tareas-tab-scroll"><ColumnasConfigBinder binderId={binder.id} /><CuadriculaBinder binderId={binder.id} refreshKey={tareasVer} /><TareasBinder binderId={binder.id} onCambio={() => setTareasVer((v) => v + 1)} /></div>}

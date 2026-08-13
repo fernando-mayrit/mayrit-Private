@@ -658,6 +658,15 @@ td.num, th.num { text-align: right; }
 .pc-tabla .pc-fuerte td { font-weight: 700; }
 .pc-tabla td:first-child { padding-left: 10px; }
 .pc-tabla .num { font-variant-numeric: tabular-nums; }
+/* Valoraciones de PC en columnas (izq→dcha), cada una más estrecha; scroll horizontal si no caben */
+.pc-valoraciones { display: flex; gap: 16px; overflow-x: auto; align-items: flex-start; padding-bottom: 8px; }
+.pc-card { flex: 0 0 auto; width: 320px; border: 1px solid var(--borde); border-radius: 10px; padding: 10px 12px 12px; background: #fff; }
+.pc-card.bloqueada { background: #fafbfc; }
+.pc-card-cab { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.pc-lock { display: inline-flex; align-items: center; gap: 5px; font-size: 13px; font-weight: 600; color: var(--gris); cursor: pointer; white-space: nowrap; }
+.pc-card .pc-tabla { width: 100%; font-size: 12px; }
+.pc-card .pc-ibnr { display: inline-block; width: 62px; vertical-align: middle; }
+.pc-card .pc-dup { margin-top: 10px; width: 100%; }
 /* Campo a completar a mano (p. ej. IBNR): fondo ámbar para que destaque */
 .input-completar .inp-num { background: #fff4d6; border-color: var(--naranja); }
 .input-completar .inp-num:focus { background: #fff; }

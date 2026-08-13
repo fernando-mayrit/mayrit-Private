@@ -1542,3 +1542,21 @@ export const ucrApi = {
   actualizar: (id: number, d: UcrWrite) => request<UcrRegistro>(`/ucr/${id}`, { method: "PUT", body: JSON.stringify(d) }),
   borrar: (id: number) => request<void>(`/ucr/${id}`, { method: "DELETE" }),
 };
+
+// ── Valoraciones de Profit Commission (pestaña PC): varias en el tiempo, bajando el IBNR ──
+export interface PcValoracion {
+  id: number;
+  orden: number;
+  fecha: string | null;
+  bloqueado: boolean;
+  ibnr_pct: number | string | null;
+  snapshot: Record<string, number | string> | null;   // cifras congeladas al bloquear
+}
+export const pcApi = {
+  valoraciones: (binderId: number) => request<PcValoracion[]>(`/binders/${binderId}/pc/valoraciones`),
+  crear: (binderId: number, body: { ibnr_pct?: number | string | null; fecha?: string | null }) =>
+    request<PcValoracion>(`/binders/${binderId}/pc/valoraciones`, { method: "POST", body: JSON.stringify(body) }),
+  editar: (vid: number, body: { fecha?: string | null; ibnr_pct?: number | string | null; bloqueado?: boolean; snapshot?: unknown }) =>
+    request<PcValoracion>(`/pc/valoraciones/${vid}`, { method: "PUT", body: JSON.stringify(body) }),
+  borrar: (vid: number) => request<void>(`/pc/valoraciones/${vid}`, { method: "DELETE" }),
+};

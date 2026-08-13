@@ -1424,6 +1424,25 @@ class SyncEstado(Base):
     lease_hasta: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+class PcValoracion(Base):
+    """Una valoración de la Profit Commission de un binder EN EL TIEMPO. La PC se recalcula año a año
+    bajando el IBNR según se cierra la siniestralidad; cada valoración es una columna (izq→dcha por
+    `orden`). Al BLOQUEARLA se congela `snapshot` con todas las cifras (foto de lo que se pagó ese año);
+    la última (abierta) recalcula en vivo con la siniestralidad actual. `ya_pagado` de una valoración =
+    el PC de la valoración anterior."""
+    __tablename__ = "pc_valoraciones"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    binder_id: Mapped[int] = mapped_column(ForeignKey("binders.id", ondelete="CASCADE"), index=True)
+    orden: Mapped[int] = mapped_column(Integer, default=0)          # posición izq→dcha
+    fecha: Mapped[dt.date | None] = mapped_column(Date)             # fecha de la valoración
+    bloqueado: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
+    ibnr_pct: Mapped[Decimal | None] = mapped_column(Numeric(9, 4))
+    # Cifras congeladas al bloquear (gwp, comisiones, siniestralidad, ibnr, pc…). NULL mientras esté abierta.
+    snapshot: Mapped[dict | None] = mapped_column(JSONB)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 # ── Registro DGSFP: aseguradoras y sus agencias de suscripción ──────────────────────────────────
 # Reflejo (solo lectura desde la app) del Registro Público de la DGSFP. Se sincroniza con una
 # herramienta LOCAL (tools/sync_agencias_dgsfp.py) que raspa el registro con Playwright y hace
