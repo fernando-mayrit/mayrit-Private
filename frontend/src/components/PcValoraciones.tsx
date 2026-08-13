@@ -111,11 +111,11 @@ function PcCard({ binder, lineas, siniestros, v, previouslyPaid, esUltima, hayVa
     <div className={"pc-card" + (v.bloqueado ? " bloqueada" : "") + (v.manual ? " manual" : "")}>
       <div className="pc-card-cab">
         <label className="pc-lock" title={v.bloqueado ? "Desbloquear" : "Bloquear y congelar"}>
-          <input type="checkbox" checked={v.bloqueado} disabled={busy}
+          <input type="checkbox" checked={v.bloqueado}
             onChange={(e) => (e.target.checked ? onBloquear(v, base, fecha || hoyISO()) : onDesbloquear(v))} />
           {v.bloqueado ? "🔒" : "Bloquear"}
         </label>
-        <input type="date" className="inp-fecha" value={fecha} disabled={v.bloqueado || busy}
+        <input type="date" className="inp-fecha" value={fecha} disabled={v.bloqueado}
           onChange={(e) => { setFecha(e.target.value); onEditar(v, { fecha: e.target.value || null }); }} />
         {!v.bloqueado && (
           <button className="btn-link btn-sm" disabled={busy} title="Alternar: calcular en vivo ↔ rellenar a mano"
@@ -187,15 +187,18 @@ export default function PcValoraciones({ binder, lineas, siniestros }: { binder:
   const ultima = ordenadas[ordenadas.length - 1];
   const reemplaza = (nv: PcValoracion) => setVals((xs) => (xs ?? []).map((x) => (x.id === nv.id ? nv : x)));
 
-  const put = (v: PcValoracion, c: object) => { setBusy(true); pcApi.editar(v.id, c).then(reemplaza).finally(() => setBusy(false)); };
-  const onEditar = (v: PcValoracion, c: { fecha?: string | null; ibnr_pct?: string; deficit?: string }) => put(v, c);
-  const onSnapshot = (v: PcValoracion, base: BasePC) => put(v, { snapshot: base, ibnr_pct: String(base.ibnrPct), deficit: String(base.deficit) });
+  // Guardado silencioso (edición de campos): NO bloquea la interfaz. Un fallo no cuelga nada.
+  const putSilent = (v: PcValoracion, c: object) => pcApi.editar(v.id, c).then(reemplaza).catch(() => {});
+  // Operaciones (bloquear/duplicar/borrar): marcan "ocupado" un instante.
+  const put = (v: PcValoracion, c: object) => { setBusy(true); return pcApi.editar(v.id, c).then(reemplaza).catch(() => {}).finally(() => setBusy(false)); };
+  const onEditar = (v: PcValoracion, c: { fecha?: string | null; ibnr_pct?: string; deficit?: string }) => putSilent(v, c);
+  const onSnapshot = (v: PcValoracion, base: BasePC) => putSilent(v, { snapshot: base, ibnr_pct: String(base.ibnrPct), deficit: String(base.deficit) });
   const onManual = (v: PcValoracion, manual: boolean, liveBase: BasePC) => put(v, manual ? { manual: true, snapshot: liveBase } : { manual: false });
   const onBloquear = (v: PcValoracion, base: BasePC, fecha: string) =>
     put(v, { bloqueado: true, snapshot: base, fecha, ibnr_pct: String(base.ibnrPct), deficit: String(base.deficit) });
   const onDesbloquear = (v: PcValoracion) => put(v, { bloqueado: false });
-  const onBorrar = (v: PcValoracion) => { setBusy(true); pcApi.borrar(v.id).then(() => setVals((xs) => (xs ?? []).filter((x) => x.id !== v.id))).finally(() => setBusy(false)); };
-  const onDuplicar = () => { setBusy(true); pcApi.crear(binder.id, { ibnr_pct: String(ultima.ibnr_pct ?? "0"), deficit: "0" }).then((nv) => setVals((xs) => [...(xs ?? []), nv])).finally(() => setBusy(false)); };
+  const onBorrar = (v: PcValoracion) => { setBusy(true); pcApi.borrar(v.id).then(() => setVals((xs) => (xs ?? []).filter((x) => x.id !== v.id))).catch(() => {}).finally(() => setBusy(false)); };
+  const onDuplicar = () => { setBusy(true); pcApi.crear(binder.id, { ibnr_pct: String(ultima.ibnr_pct ?? "0"), deficit: "0" }).then((nv) => setVals((xs) => [...(xs ?? []), nv])).catch(() => {}).finally(() => setBusy(false)); };
 
   const pcDe = (v: PcValoracion): number => derivar(baseDe(binder, lineas, siniestros, v), 0).pc;
 
