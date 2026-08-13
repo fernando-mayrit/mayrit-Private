@@ -313,9 +313,14 @@ export default function App() {
     setNiveles((ns) => ns.map((n) => (n.tipo === tipo ? { ...n, categoria } : n)));
     try { await avisosApi.fijarCategoria(tipo, categoria); cargarAvisos(); } catch { /* noop */ }
   }
+  // Avisos: se cargan UNA vez al entrar. NO se recargan en cada cambio de página (antes sí, y como
+  // /avisos hace mucho cálculo, cada navegación bloqueaba el backend y ralentizaba toda la app). Se
+  // mantienen frescos con el auto-refresco (5 min), al enfocar/volver a la pestaña, al abrir la campana
+  // y al marcar tareas (evento 'mayrit:tareas').
   useEffect(() => {
     cargarAvisos();
-  }, [page]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Si el usuario actual no puede ver la página activa (módulo restringido), vuelve a Inicio.
   useEffect(() => {
