@@ -658,14 +658,21 @@ td.num, th.num { text-align: right; }
 .pc-tabla .pc-fuerte td { font-weight: 700; }
 .pc-tabla td:first-child { padding-left: 10px; }
 .pc-tabla .num { font-variant-numeric: tabular-nums; }
-/* Valoraciones de PC en columnas (izq→dcha), cada una más estrecha; scroll horizontal si no caben */
+/* Valoraciones de PC en columnas (izq = más antigua → dcha = más nueva); scroll horizontal si no caben.
+   Cada cuadro replica el statement oficial: Income · Outgo (con Taxes) · Claims · Deficit · PC. */
 .pc-valoraciones { display: flex; gap: 16px; overflow-x: auto; align-items: flex-start; padding-bottom: 8px; }
-.pc-card { flex: 0 0 auto; width: 320px; border: 1px solid var(--borde); border-radius: 10px; padding: 10px 12px 12px; background: #fff; }
+.pc-card { flex: 0 0 auto; width: 340px; border: 1px solid var(--borde); border-radius: 10px; padding: 10px 12px 12px; background: #fff; }
 .pc-card.bloqueada { background: #fafbfc; }
+.pc-card.manual { border-color: #e0a800; box-shadow: inset 0 0 0 1px #f3e0a3; }
 .pc-card-cab { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
 .pc-lock { display: inline-flex; align-items: center; gap: 5px; font-size: 13px; font-weight: 600; color: var(--gris); cursor: pointer; white-space: nowrap; }
 .pc-card .pc-tabla { width: 100%; font-size: 12px; }
-.pc-card .pc-ibnr { display: inline-block; width: 62px; vertical-align: middle; }
+.pc-tabla3 td:nth-child(2) { text-align: right; font-size: 11px; color: var(--gris-medio); width: 56px; white-space: nowrap; }
+.pc-tabla3 .pc-hdr td { font-weight: 700; color: #222; padding-top: 7px; border-top: 1px solid var(--borde); background: none; text-transform: none; letter-spacing: 0; font-size: 12px; }
+.pc-tabla3 .pc-due td { border-top: 2px solid var(--naranja); background: #fff5ef; }
+.pc-tabla3 .pc-edit { padding: 1px 4px; }
+.pc-inp { display: inline-flex; width: 96px; } .pc-inp .inp-num { width: 86px; }
+.pc-inp-pct { display: inline-flex; width: 52px; vertical-align: middle; } .pc-inp-pct .inp-num { width: 34px; }
 .pc-card .pc-dup { margin-top: 10px; width: 100%; }
 /* Campo a completar a mano (p. ej. IBNR): fondo ámbar para que destaque */
 .input-completar .inp-num { background: #fff4d6; border-color: var(--naranja); }

@@ -26,19 +26,26 @@ class PcValoracionRead(BaseModel):
     orden: int
     fecha: dt.date | None = None
     bloqueado: bool = False
+    manual: bool = False
     ibnr_pct: Decimal | None = None
+    deficit: Decimal | None = None
     snapshot: dict | None = None
 
 
 class PcValoracionCreate(BaseModel):
     ibnr_pct: Decimal | None = None
+    deficit: Decimal | None = None
     fecha: dt.date | None = None
+    manual: bool = False
+    snapshot: dict | None = None
 
 
 class PcValoracionUpdate(BaseModel):
     fecha: dt.date | None = None
     ibnr_pct: Decimal | None = None
+    deficit: Decimal | None = None
     bloqueado: bool | None = None
+    manual: bool | None = None
     snapshot: dict | None = None
 
 
@@ -62,8 +69,8 @@ def crear(binder_id: int, payload: PcValoracionCreate, db: Session = Depends(get
     """Crea una valoración nueva (la primera, o «duplicar» = la siguiente columna a la derecha)."""
     _binder_o_404(binder_id, db)
     orden = (db.scalar(select(func.max(PcValoracion.orden)).where(PcValoracion.binder_id == binder_id)) or 0) + 1
-    v = PcValoracion(binder_id=binder_id, orden=orden, ibnr_pct=payload.ibnr_pct, fecha=payload.fecha,
-                     bloqueado=False, snapshot=None)
+    v = PcValoracion(binder_id=binder_id, orden=orden, ibnr_pct=payload.ibnr_pct, deficit=payload.deficit,
+                     fecha=payload.fecha, bloqueado=False, manual=payload.manual, snapshot=payload.snapshot)
     db.add(v)
     db.commit()
     db.refresh(v)

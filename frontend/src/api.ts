@@ -1549,14 +1549,18 @@ export interface PcValoracion {
   orden: number;
   fecha: string | null;
   bloqueado: boolean;
+  manual: boolean;                                     // cifras tecleadas a mano (histórica)
   ibnr_pct: number | string | null;
-  snapshot: Record<string, number | string> | null;   // cifras congeladas al bloquear
+  deficit: number | string | null;                    // brought from previous YOAs
+  snapshot: Record<string, number | string> | null;   // cifras BASE (manual: tecleadas; auto-bloqueada: foto)
 }
+type PcCrear = { ibnr_pct?: number | string | null; deficit?: number | string | null; fecha?: string | null; manual?: boolean; snapshot?: unknown };
+type PcEditar = { fecha?: string | null; ibnr_pct?: number | string | null; deficit?: number | string | null; bloqueado?: boolean; manual?: boolean; snapshot?: unknown };
 export const pcApi = {
   valoraciones: (binderId: number) => request<PcValoracion[]>(`/binders/${binderId}/pc/valoraciones`),
-  crear: (binderId: number, body: { ibnr_pct?: number | string | null; fecha?: string | null }) =>
+  crear: (binderId: number, body: PcCrear) =>
     request<PcValoracion>(`/binders/${binderId}/pc/valoraciones`, { method: "POST", body: JSON.stringify(body) }),
-  editar: (vid: number, body: { fecha?: string | null; ibnr_pct?: number | string | null; bloqueado?: boolean; snapshot?: unknown }) =>
+  editar: (vid: number, body: PcEditar) =>
     request<PcValoracion>(`/pc/valoraciones/${vid}`, { method: "PUT", body: JSON.stringify(body) }),
   borrar: (vid: number) => request<void>(`/pc/valoraciones/${vid}`, { method: "DELETE" }),
 };

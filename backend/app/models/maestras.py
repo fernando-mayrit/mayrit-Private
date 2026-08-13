@@ -1437,8 +1437,12 @@ class PcValoracion(Base):
     orden: Mapped[int] = mapped_column(Integer, default=0)          # posición izq→dcha
     fecha: Mapped[dt.date | None] = mapped_column(Date)             # fecha de la valoración
     bloqueado: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
+    # manual = se rellenan todas las cifras A MANO (valoración histórica, p. ej. el primer cálculo hecho
+    # en Excel); si es False, se calculan en vivo de los datos y solo se teclean IBNR% y déficit.
+    manual: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
     ibnr_pct: Mapped[Decimal | None] = mapped_column(Numeric(9, 4))
-    # Cifras congeladas al bloquear (gwp, comisiones, siniestralidad, ibnr, pc…). NULL mientras esté abierta.
+    deficit: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))   # brought from previous YOAs
+    # Cifras BASE (JSON): en manual las tecleadas; en auto-bloqueada la foto congelada al bloquear.
     snapshot: Mapped[dict | None] = mapped_column(JSONB)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
