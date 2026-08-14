@@ -6,7 +6,27 @@
 > otro equipo y no se commitearon, **se perdieron** (la memoria de Claude es local de cada equipo).
 > **REGLA: las tareas compartidas van SIEMPRE aquí, en CONTEXTO.md + commit & push.**
 
-### 📌 AL DÍA (2026-08-12) — lista viva de pendientes y mejoras
+### 📌 AL DÍA (2026-08-14) — lista viva de pendientes y mejoras
+
+**Sesiones 2026-08-13 → 2026-08-14 (todo commiteado y pusheado a `main`):**
+- **⭐ Módulo NUEVO: Valoraciones de Profit Commission** (pestaña PC del binder). La PC se recalcula año a
+  año bajando el IBNR hasta cerrar la siniestralidad → **varias valoraciones en columnas** (izq antigua →
+  dcha nueva). Cada una: check **Bloquear** (congela un `snapshot`) + **fecha**; el cuadro replica el
+  **statement oficial**: Income (GWP) · Outgo (Comisión, Brokerage, UW Expenses, **Taxes**, Total) · Claims
+  (Paid/Reserved Fees+Indemnity, IBNR, Total) · **Deficit** (brought from previous YOAs) · PC (Result, PC) ·
+  PC Previously Paid · TOTAL PC DUE. **Taxes = % de GWP editable** (por valoración, por defecto 0,00%; NO se
+  suma `total_taxes_levies`, que venía vacío). Columna **manual** (histórica, se teclea todo) vs **auto** (en
+  vivo, solo IBNR% —resaltado— y Tax%/Deficit). **Duplicar** crea la siguiente heredando IBNR%/Tax%/déficit.
+  Bloquear/desbloquear **optimistas** (responden al instante). Tablas `pc_valoraciones` (migraciones
+  `pc_valoraciones_0001/0002/0003`), router `pc.py`, `PcValoraciones.tsx`. **PI1322**: 1ª valoración manual
+  bloqueada con el primer cálculo (Result 172.704,92 / PC 34.540,98).
+- **Conciliación bancaria: botón por cuadro** — conciliar de **una en una** (no solo en bloque);
+  `ConciliarExtracto.tsx`, commit 7a4a057. Confirmado: los conciliados y sus transferencias no reaparecen.
+- **⚡ Rendimiento:** `/avisos` (CPU-pesado) ya **no se recarga en cada navegación** (commit 5b03824) → la
+  app iba lenta por eso. **Always On confirmado ON**. Azure B1 = 1 core, gunicorn 1 worker. **PENDIENTE si
+  aún se nota lenta (warm): optimizar `_pastillas_sin_tarea`/`_tareas_pendientes` de avisos.**
+- **PI2725 (B1634PI2725IBE):** borradas a mano las 242 líneas de **julio 2026** del BDX **combinado #45**
+  (tenía TODOS los meses Ago-2025→Jul-2026; julio sin procesar). **Falta que Fernando suba el julio corregido.**
 
 **Sesiones 2026-08-08 → 2026-08-12 (todo commiteado y pusheado a `main`):**
 - **⭐ Tareas automáticas (syncs locales) — REDISEÑADAS y desplegadas** (DGSFP + proyección de ingresos):
