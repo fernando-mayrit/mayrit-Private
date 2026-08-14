@@ -60,6 +60,20 @@ export default function ConciliarExtracto({ cuenta, onClose, onSaved }: {
     finally { setBusy(false); }
   }
 
+  // Conciliar SOLO este apunte (una a una): al aplicarlo, desaparece del listado.
+  const [hechos, setHechos] = useState(0);
+  async function conciliarUno(a: ConcApunte) {
+    const tids = [...(sel[a.mid] ?? [])];
+    if (!tids.length) { setError("Marca al menos una transferencia en este apunte."); return; }
+    setBusy(true); setError(null);
+    try {
+      const r = await contabilidadApi.conciliarAplicar([{ mid: a.mid, transferencia_ids: tids }]);
+      if (r.conflictos.length) { setError("Alguna transferencia ya está usada en otra conciliación."); }
+      else { setHechos((h) => h + 1); setPrev((p) => (p ? { ...p, apuntes: p.apuntes.filter((x) => x.mid !== a.mid) } : p)); }
+    } catch (e) { setError((e as Error).message); }
+    finally { setBusy(false); }
+  }
+
   const conf = (c: string) => c === "exacta"
     ? <span className="pill pill-cobrado">✅ Exacta</span>
     : c === "revisar" ? <span className="pill pill-pendiente">🟡 Revisar</span>
@@ -73,7 +87,7 @@ export default function ConciliarExtracto({ cuenta, onClose, onSaved }: {
       saveDisabled={!res && (!prev || totalConciliar === 0)}
       error={error}
       onSave={res ? onSaved : aplicar}
-      onClose={onClose}
+      onClose={() => (hechos > 0 ? onSaved() : onClose())}
       wide
     >
       {!prev ? (
@@ -99,8 +113,10 @@ export default function ConciliarExtracto({ cuenta, onClose, onSaved }: {
               </select> días</label>
           </div>
           <div className="hint" style={{ marginBottom: 8 }}>
-            Nada se enlaza hasta que pulses <b>Conciliar</b>. Las <b>exactas</b> vienen marcadas; las de
-            <b> revisar</b> muéstranse con su residual para que tú decidas (desmarca lo que no cuadre).
+            Nada se enlaza hasta que lo confirmes. Puedes conciliar <b>una a una</b> con el botón
+            <b> 🔗 Conciliar</b> de cada cuadro (desaparece al hacerlo){hechos > 0 ? <> · <b style={{ color: "#0a0" }}>{hechos} ya conciliada{hechos !== 1 ? "s" : ""}</b></> : null},
+            o varias de golpe con el botón de abajo. Las <b>exactas</b> vienen marcadas; en las de
+            <b> revisar</b> desmarca lo que no cuadre.
           </div>
 
           {prev.apuntes.length === 0 ? (
@@ -125,6 +141,10 @@ export default function ConciliarExtracto({ cuenta, onClose, onSaved }: {
                         {cuadra ? <b style={{ color: "#0a0" }}>✓ cuadra ({fmtMiles(suma)} €)</b>
                           : <>sel. {fmtMiles(suma)} de {fmtMiles(a.importe)} · residual <b style={{ color: Math.abs(residual) < 0.01 ? "#0a0" : "#b00" }}>{fmtMiles(residual)} €</b></>}
                       </span>
+                      <button className="btn-primary btn-sm" disabled={busy || (sel[a.mid]?.size ?? 0) === 0}
+                        title="Conciliar solo este apunte" onClick={() => conciliarUno(a)} style={{ whiteSpace: "nowrap" }}>
+                        🔗 Conciliar
+                      </button>
                     </div>
                     {a.filas.length === 0 ? (
                       <div className="hint" style={{ padding: "4px 0 0 26px" }}>Sin transferencias candidatas en la ventana. Amplía los días o concílialo a mano.</div>
