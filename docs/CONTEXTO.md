@@ -8,6 +8,32 @@
 
 ### 📌 AL DÍA (2026-08-14) — lista viva de pendientes y mejoras
 
+> ## 🔴 LEE ESTO ANTES DE DESPLEGAR (separación de privilegios, 2026-08-16)
+>
+> **El deploy ya NO aplica migraciones.** `backend/startup.sh` solo arranca gunicorn: se le quitó el
+> `alembic upgrade head` porque la app corre en runtime como **`mayrit_app`**, un rol **sin permisos
+> DDL** (solo SELECT/INSERT/UPDATE/DELETE). Así, un fallo o una inyección en runtime no puede alterar
+> el esquema. Es el mismo modelo que Alea (`alea_app` + `aleaadmin`).
+>
+> **Procedimiento cuando haya una migración nueva** — en este orden:
+> 1. En el equipo del admin, con el venv activo: **`python migrar_mayrit.py`** (pide usuario admin —el
+>    dueño de las tablas— y contraseña; el host y la base salen del `.env`, y el usuario/contraseña se
+>    fuerzan **solo para esa ejecución**, sin tocar el `.env`).
+> 2. **Después**, push a `main` (que despliega).
+>
+> Si se hace al revés, la app arranca contra un esquema viejo. **`alembic upgrade head` a secas ya no
+> funciona**: `mayrit_app` no tiene DDL y da error de permisos.
+>
+> **Scripts de apoyo, en la raíz del repo:**
+> - `crear_usuario_app.py` — crea/actualiza el rol `mayrit_app` con sus permisos. Idempotente; se
+>   ejecuta **una vez**, desde un equipo cuyo `.env` aún tenga el usuario dueño.
+> - `actualizar_a_usuario_app.bat` / `.ps1` — pasa **un equipo** a usar `mayrit_app`: pide la
+>   contraseña, la escribe en `~/.mayrit/.env` y prueba la conexión. Una vez por equipo.
+> - `migrar_mayrit.py` — el de arriba.
+>
+> Ninguno lleva contraseñas dentro: todas se piden por teclado. En Azure, `PG_USER`/`PG_PASSWORD` van
+> en las *Application settings* del App Service.
+
 **Sesiones 2026-08-13 → 2026-08-14 (todo commiteado y pusheado a `main`):**
 - **⭐ Módulo NUEVO: Valoraciones de Profit Commission** (pestaña PC del binder). La PC se recalcula año a
   año bajando el IBNR hasta cerrar la siniestralidad → **varias valoraciones en columnas** (izq antigua →
@@ -110,6 +136,19 @@ arreglo del 500 de Pólizas). Hecho hoy:
 - **Power BI — Ingresos** — pipeline montado (tabla `ppto_ingresos` + vista + Excel sembrado + cargador);
   falta que Fernando rellene/cargue y crear el usuario de BD `mayrit_bi`.
 - **Paginación** de `GET /recibos` y `/siniestros` — mejora de rendimiento NO urgente (cuando crezcan).
+- **Analítica de la web pública dentro de la app** (pedido por Fernando el 2026-08-16, la noche que se
+  publicó `mayritbroker.com`). Objetivo: **no tener que entrar al panel de Cloudflare** para ver cuatro
+  datos. La web pública lleva **Cloudflare Web Analytics** (sin cookies), y Cloudflare lo expone por API:
+  - Endpoint **GraphQL** `https://api.cloudflare.com/client/v4/graphql`, dataset
+    **`rumPageloadEventsAdaptiveGroups`** (ámbito de cuenta, filtrando por el **site tag** de la web).
+  - Hace falta un **token de API con permiso `Account Analytics: Read`** + el **ID de cuenta** + el
+    **site tag**. El token, como variable de entorno en Azure — **nunca en el código**.
+  - Dónde ponerlo: una pestaña **Web** dentro del módulo **KPIs**, con los mismos gráficos SVG que ya
+    hay (visitas, únicos, páginas más vistas, procedencia, país, móvil/escritorio). Caché de ~15 min
+    para no llamar a Cloudflare en cada recarga.
+  - ⚠ **Comprobar primero cuánto histórico guarda el plan gratuito** (¿30 días?). Si es corto y se
+    quiere comparar año contra año, hay que volcar un **resumen diario a la BD** — eso es más trabajo y
+    conviene decidirlo antes de empezar, no después.
 - **Afinar conciliación bancaria** (analizado 2026-07-13 — RETOMAR mañana; DECISIÓN pendiente de Fernando:
   ¿empezamos por categorización o por emparejamiento?). **Cómo funciona hoy** (`contabilidad.py`):
   - *Fase A (importar Norma 43):* categoría PROPUESTA aprendida del histórico. `_firma_desc` saca la "firma
@@ -1655,7 +1694,9 @@ El desglose está bien (Σfilas==Σtransferencias). No cuadran con el banco por 
   en 109.07, difiere 0,12) → ajuste **−1.178,88**. Fernando los mete a mano con el concepto correcto.
 
 ### Nota migraciones (recordatorio): el deploy NO ejecuta Alembic (`startup.sh` solo arranca gunicorn).
-Las migraciones se aplican **a mano** con `alembic upgrade head` (usuario `mayrit_app`, que SÍ tiene DDL).
+⚠️ **DESACTUALIZADO desde la separación de privilegios** — ver «Separación de privilegios» abajo:
+`mayrit_app` **ya NO tiene DDL**, así que `alembic upgrade head` con ese usuario falla. Las migraciones
+las aplica el **admin** con **`python migrar_mayrit.py`**.
 Ya aplicadas a prod: `conta_ajustes_justif_0001` y `conta_espejo_mid_0001`. Head del repo = `conta_espejo_mid_0001`.
 
 ---
