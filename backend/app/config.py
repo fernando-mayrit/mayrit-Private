@@ -60,6 +60,15 @@ class Settings(BaseSettings):
     sp_pfx_path: str = ""
     sp_pfx_password: str = ""
 
+    # ── Analítica de la web pública (www.mayritbroker.com) ──────────────────────────────────
+    # La web emite a Cloudflare Web Analytics (baliza sin cookies) y la app se trae esos datos por
+    # la API GraphQL de Cloudflare para pintarlos dentro de Mayrit y ARCHIVARLOS (Cloudflare purga;
+    # el histórico se queda en nuestra BD). Token de usuario con permiso Account Analytics: Read.
+    # En local: CF_API_TOKEN / CF_ACCOUNT_ID en ~/.mayrit/.env; en Azure, App Settings.
+    cf_api_token: str = ""
+    cf_account_id: str = ""
+    cf_web_host: str = "www.mayritbroker.com"
+
     # Plantilla Word (tokens) para generar los FDO/LPAN (formulario London Premium Advice Note). La
     # ruta LOCAL (OneDrive) se usa si existe; en Azure no existe y se cae a la copia del repo.
     lpan_plantilla_local: str = (

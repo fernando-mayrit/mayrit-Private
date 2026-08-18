@@ -1593,3 +1593,37 @@ class ManualSeccion(Base):
     updated_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+
+class WebVisitaDia(Base):
+    """Resumen DIARIO de la analítica de la web pública (www.mayritbroker.com).
+
+    El dato lo emite la baliza sin cookies de Cloudflare Web Analytics y lo baja `app/cloudflare.py`.
+    Se archiva aquí porque Cloudflare purga el detalle a los pocos días: el histórico de Mayrit no
+    caduca. Cada sincronización REESCRIBE los días que trae (el dato de Cloudflare puede afinarse
+    durante unas horas), nunca acumula.
+
+    `visitas` = entradas al sitio desde fuera · `paginas_vistas` = páginas cargadas en total."""
+    __tablename__ = "web_visitas_dia"
+
+    dia: Mapped[dt.date] = mapped_column(Date, primary_key=True)
+    visitas: Mapped[int] = mapped_column(Integer, server_default="0", default=0)
+    paginas_vistas: Mapped[int] = mapped_column(Integer, server_default="0", default=0)
+    actualizado: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class WebVisitaDetalle(Base):
+    """Desglose diario de la analítica web: una fila por (día, tipo, valor).
+
+    `tipo` ∈ pagina | pais | dispositivo | navegador | so | referente (las claves de
+    `cloudflare.DESGLOSES`). Formato largo a propósito: añadir un desglose nuevo no toca el esquema."""
+    __tablename__ = "web_visitas_detalle"
+    __table_args__ = (UniqueConstraint("dia", "tipo", "valor", name="uq_web_visitas_detalle"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    dia: Mapped[dt.date] = mapped_column(Date, index=True)
+    tipo: Mapped[str] = mapped_column(String(20), index=True)
+    valor: Mapped[str] = mapped_column(String(300))
+    visitas: Mapped[int] = mapped_column(Integer, server_default="0", default=0)
+    paginas_vistas: Mapped[int] = mapped_column(Integer, server_default="0", default=0)

@@ -6,7 +6,26 @@
 > otro equipo y no se commitearon, **se perdieron** (la memoria de Claude es local de cada equipo).
 > **REGLA: las tareas compartidas van SIEMPRE aquí, en CONTEXTO.md + commit & push.**
 
-### 📌 AL DÍA (2026-08-14) — lista viva de pendientes y mejoras
+### 📌 AL DÍA (2026-08-18) — lista viva de pendientes y mejoras
+
+**Sesión 2026-08-18 (commiteado y pusheado a `main`):**
+- **⭐ Módulo NUEVO: Analítica web** (menú Financiero → 🌐 Analítica web). Trae a Mayrit las visitas de
+  **www.mayritbroker.com**, que se miden con la baliza **sin cookies** de **Cloudflare Web Analytics** (ya
+  puesta en la web desde el 14-ago y declarada en los legales). Cadena: baliza → **API GraphQL de
+  Cloudflare** (`app/cloudflare.py`) → **archivo en nuestra BD** (`web_visitas_dia` + `web_visitas_detalle`,
+  migración `web_visitas_0001`) → `routers/web.py` → `WebPage.tsx`. La pantalla **lee siempre de la BD**:
+  Cloudflare purga a los pocos días y el histórico propio **ya no caduca**. Se refresca sola al abrirla (si
+  hace más de 30 min) y con el botón **Actualizar**; el estado va en `sync_estado` (clave `web_analytics`),
+  **sin tarea programada** que instalar en los PCs. Muestra visitas/páginas vistas con comparación con el
+  periodo anterior, gráfico por día y rankings de páginas, referentes, países, dispositivos, navegadores y SO.
+- **⚠ GOTCHA de la API de Cloudflare (documentado en `cloudflare.py`):** el dataset
+  `rumPageloadEventsAdaptiveGroups` es *adaptive*; con ventanas de **≤7 días** devuelve el dato EXACTO, pero
+  con **8 días o más** cambia a un resumen grueso que da **el doble** (múltiplos de 10) y se deja fuera el
+  día más reciente. Por eso el cliente **trocea siempre en bloques de 7 días** y NO escala por
+  `sampleInterval`. Comprobado contra datos reales (15/16/17-ago = 11/5/6 visitas).
+- **Credenciales:** token de Cloudflare (permiso *Account Analytics: Read*) + id de cuenta en
+  `CF_API_TOKEN` / `CF_ACCOUNT_ID` (local: `~/.mayrit/.env`; Azure: App Settings). Sin ellos la pantalla
+  no revienta: enseña lo archivado y avisa.
 
 > ## 🔴 LEE ESTO ANTES DE DESPLEGAR (separación de privilegios, 2026-08-16)
 >

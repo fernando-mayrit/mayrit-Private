@@ -1565,3 +1565,30 @@ export const pcApi = {
     request<PcValoracion>(`/pc/valoraciones/${vid}`, { method: "PUT", body: JSON.stringify(body) }),
   borrar: (vid: number) => request<void>(`/pc/valoraciones/${vid}`, { method: "DELETE" }),
 };
+
+// ── Analítica de la web pública (Cloudflare Web Analytics archivado en nuestra BD) ──
+export interface WebPunto { dia: string; visitas: number; paginas_vistas: number }
+export interface WebTop { valor: string; visitas: number; paginas_vistas: number }
+export interface WebAnalitica {
+  configurado: boolean;
+  host: string;
+  dias: number;
+  desde: string;
+  hasta: string;
+  totales: {
+    visitas: number; paginas_vistas: number;
+    visitas_previo: number; paginas_vistas_previo: number;
+    media_diaria: number; mejor_dia: WebPunto | null;
+  };
+  serie: WebPunto[];
+  tops: Record<string, WebTop[]>;
+  historico_desde: string | null;
+  ultima_sync: string | null;
+  error_sync: string | null;
+}
+export function getWebAnalitica(dias: number) {
+  return request<WebAnalitica>(`/web/analitica?dias=${dias}`);
+}
+export function sincronizarWeb(dias = 7) {
+  return request<{ ok: boolean; ultima_sync: string | null }>(`/web/sincronizar?dias=${dias}`, { method: "POST" });
+}

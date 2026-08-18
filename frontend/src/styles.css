@@ -1440,3 +1440,15 @@ button.pastilla.clic:hover { filter: brightness(0.96); }
 .fases-hasta.off { opacity: .5; }
 .fases-hasta input { padding: 3px 6px; border: 1px solid var(--borde); border-radius: 6px; }
 .fases-estado { min-width: 120px; }
+
+/* ── Analítica web (Cloudflare Web Analytics archivado) ─────────────────────────────────── */
+.web-barra { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 4px; }
+.web-periodos { display: flex; gap: 6px; flex-wrap: wrap; }
+/* Rankings (páginas, países, referentes…): etiqueta + barra proporcional + número */
+table.web-top { border: none; background: transparent; }
+.web-top td { border-bottom: 1px solid var(--borde); padding: 6px 4px; vertical-align: middle; }
+.web-top tr:last-child td { border-bottom: none; }
+.web-top-lbl { max-width: 190px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.web-top-bar { width: 45%; }
+.web-top-bar span { display: block; height: 8px; border-radius: 999px; background: #c7d2fe; min-width: 2px; }
+.web-top-num { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; width: 56px; }

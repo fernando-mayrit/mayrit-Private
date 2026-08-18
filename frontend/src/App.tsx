@@ -17,6 +17,7 @@ import CierreContablePage from "./pages/CierreContablePage";
 import ContabilidadPage from "./pages/ContabilidadPage";
 import FinancieroPage from "./pages/FinancieroPage";
 import KpisPage from "./pages/KpisPage";
+import WebPage from "./pages/WebPage";
 import InformesPage from "./pages/InformesPage";
 import AgenciasSuscripcionPage from "./pages/AgenciasSuscripcionPage";
 import TransferenciasPage from "./pages/TransferenciasPage";
@@ -57,6 +58,7 @@ const EMOJI: Record<string, string> = {
   transferencias: "🔁",
   contabilidad: "📒",
   kpis: "📊",
+  web: "🌐",
   informes: "📈",
   agencias_dgsfp: "🏛️",
   credenciales: "🔐",
@@ -87,6 +89,7 @@ type Page =
   | "transferencias"
   | "contabilidad"
   | "kpis"
+  | "web"
   | "informes"
   | "agencias_dgsfp"
   | "credenciales"
@@ -141,6 +144,7 @@ const FACTURACION: { id: Page; label: string }[] = [
 const FINANCIERO: ItemMenu[] = [
   { id: "kpis", label: "KPIs" },
   { id: "informes", label: "Power BI", soloUsuarios: ["Fernando"] },
+  { id: "web", label: "Analítica web" },
   { id: "financiero", label: "Financiero" },
   { id: "transferencias", label: "Transferencias" },
 ];
@@ -563,6 +567,7 @@ export default function App() {
           {page === "cierre" && <CierreContablePage />}
           {page === "financiero" && <FinancieroPage />}
           {page === "kpis" && <KpisPage />}
+          {page === "web" && <WebPage />}
           {page === "informes" && puedeVer("informes") && <InformesPage />}
           {page === "agencias_dgsfp" && <AgenciasSuscripcionPage />}
           {page === "transferencias" && <TransferenciasPage />}
