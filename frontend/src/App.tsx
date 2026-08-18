@@ -139,14 +139,18 @@ const FACTURACION: { id: Page; label: string }[] = [
 ];
 
 // Menú lateral: Financiero / Caja (cuadros de pendientes de cobro/liquidación/traspaso/pago).
-// Power BI va restringido: el informe exige licencia Pro y solo la tiene Fernando (los demás verían
-// un aviso de acceso denegado dentro del iframe).
 const FINANCIERO: ItemMenu[] = [
-  { id: "kpis", label: "KPIs" },
-  { id: "informes", label: "Power BI", soloUsuarios: ["Fernando"] },
-  { id: "web", label: "Analítica web" },
   { id: "financiero", label: "Financiero" },
   { id: "transferencias", label: "Transferencias" },
+];
+
+// Menú lateral: Análisis (cuadros de mando e informes; va abajo del todo).
+// Power BI es visible para todos; quien no tenga licencia Pro verá el aviso de acceso denegado
+// dentro del propio iframe de Power BI.
+const ANALISIS: ItemMenu[] = [
+  { id: "kpis", label: "KPIs" },
+  { id: "informes", label: "Power BI" },
+  { id: "web", label: "Analítica web" },
 ];
 
 // Menú lateral: Contabilidad (solo Fernando y Lola).
@@ -173,6 +177,7 @@ const GRUPOS: Grupo[] = [
   { titulo: "Financiero", items: FINANCIERO },
   { titulo: "Contabilidad", items: CONTABILIDAD, soloUsuarios: ["Fernando", "Lola"] },
   { titulo: "Tareas", items: TAREAS },
+  { titulo: "Análisis", items: ANALISIS },
 ];
 // Páginas restringidas a ciertos usuarios (no aparecen en el menú ni se renderizan a los demás).
 // Permitidos = restricción del grupo ∩ restricción del ítem (lo que no tiene restricción, lo ven todos).
