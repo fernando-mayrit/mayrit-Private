@@ -8,12 +8,13 @@ ese mes) cuyo Recibo aún no se ha generado. Si un mes no tiene Risk BDX, no se 
 from __future__ import annotations
 
 import datetime as dt
+import os
 from collections import defaultdict
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session, selectinload
 
 from ..db import get_db
@@ -51,6 +52,7 @@ TIPOS_AVISO: dict[str, dict] = {
     "comision_sin_reparto": {"etiqueta": "Comisión pendiente de reparto", "defecto": "bajo", "categoria": "dia"},
     "pastilla_sin_tarea": {"etiqueta": "Fase de la parrilla sin tarea asignada", "defecto": "alto", "categoria": "alerta"},
     "sync_caducado": {"etiqueta": "Sincronización automática caducada", "defecto": "alto", "categoria": "alerta"},
+    "esquema_desfasado": {"etiqueta": "Base de datos sin migrar (esquema desfasado)", "defecto": "alto", "categoria": "alerta"},
 }
 
 
@@ -654,6 +656,47 @@ def _syncs_caducados(db: Session) -> list[Aviso]:
     return avisos
 
 
+# Revisiones de Alembic que trae ESTE código (se leen una vez: los ficheros no cambian en caliente).
+_HEADS_CODIGO: tuple[str, ...] | None = None
+
+
+def _heads_del_codigo() -> tuple[str, ...]:
+    """Revisión(es) final(es) de las migraciones incluidas en el despliegue."""
+    global _HEADS_CODIGO
+    if _HEADS_CODIGO is None:
+        from alembic.config import Config
+        from alembic.script import ScriptDirectory
+        backend = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        cfg = Config(os.path.join(backend, "alembic.ini"))
+        cfg.set_main_option("script_location", os.path.join(backend, "alembic"))
+        _HEADS_CODIGO = tuple(ScriptDirectory.from_config(cfg).get_heads())
+    return _HEADS_CODIGO
+
+
+def _esquema_desfasado(db: Session) -> list[Aviso]:
+    """ALERTA: la BD se ha quedado ATRÁS respecto al código desplegado.
+
+    Desde la separación de privilegios (2026-08-16) el despliegue ya NO aplica migraciones: hay que
+    lanzarlas a mano ANTES de subir (`python migrar_mayrit.py`). Si alguien se salta ese paso, la app
+    arranca contra un esquema viejo y falla por sitios raros ("no existe la columna X"). Este aviso lo
+    dice claro y en un solo sitio, en vez de dejar que aparezca como un error suelto."""
+    try:
+        actual = db.scalar(text("SELECT version_num FROM alembic_version"))
+        heads = _heads_del_codigo()
+    except Exception:
+        db.rollback()                       # sin tabla alembic_version o sin alembic: no romper avisos
+        return []
+    if not heads or not actual or actual in heads:
+        return []
+    return [Aviso(
+        tipo="esquema_desfasado", severidad="danger",
+        titulo="La base de datos no está al día con el código",
+        detalle=(f"El código desplegado espera la revisión {heads[0]} y la base de datos está en "
+                 f"{actual}. Falta aplicar la migración: ejecutar `python migrar_mayrit.py` con el "
+                 f"usuario administrador (ver el bloque rojo de docs/CONTEXTO.md) y recargar."),
+    )]
+
+
 @router.get("/avisos", response_model=list[Aviso])
 def listar_avisos(db: Session = Depends(get_db)):
     """Lista de avisos/tareas pendientes (calculados al vuelo), ordenados por importancia."""
@@ -674,6 +717,7 @@ def listar_avisos(db: Session = Depends(get_db)):
     avisos += _comision_sin_reparto(db)
     avisos += _pastillas_sin_tarea(db, binders)
     avisos += _syncs_caducados(db)
+    avisos += _esquema_desfasado(db)
     return _aplicar_niveles(db, avisos)
 
 

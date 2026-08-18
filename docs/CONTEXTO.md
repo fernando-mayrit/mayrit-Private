@@ -28,20 +28,35 @@
   no revienta: enseña lo archivado y avisa.
 - **Despliegue de esta sesión (siguiendo el bloque rojo):** la migración `web_visitas_0001` se aplicó
   **a mano ANTES** del push y el deploy solo movió código. Verificado en producción por Fernando.
-- **⚠ OJO con el bloque rojo 🔴 de aquí abajo — la separación de privilegios NO está surtiendo efecto
-  (comprobado 2026-08-18 contra la BD real):** `mayrit_app` es **DUEÑO de TODAS las tablas** (`recibos`,
-  `pc_valoraciones`, `sync_estado`… y las nuevas), así que **sí puede hacer DDL**: `alembic upgrade head`
-  con el usuario del `.env` funcionó sin problema, al contrario de lo que dice el bloque rojo. El admin
-  de verdad es **`aleaadmin`** (es miembro de `mayrit_app`). **Decisión pendiente de Fernando:** o se
-  completa la separación (cambiar la propiedad de las tablas al admin, `REASSIGN OWNED`, y dejar a
-  `mayrit_app` solo con DML) o se corrige el bloque rojo para que diga lo que de verdad pasa. Mientras
-  tanto, el procedimiento seguro sigue siendo el mismo: **migrar primero, desplegar después**.
+- **🔒 El candado de Postgres AHORA SÍ CIERRA (arreglado el 2026-08-18).** El cambio del 16-ago no
+  estaba surtiendo efecto: `mayrit_app` (el usuario de runtime) era **DUEÑO de los 115 objetos** de la
+  base, y el dueño de una tabla puede alterarla por muchos permisos que se le quiten — de hecho la
+  migración de hoy se aplicó con él sin problema. Arreglado con **`blindar_esquema.py`** (raíz del repo,
+  idempotente, con simulacro por defecto y `--aplicar` para ejecutar; pide el admin por teclado):
+  1. `REASSIGN OWNED BY mayrit_app TO aleaadmin` → las 58 tablas, 51 secuencias y 6 vistas pasan a ser
+     del admin. 2. `REVOKE CREATE ON SCHEMA public FROM mayrit_app`. 3. Se le devuelven los permisos de
+     DATOS (SELECT/INSERT/UPDATE/DELETE + secuencias) y a `mayrit_bi` su lectura (Power BI). 4.
+     `ALTER DEFAULT PRIVILEGES FOR ROLE aleaadmin` para que las tablas FUTURAS hereden lo mismo solas.
+  **Verificado después de aplicarlo:** la app lee (1.095 recibos) y escribe (INSERT ok), pero
+  `CREATE TABLE` le responde **`permission denied for schema public`**. El admin de las tablas pasa a ser
+  **`aleaadmin`** (el mismo de Alea).
+- **🔔 Red de seguridad para las migraciones (aviso `esquema_desfasado`).** Como el deploy ya no migra,
+  el riesgo real es subir código sin haber aplicado antes la migración. Ahora la app lo detecta sola:
+  compara la revisión de Alembic que trae el código (`ScriptDirectory.get_heads()`) con la que hay en la
+  tabla `alembic_version` y, si no coinciden, saca una **alerta roja** diciendo qué revisión falta y que
+  hay que ejecutar `migrar_mayrit.py`. Vive en `routers/avisos.py` (`_esquema_desfasado`), es una consulta
+  de nada y, si algo falla al leerlo, no rompe el resto de avisos.
 - **Cortafuegos de `alea-db` (Azure):** el desarrollo en local se cayó porque la IP pública de la oficina
   había cambiado y ya no estaba autorizada (el puerto 5432 no abría; la app en Azure, intacta). Se
   arregla en **Portal → alea-db → Redes → "Agregar la dirección IPv4 del cliente actual" → Guardar**.
   Pasará cada vez que cambie la IP.
 
 > ## 🔴 LEE ESTO ANTES DE DESPLEGAR (separación de privilegios, 2026-08-16)
+>
+> **Al día 2026-08-18:** esto ya es LITERALMENTE cierto (hasta ese día no lo era; ver el bloque
+> AL DÍA). `mayrit_app` ya no es dueño de nada y `alembic upgrade head` con el usuario de los
+> equipos falla con *permission denied for schema public*. Y si alguien despliega sin migrar, la
+> app lo canta con una alerta roja (`esquema_desfasado`) en vez de fallar por sitios raros.
 >
 > **El deploy ya NO aplica migraciones.** `backend/startup.sh` solo arranca gunicorn: se le quitó el
 > `alembic upgrade head` porque la app corre en runtime como **`mayrit_app`**, un rol **sin permisos
