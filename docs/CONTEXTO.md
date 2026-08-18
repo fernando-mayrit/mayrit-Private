@@ -26,6 +26,20 @@
 - **Credenciales:** token de Cloudflare (permiso *Account Analytics: Read*) + id de cuenta en
   `CF_API_TOKEN` / `CF_ACCOUNT_ID` (local: `~/.mayrit/.env`; Azure: App Settings). Sin ellos la pantalla
   no revienta: enseña lo archivado y avisa.
+- **Despliegue de esta sesión (siguiendo el bloque rojo):** la migración `web_visitas_0001` se aplicó
+  **a mano ANTES** del push y el deploy solo movió código. Verificado en producción por Fernando.
+- **⚠ OJO con el bloque rojo 🔴 de aquí abajo — la separación de privilegios NO está surtiendo efecto
+  (comprobado 2026-08-18 contra la BD real):** `mayrit_app` es **DUEÑO de TODAS las tablas** (`recibos`,
+  `pc_valoraciones`, `sync_estado`… y las nuevas), así que **sí puede hacer DDL**: `alembic upgrade head`
+  con el usuario del `.env` funcionó sin problema, al contrario de lo que dice el bloque rojo. El admin
+  de verdad es **`aleaadmin`** (es miembro de `mayrit_app`). **Decisión pendiente de Fernando:** o se
+  completa la separación (cambiar la propiedad de las tablas al admin, `REASSIGN OWNED`, y dejar a
+  `mayrit_app` solo con DML) o se corrige el bloque rojo para que diga lo que de verdad pasa. Mientras
+  tanto, el procedimiento seguro sigue siendo el mismo: **migrar primero, desplegar después**.
+- **Cortafuegos de `alea-db` (Azure):** el desarrollo en local se cayó porque la IP pública de la oficina
+  había cambiado y ya no estaba autorizada (el puerto 5432 no abría; la app en Azure, intacta). Se
+  arregla en **Portal → alea-db → Redes → "Agregar la dirección IPv4 del cliente actual" → Guardar**.
+  Pasará cada vez que cambie la IP.
 
 > ## 🔴 LEE ESTO ANTES DE DESPLEGAR (separación de privilegios, 2026-08-16)
 >
@@ -155,19 +169,18 @@ arreglo del 500 de Pólizas). Hecho hoy:
 - **Power BI — Ingresos** — pipeline montado (tabla `ppto_ingresos` + vista + Excel sembrado + cargador);
   falta que Fernando rellene/cargue y crear el usuario de BD `mayrit_bi`.
 - **Paginación** de `GET /recibos` y `/siniestros` — mejora de rendimiento NO urgente (cuando crezcan).
-- **Analítica de la web pública dentro de la app** (pedido por Fernando el 2026-08-16, la noche que se
-  publicó `mayritbroker.com`). Objetivo: **no tener que entrar al panel de Cloudflare** para ver cuatro
-  datos. La web pública lleva **Cloudflare Web Analytics** (sin cookies), y Cloudflare lo expone por API:
-  - Endpoint **GraphQL** `https://api.cloudflare.com/client/v4/graphql`, dataset
-    **`rumPageloadEventsAdaptiveGroups`** (ámbito de cuenta, filtrando por el **site tag** de la web).
-  - Hace falta un **token de API con permiso `Account Analytics: Read`** + el **ID de cuenta** + el
-    **site tag**. El token, como variable de entorno en Azure — **nunca en el código**.
-  - Dónde ponerlo: una pestaña **Web** dentro del módulo **KPIs**, con los mismos gráficos SVG que ya
-    hay (visitas, únicos, páginas más vistas, procedencia, país, móvil/escritorio). Caché de ~15 min
-    para no llamar a Cloudflare en cada recarga.
-  - ⚠ **Comprobar primero cuánto histórico guarda el plan gratuito** (¿30 días?). Si es corto y se
-    quiere comparar año contra año, hay que volcar un **resumen diario a la BD** — eso es más trabajo y
-    conviene decidirlo antes de empezar, no después.
+- **Analítica de la web pública dentro de la app** → **HECHO el 2026-08-18** (módulo Analítica web; ver
+  el bloque AL DÍA arriba). Diferencias respecto a como se había planeado aquí el 16-ago, por si alguien
+  vuelve a leer el plan viejo:
+  - **No hace falta el site tag**: se filtra por `requestHost` (el dominio), que es más claro y evita
+    tener que buscar el identificador del sitio en el panel de Cloudflare.
+  - **No es una pestaña de KPIs** sino **pantalla propia** (menú Financiero → 🌐), porque el contenido no
+    tiene nada que ver con los KPIs de negocio y así no se mezclan.
+  - **Sí se vuelca a la BD** (era la duda del plan): Cloudflare guarda poco y el volcado diario a
+    `web_visitas_dia` / `web_visitas_detalle` sale casi gratis, así que el histórico propio no caduca.
+  - La caché de 15 min del plan se resolvió con la regla de "refrescar si hace más de 30 min o si le das
+    a Actualizar", que además archiva.
+
 - **Afinar conciliación bancaria** (analizado 2026-07-13 — RETOMAR mañana; DECISIÓN pendiente de Fernando:
   ¿empezamos por categorización o por emparejamiento?). **Cómo funciona hoy** (`contabilidad.py`):
   - *Fase A (importar Norma 43):* categoría PROPUESTA aprendida del histórico. `_firma_desc` saca la "firma
