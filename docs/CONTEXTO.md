@@ -9,6 +9,24 @@
 ### 📌 AL DÍA (2026-08-18) — lista viva de pendientes y mejoras
 
 **Sesión 2026-08-18 (commiteado y pusheado a `main`):**
+- **🧭 Menú lateral reorganizado: bloque NUEVO «Análisis».** **Financiero** se queda solo con lo de
+  caja (Financiero + Transferencias) y las tres pantallas de *mirar* el negocio se agrupan abajo del todo
+  en **Análisis**: **KPIs**, **Power BI** y **Analítica web**. Es un cambio de `App.tsx` y nada más
+  (constante `ANALISIS` + entrada en `GRUPOS`); las páginas y sus rutas no se tocan.
+- **Power BI deja de estar restringido a Fernando.** Se le quitó el `soloUsuarios` al ítem: ahora lo ve
+  todo el equipo. Quien no tenga **licencia Pro** verá el aviso de acceso denegado **del propio Power BI**
+  dentro del iframe (no es un fallo de la app). La restricción por usuario del menú sigue existiendo y en
+  uso para el bloque de Contabilidad (Fernando + Lola).
+- **📖 Manual de la app actualizado (vive en la BD, no en el repo).** Se documentaron los módulos que no
+  estaban en ninguna parte, en 8 apartados nuevos detrás de «Cierre contable»: **El menú: dónde está cada
+  cosa** · **Tareas** (checklist del binder y auto-marcado por dato) · **Avisos y alertas** (las dos
+  campanas) · **Contabilidad** (Norma 43, conciliación, justificante PDF, paquete para la gestoría) ·
+  **PC — Profit Commission** · **Análisis** (KPIs / Power BI / Analítica web) · **Agencias DGSFP** ·
+  **Contraseñas**. Y se refrescó **🏗️ Arquitectura** (recuento real: 24 routers, 28 páginas, 35
+  componentes, ~119 migraciones; `cloudflare.py` y `seguridad.py` entre las piezas transversales;
+  Cloudflare en integraciones; mapa de módulos al día). ⚠ Al estar en la tabla `manual_secciones`, el
+  manual **no viaja en el repo ni con el deploy**: se escribe directo en la BD de producción y se ve al
+  instante. Cualquiera puede editarlo desde la propia pantalla del Manual.
 - **⭐ Módulo NUEVO: Analítica web** (menú Financiero → 🌐 Analítica web). Trae a Mayrit las visitas de
   **www.mayritbroker.com**, que se miden con la baliza **sin cookies** de **Cloudflare Web Analytics** (ya
   puesta en la web desde el 14-ago y declarada en los legales). Cadena: baliza → **API GraphQL de
