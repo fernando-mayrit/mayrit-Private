@@ -9,6 +9,14 @@
 ### 📌 AL DÍA (2026-08-19) — lista viva de pendientes y mejoras
 
 **Sesión 2026-08-19 (fuera del repo: programa nuevo en `C:\Dev\bdx-prep`):**
+> **PARA RETOMAR RÁPIDO.** El preparador de BDX está **en marcha y en uso**. Se arrastra el Excel de
+> la agencia sobre el icono del Escritorio que toque y deja al lado un `... - PREPARADO.xlsx` (hojas
+> *Preparado* + *Informe*) y un `... - PREPARADO.html` que **se abre solo** en el navegador. Tres
+> accesos: **HECA 2025 (PI26)**, **HECA 2026 (PI32)** e **IBERIAN**. Ficheros del programa:
+> `preparar_bdx.py` (motor), `informe.py` (el documento), `prueba_cuadre.py` (prueba del paso 18) y
+> una `receta_*.json` por binder. **Ya pasados y validados:** HECA junio y julio (PI26), HECA julio
+> (PI32) e Iberian julio. **Lo que queda por hacer está al final de este bloque.**
+
 - **⭐ Programa NUEVO: preparador de Risk BDX.** Coge el Excel tal como lo manda la agencia y lo deja
   en el formato de Mayrit, listo para procesar. **Vive fuera de este repo y fuera de OneDrive**
   (`C:\Dev\bdx-prep`), porque de momento es una herramienta suelta de escritorio, no parte de la app.
@@ -22,11 +30,12 @@
   de Claude Desktop). Estaban escritas como *manual para un ayudante que trabaja a mano celda a celda*
   (pedían confirmación en cada paso y manejaban Excel en vivo), no como especificación de un programa;
   por eso resultaban lentas y frustrantes. El contenido era bueno: se convirtió en reglas.
-- **Los 16 pasos están dentro del programa como tabla (`PASOS`)** y se imprimen al ejecutarlo y en la
-  hoja Informe, marcando `[x]`/`[ ]` y lo que hizo cada uno **en esa ejecución**. Idea de Fernando: así
-  se ve siempre qué hace y si falta algo. **Los 16 están hechos**; 12 vienen de las skills y **4 son
-  «propio»** (porcentajes que llegan ×100, códigos postales a número, traducciones tipo `N`→`No`,
-  renumerar `Number`) — esos 4 **están pendientes de que Fernando los bendiga o corrija**.
+- **Los pasos están dentro del programa como tabla (`PASOS`)** y salen en el informe con semáforo,
+  la explicación de qué comprueba cada uno y lo que hizo **en esa ejecución**. Idea de Fernando: así se
+  ve siempre qué hace y si falta algo. **Son 18 y están todos hechos** (empezaron siendo 16); 12 vienen
+  de las skills y **6 son «propio»** (porcentajes que llegan ×100, códigos postales a número,
+  traducciones tipo `N`→`No`, renumerar `Number`, el 17 = dejar la hoja con la pinta del bordereaux y
+  el 18 = el cuadre columna a columna).
 - **Verificado contra su propio trabajo a mano** (se quita del libro el mes a reproducir y se compara
   celda a celda): **HECA junio 2026 → 1 diferencia en 10.488 celdas** (y esa es un desliz suyo al
   teclear el nº de plazos); **Iberian julio 2026 → 13 en 13.255**, todas explicadas (6 franquicias con
@@ -56,10 +65,92 @@
   agencias ya salieron cinco sorpresas que nadie habría adivinado; descubrirlas con el programa cuesta
   20 minutos y dentro de la app cuesta un despliegue. Cuando entre: las recetas amplían la tabla
   `bdx_alias` que ya existe, la comprobación de prima 0 pasa a mirar la **BD** en vez de las pestañas
-  del libro (mejora), la lista de 16 pasos se ve **en pantalla** y **Mayrit generará el Excel** en vez
+  del libro (mejora), la lista de 18 pasos se ve **en pantalla** y **Mayrit generará el Excel** en vez
   de mantenerlo él a mano.
-- **Pendiente inmediato:** pasar el **julio de HECA** (primer mes que el programa no ha visto) y luego
-  añadir agencias, una receta cada vez, siempre validando contra un mes ya hecho.
+- **✅ Julio de HECA pasado** (primer mes que el programa no había visto): 39 filas → 40, prima
+  15.135,11 €, todos los pasos hechos. El fichero venía por primera vez como `.xlsx` de verdad y **sin
+  contraseña**. Salieron **tres cosas**:
+  - **`GH1-LB`…`GH4-LB` NO son certificados: son el número de suplemento.** HECA los mete en la casilla
+    del certificado y pone la póliza de verdad en «Policy or Group Ref». Lo lleva haciendo **desde
+    septiembre** (26 filas en el libro) y Fernando las deja tal cual, así que el programa también.
+    ⚠ Efecto secundario que costó ver: la comprobación de suplementos emparejaba por certificado, así
+    que un `GH2-LB` casaba con otro `GH2-LB` de un mes anterior **que es otra póliza distinta** → falso
+    positivo. **CORREGIDO**: ahora también mira «Policy or Group Ref» (`i_grp`).
+  - En julio son **4 suplementos de «Tecnoquadro stp»** sobre las pólizas …13742, …13743, …13745 y
+    …13746, que **nunca han aparecido en el bordereaux** (del …13735 al …13755 están todas menos esas).
+    **Preguntar a HECA.**
+  - **La columna `Number` del libro va hacia atrás:** marzo acaba en 4143, abril en 4360 y **mayo vuelve
+    a empezar en 3851**, junio termina en 4193 → los números 3851–4193 están **repetidos**. El programa
+    coge el más alto (4360) y numeró julio del 4361 al 4400. **CERRADO: a Fernando no le preocupa** («a
+    lo mejor incluso la quito»), se queda como está y **no hay que volver a sacar el tema**.
+- **Céntimo de redondeo (pendiente menor):** «Studio ghigo» viene a 1.253,81 € en 2 plazos → 626,90 + 626,90
+  y se pierde 1 céntimo contra la agencia. Arreglo propuesto: que el sobrante caiga en el último plazo.
+- **⭐ Formato unificado + informe legible (19-ago, 2ª parte).** Dos peticiones de Fernando, hechas:
+  - **CONFIRMADO por Fernando:** la hoja **Preparado** lleva **el formato de Mayrit**, no el de la
+    agencia; y el fichero que manda la agencia **no se toca jamás** (es el documento probatorio, se
+    abre solo para leer). Son dos cosas distintas y hubo que aclararlo.
+  - **La hoja Preparado sale ya con la pinta exacta del bordereaux**: tipo y tamaño de letra, cabecera,
+    bordes, alto de fila, ancho de columnas, autofiltro y formatos de número se **copian de la última
+    hoja del libro acumulado** (no se cablea ningún color aquí). Verificado: **0 celdas de formato
+    distintas** contra la hoja «June 2026». ⚠ Truco: hay que copiar los **objetos** de estilo
+    (`font`/`fill`/`border`/`alignment`/`number_format`), NO el `_style`; el `_style` son índices a las
+    tablas del libro origen y el Excel resultante no abre.
+  - **Informe nuevo, en `informe.py`**, que se guarda como `... - PREPARADO.html` al lado del Excel y
+    **se abre solo** en el navegador. Sustituye a la ventana negra de terminal. Lleva: cifras de un
+    vistazo, **cuadre de importes contra la agencia**, de dónde sale cada cosa, el **código de colores
+    explicado con los colores de verdad**, la tabla de **lo que hay que mirar** (fila, póliza y motivo
+    en cristiano, agrupando varios motivos de la misma fila) y los **pasos** con semáforo y
+    explicación de qué comprueba cada uno y qué pasó este mes. La hoja «Informe» del Excel lleva lo
+    mismo. **Todos los textos reescritos sin jerga** (nada de «crudo», listas de Python o `--desde-numero`).
+    Los `.bat` ya no dejan la ventana negra abierta salvo que falle algo.
+  - Paso **nuevo (17)**: «Dejar la hoja con la misma pinta que el bordereaux».
+- **⭐⭐ Paso 18: CUADRE COLUMNA A COLUMNA (19-ago, 3ª parte).** Lo pidió Fernando: *«una revisión muy
+  importante es que coincidan el sumatorio de todas las columnas»*. **No estaba** — solo se cuadraba la
+  prima. Ahora se **suma cada columna con números** en el fichero de la agencia y en la hoja preparada y
+  se comparan, descontando lo que el programa hace a propósito. Sale como tabla en el informe (y en la
+  hoja Informe del Excel) con tres estados: **Cuadra** / **Bailan céntimos** / **NO CUADRA** (rojo).
+  - **Se compara por FILA ORIGINAL, no por total**, agrupando los plazos de una misma póliza: es lo
+    único que aguanta el fraccionamiento. Reglas por columna: las que se reparten (prima, honorarios,
+    accessori) → la suma de los plazos debe dar el original; las que se repiten (suma asegurada, YOA,
+    códigos postales) → no se suman; los porcentajes se vuelven a multiplicar por 100. En modo *ratio*
+    (Iberian) la prima esperada es **la anual**, no la del plazo.
+  - **También cuadra las columnas calculadas** (comisión, impuestos, neto, brokerage): se resuelven las
+    fórmulas de la hoja en Python y se comparan contra la cifra que manda la agencia. Para eso hubo que
+    leer del fichero de la agencia columnas que **no se copian** (`col_ref`).
+  - ⚠ **La tolerancia NO puede ser fija.** Con 5 céntimos, Iberian (303 filas) daba 9 falsas alarmas.
+    Es **1 céntimo por fila** (`max(0,02, 0,01 × nº filas)`): redondear a 2 decimales desvía hasta medio
+    céntimo por fila y partir una póliza, uno entero. Si falta una fila de verdad, la diferencia es de
+    euros y salta igual.
+  - **Resultado real:** HECA julio → 16 cuadran, 9 bailan céntimos (lo más gordo 0,03), **0 descuadran**.
+    Iberian julio → 11 cuadran, 10 bailan céntimos, **0 descuadran**.
+  - **Prueba automática en `prueba_cuadre.py`** (5 casos: correcto / se pierde dinero / póliza partida
+    bien / plazo perdido / dinero inventado). Los 5 pasan. Ejecutarla al tocar `cuadrar()`.
+  - **Regresión comprobada con Iberian julio**: mismas 303 filas, mismas 90 marcadas, **0 diferencias**
+    en las 65 columnas de datos (solo cambia `Number`, porque el libro de Iberian ya ha crecido).
+- **⭐⭐ CAMBIO DE BINDER — primer BDX sin histórico (19-ago, 4ª parte).** Lo planteó Fernando: está
+  trabajando el julio de HECA del binder **nuevo** `B1634PI3226HEC` (carpeta `CAA AXIS 2026 PI32`,
+  YOA 2026). Al ser el **primer** bordereaux del binder **no hay nada con qué compararlo hacia atrás**,
+  así que **toda anulación o suplemento tiene que ser de una póliza que esté en ese mismo fichero**.
+  - **Se detecta solo, por el UMR.** Si el UMR del fichero de la agencia no coincide con el del libro
+    acumulado, el programa sabe que es otro binder: usa el libro **solo para copiar el formato**, no
+    compara nada contra él, y **numera desde 1**. Sale un aviso azul destacado arriba del informe y
+    cambian las explicaciones de los pasos 5, 13 y 18. Nada que recordar ni marcar a mano.
+  - **Además busca la póliza huérfana en el libro del binder anterior** para poder decir *dónde* está.
+  - **Resultado del julio PI32:** 206 filas → 207, prima **83.489,71 €** (cuadra exacta), 21 columnas
+    cuadran y 4 bailan céntimos. **17 movimientos: las 14 anulaciones están bien** (su póliza está en el
+    propio fichero) y **los 3 suplementos NO**:
+    - fila 3 (`GH1-LB`) → póliza **GH000013669-LB**, Carlo Cesaroni, 150,01 € — está en el **binder
+      anterior**, hoja April 2026.
+    - fila 74 (`GH000011823.002-LB`) → póliza **GH000011823-LB**, Giuseppe Iannone, 797,08 € — **no está
+      ni en el binder anterior**; será de uno más antiguo (¿PI22?).
+    - fila 136 (`GH000015942.002-LB`) → póliza **GH000015942-LB**, Riccaassociati, 22,31 € — **binder
+      anterior**, hoja December.
+    → **Son suplementos de pólizas de binders anteriores metidos en el bordereaux del binder nuevo.
+    Reclamar a HECA.**
+  - **Ahora hay DOS accesos de HECA en el Escritorio**: `Preparar BDX - HECA 2025 (PI26).bat` y
+    `Preparar BDX - HECA 2026 (PI32).bat` (receta `receta_heca_axis_pi32.json`). El de 2026 usa el libro
+    del binder nuevo **en cuanto exista**; mientras no exista tira del de 2025 solo como plantilla.
+- **Pendiente:** añadir agencias, una receta cada vez, siempre validando contra un mes ya hecho.
 
 **Sesión 2026-08-18 (commiteado y pusheado a `main`):**
 - **🧭 Menú lateral reorganizado: bloque NUEVO «Análisis».** **Financiero** se queda solo con lo de
