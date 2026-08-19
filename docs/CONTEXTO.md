@@ -6,7 +6,60 @@
 > otro equipo y no se commitearon, **se perdieron** (la memoria de Claude es local de cada equipo).
 > **REGLA: las tareas compartidas van SIEMPRE aquí, en CONTEXTO.md + commit & push.**
 
-### 📌 AL DÍA (2026-08-18) — lista viva de pendientes y mejoras
+### 📌 AL DÍA (2026-08-19) — lista viva de pendientes y mejoras
+
+**Sesión 2026-08-19 (fuera del repo: programa nuevo en `C:\Dev\bdx-prep`):**
+- **⭐ Programa NUEVO: preparador de Risk BDX.** Coge el Excel tal como lo manda la agencia y lo deja
+  en el formato de Mayrit, listo para procesar. **Vive fuera de este repo y fuera de OneDrive**
+  (`C:\Dev\bdx-prep`), porque de momento es una herramienta suelta de escritorio, no parte de la app.
+  Se usa **arrastrando el fichero** sobre los accesos del Escritorio (**Preparar BDX - HECA** /
+  **Preparar BDX - IBERIAN**); deja al lado del original un `... - PREPARADO.xlsx` con dos hojas
+  (**Preparado** e **Informe**). **No toca el fichero de la agencia, no toca el libro acumulado y no
+  borra ninguna fila**: marca en gris las candidatas a borrar, en naranja las de revisar y en amarillo
+  las fraccionadas.
+- **De dónde sale:** de las dos skills de revisión mensual que escribió Fernando
+  (`primera-revision-mensual-risk-bordereaux` y `segunda-revision-risk-bdx-para-access`, en las skills
+  de Claude Desktop). Estaban escritas como *manual para un ayudante que trabaja a mano celda a celda*
+  (pedían confirmación en cada paso y manejaban Excel en vivo), no como especificación de un programa;
+  por eso resultaban lentas y frustrantes. El contenido era bueno: se convirtió en reglas.
+- **Los 16 pasos están dentro del programa como tabla (`PASOS`)** y se imprimen al ejecutarlo y en la
+  hoja Informe, marcando `[x]`/`[ ]` y lo que hizo cada uno **en esa ejecución**. Idea de Fernando: así
+  se ve siempre qué hace y si falta algo. **Los 16 están hechos**; 12 vienen de las skills y **4 son
+  «propio»** (porcentajes que llegan ×100, códigos postales a número, traducciones tipo `N`→`No`,
+  renumerar `Number`) — esos 4 **están pendientes de que Fernando los bendiga o corrija**.
+- **Verificado contra su propio trabajo a mano** (se quita del libro el mes a reproducir y se compara
+  celda a celda): **HECA junio 2026 → 1 diferencia en 10.488 celdas** (y esa es un desliz suyo al
+  teclear el nº de plazos); **Iberian julio 2026 → 13 en 13.255**, todas explicadas (6 franquicias con
+  cláusula que él resolvió a mano y 7 correcciones suyas de datos que no vienen en el fichero). Las 10
+  columnas con fórmula salen **idénticas** en las dos agencias.
+- **Una receta JSON por agencia** (`receta_iberian_axis.json`, `receta_heca_axis.json`). El formato de
+  destino **no se cablea**: se toma de la última hoja del libro acumulado, así que si la agencia cambia
+  de columnas, el programa se adapta solo. La receta solo lleva las diferencias.
+- **⚠ Gotchas por agencia (costó descubrirlos):**
+  - **HECA**: *todos* los ficheros son **.xls antiguo Y protegidos con contraseña** (`heca1033`), y
+    **cuatro se llaman `.xlsx` sin serlo**. Cabecera en la **fila 2**. Sección llega como `n/a` (= 1) y
+    `SECTION 2` (= 2). Porcentajes ×100. `Referred to London` llega `N` y se guarda `No`. **Fracciona
+    por la columna «Number of instalments»** repartiendo prima, honorarios y accessori. Los **endosos
+    llevan sufijo** en el certificado (`GH000018002.001-LB` es endoso de `GH000018002-LB`): sin quitarlo
+    la conciliación daría falsas alarmas todos los meses (155/155 madres localizables).
+  - **IBERIAN**: **fracciona por ratio** (total ÷ pagada) y los honorarios se quedan enteros en el
+    primer plazo. La agencia manda las columnas **en otro orden** (`Lloyds Platform` en la E, el NIF al
+    final y repetido). `% for Lloyd's` llega como 100. Regla de borrado confirmada y verificada: **prima
+    0 + la póliza ya está contada en otro sitio** (mes anterior **o el propio mes**) → fuera; si cambian
+    nombre/dirección/ingresos/suma asegurada respecto a la vez anterior, se conserva y se marca.
+  - En julio de Iberian hay **6 filas de dos pólizas que NO existen en el fichero de la agencia**
+    (LLO2021000737 y LLO2021000850): las añadió él. **Pendiente saber de dónde salen.**
+- **Dependencias instaladas en el venv `~/.mayrit/venv`**: `xlrd` (leer .xls) y `msoffcrypto-tool`
+  (descifrar los protegidos). ⚠ La **contraseña de HECA está en texto claro** en su receta (solo en este
+  PC, fuera de OneDrive); se puede cambiar para que la pida cada vez.
+- **DECISIÓN: NO integrarlo todavía en Mayrit.** Primero 2-3 meses de uso y varias agencias más. En dos
+  agencias ya salieron cinco sorpresas que nadie habría adivinado; descubrirlas con el programa cuesta
+  20 minutos y dentro de la app cuesta un despliegue. Cuando entre: las recetas amplían la tabla
+  `bdx_alias` que ya existe, la comprobación de prima 0 pasa a mirar la **BD** en vez de las pestañas
+  del libro (mejora), la lista de 16 pasos se ve **en pantalla** y **Mayrit generará el Excel** en vez
+  de mantenerlo él a mano.
+- **Pendiente inmediato:** pasar el **julio de HECA** (primer mes que el programa no ha visto) y luego
+  añadir agencias, una receta cada vez, siempre validando contra un mes ya hecho.
 
 **Sesión 2026-08-18 (commiteado y pusheado a `main`):**
 - **🧭 Menú lateral reorganizado: bloque NUEVO «Análisis».** **Financiero** se queda solo con lo de
