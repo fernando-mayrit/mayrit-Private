@@ -16,6 +16,7 @@ import LpanPage from "./pages/LpanPage";
 import CierreContablePage from "./pages/CierreContablePage";
 import ContabilidadPage from "./pages/ContabilidadPage";
 import FinancieroPage from "./pages/FinancieroPage";
+import InversionesPage from "./pages/InversionesPage";
 import KpisPage from "./pages/KpisPage";
 import WebPage from "./pages/WebPage";
 import InformesPage from "./pages/InformesPage";
@@ -55,6 +56,7 @@ const EMOJI: Record<string, string> = {
   cierre: "🔒",
   lpan: "📐",
   financiero: "💰",
+  inversiones: "💹",
   transferencias: "🔁",
   contabilidad: "📒",
   kpis: "📊",
@@ -86,6 +88,7 @@ type Page =
   | "usuarios"
   | "cierre"
   | "financiero"
+  | "inversiones"
   | "transferencias"
   | "contabilidad"
   | "kpis"
@@ -142,6 +145,7 @@ const FACTURACION: { id: Page; label: string }[] = [
 const FINANCIERO: ItemMenu[] = [
   { id: "financiero", label: "Financiero" },
   { id: "transferencias", label: "Transferencias" },
+  { id: "inversiones", label: "Inversiones" },
 ];
 
 // Menú lateral: Análisis (cuadros de mando e informes; va abajo del todo).
@@ -571,6 +575,7 @@ export default function App() {
           {page === "ucr" && <UcrPage />}
           {page === "cierre" && <CierreContablePage />}
           {page === "financiero" && <FinancieroPage />}
+          {page === "inversiones" && <InversionesPage />}
           {page === "kpis" && <KpisPage />}
           {page === "web" && <WebPage />}
           {page === "informes" && puedeVer("informes") && <InformesPage />}

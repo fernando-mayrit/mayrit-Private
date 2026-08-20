@@ -1627,3 +1627,114 @@ class WebVisitaDetalle(Base):
     valor: Mapped[str] = mapped_column(String(300))
     visitas: Mapped[int] = mapped_column(Integer, server_default="0", default=0)
     paginas_vistas: Mapped[int] = mapped_column(Integer, server_default="0", default=0)
+
+
+# ───────────────────────────── Inversiones (tesorería) ───────────────────────
+class Inversion(Base):
+    """Una inversión financiera de la casa: un fondo comprado, un depósito contratado, una cuenta
+    remunerada… Nada tangible (no hay inmuebles).
+
+    El campo clave es `origen`: 'Propio' (dinero de Mayrit) o 'Primas' (dinero de clientes que está
+    de paso en nuestras cuentas antes de liquidarlo a la compañía). El de primas HAY QUE DEVOLVERLO,
+    así que arrastra dos controles que el propio no necesita: `fecha_vencimiento` (hasta cuándo está
+    bloqueado) y `capital_garantizado` (si el producto puede bajar de valor).
+
+    El VALOR de la inversión no se deduce de los movimientos: viene de la última `InversionValoracion`
+    (la foto que se teclea del extracto de la entidad). Los movimientos solo dicen cuánto dinero de
+    bolsillo ha entrado/salido y qué se ha cobrado. Ver `routers/inversiones.py` para las fórmulas.
+    """
+
+    __tablename__ = "inv_inversiones"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+
+    nombre: Mapped[str] = mapped_column(String(160))            # 'Mediolanum Challenge Liquidity'
+    entidad: Mapped[str | None] = mapped_column(String(120), index=True)   # 'Banco Mediolanum'
+    tipo: Mapped[str] = mapped_column(String(30))               # Fondo | Depósito | Cuenta remunerada | Renta fija | Otro
+    isin: Mapped[str | None] = mapped_column(String(20))
+    referencia: Mapped[str | None] = mapped_column(String(60))  # nº de contrato/cuenta en la entidad
+
+    origen: Mapped[str] = mapped_column(String(10), index=True)  # Propio | Primas
+    # ¿La entidad garantiza que recuperas el 100%? (depósitos sí; fondos no). Con dinero de primas,
+    # un producto sin garantía es un riesgo: hay que devolver el importe íntegro pase lo que pase.
+    capital_garantizado: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
+
+    fecha_alta: Mapped[dt.date | None] = mapped_column(Date, index=True)
+    # Fecha a partir de la cual el dinero está disponible (vencimiento del depósito, fin del plazo…).
+    # Vacío = se puede rescatar en cualquier momento (fondos, cuentas remuneradas).
+    fecha_vencimiento: Mapped[dt.date | None] = mapped_column(Date, index=True)
+    tae_pct: Mapped[Decimal | None] = mapped_column(Numeric(7, 4))   # interés pactado (depósitos)
+
+    moneda: Mapped[str | None] = mapped_column(String(10), server_default="EUR", default="EUR")
+    estado: Mapped[str] = mapped_column(String(15), server_default="Abierta", default="Abierta")  # Abierta | Cerrada
+    notas: Mapped[str | None] = mapped_column(Text)
+
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    movimientos: Mapped[list["InversionMovimiento"]] = relationship(
+        back_populates="inversion", cascade="all, delete-orphan")
+    valoraciones: Mapped[list["InversionValoracion"]] = relationship(
+        back_populates="inversion", cascade="all, delete-orphan")
+
+
+class InversionMovimiento(Base):
+    """Entrada/salida de dinero de una inversión. `importe` SIEMPRE positivo; el sentido lo da `tipo`:
+
+      Aportación  → metes dinero (sale del banco, entra en el producto)
+      Rescate     → sacas dinero (sale del producto, entra en el banco)
+      Rendimiento → lo que ha rentado y ya está materializado (intereses, cupón, dividendo)
+      Comisión    → lo que cobra la entidad
+      Retención   → lo que se queda Hacienda del rendimiento (19 % en los depósitos)
+
+    `interno` = el dinero NO pasa por la cuenta corriente: se queda dentro del producto (un depósito
+    que capitaliza los intereses, una comisión que se descuenta del propio fondo). Importa porque un
+    movimiento interno ya está reflejado en la valoración y no se puede volver a sumar.
+
+    `movimiento_bancario_id` enlazará el apunte real del extracto (conciliación, Fase 2)."""
+
+    __tablename__ = "inv_movimientos"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    inversion_id: Mapped[int] = mapped_column(
+        ForeignKey("inv_inversiones.id", ondelete="CASCADE"), index=True)
+
+    fecha: Mapped[dt.date] = mapped_column(Date, index=True)
+    tipo: Mapped[str] = mapped_column(String(20), index=True)
+    importe: Mapped[Decimal] = mapped_column(Numeric(18, 2), server_default=text("0"), default=0)
+    participaciones: Mapped[Decimal | None] = mapped_column(Numeric(18, 6))  # fondos
+    interno: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
+    concepto: Mapped[str | None] = mapped_column(String(200))
+
+    movimiento_bancario_id: Mapped[int | None] = mapped_column(
+        ForeignKey("movimientos_bancarios.id", ondelete="SET NULL"), index=True)
+
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    inversion: Mapped["Inversion"] = relationship(back_populates="movimientos")
+
+
+class InversionValoracion(Base):
+    """Cuánto vale la inversión a una fecha: la foto que se copia del extracto de la entidad (una al
+    mes basta). Es la ÚNICA fuente del valor actual; la última por fecha manda.
+
+    En los fondos se puede guardar además el detalle (participaciones × valor liquidativo), que es
+    informativo: el valor que cuenta es `valor`."""
+
+    __tablename__ = "inv_valoraciones"
+    __table_args__ = (UniqueConstraint("inversion_id", "fecha", name="uq_inv_valoracion_fecha"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    inversion_id: Mapped[int] = mapped_column(
+        ForeignKey("inv_inversiones.id", ondelete="CASCADE"), index=True)
+
+    fecha: Mapped[dt.date] = mapped_column(Date, index=True)
+    valor: Mapped[Decimal] = mapped_column(Numeric(18, 2), server_default=text("0"), default=0)
+    participaciones: Mapped[Decimal | None] = mapped_column(Numeric(18, 6))
+    valor_liquidativo: Mapped[Decimal | None] = mapped_column(Numeric(18, 6))
+    notas: Mapped[str | None] = mapped_column(String(200))
+
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    inversion: Mapped["Inversion"] = relationship(back_populates="valoraciones")

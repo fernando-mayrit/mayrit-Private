@@ -1592,3 +1592,119 @@ export function getWebAnalitica(dias: number) {
 export function sincronizarWeb(dias = 7) {
   return request<{ ok: boolean; ultima_sync: string | null }>(`/web/sincronizar?dias=${dias}`, { method: "POST" });
 }
+
+// ── Inversiones (fondos, depósitos y cuentas remuneradas de la casa) ──
+// El valor de una inversión NO sale de los movimientos: sale de la última valoración tecleada.
+// Ver la cabecera de backend/app/routers/inversiones.py para las fórmulas exactas.
+export type InversionOrigen = "Propio" | "Primas";
+export interface InversionWrite {
+  nombre: string;
+  entidad?: string | null;
+  tipo: string;
+  isin?: string | null;
+  referencia?: string | null;
+  origen: InversionOrigen;
+  capital_garantizado: boolean;
+  fecha_alta?: string | null;
+  fecha_vencimiento?: string | null;
+  tae_pct?: number | null;
+  moneda?: string | null;
+  estado: string;
+  notas?: string | null;
+}
+export interface Inversion extends InversionWrite {
+  id: number;
+  aportado: number;
+  rescatado: number;
+  aportado_neto: number;
+  cobrado: number;
+  valor: number;
+  valor_estimado: boolean;
+  ganancia: number;
+  rentabilidad_pct: number | null;
+  fecha_valoracion: string | null;
+  dias_sin_valorar: number | null;
+  valoracion_vieja: boolean;
+  vence_en_dias: number | null;
+  bloqueada: boolean;
+  n_movimientos: number;
+}
+export interface InversionMovimientoWrite {
+  fecha: string;
+  tipo: string;
+  importe: number;
+  participaciones?: number | null;
+  interno: boolean;
+  concepto?: string | null;
+}
+export interface InversionMovimiento extends InversionMovimientoWrite {
+  id: number;
+  inversion_id: number;
+  movimiento_bancario_id: number | null;
+}
+export interface InversionValoracionWrite {
+  fecha: string;
+  valor: number;
+  participaciones?: number | null;
+  valor_liquidativo?: number | null;
+  notas?: string | null;
+}
+export interface InversionValoracion extends InversionValoracionWrite {
+  id: number;
+  inversion_id: number;
+}
+export interface InversionDetalle extends Inversion {
+  movimientos: InversionMovimiento[];
+  valoraciones: InversionValoracion[];
+}
+export interface InversionBloque {
+  n: number;
+  aportado_neto: number;
+  valor: number;
+  cobrado: number;
+  ganancia: number;
+  rentabilidad_pct: number | null;
+}
+export interface InversionesResumen {
+  total: InversionBloque;
+  propio: InversionBloque;
+  primas: InversionBloque;
+  ganancia_historica: number;
+  n_cerradas: number;
+  primas_bloqueado: number;
+  primas_bloqueado_hasta: string | null;
+  primas_sin_garantia: number;
+  primas_en_perdida: number;
+  n_valoraciones_viejas: number;
+  proximo_vencimiento: string | null;
+  proximo_vencimiento_nombre: string | null;
+}
+
+export const inversionesApi = {
+  listar: (filtros?: { origen?: string; estado?: string; q?: string }) => {
+    const qs = new URLSearchParams();
+    if (filtros?.origen) qs.set("origen", filtros.origen);
+    if (filtros?.estado) qs.set("estado", filtros.estado);
+    if (filtros?.q) qs.set("q", filtros.q);
+    const s = qs.toString();
+    return request<Inversion[]>(`/inversiones${s ? `?${s}` : ""}`);
+  },
+  resumen: () => request<InversionesResumen>(`/inversiones/resumen`),
+  entidades: () => request<string[]>(`/inversiones/entidades`),
+  detalle: (id: number) => request<InversionDetalle>(`/inversiones/${id}`),
+  crear: (datos: InversionWrite) =>
+    request<Inversion>(`/inversiones`, { method: "POST", body: JSON.stringify(datos) }),
+  editar: (id: number, datos: Partial<InversionWrite>) =>
+    request<Inversion>(`/inversiones/${id}`, { method: "PUT", body: JSON.stringify(datos) }),
+  borrar: (id: number) => request<void>(`/inversiones/${id}`, { method: "DELETE" }),
+
+  crearMovimiento: (id: number, datos: InversionMovimientoWrite) =>
+    request<InversionMovimiento>(`/inversiones/${id}/movimientos`, { method: "POST", body: JSON.stringify(datos) }),
+  borrarMovimiento: (movId: number) =>
+    request<void>(`/inversiones/movimientos/${movId}`, { method: "DELETE" }),
+
+  crearValoracion: (id: number, datos: InversionValoracionWrite) =>
+    request<InversionValoracion>(`/inversiones/${id}/valoraciones`, { method: "POST", body: JSON.stringify(datos) }),
+  borrarValoracion: (valId: number) =>
+    request<void>(`/inversiones/valoraciones/${valId}`, { method: "DELETE" }),
+};
