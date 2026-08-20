@@ -108,6 +108,49 @@ def _sincronizar_si_toca(db: Session, forzar: bool = False, dias: int | None = N
     return None
 
 
+# ── Ruido de robots ─────────────────────────────────────────────────────────────────────────────
+# Rutas que NO existen en la web y que solo piden robots rastreando internet en busca de webs de
+# WordPress (o de ficheros de configuración) para colarse por algún fallo conocido. Ninguna es de
+# Mayrit: la web es UNA página y su único .php es contacto.php.
+#
+# POR QUÉ ESTABAN CONTANDO COMO VISITAS: el `.htaccess` servía `/index.html` para cualquier ruta
+# inexistente, y el index lleva la baliza de Cloudflare → cada trastazo se archivaba como visita
+# real. El 2026-08-20 eso infló un día de 7 visitas a 45 (38 robots desde China).
+#
+# ARREGLADO EN LA WEB el 2026-08-20: ahora `ErrorDocument 404 /404.html`, una página propia SIN
+# baliza. De aquí en adelante el ruido ya no entra. Esta lista sirve para limpiar lo YA ARCHIVADO
+# (y por si algún día vuelve a colarse algo).
+RUTAS_ROBOT = (
+    "/wp-content", "/wp-admin", "/wp-includes", "/wp-json", "/wp-login", "/wordpress",
+    "/xmlrpc.php", "/.env", "/.git", "/vendor/", "/phpmyadmin", "/phpunit",
+    "/administrator", "/autodiscover", "/cgi-bin", "/.well-known/traffic-advice",
+)
+
+
+def _es_ruido(ruta: str | None) -> bool:
+    """¿Esta ruta es de un robot rastreando, y no de una persona mirando la web?"""
+    r = (ruta or "").lower()
+    return any(r.startswith(p) for p in RUTAS_ROBOT)
+
+
+def _ruido_por_dia(db: Session, desde: dt.date, hasta: dt.date) -> dict[dt.date, int]:
+    """Visitas de robots por día = suma de las peticiones a rutas que no existen.
+
+    Solo se puede descontar del TOTAL y del ranking de páginas. Los demás desgloses (país,
+    navegador…) los da Cloudflare como rankings independientes, sin decir qué visita fue a qué
+    página, así que ahí el ruido de los días anteriores al arreglo no se puede separar."""
+    filas = db.execute(
+        select(WebVisitaDetalle.dia, WebVisitaDetalle.valor, WebVisitaDetalle.visitas)
+        .where(WebVisitaDetalle.tipo == "pagina",
+               WebVisitaDetalle.dia >= desde, WebVisitaDetalle.dia <= hasta)
+    ).all()
+    out: dict[dt.date, int] = {}
+    for dia, valor, visitas in filas:
+        if _es_ruido(valor):
+            out[dia] = out.get(dia, 0) + int(visitas or 0)
+    return out
+
+
 # ── Lectura (BD → pantalla) ─────────────────────────────────────────────────────────────────────
 def _serie(db: Session, desde: dt.date, hasta: dt.date) -> list[dict]:
     """Un punto por día del periodo, con ceros en los días sin visitas. La serie no empieza antes
@@ -119,13 +162,18 @@ def _serie(db: Session, desde: dt.date, hasta: dt.date) -> list[dict]:
     if not filas:
         return []
     por_dia = {f.dia: f for f in filas}
+    ruido = _ruido_por_dia(db, desde, hasta)
     ini = max(desde, min(por_dia))
     out, d = [], ini
     while d <= hasta:
         f = por_dia.get(d)
+        visitas = f.visitas if f else 0
+        r = min(ruido.get(d, 0), visitas)   # nunca más ruido que visitas hubo
         out.append({"dia": d.isoformat(),
-                    "visitas": f.visitas if f else 0,
-                    "paginas_vistas": f.paginas_vistas if f else 0})
+                    "visitas": visitas,
+                    "paginas_vistas": f.paginas_vistas if f else 0,
+                    "ruido": r,
+                    "personas": visitas - r})
         d += dt.timedelta(days=1)
     return out
 
@@ -150,9 +198,16 @@ def _tops(db: Session, desde: dt.date, hasta: dt.date) -> dict[str, list[dict]]:
     ).all()
     out: dict[str, list[dict]] = {t: [] for t in cloudflare.DESGLOSES}
     for tipo, valor, visitas, vistas in filas:
+        # En el ranking del periodo las rutas de robots ESTORBAN: son decenas de rutas distintas
+        # con una visita cada una que echarían fuera del top a las páginas de verdad. Aquí se
+        # quitan (el total del ruido se da aparte); en el detalle de un día sí salen, marcadas,
+        # que es donde interesa ver qué anduvo buscando el robot.
+        if tipo == "pagina" and _es_ruido(valor):
+            continue
         lista = out.setdefault(tipo, [])
         if len(lista) < TOP:
-            lista.append({"valor": valor, "visitas": int(visitas or 0), "paginas_vistas": int(vistas or 0)})
+            lista.append({"valor": valor, "visitas": int(visitas or 0),
+                          "paginas_vistas": int(vistas or 0), "ruido": False})
     return out
 
 
@@ -169,7 +224,12 @@ def analitica(dias: int = Query(30, ge=1, le=1830), db: Session = Depends(get_db
     visitas, vistas = _totales(db, desde, hasta)
     visitas_prev, vistas_prev = _totales(db, prev_desde, prev_hasta)
     serie = _serie(db, desde, hasta)
-    mejor = max(serie, key=lambda p: p["visitas"], default=None)
+    # Todo lo que se enseña como "visitas" son PERSONAS: el ruido de robots va aparte y a la vista.
+    ruido = sum(p["ruido"] for p in serie)
+    ruido_prev = min(sum(_ruido_por_dia(db, prev_desde, prev_hasta).values()), visitas_prev)
+    personas = visitas - ruido
+    personas_prev = visitas_prev - ruido_prev
+    mejor = max(serie, key=lambda p: p["personas"], default=None)
 
     est = _estado(db)
     primer_dia = db.scalar(select(func.min(WebVisitaDia.dia)))
@@ -180,11 +240,15 @@ def analitica(dias: int = Query(30, ge=1, le=1830), db: Session = Depends(get_db
         "desde": desde.isoformat(),
         "hasta": hasta.isoformat(),
         "totales": {
-            "visitas": visitas,
+            # `visitas` = personas (ya sin robots). El bruto y el ruido van aparte para poder
+            # explicar de dónde sale la diferencia sin que nadie tenga que fiarse.
+            "visitas": personas,
+            "visitas_brutas": visitas,
+            "ruido": ruido,
             "paginas_vistas": vistas,
-            "visitas_previo": visitas_prev,
+            "visitas_previo": personas_prev,
             "paginas_vistas_previo": vistas_prev,
-            "media_diaria": round(visitas / len(serie), 1) if serie else 0,
+            "media_diaria": round(personas / len(serie), 1) if serie else 0,
             "mejor_dia": mejor,
         },
         "serie": serie,
@@ -192,6 +256,41 @@ def analitica(dias: int = Query(30, ge=1, le=1830), db: Session = Depends(get_db
         "historico_desde": primer_dia.isoformat() if primer_dia else None,
         "ultima_sync": est.ultimo_ok.isoformat() if est.ultimo_ok else None,
         "error_sync": error_sync or est.ultimo_error,
+    }
+
+
+@router.get("/dia/{fecha}")
+def dia(fecha: dt.date, db: Session = Depends(get_db)):
+    """Qué pasó UN día concreto: sus cifras y TODOS sus desgloses (al pinchar en la gráfica).
+
+    No llama a Cloudflare: el archivo propio ya guarda cada día por separado con su país, sus
+    páginas, su navegador y de dónde venía. A diferencia del ranking del periodo, aquí las rutas
+    de robots SÍ se listan (marcadas), que es justo donde interesa ver qué anduvieron buscando."""
+    d = db.get(WebVisitaDia, fecha)
+    filas = db.execute(
+        select(WebVisitaDetalle.tipo, WebVisitaDetalle.valor,
+               WebVisitaDetalle.visitas, WebVisitaDetalle.paginas_vistas)
+        .where(WebVisitaDetalle.dia == fecha)
+        .order_by(WebVisitaDetalle.tipo, WebVisitaDetalle.visitas.desc())
+    ).all()
+
+    desgloses: dict[str, list[dict]] = {t: [] for t in cloudflare.DESGLOSES}
+    for tipo, valor, visitas, vistas in filas:
+        desgloses.setdefault(tipo, []).append({
+            "valor": valor, "visitas": int(visitas or 0), "paginas_vistas": int(vistas or 0),
+            "ruido": tipo == "pagina" and _es_ruido(valor),
+        })
+
+    visitas = d.visitas if d else 0
+    ruido = min(sum(f["visitas"] for f in desgloses.get("pagina", []) if f["ruido"]), visitas)
+    return {
+        "dia": fecha.isoformat(),
+        "hay_dato": d is not None,
+        "visitas": visitas - ruido,
+        "visitas_brutas": visitas,
+        "ruido": ruido,
+        "paginas_vistas": d.paginas_vistas if d else 0,
+        "desgloses": desgloses,
     }
 
 

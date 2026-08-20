@@ -1567,8 +1567,13 @@ export const pcApi = {
 };
 
 // ── Analítica de la web pública (Cloudflare Web Analytics archivado en nuestra BD) ──
-export interface WebPunto { dia: string; visitas: number; paginas_vistas: number }
-export interface WebTop { valor: string; visitas: number; paginas_vistas: number }
+// `visitas` es el BRUTO (lo que contó Cloudflare) y `personas` el bruto menos el `ruido` de
+// robots. Ver RUTAS_ROBOT en backend/app/routers/web.py.
+export interface WebPunto {
+  dia: string; visitas: number; paginas_vistas: number; ruido: number; personas: number;
+}
+// `ruido` = esta ruta no existe en la web, la pidió un robot rastreando (solo en el desglose de páginas).
+export interface WebTop { valor: string; visitas: number; paginas_vistas: number; ruido?: boolean }
 export interface WebAnalitica {
   configurado: boolean;
   host: string;
@@ -1576,7 +1581,10 @@ export interface WebAnalitica {
   desde: string;
   hasta: string;
   totales: {
-    visitas: number; paginas_vistas: number;
+    visitas: number;            // ya SIN robots (es lo que se enseña como visitas)
+    visitas_brutas: number;     // lo que contó Cloudflare, robots incluidos
+    ruido: number;              // la diferencia: peticiones de robots a rutas que no existen
+    paginas_vistas: number;
     visitas_previo: number; paginas_vistas_previo: number;
     media_diaria: number; mejor_dia: WebPunto | null;
   };
@@ -1708,3 +1716,17 @@ export const inversionesApi = {
   borrarValoracion: (valId: number) =>
     request<void>(`/inversiones/valoraciones/${valId}`, { method: "DELETE" }),
 };
+
+// Qué pasó UN día concreto (al pinchar en la gráfica). Sale del archivo propio, no de Cloudflare.
+export interface WebDia {
+  dia: string;
+  hay_dato: boolean;
+  visitas: number;          // personas
+  visitas_brutas: number;
+  ruido: number;
+  paginas_vistas: number;
+  desgloses: Record<string, WebTop[]>;
+}
+export function getWebDia(fecha: string) {
+  return request<WebDia>(`/web/dia/${fecha}`);
+}
