@@ -6,7 +6,42 @@
 > otro equipo y no se commitearon, **se perdieron** (la memoria de Claude es local de cada equipo).
 > **REGLA: las tareas compartidas van SIEMPRE aquí, en CONTEXTO.md + commit & push.**
 
-### 📌 AL DÍA (2026-08-19) — lista viva de pendientes y mejoras
+### 📌 AL DÍA (2026-08-20) — lista viva de pendientes y mejoras
+
+**Sesión 2026-08-20 — la IP del cortafuegos deja de ser un problema (automatizado):**
+> **RESUELTO** lo que aparecía una y otra vez en este documento («la IP del firewall vuelve a
+> cambiar»). Ya no hay que entrar al portal: se arregla solo al arrancar.
+
+- **`abrir_firewall.ps1`** (raíz del repo). Orden: (1) prueba el puerto 5432 con timeout; si llega,
+  **sale en <1 s y no toca nada** (el caso normal). (2) Si no llega, saca la IP pública
+  (`api.ipify.org`, con dos alternativas) y la mete en el cortafuegos con **Azure CLI**. (3) Vuelve a
+  probar el puerto para confirmar. Todo queda en `logs/firewall.log`.
+- **Una sola regla por equipo**, `auto-<NOMBRE-DEL-PC>`, que **se pisa a sí misma**. Ese es el punto:
+  el botón del portal creaba una regla NUEVA cada vez y dejaba puesta la vieja.
+- **Enganchado en los 3 lanzadores**: `arrancar_mayrit.vbs`, `arrancar_servidores.vbs` (autoarranque)
+  y **`reiniciar_backend.vbs`** — este último es el importante, porque es el botón que se pulsa
+  cuando «algo va raro», y una IP nueva se manifiesta exactamente así.
+- **Si no puede, lo dice**: ventana con el motivo, la IP actual y qué hacer (incluido `az login` si la
+  sesión caducó). Se acabó el cuelgue mudo. El popup de fallo de `reiniciar_backend.vbs` también
+  apunta ahora a `logs/firewall.log`.
+- ⚠ **Parámetros de `az` contraintuitivos**: en `firewall-rule create`, `--name` es **la regla** y el
+  servidor va en **`--server-name`**. Y recién instalada, `az` **no está en el PATH** hasta reiniciar
+  sesión: el script la busca también en `C:\Program Files\Microsoft SDKs\Azure\CLI2\wbin\az.cmd`.
+- Datos: servidor `alea-db`, grupo **`rg-alea`**, Spain Central. Cuando la IP cambia de verdad, el
+  arranque tarda **~1 minuto** (Azure es lento aplicando la regla). Pasa cada 1-2 semanas.
+
+- **🔴 LIMPIEZA DE SEGURIDAD (hecha).** El cortafuegos tenía **7 reglas `ClientIPAddress_*` acumuladas**
+  (13-jul, 15-jul, 29-jul, 31-jul, 15-ago, 18-ago ×2) porque el botón del portal nunca borra la
+  anterior. Esas IPs **ya las ha reciclado Telefónica** y son de otros clientes → eran puertas abiertas
+  a la BD de PRODUCCIÓN. **Borradas las 7**; se conservan `AllowAllAzureServices...` (la usa la app y
+  Power BI) y las de Lola (`Desktop-LO`, `Equipo-PortatilLola`). Con el script ya no se acumulan.
+- 📌 **Pendiente relacionado:** las reglas de Lola son de IP fija apuntada a mano y seguramente también
+  están desfasadas. Y el backup del NAS (`ops/backup/`) necesita lo mismo pero **sin sesión
+  interactiva** → ahí sí hace falta el service principal de permisos mínimos ya planificado.
+- **Descartado con datos:** IP fija del operador. **O2 (oficina) no la ofrece a nadie**; Movistar
+  (casa) son **30 €/mes** = 360 €/año, y aun pagando solo cubriría casa, no la oficina. Tampoco sirve
+  una VPN: Azure filtra por IP pública y ninguno de los equipos tiene una fija.
+
 
 **Sesión 2026-08-19 (fuera del repo: programa nuevo en `C:\Dev\bdx-prep`):**
 > **PARA RETOMAR RÁPIDO.** El preparador de BDX está **en marcha y en uso**. Se arrastra el Excel de

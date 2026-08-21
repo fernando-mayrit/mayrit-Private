@@ -37,10 +37,15 @@ ps = "$ErrorActionPreference='SilentlyContinue';" & _
      "Start-Sleep -Milliseconds 800"
 sh.Run "powershell -NoProfile -WindowStyle Hidden -Command """ & ps & """", 0, True
 
-' 2) Backend limpio, oculto. PYTHONDONTWRITEBYTECODE evita .pyc en conflicto (OneDrive).
+' 2) Abrir el cortafuegos de la BD si la IP pública ha cambiado. Aquí importa especialmente:
+'    éste es el botón que se pulsa cuando "algo va raro", y una IP nueva se manifiesta como
+'    un backend que se cuelga sin decir nada. Si ya se llega a la BD, no hace nada (<1 s).
+sh.Run "powershell -NoProfile -ExecutionPolicy Bypass -File """ & base & "\abrir_firewall.ps1""", 0, True
+
+' 3) Backend limpio, oculto. PYTHONDONTWRITEBYTECODE evita .pyc en conflicto (OneDrive).
 sh.Run "cmd /c set PYTHONDONTWRITEBYTECODE=1&& cd /d """ & base & "\backend"" && """ & py & """ -m uvicorn app.main:app --port 8000", 0, False
 
-' 3) Esperar a que responda y avisar (así sabes que ya puedes recargar la app).
+' 4) Esperar a que responda y avisar (así sabes que ya puedes recargar la app).
 Dim http, i, listo
 listo = False
 For i = 1 To 40
@@ -56,5 +61,7 @@ Next
 If listo Then
   sh.Popup "Backend de Mayrit reiniciado y respondiendo." & vbCrLf & "Ya puedes recargar la app (Ctrl+F5).", 3, "Mayrit", 64
 Else
-  sh.Popup "El backend NO responde en el 8000." & vbCrLf & "Mira si hay algún error arrancándolo a mano.", 8, "Mayrit", 48
+  sh.Popup "El backend NO responde en el 8000." & vbCrLf & vbCrLf & _
+           "Si se queda colgado sin dar error, lo más probable es que no llegue a la base de datos." & vbCrLf & _
+           "Mira logs\firewall.log: ahí se apunta si la IP cambió y si se pudo abrir el cortafuegos.", 10, "Mayrit", 48
 End If

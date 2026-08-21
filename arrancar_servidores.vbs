@@ -11,5 +11,9 @@ sh.CurrentDirectory = base
 ' El venv vive FUERA de OneDrive (que lo deshidrata/borra): en %USERPROFILE%\.mayrit\venv.
 py = sh.ExpandEnvironmentStrings("%USERPROFILE%") & "\.mayrit\venv\Scripts\python.exe"
 
+' ANTES DE NADA: abrir el cortafuegos de la BD si la IP publica ha cambiado (ver
+' abrir_firewall.ps1). Si ya se llega, no hace nada y tarda menos de un segundo.
+sh.Run "powershell -NoProfile -ExecutionPolicy Bypass -File """ & base & "\abrir_firewall.ps1""", 0, True
+
 sh.Run "cmd /c set PYTHONDONTWRITEBYTECODE=1&& cd /d """ & base & "\backend"" && """ & py & """ -m uvicorn app.main:app --port 8000", 0, False
 sh.Run "cmd /c cd /d """ & base & "\frontend"" && npm run dev", 0, False
