@@ -1601,6 +1601,70 @@ export function sincronizarWeb(dias = 7) {
   return request<{ ok: boolean; ultima_sync: string | null }>(`/web/sincronizar?dias=${dias}`, { method: "POST" });
 }
 
+// ── El RECORRIDO, que mide nuestra propia baliza (no Cloudflare) ──
+// Va aparte a propósito. Cloudflare cuenta visitas; esto cuenta lo que hace cada visita DENTRO de
+// la web: qué páginas ve, en qué orden, cuánto tiempo y cuánto llega a ver de cada una. Hace falta
+// porque la web cambia de página sin recargar y para Cloudflare las siete páginas son una sola.
+// Las dos cifras de visitas NO tienen por qué coincidir (Cloudflare cuenta también a quien no
+// ejecuta JavaScript), así que no se mezclan ni se restan: cada una se enseña con lo que sabe.
+export interface WebCuenta { valor: string; veces: number }
+export interface WebPagina {
+  valor: string; veces: number;
+  segundos_medios: number; tiempo_medio: string;
+  visto_medio: number | null;      // % de la página que llega a verse, de media
+}
+export interface WebBusqueda { valor: string; veces: number; sin_resultado: boolean }
+export interface WebVisitaFila {
+  sesion: string; cuando: string; origen: string; fuente: string;
+  dispositivo: string; navegador: string; pais: string; idioma: string;
+  nuevo: boolean; escribio: boolean;
+  paginas: number; segundos: number; duracion: string;
+  camino: string[];                // el paseo: página a página, en orden
+}
+export interface WebRecorrido {
+  configurado: boolean;
+  dias: number; desde: string; hasta: string;
+  resumen: {
+    visitas: number;
+    personas: number;              // distintas, por la cookie propia
+    repetidos: number;             // de esas visitas, cuántas eran de alguien que ya había estado
+    solo_una_pagina: number;
+    paginas_por_visita: number;
+    duracion_media: number; duracion_media_texto: string;
+    escribieron: number;
+  };
+  paginas: WebPagina[];
+  caminos: WebCuenta[];
+  entradas: WebCuenta[]; salidas: WebCuenta[];
+  origenes: WebCuenta[]; campanas: WebCuenta[];
+  dispositivos: WebCuenta[]; idiomas: WebCuenta[];
+  busquedas: WebBusqueda[];
+  clics: WebCuenta[];
+  secciones: WebCuenta[];
+  visitas: WebVisitaFila[];
+  ultima_sync: string | null;
+  error_sync: string | null;
+}
+export interface WebVisitaDetalle {
+  sesion: string; cuando: string; duracion: string; paginas: number;
+  origen: string; origen_ruta: string;
+  fuente: string; medio: string; campana: string;
+  dispositivo: string; navegador: string; so: string; pais: string; idioma: string;
+  nuevo: boolean; escribio: boolean;
+  pasos: { segundo: number; tipo: string; valor: string; detalle: string;
+           segundos: number | null; pct: number | null }[];
+  otras_visitas: { sesion: string; cuando: string; paginas: number; duracion: string }[];
+}
+export function getWebRecorrido(dias: number) {
+  return request<WebRecorrido>(`/web/recorrido?dias=${dias}`);
+}
+export function getWebVisita(sesion: string) {
+  return request<WebVisitaDetalle>(`/web/visita/${encodeURIComponent(sesion)}`);
+}
+export function sincronizarWebRecorrido() {
+  return request<{ ok: boolean; ultima_sync: string | null }>(`/web/recorrido/sincronizar`, { method: "POST" });
+}
+
 // ── Inversiones (fondos, depósitos y cuentas remuneradas de la casa) ──
 // El valor de una inversión NO sale de los movimientos: sale de la última valoración tecleada.
 // Ver la cabecera de backend/app/routers/inversiones.py para las fórmulas exactas.

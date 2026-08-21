@@ -3,6 +3,7 @@ import { getWebAnalitica, getWebDia, sincronizarWeb, type WebAnalitica, type Web
 import FormPanel from "../components/FormPanel";
 import PageHeader from "../components/PageHeader";
 import { fmtMiles } from "../format";
+import WebRecorrido from "./WebRecorrido";
 
 // Periodos ofrecidos. El histórico vive en NUESTRA BD (Cloudflare purga a los pocos días), así que
 // los periodos largos van llenándose según pasa el tiempo.
@@ -272,6 +273,11 @@ function PanelDia({ fecha, onCerrar }: { fecha: string; onCerrar: () => void }) 
 }
 
 export default function WebPage() {
+  // Dos mediciones, dos pestañas, y no se mezclan. «Resumen» es Cloudflare: cuántas visitas y de
+  // dónde. «Recorrido» es nuestra propia baliza: qué hace cada visita dentro de la web. Sus cifras
+  // de visitas no tienen por qué coincidir (Cloudflare cuenta también a quien no ejecuta
+  // JavaScript), así que ponerlas juntas en la misma caja solo confundiría.
+  const [tab, setTab] = useState<"resumen" | "recorrido">("resumen");
   const [dias, setDias] = useState(30);
   const [d, setD] = useState<WebAnalitica | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -316,6 +322,15 @@ export default function WebPage() {
     <div className="container">
       {cabecera}
 
+      <div className="tabs detalle-tabs">
+        <button className={"tab" + (tab === "resumen" ? " active" : "")} onClick={() => setTab("resumen")}>
+          Resumen
+        </button>
+        <button className={"tab" + (tab === "recorrido" ? " active" : "")} onClick={() => setTab("recorrido")}>
+          Recorrido
+        </button>
+      </div>
+
       <div className="web-barra">
         <div className="web-periodos">
           {PERIODOS.map((p) => (
@@ -323,11 +338,16 @@ export default function WebPage() {
                     onClick={() => setDias(p.dias)}>{p.label}</button>
           ))}
         </div>
-        <button className="btn-secondary" onClick={actualizar} disabled={cargando}>
-          {cargando ? "Actualizando…" : "↻ Actualizar"}
-        </button>
+        {tab === "resumen" && (
+          <button className="btn-secondary" onClick={actualizar} disabled={cargando}>
+            {cargando ? "Actualizando…" : "↻ Actualizar"}
+          </button>
+        )}
       </div>
 
+      {tab === "recorrido" && <WebRecorrido dias={dias} />}
+
+      {tab === "resumen" && <>
       {!d.configurado && (
         <div className="error">⚠ Falta configurar el acceso a Cloudflare (CF_API_TOKEN / CF_ACCOUNT_ID).
           Se muestra solo lo ya archivado.</div>
@@ -401,6 +421,7 @@ export default function WebPage() {
       </p>
 
       {diaAbierto && <PanelDia fecha={diaAbierto} onCerrar={() => setDiaAbierto(null)} />}
+      </>}
     </div>
   );
 }

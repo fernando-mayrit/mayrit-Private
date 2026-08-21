@@ -69,6 +69,16 @@ class Settings(BaseSettings):
     cf_account_id: str = ""
     cf_web_host: str = "www.mayritbroker.com"
 
+    # ── Baliza PROPIA de la web ─────────────────────────────────────────────────────────────
+    # Cloudflare cuenta visitas, pero la web cambia de página SIN recargar, así que para él las
+    # siete páginas son una sola. El recorrido de verdad lo mide una baliza nuestra, que apunta en
+    # el propio alojamiento (medir.php) y de ahí se lo trae la app llamando a datos.php con esta
+    # clave. La clave se genera y se sube con mayrit-web\scripts\subir_medir.py, que la enseña por
+    # pantalla para pegarla aquí: ~/.mayrit/.env en local, App Settings en Azure.
+    # Sin clave, la pantalla enseña lo ya archivado y avisa; no revienta.
+    web_medir_clave: str = ""
+    web_medir_url: str = "https://www.mayritbroker.com/datos.php"
+
     # Plantilla Word (tokens) para generar los FDO/LPAN (formulario London Premium Advice Note). La
     # ruta LOCAL (OneDrive) se usa si existe; en Azure no existe y se cae a la copia del repo.
     lpan_plantilla_local: str = (

@@ -1629,6 +1629,120 @@ class WebVisitaDetalle(Base):
     paginas_vistas: Mapped[int] = mapped_column(Integer, server_default="0", default=0)
 
 
+
+class WebSesion(Base):
+    """Una VISITA a la web pública, medida por nuestra propia baliza (no por Cloudflare).
+
+    Una fila = un paseo por la web: quién (un número al azar, nunca una persona), de dónde vino,
+    cuánto duró, cuántas páginas vio y por dónde entró y salió. El detalle de lo que fue haciendo
+    está en `WebEvento`.
+
+    POR QUÉ EXISTE ESTO SI YA ESTÁ CLOUDFLARE: la web tiene siete páginas de verdad (Inicio,
+    Agencias, Compañías, Cómo funciona, Diccionario, Nosotros, Contacto), pero se cambian sin
+    recargar, escondiendo un <div> y enseñando otro. La dirección no cambia, así que Cloudflare ve
+    UNA visita a UNA página y no sabe nada más. Todo el recorrido —que es lo que interesa— solo se
+    ve desde aquí. Ver `app/baliza.py` y `mayrit-web/marca/medir.js`.
+
+    LO QUE NO HAY AQUÍ, A PROPÓSITO: ni nombres, ni correos, ni direcciones IP. `visitante` es el
+    número aleatorio de la cookie propia `mv` (13 meses) y solo sirve para saber que alguien VOLVIÓ;
+    `huella` es un hash con sal del día que calcula el alojamiento y que muere con el día."""
+    __tablename__ = "web_sesiones"
+    __table_args__ = (
+        Index("ix_web_sesiones_dia", "dia"),
+        Index("ix_web_sesiones_visitante", "visitante"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    sesion: Mapped[str] = mapped_column(String(32), unique=True)     # id de la visita (memoria de la pestaña)
+    visitante: Mapped[str] = mapped_column(String(32), server_default="", default="")   # cookie mv
+    huella: Mapped[str] = mapped_column(String(16), server_default="", default="")      # sal del día
+
+    dia: Mapped[dt.date] = mapped_column(Date)
+    inicio: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True))
+    fin: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    segundos: Mapped[int] = mapped_column(Integer, server_default="0", default=0)
+    paginas: Mapped[int] = mapped_column(Integer, server_default="0", default=0)
+
+    entrada: Mapped[str] = mapped_column(String(60), server_default="", default="")     # por dónde entró
+    salida: Mapped[str] = mapped_column(String(60), server_default="", default="")      # dónde acabó
+    origen: Mapped[str] = mapped_column(String(120), server_default="", default="")     # linkedin.com, directo…
+    origen_ruta: Mapped[str] = mapped_column(String(200), server_default="", default="")
+
+    # Etiquetas utm_* del enlace: con esto se sabe si la visita vino del correo que se mandó,
+    # de LinkedIn o de la firma del email. Se ponen a mano en el enlace que se publica.
+    campana: Mapped[str] = mapped_column(String(60), server_default="", default="")
+    medio: Mapped[str] = mapped_column(String(60), server_default="", default="")
+    fuente: Mapped[str] = mapped_column(String(60), server_default="", default="")
+
+    dispositivo: Mapped[str] = mapped_column(String(20), server_default="", default="")
+    navegador: Mapped[str] = mapped_column(String(20), server_default="", default="")
+    so: Mapped[str] = mapped_column(String(20), server_default="", default="")
+    pais: Mapped[str] = mapped_column(String(2), server_default="", default="")
+    idioma: Mapped[str] = mapped_column(String(5), server_default="", default="")
+
+    nuevo: Mapped[bool] = mapped_column(Boolean, server_default=text("true"), default=True)
+    escribio: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
+    creado: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    eventos: Mapped[list["WebEvento"]] = relationship(
+        back_populates="visita", cascade="all, delete-orphan", passive_deletes=True)
+
+
+class WebEvento(Base):
+    """Lo que fue haciendo una visita, en orden: páginas, clics, búsquedas, cambios de idioma.
+
+    `tipo`:
+      pagina   `valor` = la página · `segundos` en ella · `pct` = cuánto de ella llegó a ver
+      seccion  `valor` = la sección · `segundos` a la vista
+      clic     `valor` = a qué le dio · `detalle` = correo | telefono | termino | externo
+      busca    `valor` = lo que tecleó en el diccionario · `detalle` = 'sin_resultado' si no había
+      idioma   `valor` = el idioma al que cambió
+      envio    envió el formulario de contacto
+
+    `lote` e `indice` son el número de envío de la baliza y la posición dentro de él. No sirven para
+    nada al leer: están para que volver a recoger un día YA recogido no duplique ni una fila (la
+    clave única los usa). Sin eso, cualquier reintento ensuciaría el archivo para siempre."""
+    __tablename__ = "web_eventos"
+    __table_args__ = (
+        UniqueConstraint("sesion_id", "lote", "indice", name="uq_web_eventos_lote"),
+        Index("ix_web_eventos_dia_tipo", "dia", "tipo"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    sesion_id: Mapped[int] = mapped_column(ForeignKey("web_sesiones.id", ondelete="CASCADE"), index=True)
+    dia: Mapped[dt.date] = mapped_column(Date)
+    lote: Mapped[int] = mapped_column(Integer, server_default="0", default=0)
+    indice: Mapped[int] = mapped_column(Integer, server_default="0", default=0)
+
+    ms: Mapped[int] = mapped_column(Integer, server_default="0", default=0)   # desde que entró
+    tipo: Mapped[str] = mapped_column(String(16))
+    valor: Mapped[str] = mapped_column(String(200), server_default="", default="")
+    detalle: Mapped[str] = mapped_column(String(40), server_default="", default="")
+    segundos: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    pct: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    orden: Mapped[int | None] = mapped_column(Integer, nullable=True)   # el nº de página del recorrido
+
+    visita: Mapped["WebSesion"] = relationship(back_populates="eventos")
+
+
+class WebBalizaDia(Base):
+    """Por dónde va la recogida de cada día desde el alojamiento.
+
+    El alojamiento apunta una línea por envío en un fichero por día. `lineas` es cuántas de ese día
+    se han traído ya, para pedir solo lo nuevo en vez de rebajar el día entero cada vez.
+
+    `cerrado` = ese día ya no va a crecer más (es pasado y se leyó hasta el final), así que no hace
+    falta ni preguntar por él. Sin esta marca, cada sincronización volvería a recorrer todo el
+    histórico que el alojamiento aún conserve."""
+    __tablename__ = "web_baliza_dias"
+
+    dia: Mapped[dt.date] = mapped_column(Date, primary_key=True)
+    lineas: Mapped[int] = mapped_column(Integer, server_default="0", default=0)
+    cerrado: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
+    actualizado: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
 # ───────────────────────────── Inversiones (tesorería) ───────────────────────
 class Inversion(Base):
     """Una inversión financiera de la casa: un fondo comprado, un depósito contratado, una cuenta
