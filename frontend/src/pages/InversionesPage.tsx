@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   inversionesApi,
   type Inversion,
@@ -318,6 +318,16 @@ function PanelInversion({
   const [cargando, setCargando] = useState(id != null);
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // La entidad se ELIGE de tus bancos (o se escribe una nueva). Antes era una caja de texto con
+  // "Banco Mediolanum" en gris de ejemplo, y parecía un dato fijo que no se podía cambiar.
+  const [otraEntidad, setOtraEntidad] = useState(false);
+  const listaEntidades = useMemo(() => {
+    const vistas = new Map<string, string>();
+    for (const e of entidades) if (e.trim()) vistas.set(e.trim().toLowerCase(), e.trim());
+    const actual = (form.entidad ?? "").trim();      // la de esta inversión, aunque no esté en la lista
+    if (actual) vistas.set(actual.toLowerCase(), actual);
+    return [...vistas.values()].sort((a, b) => a.localeCompare(b, "es"));
+  }, [entidades, form.entidad]);
 
   const dirty = JSON.stringify(form) !== JSON.stringify(inicial);
 
@@ -484,18 +494,34 @@ function PanelInversion({
             </div>
             <div className="field">
               <label>Entidad</label>
-              <input
-                type="text"
-                list="inv-entidades"
-                placeholder="Banco Mediolanum"
-                value={form.entidad ?? ""}
-                onChange={(e) => set("entidad", e.target.value)}
-              />
-              <datalist id="inv-entidades">
-                {entidades.map((e) => (
-                  <option key={e} value={e} />
-                ))}
-              </datalist>
+              {otraEntidad ? (
+                <>
+                  <input
+                    type="text"
+                    autoFocus
+                    placeholder="Escribe el banco o la gestora"
+                    value={form.entidad ?? ""}
+                    onChange={(e) => set("entidad", e.target.value)}
+                  />
+                  <button type="button" className="btn-link btn-sm" onClick={() => { setOtraEntidad(false); set("entidad", ""); }}>
+                    elegir de la lista
+                  </button>
+                </>
+              ) : (
+                <select
+                  value={form.entidad ?? ""}
+                  onChange={(e) => {
+                    if (e.target.value === "__otra__") { setOtraEntidad(true); set("entidad", ""); }
+                    else set("entidad", e.target.value);
+                  }}
+                >
+                  <option value="">— elige la entidad —</option>
+                  {listaEntidades.map((e) => (
+                    <option key={e} value={e}>{e}</option>
+                  ))}
+                  <option value="__otra__">➕ Otra entidad…</option>
+                </select>
+              )}
             </div>
           </div>
 

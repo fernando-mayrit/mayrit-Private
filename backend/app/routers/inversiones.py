@@ -36,7 +36,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..db import get_db
-from ..models.maestras import Inversion, InversionMovimiento, InversionValoracion
+from ..models.maestras import CuentaBancaria, Inversion, InversionMovimiento, InversionValoracion
 
 router = APIRouter(prefix="/inversiones", tags=["Inversiones"])
 
@@ -347,13 +347,24 @@ def resumen(db: Session = Depends(get_db)):
 
 @router.get("/entidades", response_model=list[str])
 def entidades(db: Session = Depends(get_db)):
-    """Entidades ya usadas (para sugerirlas al teclear y no escribir 'Mediolanum' de tres maneras)."""
+    """Bancos donde elegir: los que ya se han usado en alguna inversión MÁS los bancos de las cuentas
+    bancarias activas (Configuración). Así la primera inversión ya tiene de dónde elegir en vez de
+    obligar a teclear el nombre, y no se acaba escribiendo 'Mediolanum' de tres maneras."""
     # El orden se hace aquí y no en SQL: con SELECT DISTINCT, Postgres exige que la expresión del
     # ORDER BY esté en la lista de campos, y `lower(entidad)` no lo está.
-    filas = db.scalars(
+    usadas = db.scalars(
         select(Inversion.entidad).where(Inversion.entidad.isnot(None)).distinct()
     ).all()
-    return sorted((e for e in filas if (e or "").strip()), key=str.lower)
+    bancos = db.scalars(
+        select(CuentaBancaria.banco).where(
+            CuentaBancaria.banco.isnot(None), CuentaBancaria.activa.is_(True)).distinct()
+    ).all()
+    vistos: dict[str, str] = {}
+    for e in [*usadas, *bancos]:
+        e = (e or "").strip()
+        if e:
+            vistos.setdefault(e.lower(), e)      # sin repetir por mayúsculas/minúsculas
+    return sorted(vistos.values(), key=str.lower)
 
 
 @router.get("", response_model=list[InversionRead])
