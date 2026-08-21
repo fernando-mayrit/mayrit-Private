@@ -6,7 +6,60 @@
 > otro equipo y no se commitearon, **se perdieron** (la memoria de Claude es local de cada equipo).
 > **REGLA: las tareas compartidas van SIEMPRE aquí, en CONTEXTO.md + commit & push.**
 
-### 📌 AL DÍA (2026-08-20) — lista viva de pendientes y mejoras
+### 📌 AL DÍA (2026-08-22) — lista viva de pendientes y mejoras
+
+**Sesión 2026-08-22 (fuera del repo: las invitaciones del evento, en `C:\Dev\confidential`):**
+- **Invitación de RICHARD terminada y publicada** — la número **18 de 25** (en inglés). Su vídeo y su
+  página están donde los demás: `Eventos Mayrit\2026\Invitacion\mayrit-web\richard\`. Quedan **7**
+  invitados y de esos aún no hay material (ni clips ni muñeco); el cuello de botella sigue siendo Kling.
+- **Pieza NUEVA en el motor de vídeos: dejar pasar lo que va POR DELANTE del cartel.** Hasta ahora,
+  cuando algo se cruzaba delante del mensaje inventado de Kling solo había dos salidas malas: pintarle
+  encima (a Richard le habría salido el cartel sobre la cara) o dejar un trozo de las letras falsas al
+  aire. Ahora se pega el cartel entero y después se **borra de la capa lo que no sea la tarjeta de
+  Kling**, así que su pelo y su cara siguen delante, como en el original. Sirve para todos los que vengan.
+- **Comprobado con medidas, no de vista:** 23,50 s exactos, sin silencios, −18,4 dB de media, la marca de
+  agua de Kling fuera y el azul del aviso falso de **1.229.576 puntos a 7.319** (0,6 %; el peor fotograma
+  794, y son el halo del borde, no letras).
+- El detalle de por qué cada número, en `C:\Dev\confidential\README.md` y en `hacer_richard.py`.
+
+**Sesión 2026-08-21 (commiteado y pusheado a `main`):**
+- **💶 Conciliar A MANO es mucho más fácil** (`75720d4`). Los apuntes que cuadraban **por céntimos**
+  (0,02-0,07 €) había que repasarlos uno a uno, y los «Pago Comisiones a Terceros» se buscaban como
+  cobros, así que **nunca encontraban candidata**. Con los datos de 2026: de **0 apuntes exactos a 28**
+  (33 admitiendo 2 € de margen). Lo que trae:
+  - **Margen de diferencia configurable** en la pantalla de conciliar (0,01 a 5 €). Lo que se acepta se
+    guarda como **línea de ajuste del justificante**, para que el PDF siga cuadrando.
+  - Un apunte que **paga** es una liquidación aunque el concepto no lleve la palabra.
+  - **Buscador manual** por apunte (por importe, por póliza/recibo, por fechas o en todo) sobre las
+    transferencias libres, **sin ventana de días ni clase**: para el caso raro que el automático no ve.
+  - **Espejo desde la propia pantalla de conciliar** (la otra pata de un traspaso).
+  - Ficha del apunte: ventana de **±días** (antes solo el día exacto) y el bloque de justificante ya sale
+    también en Honorarios y en los pagos a terceros.
+  - **Transferencias**: columna **Conc.** (enlazada / libre) con el apunte en el título, y filtro por
+    estado de conciliación. Se ve de un vistazo lo que queda suelto.
+  - ⚠ **Pendiente conocido:** **repartir UNA transferencia entre DOS apuntes** (hoy es 1 a 1).
+- **💹 Inversiones: la entidad se elige de una lista** (`4862b6b`). Era una caja de texto con «Banco
+  Mediolanum» en gris de ejemplo y se leía como un dato fijo que no se podía cambiar. Ahora es un
+  desplegable con los bancos de las cuentas bancarias activas (más los ya usados en inversiones) y una
+  opción **«Otra entidad…»** para escribir cualquier otra.
+- **🌐 Analítica web: pestaña nueva «Recorrido», medida con baliza PROPIA** (`73da37f`). Cloudflare se
+  queda corto en esta web y no es culpa suya: `mayritbroker.com` tiene siete páginas de verdad pero se
+  cambian **sin recargar**, así que Cloudflare ve *una* visita a *una* página. La baliza propia
+  (`medir.js` → `medir.php` → `datos.php`, en la web) mide **qué páginas ve cada visita, EN QUÉ ORDEN,
+  cuántos segundos en cada una, cuánto llega a ver, de dónde vino, qué buscó en el diccionario, qué
+  pinchó y si ya había estado antes**. En la app: `app/baliza.py`, tablas `web_sesiones` /
+  `web_eventos` / `web_baliza_dias` (migración `web_baliza_0001`, aplicada), `routers/web.py` y
+  `WebRecorrido.tsx`. Necesita `WEB_MEDIR_CLAVE` (ya puesta en Azure y en `~/.mayrit/.env`).
+  - **Dos decisiones que conviene NO deshacer:** (1) las dos mediciones van en **pestañas separadas** y
+    no se suman ni se restan — no cuentan lo mismo (Cloudflare cuenta también a quien no ejecuta
+    JavaScript) y forzarlas a cuadrar sería inventar; (2) la recogida es **idempotente por
+    construcción** (cada evento lleva su *(visita, lote, índice)* con clave única), así que volver a
+    recoger un día ya recogido no duplica ni una fila. Probado releyendo el mismo día tres veces.
+  - Sin banner de cookies: la baliza es propia, sin cookies y sin seguir a nadie fuera de la web.
+- 📌 **En el aire, sin commitear** (working tree, `backend/app/routers/contabilidad.py`): una línea para
+  que la previsualización de conciliar **no proponga los apuntes que ya están casados por espejo**
+  (`m.transferencia_ids or m.espejo_mid`). Repasarla y commitearla, o descartarla.
+
 
 **Sesión 2026-08-20 — la IP del cortafuegos deja de ser un problema (automatizado):**
 > **RESUELTO** lo que aparecía una y otra vez en este documento («la IP del firewall vuelve a
