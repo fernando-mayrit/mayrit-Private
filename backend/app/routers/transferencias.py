@@ -18,11 +18,13 @@ from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, text
 from sqlalchemy.orm import Session, selectinload
 
 from ..db import get_db
-from ..models.maestras import Binder, BinderSeccion, CuentaBancaria, Poliza, Recibo, SeccionMercado, Transferencia
+from ..models.maestras import (
+    Binder, BinderSeccion, CuentaBancaria, MovimientoBancario, Poliza, Recibo, SeccionMercado, Transferencia,
+)
 
 router = APIRouter(prefix="/transferencias", tags=["Transferencias"])
 
@@ -55,6 +57,10 @@ class TransferenciaRead(BaseModel):
     cuenta_destino: str | None
     notas: str | None
     manual: bool
+    # Chivato de conciliación: ¿está ya enlazada al justificante de un apunte de Contabilidad?
+    conciliada: bool = False
+    apunte: str | None = None        # "05/08/2026 · Bankinter Clientes · Cobro Primas"
+    apunte_mid: int | None = None    # id del movimiento bancario al que está enlazada
 
     class Config:
         from_attributes = True
@@ -121,6 +127,26 @@ class Opciones(BaseModel):
     umr_mercado: dict[str, str]   # UMR de binder / nº de póliza → mercado(s), para autocompletar
 
 
+def _apunte_por_transferencia(db: Session) -> dict[int, MovimientoBancario]:
+    """tid → apunte de Contabilidad que lo tiene en su justificante (transferencia_ids)."""
+    out: dict[int, MovimientoBancario] = {}
+    for m in db.scalars(select(MovimientoBancario).where(MovimientoBancario.transferencia_ids.is_not(None))).all():
+        for tid in (m.transferencia_ids or []):
+            out[tid] = m
+    return out
+
+
+def _leer(t: Transferencia, apuntes: dict[int, MovimientoBancario]) -> TransferenciaRead:
+    r = TransferenciaRead.model_validate(t)
+    m = apuntes.get(t.id)
+    if m is not None:
+        r.conciliada = True
+        r.apunte_mid = m.id
+        r.apunte = " · ".join(x for x in [
+            m.fecha.strftime("%d/%m/%Y") if m.fecha else None, m.cuenta, m.concepto] if x)
+    return r
+
+
 # ── Listado con filtros + totales ──
 @router.get("", response_model=TransferenciaListada)
 def listar(
@@ -132,6 +158,7 @@ def listar(
     sentido: str | None = None,
     cuenta: str | None = None,
     q: str | None = None,
+    conciliada: str | None = None,     # 'si' = ya enlazada a un apunte · 'no' = libre
     limit: int = 500,
 ):
     filtros = []
@@ -158,6 +185,16 @@ def listar(
             Transferencia.mercado.ilike(like),
             Transferencia.notas.ilike(like),
         ))
+
+    # Chivato de conciliación (y filtro por él): transferencias usadas en el justificante de un apunte.
+    apuntes = _apunte_por_transferencia(db)
+    if conciliada in ("si", "no"):
+        usadas = list(apuntes.keys())
+        if conciliada == "si":
+            filtros.append(Transferencia.id.in_(usadas) if usadas else text("false"))
+        else:
+            if usadas:
+                filtros.append(Transferencia.id.not_in(usadas))
 
     base = select(Transferencia).where(*filtros)
 
@@ -190,7 +227,7 @@ def listar(
     ).all()
 
     return TransferenciaListada(
-        items=items, total_entradas=ent, total_salidas=sal,
+        items=[_leer(t, apuntes) for t in items], total_entradas=ent, total_salidas=sal,
         total_traspasos=tra, neto=ent - sal, n_total=n_total,
         primas_cobros=pc, primas_liquidaciones=pl,
         comisiones_liquidacion=cl, comisiones_traspaso=ct,

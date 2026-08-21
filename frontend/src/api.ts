@@ -475,6 +475,10 @@ export interface Transferencia {
   cuenta_destino?: string | null;
   notas?: string | null;
   manual: boolean;
+  // Chivato de conciliación (lo calcula el servidor mirando los justificantes de Contabilidad).
+  conciliada?: boolean;
+  apunte?: string | null;        // apunte bancario al que está enlazada
+  apunte_mid?: number | null;
 }
 export interface TransferenciaListada {
   items: Transferencia[];
@@ -509,6 +513,7 @@ export interface TransferenciaFiltros {
   sentido?: string | null;
   cuenta?: string | null;
   q?: string | null;
+  conciliada?: string | null;    // 'si' (ya enlazada a un apunte) | 'no' (libre)
   limit?: number;
 }
 export const transferenciasApi = {
@@ -521,6 +526,7 @@ export const transferenciasApi = {
     if (f.sentido) qs.set("sentido", f.sentido);
     if (f.cuenta) qs.set("cuenta", f.cuenta);
     if (f.q) qs.set("q", f.q);
+    if (f.conciliada) qs.set("conciliada", f.conciliada);
     if (f.limit) qs.set("limit", String(f.limit));
     const s = qs.toString();
     return request<TransferenciaListada>(`/transferencias${s ? `?${s}` : ""}`);
@@ -685,12 +691,25 @@ export const contabilidadApi = {
   importarAplicar: (payload: ImportAplicar) =>
     request<{ creados: number; saltados: number }>("/contabilidad/importar/aplicar", { method: "POST", body: JSON.stringify(payload) }),
   // Conciliación (Fase B): propone las transferencias que cuadran cada apunte de seguros; aplica lo confirmado.
-  conciliarPreview: (cuenta: string, dias = 7, desde?: string) => {
-    const qs = new URLSearchParams({ cuenta, dias: String(dias) });
+  conciliarPreview: (cuenta: string, dias = 7, tol = 0.1, desde?: string) => {
+    const qs = new URLSearchParams({ cuenta, dias: String(dias), tol: String(tol) });
     if (desde) qs.set("desde", desde);
     return request<ConcPreview>(`/contabilidad/conciliar/preview?${qs.toString()}`);
   },
-  conciliarAplicar: (items: { mid: number; transferencia_ids: number[] }[]) =>
+  // Búsqueda LIBRE de transferencias sin usar (para conciliar a mano lo que el automático no encuentra).
+  conciliarBuscar: (opts: { q?: string; importe?: number; tol?: number; desde?: string; hasta?: string; clase?: string; ambito?: string; excluirMid?: number }) => {
+    const qs = new URLSearchParams();
+    if (opts.q) qs.set("q", opts.q);
+    if (opts.importe != null) qs.set("importe", String(opts.importe));
+    if (opts.tol != null) qs.set("tol", String(opts.tol));
+    if (opts.desde) qs.set("desde", opts.desde);
+    if (opts.hasta) qs.set("hasta", opts.hasta);
+    if (opts.clase) qs.set("clase", opts.clase);
+    if (opts.ambito) qs.set("ambito", opts.ambito);
+    if (opts.excluirMid != null) qs.set("excluir_mid", String(opts.excluirMid));
+    return request<ReciboJustif[]>(`/contabilidad/conciliar/buscar?${qs.toString()}`);
+  },
+  conciliarAplicar: (items: { mid: number; transferencia_ids: number[]; ajuste?: number | null; ajuste_texto?: string | null }[]) =>
     request<{ conciliados: number; conflictos: number[] }>("/contabilidad/conciliar/aplicar", { method: "POST", body: JSON.stringify({ items }) }),
 
   // ── Adjuntos (tickets/facturas) de un movimiento ──
@@ -749,6 +768,7 @@ export interface ConcApunte {
 export interface ConcPreview {
   cuenta: string | null;
   dias: number;
+  tol: number;
   n_exactas: number;
   n_revisar: number;
   n_sin: number;

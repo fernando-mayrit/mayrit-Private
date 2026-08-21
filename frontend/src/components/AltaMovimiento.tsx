@@ -39,8 +39,10 @@ export default function AltaMovimiento({ cuenta, cats, movimiento, onClose, onSa
   // Justificante: TRANSFERENCIAS (del ledger) que componen este apunte (para el PDF).
   const [transfIds, setTransfIds] = useState<number[]>(movimiento?.transferencia_ids ?? []);
   const [candidatos, setCandidatos] = useState<ReciboJustif[]>([]);   // una fila por recibo
-  // Filtro por la fecha del apunte (no editable en la UI; el cuadre es automático por esa fecha).
+  // Filtro por la fecha del apunte, con una ventana de ±días ajustable: la fecha valor del banco casi
+  // nunca coincide con la de la transferencia, y con ±0 el apunte se quedaba sin candidatas.
   const [fechaFiltro] = useState(movimiento?.fecha?.slice(0, 10) ?? "");
+  const [diasJustif, setDiasJustif] = useState(0);
   const [impById, setImpById] = useState<Map<number, number>>(new Map());  // importe por transferencia (acumula)
   const [genJustif, setGenJustif] = useState(false);
   // Líneas MANUALES de ajuste del justificante (compensaciones con siniestros, etc.). Suman al cuadre.
@@ -69,16 +71,24 @@ export default function AltaMovimiento({ cuenta, cats, movimiento, onClose, onSa
   const cuentaContableConcepto = cuentaContable && concepto ? `${cuentaContable}.${concepto}` : null;
 
   // Justificante: la "clase" (qué importe del recibo se usa) se deduce del concepto del apunte.
-  const claseJustif = /liquid/i.test(concepto) ? "liquidacion" : /traspas/i.test(concepto) ? "traspaso" : /cobro/i.test(concepto) ? "cobro" : null;
-  // El "ámbito" acota el tipo de transferencia (un «Cobro Primas» no mezcla Siniestros).
-  const ambitoJustif = /primas/i.test(concepto) ? "Primas" : /siniestros/i.test(concepto) ? "Siniestros" : /comisiones/i.test(concepto) ? "Comisiones" : /honorarios/i.test(concepto) ? "Honorarios" : undefined;
+  // El "ámbito" acota el tipo de transferencia (un «Cobro Primas» no mezcla Siniestros) y además
+  // decide si el apunte es DE SEGUROS: si no lo es, no hay justificante de recibos que valga.
+  // «Comisiones Bancarias» se excluye a propósito (es una comisión del banco, no de mediación).
+  const ambitoJustif = /bancari/i.test(concepto) ? undefined
+    : /primas/i.test(concepto) ? "Primas" : /siniestros/i.test(concepto) ? "Siniestros"
+    : /comisiones/i.test(concepto) ? "Comisiones" : /honorarios/i.test(concepto) ? "Honorarios" : undefined;
+  // Clase = qué mueve el apunte. MISMA regla que el servidor: un apunte que PAGA («Pago Comisiones a
+  // Terceros…») es una liquidación aunque no lleve la palabra; lo demás que no traspasa, es cobro.
+  const claseJustif = !ambitoJustif ? null
+    : /liquid/i.test(concepto) || /^\s*pago/i.test(concepto) ? "liquidacion"
+    : /traspas/i.test(concepto) ? "traspaso" : "cobro";
   // Carga las transferencias de la clase, filtradas por la FECHA del movimiento, ocultando las ya
   // usadas en otro apunte. CUADRE AUTOMÁTICO: si aún no hay selección, se marcan todas (su suma debe
   // cuadrar con el importe del apunte). Acumula importes en `impById` para la suma en vivo.
   useEffect(() => {
     if (!claseJustif) { setCandidatos([]); return; }
     let vivo = true;
-    contabilidadApi.transferenciasJustificante(claseJustif, { fecha: fechaFiltro || undefined, ambito: ambitoJustif, excluirMid: movimiento?.id })
+    contabilidadApi.transferenciasJustificante(claseJustif, { fecha: fechaFiltro || undefined, ambito: ambitoJustif, excluirMid: movimiento?.id, dias: diasJustif })
       .then((r) => {
         if (!vivo) return;
         setCandidatos(r);
@@ -89,7 +99,7 @@ export default function AltaMovimiento({ cuenta, cats, movimiento, onClose, onSa
       .catch(() => {});
     return () => { vivo = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [claseJustif, ambitoJustif, fechaFiltro]);
+  }, [claseJustif, ambitoJustif, fechaFiltro, diasJustif]);
   // Al editar, busca apuntes que podrían ser la otra pata de un traspaso (para ofrecer el espejo).
   useEffect(() => {
     if (!edicion || !movimiento) return;
@@ -405,6 +415,12 @@ export default function AltaMovimiento({ cuenta, cats, movimiento, onClose, onSa
           <div className="justif-filtros">
             <button type="button" className="btn-link btn-sm" onClick={marcarTodos} disabled={candidatos.length === 0}>Marcar todos</button>
             <button type="button" className="btn-link btn-sm" onClick={quitarTodos} disabled={transfIds.length === 0}>Quitar</button>
+            <label className="hint" style={{ marginLeft: "auto" }} title="La fecha del banco no suele coincidir con la de la transferencia: amplía la búsqueda a los días de alrededor">
+              Buscar ±
+              <select value={diasJustif} onChange={(e) => setDiasJustif(Number(e.target.value))} style={{ margin: "0 4px" }}>
+                {[0, 3, 7, 15, 30].map((d) => <option key={d} value={d}>{d}</option>)}
+              </select> días
+            </label>
           </div>
           <div className="justif-lista">
             <div className="justif-row justif-cab">
@@ -425,7 +441,7 @@ export default function AltaMovimiento({ cuenta, cats, movimiento, onClose, onSa
                 <span className="jr-cli">{c.cliente ?? c.mercado}</span>
               </label>
             ))}
-            {candidatos.length === 0 && <div className="hint" style={{ padding: 8 }}>No hay transferencias sin justificar para la fecha de este apunte.</div>}
+            {candidatos.length === 0 && <div className="hint" style={{ padding: 8 }}>No hay transferencias sin justificar en esa fecha. Amplía la búsqueda a ±7 o ±15 días.</div>}
           </div>
           <div className="hint" style={{ marginBottom: 6 }}>{transfIds.length} transferencia(s) seleccionada(s). Se autoseleccionan las de la fecha del apunte; las ya usadas en otro apunte no aparecen.</div>
 

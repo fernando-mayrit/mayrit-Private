@@ -569,8 +569,11 @@ _IMP_LABEL = {"cobro": "Cobrado", "liquidacion": "Liquidado al UW", "traspaso": 
 
 
 def _clase_de_concepto(concepto: str | None) -> str:
+    """Clase del apunte a partir del concepto. Un apunte que PAGA (p. ej. «Pago Comisiones a
+    Terceros - Iberian») es una LIQUIDACIÓN, aunque el concepto no lleve la palabra: si no, se
+    buscarían cobros que no existen y el apunte se queda siempre sin candidatas."""
     c = (concepto or "").lower()
-    if "liquid" in c:
+    if "liquid" in c or c.startswith("pago") or "pago a" in c:
         return "liquidacion"
     if "traspas" in c:
         return "traspaso"
@@ -786,7 +789,7 @@ def _ambito_de(concepto: str | None) -> str | None:
 
 
 def _preseleccion(cands: list[tuple[int, Decimal, dt.date | None]], objetivo: Decimal,
-                  fecha_apunte: dt.date | None, tol: Decimal = Decimal("0.01")) -> tuple[list[int], str]:
+                  fecha_apunte: dt.date | None, tol: Decimal = Decimal("0.10")) -> tuple[list[int], str]:
     """Sugiere qué transferencias marcar y con qué confianza. NUNCA inventa: si nada suma exacto, marca las
     de la misma fecha (o todas) como 'revisar' con su residual, para que el usuario decida."""
     from itertools import combinations
@@ -827,6 +830,7 @@ class ConcApunte(BaseModel):
 class ConcPreview(BaseModel):
     cuenta: str | None
     dias: int
+    tol: float = 0.10
     n_exactas: int
     n_revisar: int
     n_sin: int
@@ -834,13 +838,15 @@ class ConcPreview(BaseModel):
 
 
 @router.get("/conciliar/preview", response_model=ConcPreview)
-def conciliar_preview(cuenta: str, dias: int = 7, desde: dt.date | None = None, db: Session = Depends(get_db)):
+def conciliar_preview(cuenta: str, dias: int = 7, tol: float = 0.10, desde: dt.date | None = None,
+                      db: Session = Depends(get_db)):
     """Propone (SIN escribir nada) las transferencias que cuadran cada apunte de SEGUROS aún no conciliado
     de la cuenta. Ventana de ±`dias` (la fecha valor del banco ≠ la contable). Etiqueta cada uno:
     exacta / revisar (con residual) / sin candidatas.
 
     La conciliación IGNORA todo lo anterior a 2026 (decisión de negocio): ni apuntes ni transferencias
     de antes de `_CONCILIACION_DESDE` entran en el proceso."""
+    tolerancia = Decimal(str(max(0.01, tol)))
     corte = max(desde, _CONCILIACION_DESDE) if desde else _CONCILIACION_DESDE
     q = select(MovimientoBancario).where(
         MovimientoBancario.cuenta == cuenta, MovimientoBancario.fecha >= corte)
@@ -866,7 +872,7 @@ def conciliar_preview(cuenta: str, dias: int = 7, desde: dt.date | None = None, 
                             Transferencia.fecha <= f + dt.timedelta(days=dias))
         cand_tr = [t for t in db.scalars(qtr.order_by(Transferencia.fecha, Transferencia.numero_poliza)).all()
                    if t.id not in usadas]
-        pre, conf = _preseleccion([(t.id, Decimal(t.importe or 0), t.fecha) for t in cand_tr], objetivo, f)
+        pre, conf = _preseleccion([(t.id, Decimal(t.importe or 0), t.fecha) for t in cand_tr], objetivo, f, tolerancia)
         suma = sum((Decimal(t.importe or 0) for t in cand_tr if t.id in pre), Decimal(0))
         cov = _coverholders(db, {t.numero_poliza for t in cand_tr if t.numero_poliza})
         filas = _filas_recibo(cand_tr, cov, _desglose_recibos(db, cand_tr))
@@ -876,12 +882,17 @@ def conciliar_preview(cuenta: str, dias: int = 7, desde: dt.date | None = None, 
             suma_pre=suma, residual=objetivo - suma, confianza=conf,
         ))
         n_ex += conf == "exacta"; n_rev += conf == "revisar"; n_sin += conf == "sin_candidatas"
-    return ConcPreview(cuenta=cuenta, dias=dias, n_exactas=n_ex, n_revisar=n_rev, n_sin=n_sin, apuntes=out)
+    return ConcPreview(cuenta=cuenta, dias=dias, tol=float(tolerancia), n_exactas=n_ex, n_revisar=n_rev,
+                       n_sin=n_sin, apuntes=out)
 
 
 class ConcItem(BaseModel):
     mid: int
     transferencia_ids: list[int]
+    # Diferencia que se acepta al conciliar (céntimos de redondeo, cambio de divisa…). Se guarda como
+    # línea de ajuste del justificante para que el PDF siga cuadrando con el importe del apunte.
+    ajuste: Decimal | None = None
+    ajuste_texto: str | None = None
 
 
 class ConcAplicar(BaseModel):
@@ -904,10 +915,52 @@ def conciliar_aplicar(payload: ConcAplicar, db: Session = Depends(get_db)):
             conflictos.append(it.mid)
             continue
         m.transferencia_ids = it.transferencia_ids
+        if it.ajuste is not None and abs(Decimal(it.ajuste)) >= Decimal("0.01"):
+            m.ajustes_justif = [{"texto": (it.ajuste_texto or "Diferencia de redondeo"),
+                                 "importe": float(it.ajuste)}]
         usadas.update(it.transferencia_ids)
         conciliados += 1
     db.commit()
     return {"conciliados": conciliados, "conflictos": conflictos}
+
+
+# ── Búsqueda LIBRE de transferencias para conciliar a mano ──────────────────────────────────────
+# Cuando el cuadre automático no encuentra nada (fecha lejana, importe partido, apunte raro), aquí se
+# busca entre TODAS las transferencias que no están ya usadas en otro apunte, sin ventana de días ni
+# clase: por texto (póliza/recibo/mercado/notas), por importe aproximado o por rango de fechas.
+@router.get("/conciliar/buscar", response_model=list[ReciboJustif])
+def conciliar_buscar(
+    q: str | None = None, importe: float | None = None, tol: float = 1.0,
+    desde: dt.date | None = None, hasta: dt.date | None = None,
+    clase: str | None = None, ambito: str | None = None,
+    excluir_mid: int | None = None, limit: int = 200, db: Session = Depends(get_db),
+):
+    """Transferencias LIBRES (no asignadas a otro apunte) que casan con lo que se busca. Devuelve las
+    mismas filas por recibo que el justificante, para poder marcarlas igual que las candidatas."""
+    stmt = select(Transferencia)
+    if clase:
+        stmt = stmt.where(Transferencia.subtipo.in_(_CLASE_SUBTIPOS.get(clase, _CLASE_SUBTIPOS["cobro"])))
+    if ambito:
+        stmt = stmt.where(Transferencia.tipo == ambito)
+    if desde:
+        stmt = stmt.where(Transferencia.fecha >= desde)
+    if hasta:
+        stmt = stmt.where(Transferencia.fecha <= hasta)
+    if importe is not None:
+        imp = Decimal(str(importe)); t = Decimal(str(max(0.01, tol)))
+        stmt = stmt.where(Transferencia.importe >= imp - t, Transferencia.importe <= imp + t)
+    if q and q.strip():
+        like = f"%{q.strip()}%"
+        stmt = stmt.where(or_(
+            Transferencia.numero_poliza.ilike(like), Transferencia.recibo_num.ilike(like),
+            Transferencia.mercado.ilike(like), Transferencia.notas.ilike(like),
+        ))
+    usados = _transferencias_ya_justificadas(db, excluir_mid)
+    if usados:
+        stmt = stmt.where(Transferencia.id.not_in(usados))
+    trs = list(db.scalars(stmt.order_by(Transferencia.fecha.desc().nullslast()).limit(limit)).all())
+    cov = _coverholders(db, {t.numero_poliza for t in trs if t.numero_poliza})
+    return _filas_recibo(trs, cov, _desglose_recibos(db, trs))
 
 
 def _build_justificante_pdf(m: MovimientoBancario, filas: list[ReciboJustif], clase: str,

@@ -39,6 +39,14 @@ const periodoMes = (p: string | null | undefined) => {
   return m && y ? `${m}/${y}` : p;
 };
 const TR_COLS: Col<Transferencia>[] = [
+  {
+    key: "conciliada", label: "Conc.", tipo: "text", width: 62,
+    calc: (t) => (t.conciliada ? "Conciliada" : "Libre"),
+    render: (t) => (t.conciliada
+      ? <span className="pill pill-cobrado" title={`Conciliada con el apunte: ${t.apunte ?? ""}`}>🔗</span>
+      : <span className="pill pill-anulado" title="Libre: aún no está enlazada a ningún apunte del banco">—</span>),
+  },
+  { key: "apunte", label: "Apunte bancario", tipo: "text", width: 240 },
   { key: "fecha", label: "Fecha", tipo: "date" },
   { key: "periodo", label: "Periodo", tipo: "text", calc: (t) => periodoMes(t.periodo) },
   { key: "origen", label: "Origen", tipo: "text" },
@@ -61,7 +69,8 @@ const TR_COLS: Col<Transferencia>[] = [
   { key: "cuenta", label: "Cuenta", tipo: "text", width: 180, calc: cuentaTexto },
   { key: "notas", label: "Notas", tipo: "text", width: 220 },
 ];
-const TR_DEFAULT = TR_COLS.map((c) => c.key);
+// Por defecto se ve el chivato 🔗; la columna con el apunte concreto se enciende desde el ▾ de columnas.
+const TR_DEFAULT = TR_COLS.filter((c) => c.key !== "apunte").map((c) => c.key);
 
 type FormState = Partial<Transferencia>;
 
@@ -79,6 +88,7 @@ export default function TransferenciasPage() {
   const [sentido, setSentido] = useState("");
   const [cuenta, setCuenta] = useState("");
   const [q, setQ] = useState("");
+  const [conciliada, setConciliada] = useState("");   // '' todas · 'si' conciliadas · 'no' libres
 
   // Alta / edición manual
   const [form, setForm] = useState<FormState | null>(null);
@@ -87,8 +97,8 @@ export default function TransferenciasPage() {
   const [confirmar, setConfirmar] = useState<{ titulo: string; mensaje: ReactNode; accion: () => void } | null>(null);
 
   const filtros: TransferenciaFiltros = useMemo(
-    () => ({ anio: anio || null, origen: origen || null, tipo: tipo || null, subtipo: subtipo || null, sentido: sentido || null, cuenta: cuenta || null, q: q.trim() || null }),
-    [anio, origen, tipo, subtipo, sentido, cuenta, q],
+    () => ({ anio: anio || null, origen: origen || null, tipo: tipo || null, subtipo: subtipo || null, sentido: sentido || null, cuenta: cuenta || null, q: q.trim() || null, conciliada: conciliada || null }),
+    [anio, origen, tipo, subtipo, sentido, cuenta, q, conciliada],
   );
 
   async function cargar() {
@@ -234,6 +244,12 @@ export default function TransferenciasPage() {
               <option value="">Cuenta: todas</option>
               {(opciones?.cuentas ?? []).map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
+            <select className="filtro" value={conciliada} onChange={(e) => setConciliada(e.target.value)}
+              title="Filtrar por si la transferencia ya está enlazada al justificante de un apunte del banco">
+              <option value="">Conciliación: todas</option>
+              <option value="si">🔗 Ya conciliadas</option>
+              <option value="no">— Libres (sin apunte)</option>
+            </select>
           </div>
           <div className="toolbar" style={{ gap: 8 }}>
             <button className="btn-primary btn-sm" onClick={nuevo}>➕ Nuevo movimiento</button>
@@ -274,7 +290,7 @@ export default function TransferenciasPage() {
           filas={data?.items ?? []}
           columnas={TR_COLS}
           defaultKeys={TR_DEFAULT}
-          storageKey="mayrit.transferencias.tabla.v2"
+          storageKey="mayrit.transferencias.tabla.v3"
           defaultSort={{ key: "fecha", dir: -1 }}
           rowAction={(t) =>
             t.manual
