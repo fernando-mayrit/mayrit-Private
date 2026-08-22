@@ -855,7 +855,7 @@ def conciliar_preview(cuenta: str, dias: int = 7, tol: float = 0.10, desde: dt.d
     out: list[ConcApunte] = []
     n_ex = n_rev = n_sin = 0
     for m in apuntes:
-        if m.transferencia_ids:               # ya conciliado
+        if m.transferencia_ids or m.espejo_mid:   # ya conciliado (por transferencias o por espejo)
             continue
         amb = _ambito_de(m.concepto)
         if not amb:                           # no es de seguros → no se toca
