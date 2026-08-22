@@ -83,8 +83,10 @@ export default function AltaMovimiento({ cuenta, cats, movimiento, onClose, onSa
     : /liquid/i.test(concepto) || /^\s*pago/i.test(concepto) ? "liquidacion"
     : /traspas/i.test(concepto) ? "traspaso" : "cobro";
   // Carga las transferencias de la clase, filtradas por la FECHA del movimiento, ocultando las ya
-  // usadas en otro apunte. CUADRE AUTOMÁTICO: si aún no hay selección, se marcan todas (su suma debe
-  // cuadrar con el importe del apunte). Acumula importes en `impById` para la suma en vivo.
+  // usadas en otro apunte. Acumula importes en `impById` para la suma en vivo.
+  // OJO: solo se marcan solas si CUADRAN con el importe del apunte (una que coincida, o todas
+  // sumando el total). Antes se marcaban TODAS a ciegas y, en un día con varios cobros, el primer
+  // apunte que abrías se llevaba las transferencias de los demás y los dejaba sin nada.
   useEffect(() => {
     if (!claseJustif) { setCandidatos([]); return; }
     let vivo = true;
@@ -94,7 +96,17 @@ export default function AltaMovimiento({ cuenta, cats, movimiento, onClose, onSa
         setCandidatos(r);
         // El cuadre es POR TRANSFERENCIA (importe real movido), aunque se muestre desglosado por recibo.
         setImpById((prev) => { const m = new Map(prev); r.forEach((c) => m.set(c.transferencia_id, num(c.importe_transferencia))); return m; });
-        setTransfIds((prev) => (prev.length ? prev : [...new Set(r.map((c) => c.transferencia_id))]));   // autoselección
+        setTransfIds((prev) => {
+          if (prev.length) return prev;                       // ya había selección guardada: no tocar
+          const objetivo = num(movimiento?.gasto) || num(movimiento?.ingreso);
+          const porTr = new Map<number, number>();
+          r.forEach((c) => porTr.set(c.transferencia_id, num(c.importe_transferencia)));
+          const ids = [...porTr.keys()];
+          const sola = ids.find((id) => Math.abs((porTr.get(id) ?? 0) - objetivo) < 0.01);
+          if (sola != null) return [sola];                    // una sola que coincide con el apunte
+          const total = ids.reduce((a, id) => a + (porTr.get(id) ?? 0), 0);
+          return Math.abs(total - objetivo) < 0.01 ? ids : [];  // todas juntas cuadran, o ninguna
+        });
       })
       .catch(() => {});
     return () => { vivo = false; };
@@ -142,6 +154,8 @@ export default function AltaMovimiento({ cuenta, cats, movimiento, onClose, onSa
   const sumaAjustes = useMemo(() => ajustes.reduce((a, x) => a + num(x.importe), 0), [ajustes]);
   const restante = num(importe) - sumaSel - sumaAjustes;
   const addAjuste = () => setAjustes((s) => [...s, { texto: "", importe: 0 }]);
+  // Cuadrar de un clic: mete la diferencia que falta como línea de ajuste (falta poner el texto).
+  const addAjusteDif = () => setAjustes((s) => [...s, { texto: "", importe: Number(restante.toFixed(2)) }]);
   const setAjuste = (i: number, patch: Partial<AjusteJustif>) => setAjustes((s) => s.map((a, k) => (k === i ? { ...a, ...patch } : a)));
   const delAjuste = (i: number) => setAjustes((s) => s.filter((_, k) => k !== i));
   const toggleTransf = (id: number) => setTransfIds((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
@@ -192,8 +206,24 @@ export default function AltaMovimiento({ cuenta, cats, movimiento, onClose, onSa
   const verResto = edicion || (verImporte && num(importe) !== 0);
   const dis = bloqueado;
 
+  // Aviso de descuadre: si has marcado transferencias pero no suman el apunte, se pide un segundo
+  // clic. Guardar un apunte descuadrado deja el justificante mal Y le quita a otro apunte sus
+  // transferencias, que es como se cruzaron varias conciliaciones.
+  const [forzarDescuadre, setForzarDescuadre] = useState(false);
+  const descuadrado = !espejoMid && !!claseJustif && transfIds.length > 0 && Math.abs(restante) >= 0.01;
+  useEffect(() => { setForzarDescuadre(false); }, [transfIds, ajustes]);
+
   async function guardar() {
     if (!fecha || !tipo || !grupo || !concepto || num(importe) === 0) return setError("Completa fecha, tipo, grupo, concepto e importe.");
+    if (descuadrado && !forzarDescuadre) {
+      setForzarDescuadre(true);
+      const desvio = restante > 0
+        ? `faltan ${fmtMiles(restante)} €`
+        : `sobran ${fmtMiles(Math.abs(restante))} €`;
+      return setError(`El justificante no cuadra: ${desvio} respecto al importe del apunte. `
+        + "Desmarca lo que no sea de este apunte (si te llevas transferencias de otro, aquel se queda sin nada) "
+        + "o explica la diferencia con «➕ Cuadrar la diferencia». Si aun así quieres guardarlo, vuelve a pulsar Guardar.");
+    }
     setSaving(true); setError(null);
     try {
       const datos = {
@@ -462,6 +492,12 @@ export default function AltaMovimiento({ cuenta, cats, movimiento, onClose, onSa
               </div>
             ))}
             <button type="button" className="btn-primary btn-sm" onClick={addAjuste}>➕ Añadir ajuste</button>
+            {Math.abs(restante) >= 0.01 && transfIds.length > 0 && (
+              <button type="button" className="btn-primary btn-sm" style={{ marginLeft: 6 }} onClick={addAjusteDif}
+                title="Añade la diferencia que falta como línea de ajuste (escribe luego el motivo)">
+                ➕ Cuadrar la diferencia ({fmtMiles(restante)} €)
+              </button>
+            )}
           </div>
           </>
           )}
